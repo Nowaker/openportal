@@ -46,6 +46,10 @@ const app = new Elysia({ prefix: "/api" })
     const config = await opencodeClient.config.providers();
     return config;
   })
+  .get("/project/current", async () => {
+    const project = await opencodeClient.project.current();
+    return project;
+  })
   .delete("/sessions/:id", async ({ params }) => {
     await opencodeClient.session.delete({
       path: { id: params.id },

@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/router";
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
+import IconBox from "@/components/icons/box-icon";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import { Avatar } from "@/components/ui/avatar";
 import { Link } from "@/components/ui/link";
@@ -46,14 +47,58 @@ interface Session {
   updatedAt?: string;
 }
 
+interface Project {
+  id: string;
+  worktree: string;
+  vcs?: string;
+  vcsDir?: string;
+  time?: {
+    created?: number;
+    initialized?: number;
+    updated?: number;
+  };
+}
+
 const fetcher = async (url: string) => {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error("Failed to fetch sessions");
+    throw new Error("Failed to fetch");
   }
   const data = await response.json();
   return data.data || data || [];
 };
+
+const projectFetcher = async (url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Failed to fetch");
+  }
+  const data = await response.json();
+  return data.data || data;
+};
+
+function getProjectName(worktree: string): string {
+  const parts = worktree.split("/");
+  return parts[parts.length - 1] || worktree;
+}
+
+function CurrentProject() {
+  const { data: currentProject } = useSWR<Project>(
+    "/api/project/current",
+    projectFetcher,
+  );
+
+  const projectName = currentProject
+    ? getProjectName(currentProject.worktree)
+    : "Loading...";
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5">
+      <IconBox className="shrink-0" />
+      <div className="text-sm font-medium">{projectName}</div>
+    </div>
+  );
+}
 
 function truncateTitle(title: string, maxLength = 40): string {
   if (title.length <= maxLength) return title;
@@ -127,6 +172,10 @@ export default function AppSidebar(
       </SidebarHeader>
       <SidebarContent>
         <SidebarSectionGroup>
+          <SidebarSection>
+            <CurrentProject />
+          </SidebarSection>
+
           <SidebarSection>
             <SidebarItem
               tooltip="New Session"

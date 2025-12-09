@@ -158,10 +158,10 @@ export default function SessionPage() {
   const hasVisibleContent = (message: Message): boolean => {
     const textContent = getMessageContent(message.parts);
     const hasToolInvocations = message.parts.some(
-      (part) => part.type === "tool-invocation"
+      (part) => part.type === "tool-invocation",
     );
     const hasToolResults = message.parts.some(
-      (part) => part.type === "tool-result"
+      (part) => part.type === "tool-result",
     );
     return !!(textContent || hasToolInvocations || hasToolResults);
   };
@@ -264,38 +264,38 @@ export default function SessionPage() {
             )}
           </div>
         </div>
-      </div>
 
-      {/* Messaging UI - bottom part */}
-      <div className="border-t border-border p-4">
-        <form onSubmit={handleSubmit} className="w-full">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (input.trim() && !sending) {
-                  handleSubmit(e as unknown as React.FormEvent);
+        {/* Messaging UI - bottom part */}
+        <div className="border-t border-border p-4 flex-shrink-0">
+          <form onSubmit={handleSubmit} className="w-full">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (input.trim() && !sending) {
+                    handleSubmit(e as unknown as React.FormEvent);
+                  }
                 }
-              }
-            }}
-            placeholder="Type your message..."
-            disabled={sending}
-            className="w-full resize-none"
-            rows={1}
-          />
-          <div className="mt-3 flex items-center gap-2">
-            <ModelSelect />
-            <button
-              type="submit"
-              disabled={sending || !input.trim()}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg transition-colors hover:bg-primary/90 disabled:opacity-50"
-            >
-              {sending ? "Sending..." : "Send"}
-            </button>
-          </div>
-        </form>
+              }}
+              placeholder="Type your message..."
+              disabled={sending}
+              className="w-full resize-none"
+              rows={1}
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <ModelSelect />
+              <button
+                type="submit"
+                disabled={sending || !input.trim()}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {sending ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </AppLayout>
   );
