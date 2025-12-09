@@ -2,6 +2,7 @@ import AppSidebar from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import React from "react";
 import { Geist, Geist_Mono } from "next/font/google";
+import AppSidebarNav from "@/components/app-sidebar-nav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,6 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider className={geistSans.className}>
       <AppSidebar intent="inset" collapsible="dock" />
       <SidebarInset>
+        <AppSidebarNav />
         <div>{children}</div>
       </SidebarInset>
     </SidebarProvider>
