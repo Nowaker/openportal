@@ -119,7 +119,7 @@ export default function AppSidebar(
     <Sidebar {...props}>
       <SidebarHeader>
         <Link href="/" className="flex items-center gap-x-2">
-          <img src="/logo.svg" alt="Logo" className="size-8" />
+          <img src="/logo.svg" alt="Logo" className="size-6" />
           <SidebarLabel className="font-medium">
             OpenCode <span className="text-muted-fg">Sessions</span>
           </SidebarLabel>

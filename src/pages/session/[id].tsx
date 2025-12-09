@@ -4,8 +4,8 @@ import AppLayout from "@/layouts/app-layout";
 import { ModelSelect } from "@/components/model-select";
 import { Textarea } from "@/components/ui/textarea";
 import IconBadgeSparkle from "@/components/icons/badge-sparkle-icon";
-import { Streamdown } from 'streamdown';
-
+import { Ripples } from "ldrs/react";
+import "ldrs/react/Ripples.css";
 
 interface Part {
   type: string;
@@ -42,6 +42,7 @@ export default function SessionPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -50,6 +51,28 @@ export default function SessionPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (sending) {
+      const interval = setInterval(() => {
+        scrollToBottom();
+      }, 100);
+      return () => clearInterval(interval);
+    }
+  }, [sending]);
+
+  useEffect(() => {
+    // Auto-scroll when sending
+    if (sending) {
+      const interval = setInterval(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop =
+            chatContainerRef.current.scrollHeight;
+        }
+      }, 100);
+      return () => clearInterval(interval);
+    }
+  }, [sending]);
 
   const fetchMessages = async () => {
     if (!id) return;
@@ -127,131 +150,152 @@ export default function SessionPage() {
 
   const getMessageContent = (parts: Part[]): string => {
     return parts
-      .filter((part) => part.type === "text" && part.text)
-      .map((part) => part.text)
+      .filter((part) => part.type === "text" && part.text?.trim())
+      .map((part) => part.text || "")
       .join("\n\n");
+  };
+
+  const hasVisibleContent = (message: Message): boolean => {
+    const textContent = getMessageContent(message.parts);
+    const hasToolInvocations = message.parts.some(
+      (part) => part.type === "tool-invocation"
+    );
+    const hasToolResults = message.parts.some(
+      (part) => part.type === "tool-result"
+    );
+    return !!(textContent || hasToolInvocations || hasToolResults);
   };
 
   return (
     <AppLayout>
       <div className="flex h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] flex-col">
         {/* Chat container - top part */}
-        <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-auto">
-            <div className="w-full">
-              {loading && (
-                <div className="text-center text-muted-fg">
-                  Loading messages...
-                </div>
-              )}
-
-              {error && (
-                <div className="rounded-md bg-danger-subtle p-4 text-danger-subtle-fg">
-                  Error: {error}
-                </div>
-              )}
-
-              {!loading && !error && messages.length === 0 && (
-                <div className="text-center text-muted-fg">
-                  No messages found
-                </div>
-              )}
-
-              <div className="divide-y divide-dashed divide-border">
-                {messages.map((message) => (
-                  <div key={message.info.id} className="py-3 px-6">
-                    <div className="mb-2 flex items-center gap-2">
-                      {message.info.role === "assistant" && (
-                        <IconBadgeSparkle size="16px" />
-                      )}
-                      {message.info.role === "user" && (
-                        <span className="text-sm font-semibold">You</span>
-                      )}
-                      {message.info.createdAt && (
-                        <span className="text-xs text-muted-fg">
-                          {new Date(message.info.createdAt).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                    {/* <div className="whitespace-pre-wrap text-sm"> */}
-                    <Streamdown>
-
-                      {getMessageContent(message.parts)}
-                    </Streamdown>
-                    {/* </div> */}
-                    {message.parts
-                      .filter((part) => part.type === "tool-invocation")
-                      .map((part, idx) => (
-                        <div
-                          key={idx}
-                          className="mt-3 rounded border border-border bg-muted p-2 text-xs"
-                        >
-                          <div className="font-mono font-semibold text-primary">
-                            Tool: {part.toolName}
-                          </div>
-                          {part.args && (
-                            <pre className="mt-1 overflow-x-auto text-muted-fg">
-                              {JSON.stringify(part.args, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      ))}
-                    {message.parts
-                      .filter((part) => part.type === "tool-result")
-                      .map((part, idx) => (
-                        <div
-                          key={idx}
-                          className="mt-2 rounded border border-success bg-success-subtle p-2 text-xs"
-                        >
-                          <div className="font-mono font-semibold text-success-subtle-fg">
-                            Result:
-                          </div>
-                          <pre className="mt-1 overflow-x-auto text-muted-fg">
-                            {typeof part.result === "string"
-                              ? part.result
-                              : JSON.stringify(part.result, null, 2)}
-                          </pre>
-                        </div>
-                      ))}
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
+        <div className="flex-1 overflow-hidden" ref={chatContainerRef}>
+          <div className="w-full h-full overflow-auto">
+            {loading && (
+              <div className="text-center text-muted-fg">
+                Loading messages...
               </div>
+            )}
+
+            {error && (
+              <div className="rounded-md bg-danger-subtle p-4 text-danger-subtle-fg">
+                Error: {error}
+              </div>
+            )}
+
+            {!loading && !error && messages.length === 0 && (
+              <div className="text-center text-muted-fg">No messages found</div>
+            )}
+
+            <div className="divide-y divide-dashed divide-border">
+              {messages
+                .filter((message) => hasVisibleContent(message))
+                .map((message) => {
+                  const textContent = getMessageContent(message.parts);
+                  return (
+                    <div key={message.info.id} className="py-3 px-6">
+                      <div className="mb-2 flex items-center gap-2">
+                        {message.info.role === "assistant" && (
+                          <IconBadgeSparkle size="16px" />
+                        )}
+                        {message.info.role === "user" && (
+                          <span className="text-sm font-semibold">You</span>
+                        )}
+                        {message.info.createdAt && (
+                          <span className="text-xs text-muted-fg">
+                            {new Date(message.info.createdAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      {textContent && (
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          {textContent}
+                        </div>
+                      )}
+                      {message.parts
+                        .filter((part) => part.type === "tool-invocation")
+                        .map((part, idx) => (
+                          <div
+                            key={idx}
+                            className="mt-3 rounded border border-border bg-muted p-2 text-xs"
+                          >
+                            <div className="font-mono font-semibold text-primary">
+                              Tool: {part.toolName}
+                            </div>
+                            {part.args && (
+                              <pre className="mt-1 overflow-x-auto text-muted-fg">
+                                {JSON.stringify(part.args, null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        ))}
+                      {message.parts
+                        .filter((part) => part.type === "tool-result")
+                        .map((part, idx) => (
+                          <div
+                            key={idx}
+                            className="mt-2 rounded border border-success bg-success-subtle p-2 text-xs"
+                          >
+                            <div className="font-mono font-semibold text-success-subtle-fg">
+                              Result:
+                            </div>
+                            <pre className="mt-1 overflow-x-auto text-muted-fg">
+                              {typeof part.result === "string"
+                                ? part.result
+                                : JSON.stringify(part.result, null, 2)}
+                            </pre>
+                          </div>
+                        ))}
+                    </div>
+                  );
+                })}
+              <div ref={messagesEndRef} />
             </div>
+
+            {/* Loading indicator when sending message */}
+            {sending && (
+              <div className="py-3 px-6">
+                <div className="flex items-center gap-2">
+                  <Ripples size="30" speed="2" color="var(--color-primary)" />
+                  <span className="text-sm text-muted-fg">Thinking...</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Messaging UI - bottom part */}
-        <div className="border-t border-border p-4">
-          <form onSubmit={handleSubmit} className="w-full">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (input.trim() && !sending) {
-                    handleSubmit(e as unknown as React.FormEvent);
-                  }
+      {/* Messaging UI - bottom part */}
+      <div className="border-t border-border p-4">
+        <form onSubmit={handleSubmit} className="w-full">
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (input.trim() && !sending) {
+                  handleSubmit(e as unknown as React.FormEvent);
                 }
-              }}
-              placeholder="Type your message..."
-              disabled={sending}
-              className="w-full resize-none"
-              rows={1}
-            />
-            <div className="mt-3 flex items-center gap-2">
-              <ModelSelect />
-              <button
-                type="submit"
-                disabled={sending || !input.trim()}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {sending ? "Sending..." : "Send"}
-              </button>
-            </div>
-          </form>
-        </div>
+              }
+            }}
+            placeholder="Type your message..."
+            disabled={sending}
+            className="w-full resize-none"
+            rows={1}
+          />
+          <div className="mt-3 flex items-center gap-2">
+            <ModelSelect />
+            <button
+              type="submit"
+              disabled={sending || !input.trim()}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-fg transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {sending ? "Sending..." : "Send"}
+            </button>
+          </div>
+        </form>
       </div>
     </AppLayout>
   );
