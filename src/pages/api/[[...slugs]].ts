@@ -50,6 +50,16 @@ const app = new Elysia({ prefix: "/api" })
     const project = await opencodeClient.project.current();
     return project;
   })
+  .get("/files/search", async ({ query }) => {
+    const { q } = query as { q?: string };
+    if (!q) {
+      return [];
+    }
+    const files = await opencodeClient.find.files({
+      query: { query: q },
+    });
+    return files;
+  })
   .delete("/sessions/:id", async ({ params }) => {
     await opencodeClient.session.delete({
       path: { id: params.id },

@@ -4,6 +4,10 @@ import AppLayout from "@/layouts/app-layout";
 import { ModelSelect } from "@/components/model-select";
 import { Textarea } from "@/components/ui/textarea";
 import IconBadgeSparkle from "@/components/icons/badge-sparkle-icon";
+import {
+  FileMentionPopover,
+  useFileMention,
+} from "@/components/file-mention-popover";
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
 
@@ -41,8 +45,11 @@ export default function SessionPage() {
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [fileResults, setFileResults] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const fileMention = useFileMention();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -266,12 +273,52 @@ export default function SessionPage() {
         </div>
 
         {/* Messaging UI - bottom part */}
-        <div className="border-t border-border p-4 flex-shrink-0">
+        <div className="border-t border-border p-4 flex-shrink-0 relative">
+          <FileMentionPopover
+            isOpen={fileMention.isOpen}
+            searchQuery={fileMention.searchQuery}
+            position={fileMention.position}
+            selectedIndex={fileMention.selectedIndex}
+            onSelectedIndexChange={fileMention.setSelectedIndex}
+            onFilesChange={setFileResults}
+            onSelect={(filePath) => {
+              const newValue = fileMention.handleSelect(filePath, input);
+              setInput(newValue);
+            }}
+          />
           <form onSubmit={handleSubmit} className="w-full">
             <Textarea
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setInput(value);
+                const cursorPos = e.target.selectionStart;
+                fileMention.handleInputChange(value, cursorPos, e.target);
+              }}
               onKeyDown={(e) => {
+                // Handle file mention keyboard navigation
+                const handled = fileMention.handleKeyDown(
+                  e,
+                  fileResults.length,
+                );
+                if (handled) {
+                  // If Enter/Tab was pressed and we have results, select the file
+                  if (
+                    (e.key === "Enter" || e.key === "Tab") &&
+                    fileResults.length > 0
+                  ) {
+                    const selectedFile = fileResults[fileMention.selectedIndex];
+                    if (selectedFile) {
+                      const newValue = fileMention.handleSelect(
+                        selectedFile,
+                        input,
+                      );
+                      setInput(newValue);
+                    }
+                  }
+                  return;
+                }
+
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   if (input.trim() && !sending) {
@@ -279,7 +326,7 @@ export default function SessionPage() {
                   }
                 }
               }}
-              placeholder="Type your message..."
+              placeholder="Type your message... (use @ to mention files)"
               disabled={sending}
               className="w-full resize-none"
               rows={1}
