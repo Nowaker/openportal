@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/router";
+import Markdown from "react-markdown";
 import AppLayout from "@/layouts/app-layout";
 import { ModelSelect } from "@/components/model-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,6 +12,7 @@ import {
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useSelectedModel } from "@/hooks/use-selected-model";
 
 interface Part {
@@ -30,6 +32,12 @@ interface MessageInfo {
 interface Message {
   info: MessageInfo;
   parts: Part[];
+  isQueued?: boolean;
+}
+
+interface QueuedMessage {
+  id: string;
+  text: string;
 }
 
 interface Session {
@@ -49,6 +57,8 @@ export default function SessionPage() {
   const [sending, setSending] = useState(false);
   const [fileResults, setFileResults] = useState<string[]>([]);
   const [shouldScrollOnce, setShouldScrollOnce] = useState(false);
+  const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  const isProcessingQueue = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,19 +113,7 @@ export default function SessionPage() {
     };
   }, []);
 
-  const fetchMessages = async () => {
-    if (!id) return;
-    try {
-      const messagesRes = await fetch(`/api/sessions/${id}/messages`);
-      if (messagesRes.ok) {
-        const messagesData = await messagesRes.json();
-        setMessages(messagesData.data || messagesData || []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch messages:", err);
-    }
-  };
-
+  // Initial data fetch
   useEffect(() => {
     if (!id) return;
 
@@ -148,41 +146,122 @@ export default function SessionPage() {
     fetchData();
   }, [id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !id || sending) return;
+  const fetchMessages = async () => {
+    if (!id) return;
+    try {
+      const messagesRes = await fetch(`/api/sessions/${id}/messages`);
+      if (messagesRes.ok) {
+        const messagesData = await messagesRes.json();
+        setMessages(messagesData.data || messagesData || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch messages:", err);
+    }
+  };
 
-    const messageText = input.trim();
-    setInput("");
+  // Send a single message to the API
+  const sendMessage = useCallback(
+    async (messageText: string, messageId: string) => {
+      try {
+        const response = await fetch(`/api/sessions/${id}/prompt`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: messageText,
+            model: selectedModel,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to send message");
+        }
+
+        await fetchMessages();
+        setShouldScrollOnce(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to send message");
+        // Remove the failed message from display
+        setMessages((prev) => prev.filter((m) => m.info.id !== messageId));
+      }
+    },
+    [id, selectedModel],
+  );
+
+  // Process the message queue one by one
+  const processQueue = useCallback(async () => {
+    if (isProcessingQueue.current || !id) return;
+
+    isProcessingQueue.current = true;
     setSending(true);
 
-    // Trigger scroll once when sending
-    setShouldScrollOnce(true);
-
-    try {
-      const response = await fetch(`/api/sessions/${id}/prompt`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: messageText,
-          model: selectedModel,
-        }),
+    while (true) {
+      // Get next message from queue
+      let nextMessage: QueuedMessage | undefined;
+      setMessageQueue((prev) => {
+        if (prev.length === 0) {
+          nextMessage = undefined;
+          return prev;
+        }
+        nextMessage = prev[0];
+        return prev.slice(1);
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to send message");
-      }
+      // Wait a tick for state to update
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      await fetchMessages();
-      // Scroll once after receiving response
-      setShouldScrollOnce(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send message");
-    } finally {
-      setSending(false);
+      if (!nextMessage) break;
+
+      // Mark message as no longer queued (now sending)
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.info.id === nextMessage!.id ? { ...m, isQueued: false } : m,
+        ),
+      );
+
+      await sendMessage(nextMessage.text, nextMessage.id);
     }
+
+    isProcessingQueue.current = false;
+    setSending(false);
+  }, [id, sendMessage]);
+
+  // Process queue when messages are added
+  useEffect(() => {
+    if (messageQueue.length > 0 && !isProcessingQueue.current) {
+      processQueue();
+    }
+  }, [messageQueue, processQueue]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || !id) return;
+
+    const messageText = input.trim();
+    const messageId = `temp-${Date.now()}`;
+    setInput("");
+
+    // Determine if this message should be queued
+    const shouldQueue = sending || messageQueue.length > 0;
+
+    // Optimistically add user message to chat
+    const optimisticMessage: Message = {
+      info: {
+        id: messageId,
+        role: "user",
+        createdAt: new Date().toISOString(),
+      },
+      parts: [{ type: "text", text: messageText }],
+      isQueued: shouldQueue,
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+
+    // Add to queue
+    setMessageQueue((prev) => [...prev, { id: messageId, text: messageText }]);
+
+    // Trigger scroll
+    setShouldScrollOnce(true);
   };
 
   const getMessageContent = (parts: Part[]): string => {
@@ -236,6 +315,9 @@ export default function SessionPage() {
                       {message.info.role === "user" && (
                         <span className="text-sm font-semibold">You</span>
                       )}
+                      {message.isQueued && (
+                        <Badge intent="warning">Queued</Badge>
+                      )}
                       {message.info.createdAt && (
                         <span className="text-xs text-muted-fg">
                           {new Date(message.info.createdAt).toLocaleString()}
@@ -243,8 +325,10 @@ export default function SessionPage() {
                       )}
                     </div>
                     {textContent && (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        {textContent}
+                      <div
+                        className={`prose prose-sm dark:prose-invert max-w-none ${message.info.role === "user" ? "text-muted-fg" : ""}`}
+                      >
+                        <Markdown>{textContent}</Markdown>
                       </div>
                     )}
                     {message.parts
@@ -353,21 +437,23 @@ export default function SessionPage() {
 
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  if (input.trim() && !sending) {
+                  if (input.trim()) {
                     handleSubmit(e as unknown as React.FormEvent);
                   }
                 }
               }}
               placeholder="Type your message... (use @ to mention files)"
-              disabled={sending}
               className="w-full resize-none min-h-32 max-h-32 overflow-y-auto"
               rows={5}
             />
             <div className="mt-3 flex items-center gap-2">
               <ModelSelect />
-              <Button type="submit" isDisabled={sending || !input.trim()}>
+              <Button type="submit" isDisabled={!input.trim()}>
                 {sending ? "Sending..." : "Send"}
               </Button>
+              {messageQueue.length > 0 && (
+                <Badge intent="info">{messageQueue.length} queued</Badge>
+              )}
             </div>
           </form>
         </div>
