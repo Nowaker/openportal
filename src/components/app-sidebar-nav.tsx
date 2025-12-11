@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { Avatar } from "@/components/ui/avatar";
 import { Breadcrumbs, BreadcrumbsItem } from "@/components/ui/breadcrumbs";
+import { Button } from "@/components/ui/button";
 import {
   Menu,
   MenuContent,
@@ -20,6 +21,7 @@ import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { useCurrentProject } from "@/hooks/use-project";
 import { useSession } from "@/hooks/use-sessions";
 import { useRouter } from "next/router";
+import IconGitPullRequest from "@/components/icons/git-pull-request-icon";
 
 export default function AppSidebarNav() {
   const router = useRouter();
@@ -45,7 +47,13 @@ export default function AppSidebarNav() {
           {session && <BreadcrumbsItem>{sessionName}</BreadcrumbsItem>}
         </Breadcrumbs>
       </span>
-      <UserMenu />
+      <span className="flex items-center gap-x-2 ml-auto">
+        <Button size="xs" intent="outline">
+          <IconGitPullRequest size="14px" />
+          Create PR
+        </Button>
+        <UserMenu />
+      </span>
     </SidebarNav>
   );
 }
