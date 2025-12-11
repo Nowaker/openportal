@@ -184,7 +184,7 @@ const ToolCallItem = memo(function ToolCallItem({ part }: { part: ToolPart }) {
 
   return (
     <div
-      className={`font-mono text-xs flex items-center gap-1.5 py-0.5 ${
+      className={`font-mono text-xs flex items-center gap-1.5 py-0.5 min-w-0 ${
         isError
           ? "text-danger"
           : isCompleted
@@ -194,10 +194,10 @@ const ToolCallItem = memo(function ToolCallItem({ part }: { part: ToolPart }) {
               : "text-fg"
       }`}
     >
-      <span className="opacity-60">{icon}</span>
-      <span>{label}</span>
-      {details && <span className="opacity-60">{details}</span>}
-      {isPending && <span className="animate-pulse">...</span>}
+      <span className="opacity-60 shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
+      {details && <span className="opacity-60 shrink-0">{details}</span>}
+      {isPending && <span className="animate-pulse shrink-0">...</span>}
     </div>
   );
 });
@@ -230,7 +230,7 @@ const MessageItem = memo(function MessageItem({
               </Badge>
             )}
             <div
-              className={`prose prose-sm dark:prose-invert max-w-none ${!isAssistant ? "text-muted-fg" : ""}`}
+              className={`prose prose-sm dark:prose-invert max-w-none overflow-x-hidden ${!isAssistant ? "text-muted-fg" : ""}`}
             >
               <Markdown>{textContent}</Markdown>
             </div>
@@ -272,13 +272,14 @@ export default function SessionPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [fileResults, setFileResults] = useState<string[]>([]);
-  const [shouldScrollOnce, setShouldScrollOnce] = useState(false);
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const [hasScrolledInitially, setHasScrolledInitially] = useState(false);
   const isProcessingQueue = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isNearBottomRef = useRef(true);
+  const prevMessagesLengthRef = useRef(0);
 
   const fileMention = useFileMention();
   const { selectedModel } = useSelectedModel();
@@ -293,16 +294,44 @@ export default function SessionPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  // Scroll once when user sends a message, then reset the flag
+  // Check if user is near the bottom of the chat
+  const checkIfNearBottom = useCallback(() => {
+    const container = chatContainerRef.current;
+    if (!container) return true;
+
+    const threshold = 100; // pixels from bottom
+    const isNear =
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      threshold;
+    isNearBottomRef.current = isNear;
+    return isNear;
+  }, []);
+
+  // Track scroll position to detect if user scrolled up
   useEffect(() => {
-    if (shouldScrollOnce) {
-      // Small delay to ensure DOM is updated with new message
-      setTimeout(() => {
-        scrollToBottom();
-        setShouldScrollOnce(false);
-      }, 50);
+    const container = chatContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      checkIfNearBottom();
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [checkIfNearBottom]);
+
+  // Auto-scroll when new messages appear, but only if user is near bottom
+  useEffect(() => {
+    if (messages.length > prevMessagesLengthRef.current) {
+      // New messages appeared
+      if (isNearBottomRef.current) {
+        setTimeout(() => {
+          scrollToBottom();
+        }, 50);
+      }
     }
-  }, [shouldScrollOnce, scrollToBottom]);
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length, scrollToBottom]);
 
   // Scroll to bottom on initial load after messages are fetched
   useEffect(() => {
@@ -311,6 +340,7 @@ export default function SessionPage() {
       setTimeout(() => {
         scrollToBottom();
         setHasScrolledInitially(true);
+        isNearBottomRef.current = true;
       }, 100);
     }
   }, [hasScrolledInitially, loading, messages.length, scrollToBottom]);
@@ -318,6 +348,7 @@ export default function SessionPage() {
   // Reset scroll state when session changes
   useEffect(() => {
     setHasScrolledInitially(false);
+    isNearBottomRef.current = true;
   }, [sessionId]);
 
   // Send a single message to the API
@@ -343,7 +374,8 @@ export default function SessionPage() {
 
         // Revalidate messages to get the response - SWR will fetch fresh data
         mutateSessionMessages(sessionId);
-        setShouldScrollOnce(true);
+        // Ensure we scroll to see the response
+        isNearBottomRef.current = true;
 
         // Refresh sessions list after response is received
         mutateSessions();
@@ -437,15 +469,19 @@ export default function SessionPage() {
     // Add to queue
     setMessageQueue((prev) => [...prev, { id: messageId, text: messageText }]);
 
-    // Trigger scroll
-    setShouldScrollOnce(true);
+    // Ensure we scroll to see the new message
+    isNearBottomRef.current = true;
+    scrollToBottom();
   };
 
   return (
     <AppLayout>
       <div className="flex h-full flex-col">
         {/* Chat container - top part */}
-        <div className="flex-1 overflow-auto" ref={chatContainerRef}>
+        <div
+          className="flex-1 overflow-auto overflow-x-hidden"
+          ref={chatContainerRef}
+        >
           {loading && (
             <div className="text-center text-muted-fg">Loading messages...</div>
           )}
@@ -460,7 +496,7 @@ export default function SessionPage() {
             <div className="text-center text-muted-fg">No messages found</div>
           )}
 
-          <div className="divide-y divide-dashed divide-border">
+          <div className="divide-y divide-dashed divide-border overflow-x-hidden">
             {messages
               .filter((message) => hasVisibleContent(message))
               .map((message) => (
@@ -505,8 +541,27 @@ export default function SessionPage() {
                 setInput(value);
                 // Only check for file mentions if @ is present or popover is already open
                 if (fileMention.isOpen || value.includes("@")) {
-                  const cursorPos = e.target.selectionStart;
+                  // On mobile, selectionStart might be null or unreliable during onChange
+                  // Use the end of the current value as fallback (cursor is usually at end after typing)
+                  const cursorPos = e.target.selectionStart ?? value.length;
                   fileMention.handleInputChange(value, cursorPos);
+                }
+              }}
+              onInput={(e) => {
+                // onInput is more reliable on mobile for detecting @ symbol
+                const target = e.target as HTMLTextAreaElement;
+                const value = target.value;
+                if (value.includes("@")) {
+                  const cursorPos = target.selectionStart ?? value.length;
+                  fileMention.handleInputChange(value, cursorPos);
+                }
+              }}
+              onSelect={(e) => {
+                // Also handle selection changes for mobile - this fires when cursor moves
+                const target = e.target as HTMLTextAreaElement;
+                if (fileMention.isOpen || input.includes("@")) {
+                  const cursorPos = target.selectionStart ?? input.length;
+                  fileMention.handleInputChange(input, cursorPos);
                 }
               }}
               onKeyDown={(e) => {
