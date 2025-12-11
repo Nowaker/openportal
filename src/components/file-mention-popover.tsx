@@ -2,6 +2,7 @@
 
 import { DocumentIcon } from "@heroicons/react/24/outline";
 import { useEffect, useRef, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface FileResult {
   path: string;
@@ -72,9 +73,36 @@ function getCaretCoordinates(
 
   document.body.removeChild(div);
 
+  // Get viewport dimensions for mobile adjustments
+  const viewportHeight = window.innerHeight;
+  const viewportWidth = window.innerWidth;
+
+  let top = rect.top + (spanRect.top - divRect.top) - element.scrollTop;
+  let left = rect.left + (spanRect.left - divRect.left) - element.scrollLeft;
+
+  // Mobile-specific adjustments
+  const isMobile = window.innerWidth < 768;
+  if (isMobile) {
+    // On mobile, ensure popover doesn't appear too close to keyboard
+    const keyboardHeight = viewportHeight * 0.4; // Approximate keyboard height
+    const availableSpace = rect.top - keyboardHeight;
+
+    if (availableSpace < 200) {
+      // If not enough space above, try to show below
+      top =
+        rect.bottom +
+        (spanRect.bottom - divRect.bottom) +
+        element.scrollTop +
+        8;
+    }
+
+    // Ensure left position is within viewport bounds
+    left = Math.max(16, Math.min(left, viewportWidth - 320));
+  }
+
   return {
-    top: rect.top + (spanRect.top - divRect.top) - element.scrollTop,
-    left: rect.left + (spanRect.left - divRect.left) - element.scrollLeft,
+    top,
+    left,
   };
 }
 
@@ -106,12 +134,29 @@ export function FileMentionPopover({
   const [position, setPosition] = useState<CaretPosition | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   // Calculate position when mention starts
   useEffect(() => {
     if (isOpen && mentionStart !== null && textareaRef.current) {
       const coords = getCaretCoordinates(textareaRef.current, mentionStart);
-      setPosition(coords);
+
+      // Validate the coordinates - on mobile, they might be invalid
+      // If invalid, position relative to the textarea element itself
+      if (
+        coords.top <= 0 ||
+        coords.left < 0 ||
+        !Number.isFinite(coords.top) ||
+        !Number.isFinite(coords.left)
+      ) {
+        const rect = textareaRef.current.getBoundingClientRect();
+        setPosition({
+          top: rect.top,
+          left: Math.max(16, rect.left),
+        });
+      } else {
+        setPosition(coords);
+      }
     } else {
       setPosition(null);
     }
@@ -156,7 +201,7 @@ export function FileMentionPopover({
       clearTimeout(debounceTimer);
       controller.abort();
     };
-  }, [isOpen, searchQuery]);
+  }, [isOpen, searchQuery, onFilesChange]);
 
   useEffect(() => {
     if (listRef.current && files.length > 0) {
@@ -169,11 +214,11 @@ export function FileMentionPopover({
     }
   }, [selectedIndex, files.length]);
 
-  // Close on click outside
+  // Close on click/touch outside
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (
         popoverRef.current &&
         !popoverRef.current.contains(e.target as Node) &&
@@ -184,21 +229,81 @@ export function FileMentionPopover({
       }
     };
 
+    // Handle both mouse and touch events for mobile compatibility
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, [isOpen, onClose, textareaRef]);
 
-  if (!isOpen || !position) return null;
+  // On mobile, we don't need position - we'll render relative to the container
+  // On desktop, we need the calculated position
+  if (!isOpen) return null;
+  if (!isMobile && !position) return null;
+
+  // For mobile: render as a simple block above the textarea (handled by parent's relative positioning)
+  // For desktop: use fixed positioning with calculated caret coordinates
+  if (isMobile) {
+    return (
+      <div
+        ref={popoverRef}
+        className="absolute bottom-full left-5 right-5 mb-2 z-50 rounded-lg border border-border bg-overlay shadow-lg animate-in fade-in slide-in-from-bottom-1"
+      >
+        <div className="p-2 text-xs text-muted-fg border-b border-border">
+          {loading ? "Searching..." : `Files matching "${searchQuery}"`}
+        </div>
+        <div ref={listRef} className="max-h-48 overflow-y-auto p-1">
+          {files.length === 0 && !loading && (
+            <div className="px-3 py-2 text-sm text-muted-fg">
+              No files found
+            </div>
+          )}
+          {files.map((file, index) => (
+            <button
+              type="button"
+              key={file.path}
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                index === selectedIndex
+                  ? "bg-primary text-primary-fg"
+                  : "hover:bg-muted active:bg-muted"
+              }`}
+              onClick={() => onSelect(file.path)}
+              onTouchEnd={() => onSelect(file.path)}
+            >
+              <DocumentIcon className="size-4 shrink-0" />
+              <div className="flex flex-col overflow-hidden">
+                <span className="font-medium truncate">{file.name}</span>
+                <span
+                  className={`text-xs truncate ${
+                    index === selectedIndex
+                      ? "text-primary-fg/70"
+                      : "text-muted-fg"
+                  }`}
+                >
+                  {file.path}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop: fixed positioning based on caret location
+  const desktopStyle: React.CSSProperties = {
+    top: (position?.top ?? 0) - 8,
+    left: Math.min(position?.left ?? 0, window.innerWidth - 320),
+    transform: "translateY(-100%)",
+  };
 
   return (
     <div
       ref={popoverRef}
       className="fixed z-50 min-w-64 max-w-md rounded-lg border border-border bg-overlay shadow-lg animate-in fade-in slide-in-from-bottom-1"
-      style={{
-        top: position.top - 8,
-        left: position.left,
-        transform: "translateY(-100%)",
-      }}
+      style={desktopStyle}
     >
       <div className="p-2 text-xs text-muted-fg border-b border-border">
         {loading ? "Searching..." : `Files matching "${searchQuery}"`}
