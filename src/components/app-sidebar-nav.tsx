@@ -1,9 +1,7 @@
-import {
-  ArrowDownTrayIcon,
-  ArrowUpTrayIcon,
-} from "@heroicons/react/24/outline";
 import { useRouter } from "next/router";
 import { useState } from "react";
+import ArrowDownCircleIcon from "@/components/icons/arrow-down-circle-icon";
+import ArrowUpCircleIcon from "@/components/icons/arrow-up-circle-icon";
 import IconGitPullRequest from "@/components/icons/git-pull-request-icon";
 import { Breadcrumbs, BreadcrumbsItem } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
@@ -22,11 +20,13 @@ const CREATE_PR_PROMPT = `Use gh CLI to create a pull request. Follow these step
 5. Commit the changes
 6. Push to the remote branch (create branch if needed)
 7. Create a PR using gh pr create with a descriptive title and body
+8. After the PR is created, checkout to main branch
 
 Make sure to:
 - Write a meaningful commit message that explains WHY, not just WHAT
 - The PR title should be concise but descriptive
-- The PR body should summarize the changes and their purpose`;
+- The PR body should summarize the changes and their purpose
+- Always checkout to main after successfully creating the PR`;
 
 const PULL_CHANGES_PROMPT = `Pull the latest changes from the remote repository. Follow these steps:
 
@@ -148,28 +148,31 @@ export default function AppSidebarNav() {
           {session && <BreadcrumbsItem>{sessionName}</BreadcrumbsItem>}
         </Breadcrumbs>
       </span>
-      <span className="flex items-center gap-x-2 ml-auto">
+      <span className="flex items-center gap-x-2 ml-auto font-[family-name:var(--font-geist-mono)]">
         <Button
           size="xs"
           intent="outline"
+          className="uppercase"
           onPress={handlePull}
           isDisabled={isLoading || !sessionId}
         >
-          <ArrowDownTrayIcon className="size-3.5" />
+          <ArrowDownCircleIcon size="14px" />
           {isPulling ? "Pulling..." : "Pull"}
         </Button>
         <Button
           size="xs"
           intent="outline"
+          className="uppercase"
           onPress={handlePush}
           isDisabled={isLoading || !sessionId}
         >
-          <ArrowUpTrayIcon className="size-3.5" />
+          <ArrowUpCircleIcon size="14px" />
           {isPushing ? "Pushing..." : "Push"}
         </Button>
         <Button
           size="xs"
           intent="outline"
+          className="uppercase"
           onPress={handleCreatePR}
           isDisabled={isLoading || !sessionId}
         >

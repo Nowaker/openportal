@@ -11,6 +11,7 @@ import IconMagnifier from "@/components/icons/magnifier-icon";
 import IconEye from "@/components/icons/eye-icon";
 import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
+import SendIcon from "@/components/icons/send-icon";
 import {
   FileMentionPopover,
   useFileMention,
@@ -493,7 +494,9 @@ export default function SessionPage() {
           )}
 
           {!loading && !error && messages.length === 0 && (
-            <div className="text-center text-muted-fg">No messages found</div>
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center text-muted-fg">No messages yet</div>
+            </div>
           )}
 
           <div className="divide-y divide-dashed divide-border overflow-x-hidden">
@@ -600,14 +603,30 @@ export default function SessionPage() {
               rows={5}
             />
             <div className="mt-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              {usage.totalTokens > 0 ? (
+                <div className="text-xs text-muted-fg md:hidden">
+                  <NumberFlow
+                    value={usage.totalTokens}
+                    format={{ notation: "compact" }}
+                  />{" "}
+                  tokens
+                </div>
+              ) : (
+                <div className="md:hidden" />
+              )}
+              <div className="flex items-center gap-2 max-md:ml-auto">
                 <ModelSelect />
-                <Button type="submit" isDisabled={!input.trim()}>
+                <Button
+                  type="submit"
+                  isDisabled={!input.trim()}
+                  className="font-[family-name:var(--font-geist-mono)] uppercase min-w-32"
+                >
+                  <SendIcon size="16px" />
                   {sending ? "Sending..." : "Send"}
                 </Button>
               </div>
               {usage.totalTokens > 0 && (
-                <div className="text-xs text-muted-fg">
+                <div className="text-xs text-muted-fg hidden md:block">
                   <NumberFlow
                     value={usage.totalTokens}
                     format={{ notation: "compact" }}
