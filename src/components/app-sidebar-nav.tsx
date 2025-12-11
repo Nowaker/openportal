@@ -1,25 +1,12 @@
 import {
-  ArrowRightOnRectangleIcon,
-  Cog6ToothIcon,
-  CommandLineIcon,
-  Squares2X2Icon,
+  ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/router";
 import { useState } from "react";
 import IconGitPullRequest from "@/components/icons/git-pull-request-icon";
-import { Avatar } from "@/components/ui/avatar";
 import { Breadcrumbs, BreadcrumbsItem } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
-import {
-  Menu,
-  MenuContent,
-  MenuHeader,
-  MenuItem,
-  MenuLabel,
-  MenuSection,
-  MenuSeparator,
-  MenuTrigger,
-} from "@/components/ui/menu";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { useCurrentProject } from "@/hooks/use-project";
 import { useSelectedModel } from "@/hooks/use-selected-model";
@@ -41,11 +28,42 @@ Make sure to:
 - The PR title should be concise but descriptive
 - The PR body should summarize the changes and their purpose`;
 
+const PULL_CHANGES_PROMPT = `Pull the latest changes from the remote repository. Follow these steps:
+
+1. First, check git status to see if there are any uncommitted changes
+2. If there are uncommitted changes, stash them with a descriptive message
+3. Run git pull to fetch and merge the latest changes from the remote
+4. If there were stashed changes, pop the stash and resolve any conflicts if needed
+5. Show a summary of what was pulled (new commits, files changed)
+
+Make sure to:
+- Handle any merge conflicts gracefully
+- Report what changes were pulled
+- Restore any stashed changes after pulling`;
+
+const PUSH_CHANGES_PROMPT = `Push the current changes to the remote repository. Follow these steps:
+
+1. First, check git status to see all uncommitted changes
+2. If there are uncommitted changes:
+   - Stage all relevant changes with git add
+   - Generate a clear, descriptive commit message based on the changes
+   - Commit the changes
+3. Check if the current branch has an upstream branch set
+4. Push to the remote (set upstream if needed)
+5. Show a summary of what was pushed
+
+Make sure to:
+- Write a meaningful commit message that explains WHY, not just WHAT
+- Handle any push rejections (e.g., if remote has new commits, pull first)
+- Report the result of the push operation`;
+
 export default function AppSidebarNav() {
   const router = useRouter();
   const { project } = useCurrentProject();
   const { selectedModel } = useSelectedModel();
   const [isCreatingPR, setIsCreatingPR] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
 
   const sessionId = router.pathname.startsWith("/session/")
     ? (router.query.id as string)
@@ -58,34 +76,35 @@ export default function AppSidebarNav() {
   const sessionName =
     session?.title || (session ? `Session ${session.id}` : null);
 
-  const handleCreatePR = async () => {
+  const sendPrompt = async (prompt: string) => {
     if (!sessionId) {
-      // If not on a session page, we could create a new session or show an error
-      alert("Please open a session first to create a PR");
+      alert("Please open a session first");
       return;
     }
 
+    const response = await fetch(`/api/sessions/${sessionId}/prompt`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: prompt,
+        model: selectedModel,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to send request");
+    }
+
+    mutateSessionMessages(sessionId);
+    mutateSessions();
+  };
+
+  const handleCreatePR = async () => {
     setIsCreatingPR(true);
-
     try {
-      const response = await fetch(`/api/sessions/${sessionId}/prompt`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: CREATE_PR_PROMPT,
-          model: selectedModel,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to send PR creation request");
-      }
-
-      // Revalidate messages to show the new message
-      mutateSessionMessages(sessionId);
-      mutateSessions();
+      await sendPrompt(CREATE_PR_PROMPT);
     } catch (err) {
       console.error("Failed to create PR:", err);
       alert("Failed to send PR creation request");
@@ -93,6 +112,32 @@ export default function AppSidebarNav() {
       setIsCreatingPR(false);
     }
   };
+
+  const handlePull = async () => {
+    setIsPulling(true);
+    try {
+      await sendPrompt(PULL_CHANGES_PROMPT);
+    } catch (err) {
+      console.error("Failed to pull:", err);
+      alert("Failed to send pull request");
+    } finally {
+      setIsPulling(false);
+    }
+  };
+
+  const handlePush = async () => {
+    setIsPushing(true);
+    try {
+      await sendPrompt(PUSH_CHANGES_PROMPT);
+    } catch (err) {
+      console.error("Failed to push:", err);
+      alert("Failed to send push request");
+    } finally {
+      setIsPushing(false);
+    }
+  };
+
+  const isLoading = isCreatingPR || isPulling || isPushing;
 
   return (
     <SidebarNav>
@@ -107,58 +152,31 @@ export default function AppSidebarNav() {
         <Button
           size="xs"
           intent="outline"
+          onPress={handlePull}
+          isDisabled={isLoading || !sessionId}
+        >
+          <ArrowDownTrayIcon className="size-3.5" />
+          {isPulling ? "Pulling..." : "Pull"}
+        </Button>
+        <Button
+          size="xs"
+          intent="outline"
+          onPress={handlePush}
+          isDisabled={isLoading || !sessionId}
+        >
+          <ArrowUpTrayIcon className="size-3.5" />
+          {isPushing ? "Pushing..." : "Push"}
+        </Button>
+        <Button
+          size="xs"
+          intent="outline"
           onPress={handleCreatePR}
-          isDisabled={isCreatingPR || !sessionId}
+          isDisabled={isLoading || !sessionId}
         >
           <IconGitPullRequest size="14px" />
           {isCreatingPR ? "Creating..." : "Create PR"}
         </Button>
-        <UserMenu />
       </span>
     </SidebarNav>
-  );
-}
-
-function UserMenu() {
-  return (
-    <Menu>
-      <MenuTrigger className="ml-auto md:hidden" aria-label="Open Menu">
-        <Avatar
-          isSquare
-          alt="kurt cobain"
-          src="https://intentui.com/images/avatar/cobain.jpg"
-        />
-      </MenuTrigger>
-      <MenuContent popover={{ placement: "bottom end" }} className="min-w-64">
-        <MenuSection>
-          <MenuHeader separator>
-            <span className="block">Kurt Cobain</span>
-            <span className="font-normal text-muted-fg">@cobain</span>
-          </MenuHeader>
-        </MenuSection>
-        <MenuItem href="#dashboard">
-          <Squares2X2Icon />
-          <MenuLabel>Dashboard</MenuLabel>
-        </MenuItem>
-        <MenuItem href="#settings">
-          <Cog6ToothIcon />
-          <MenuLabel>Settings</MenuLabel>
-        </MenuItem>
-        <MenuSeparator />
-        <MenuItem>
-          <CommandLineIcon />
-          <MenuLabel>Command Menu</MenuLabel>
-        </MenuItem>
-        <MenuSeparator />
-        <MenuItem href="#contact-s">
-          <MenuLabel>Contact Support</MenuLabel>
-        </MenuItem>
-        <MenuSeparator />
-        <MenuItem href="#logout">
-          <ArrowRightOnRectangleIcon />
-          <MenuLabel>Log out</MenuLabel>
-        </MenuItem>
-      </MenuContent>
-    </Menu>
   );
 }
