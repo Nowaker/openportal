@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import useLocalStorage from "@/hooks/use-local-storage";
 import AppLayout from "@/layouts/app-layout";
 import { PR_PREFIX_KEY } from "@/lib/constants";
+import { toast } from "sonner";
 
 export default function SettingsPage() {
   const [storedPrefix, setStoredPrefix] = useLocalStorage<string>(
@@ -12,7 +13,6 @@ export default function SettingsPage() {
     "",
   );
   const [prefix, setPrefix] = useState("");
-  const [saved, setSaved] = useState(false);
 
   // Sync local state with stored value
   useEffect(() => {
@@ -21,8 +21,7 @@ export default function SettingsPage() {
 
   const handleSave = () => {
     setStoredPrefix(prefix);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    toast.success("Settings saved!");
   };
 
   return (
@@ -49,9 +48,6 @@ export default function SettingsPage() {
 
           <div className="flex items-center gap-3">
             <Button onPress={handleSave}>Save Settings</Button>
-            {saved && (
-              <span className="text-sm text-success">Settings saved!</span>
-            )}
           </div>
         </div>
       </div>
