@@ -608,8 +608,7 @@ export default function SessionPage() {
                   <NumberFlow
                     value={usage.totalTokens}
                     format={{ notation: "compact" }}
-                  />{" "}
-                  tokens
+                  />
                 </div>
               ) : (
                 <div className="md:hidden" />
