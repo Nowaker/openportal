@@ -98,7 +98,7 @@ const SidebarProvider = ({
     [setOpenProp, open],
   );
 
-  const { isMobile } = useMediaQuery();
+  const { isMobile, device } = useMediaQuery();
 
   const toggleSidebar = useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
@@ -131,7 +131,7 @@ const SidebarProvider = ({
     [state, open, setOpen, isMobile, openMobile, toggleSidebar],
   );
 
-  if (isMobile === undefined) {
+  if (device === null) {
     return null;
   }
 

@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Description, Label } from "@/components/ui/field";
+import { Label } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import useLocalStorage from "@/hooks/use-local-storage";
 import AppLayout from "@/layouts/app-layout";
-
-export const PR_PREFIX_KEY = "pr-branch-prefix";
+import { PR_PREFIX_KEY } from "@/lib/constants";
 
 export default function SettingsPage() {
   const [storedPrefix, setStoredPrefix] = useLocalStorage<string>(
@@ -34,11 +33,11 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="pr-prefix">PR Branch Prefix</Label>
-            <Description>
+            <p className="text-sm text-muted-fg">
               This prefix will be added to branch names when creating pull
               requests. For example, if you set &quot;feature/&quot;, branches
               will be named like &quot;feature/my-branch&quot;.
-            </Description>
+            </p>
             <Input
               id="pr-prefix"
               type="text"

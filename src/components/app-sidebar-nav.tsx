@@ -11,7 +11,7 @@ import { useCurrentProject } from "@/hooks/use-project";
 import { useSelectedModel } from "@/hooks/use-selected-model";
 import { mutateSessionMessages } from "@/hooks/use-session-messages";
 import { mutateSessions, useSession } from "@/hooks/use-sessions";
-import { PR_PREFIX_KEY } from "@/pages/settings";
+import { PR_PREFIX_KEY } from "@/lib/constants";
 
 const getCreatePRPrompt = (branchPrefix: string) => {
   const prefixInstruction = branchPrefix
