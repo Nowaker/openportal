@@ -83,6 +83,7 @@ export default function EmptyState() {
 
         <div className="px-4 pb-4">
           <Button
+            intent="outline"
             onPress={handleNewSession}
             isDisabled={creating}
             className="w-full"

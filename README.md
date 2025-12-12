@@ -6,6 +6,53 @@
 
 A web-based UI for [OpenCode](https://opencode.ai), the AI coding agent. This portal provides a browser interface to interact with OpenCode sessions, view messages, and chat with the AI assistant.
 
+## Quick Start
+
+### Prerequisites
+
+- A running OpenCode server (default port: 4000)
+- [Bun](https://bun.sh) runtime (recommended) or Node.js
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENCODE_SERVER_URL` | URL of the OpenCode server (e.g., `http://localhost:4000`) | Yes |
+
+### Development
+
+```bash
+# Install dependencies
+bun install
+
+# Set environment variable
+export OPENCODE_SERVER_URL=http://localhost:4000
+
+# Run development server
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Docker
+
+```bash
+# Build the image
+docker build -t opencode-portal .
+
+# Run the container
+docker run -p 3000:3000 -e OPENCODE_SERVER_URL=http://localhost:4000 opencode-portal
+```
+
+### GitHub Container Registry
+
+Pre-built images are available at:
+
+```bash
+docker pull ghcr.io/hosenur/portal:latest
+docker run -p 3000:3000 -e OPENCODE_SERVER_URL=http://localhost:4000 ghcr.io/hosenur/portal:latest
+```
+
 ## Overview
 
 OpenCode Portal connects to a running OpenCode server and provides:
@@ -38,51 +85,26 @@ This portal is designed for remote access to your OpenCode instance. Deploy the 
 [Your Phone] ---(Tailscale)---> [VPS running Portal + OpenCode]
 ```
 
-## Prerequisites
+## Why This Project?
 
-- A running OpenCode server (default port: 4000)
-- [Bun](https://bun.sh) runtime (recommended) or Node.js
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENCODE_SERVER_URL` | URL of the OpenCode server (e.g., `http://localhost:4000`) | Yes |
-
-## Getting Started
-
-### Development
-
+OpenCode comes with its own official web UI that you can access by running:
 ```bash
-# Install dependencies
-bun install
-
-# Set environment variable
-export OPENCODE_SERVER_URL=http://localhost:4000
-
-# Run development server
-bun dev
+opencode --port 4096
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+However, the official UI is **currently under development** and has some limitations:
+- Not mobile responsive
+- Limited mobile experience
 
-### Docker
+This project was inspired by my personal need to access OpenCode from my mobile device when I don't have my laptop around. The goal is to provide a mobile-first, responsive interface for interacting with OpenCode instances remotely.
 
-```bash
-# Build the image
-docker build -t opencode-portal .
+## Use Case
 
-# Run the container
-docker run -p 3000:3000 -e OPENCODE_SERVER_URL=http://localhost:4000 opencode-portal
+This portal is designed for remote access to your OpenCode instance. Deploy the portal on a VPS alongside OpenCode, then use [Tailscale](https://tailscale.com) (or similar VPN) to securely connect from your mobile device or any other machine.
+
+**Example setup:**
 ```
-
-## GitHub Container Registry
-
-Pre-built images are available at:
-
-```bash
-docker pull ghcr.io/hosenur/portal:latest
-docker run -p 3000:3000 -e OPENCODE_SERVER_URL=http://localhost:4000 ghcr.io/hosenur/portal:latest
+[Your Phone] ---(Tailscale)---> [VPS running Portal + OpenCode]
 ```
 
 ## Tech Stack
