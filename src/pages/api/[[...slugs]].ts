@@ -116,7 +116,7 @@ export default async function handler(
 
   res.status(response.status);
 
-  response.headers.forEach((value, key) => {
+  response.headers.forEach((value: string, key: string) => {
     res.setHeader(key, value);
   });
 
