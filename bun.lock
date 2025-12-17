@@ -4,9 +4,6 @@
   "workspaces": {
     "": {
       "name": "portal",
-      "dependencies": {
-        "@takumi-rs/core-linux-x64-gnu": "^0.57.6",
-      },
       "devDependencies": {
         "prettier": "^3.7.4",
         "turbo": "^2.6.3",
