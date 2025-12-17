@@ -1,54 +1,59 @@
 ---
 title: Terminal
-description: Terminal commands and usage guide
+description: Terminal support and usage guide for OpenCode Portal
 icon: TerminalIcon
 ---
 
 # Core Features - Terminal
 
-This guide covers terminal-related features and commands available in fumadocs.
+OpenCode Portal now includes comprehensive terminal support, bringing a full development environment directly to your web browser.
 
-## Basic Terminal Commands
+## How Terminal Support Works
 
-fumadocs provides several terminal commands to help you manage your documentation:
+Portal implements terminal functionality through a sophisticated Docker-based architecture:
 
-### Development Commands
+### Architecture Overview
 
-Start the development server:
+1. **Project Directory Mounting**: Your project directory is mounted directly into the OpenCode Docker container, ensuring complete isolation while maintaining access to your files.
 
-```bash
-npm run dev
+2. **Docker Socket Connection**: The container's Docker socket is exposed and connected to xtermjs React component in the web UI, creating a seamless bridge between the browser and the containerized environment.
+
+3. **Web-based Terminal**: Using xtermjs (a terminal emulator written in JavaScript), Portal provides a fully functional terminal interface that runs entirely in your web browser.
+
+### Technical Implementation
+
+```
+Browser (xtermjs) ↔ WebSocket ↔ Portal Web UI ↔ Docker Socket ↔ OpenCode Container
 ```
 
-Build documentation for production:
+This architecture provides:
 
-```bash
-npm run build
-```
-
-### Content Management
-
-Generate new documentation pages:
-
-```bash
-fumadocs new page
-```
-
-Build static files:
-
-```bash
-fumadocs build
-```
+- **Real-time terminal interaction** through WebSocket connections
+- **Full terminal emulation** with support for colors, cursor movement, and special keys
+- **Isolated execution environment** while maintaining project file access
+- **Cross-platform compatibility** - works on any device with a web browser
 
 ## Terminal Features
 
-- **Auto-completion**: Tab completion for commands
-- **Help system**: Built-in help for all commands
-- **Error handling**: Clear error messages and suggestions
-- **Cross-platform**: Works on Windows, macOS, and Linux
+- **Full Terminal Emulation**: Complete xterm.js integration with support for ANSI escape codes
+- **Real-time Communication**: WebSocket-based terminal sessions for instant command execution
+- **Docker Integration**: Direct access to the OpenCode container through Docker socket mounting
+- **Project File Access**: Your entire project is available within the terminal session
+- **Session Persistence**: Terminal sessions remain active as long as the Portal container is running
+- **Mobile Support**: Responsive terminal interface that works on mobile devices
+
+## Usage
+
+Once connected to your Portal instance, simply navigate to the terminal section and you'll have immediate access to a full development environment with:
+
+- Standard Unix commands and utilities
+- Access to your project's files and directories
+- Ability to run scripts, build tools, and development servers
+- Package manager access for installing dependencies
+- Git integration for version control operations
 
 ## Best Practices
 
-- Use version control for your documentation
-- Keep commands simple and readable
-- Document complex command sequences
+- Use standard development workflows within the terminal
+- Leverage the isolated environment for safe testing and experimentation
+- Take advantage of the web-based access for remote development scenarios

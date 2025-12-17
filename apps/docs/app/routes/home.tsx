@@ -6,6 +6,9 @@ import { baseOptions } from "@/lib/layout.shared";
 import { AnimatedHero } from "@/components/animated-hero";
 
 export function meta(_args: Route.MetaArgs) {
+  const ogImageUrl =
+    "/api/og?title=Portal&description=Mobile-first%20Web%20UI%20for%20OpenCode";
+
   return [
     { title: "Portal - Mobile-first Web UI for OpenCode" },
     {
@@ -24,6 +27,9 @@ export function meta(_args: Route.MetaArgs) {
         "Portal is a comprehensive mobile-first web UI for OpenCode, solving the web UI limitations with a complete solution that eliminates configuration complexity.",
     },
     { property: "og:type", content: "website" },
+    { property: "og:image", content: ogImageUrl },
+    { property: "og:image:width", content: "1200" },
+    { property: "og:image:height", content: "630" },
     { name: "twitter:card", content: "summary_large_image" },
     {
       name: "twitter:title",
@@ -34,6 +40,7 @@ export function meta(_args: Route.MetaArgs) {
       content:
         "Portal is a comprehensive mobile-first web UI for OpenCode, solving the web UI limitations with a complete solution that eliminates configuration complexity.",
     },
+    { name: "twitter:image", content: ogImageUrl },
   ];
 }
 
