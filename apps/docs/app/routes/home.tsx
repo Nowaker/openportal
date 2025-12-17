@@ -7,14 +7,14 @@ import { AnimatedHero } from "@/components/animated-hero";
 
 export function meta(_args: Route.MetaArgs) {
   const ogImageUrl =
-    "https://api.hosenur.workers.dev/openportal/og?title=Portal&description=Portal%20is%20a%20comprehensive%20mobile-first%20web%20UI%20for%20OpenCode%2C%20solving%20the%20web%20UI%20limitations%20with%20a%20complete%20solution%20that%20eliminates%20configuration%20complexity.";
+    "https://api.hosenur.workers.dev/openportal/og?title=Portal&description=Portal%20is%20a%20comprehensive%20mobile-first%20web%20UI%20for%20OpenCode%2C%20with%20isolated%20workspaces%2C%20quick%20git%20integration%2C%20in%20browser%20terminal%20access.%20(More%20AI%20Agents%20coming%20soon)";
 
   return [
     { title: "Portal - Mobile-first Web UI for OpenCode" },
     {
       name: "description",
       content:
-        "Portal is a comprehensive mobile-first web UI for OpenCode, solving the web UI limitations with a complete solution that eliminates configuration complexity.",
+        "Portal is a comprehensive mobile-first web UI for OpenCode, with isolated workspaces, quick git integration, in browser terminal access. (More AI Agents coming soon)",
     },
     { name: "author", content: "Hosenur Rahman" },
     {
@@ -24,7 +24,7 @@ export function meta(_args: Route.MetaArgs) {
     {
       property: "og:description",
       content:
-        "Portal is a comprehensive mobile-first web UI for OpenCode, solving the web UI limitations with a complete solution that eliminates configuration complexity.",
+        "Portal is a comprehensive mobile-first web UI for OpenCode, with isolated workspaces, quick git integration, in browser terminal access. (More AI Agents coming soon)",
     },
     { property: "og:type", content: "website" },
     { property: "og:image", content: ogImageUrl },
@@ -38,7 +38,7 @@ export function meta(_args: Route.MetaArgs) {
     {
       name: "twitter:description",
       content:
-        "Portal is a comprehensive mobile-first web UI for OpenCode, solving the web UI limitations with a complete solution that eliminates configuration complexity.",
+        "Portal is a comprehensive mobile-first web UI for OpenCode, with isolated workspaces, quick git integration, in browser terminal access. (More AI Agents coming soon)",
     },
     { name: "twitter:image", content: ogImageUrl },
   ];
@@ -109,9 +109,9 @@ export default function Home() {
       <div className="p-8 pt-40 flex flex-col items-start text-left flex-1 w-full max-w-[1400px] mx-auto">
         <AnimatedHero />
         <p className="text-fd-muted-foreground mb-6 max-w-2xl text-lg">
-          Portal is a comprehensive mobile-first web UI for OpenCode, solving
-          the web UI limitations with a complete solution that eliminates
-          configuration complexity so you can focus on development.
+          Portal is a comprehensive mobile-first web UI for OpenCode, with
+          isolated workspaces, quick git integration, in browser terminal
+          access. (More AI Agents coming soon)
         </p>
         <Link
           className="text-sm bg-fd-primary text-fd-primary-foreground rounded-full font-medium px-6 py-3 hover:bg-fd-primary/90 transition-colors"
