@@ -1,10 +1,21 @@
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
-import { parsePort, parseRouteParam, parseBody } from "../../../../lib/validation";
+import {
+  parsePort,
+  parseRouteParam,
+  parseBody,
+} from "../../../../lib/validation";
+
+const attachmentSchema = z.object({
+  mime: z.string().min(1),
+  filename: z.string().optional(),
+  url: z.string().min(1),
+});
 
 const promptBodySchema = z.object({
   text: z.string().min(1),
+  attachments: z.array(attachmentSchema).optional(),
   model: z
     .object({
       providerID: z.string(),
@@ -14,14 +25,28 @@ const promptBodySchema = z.object({
   agent: z.string().optional(),
 });
 
+type AttachmentPart = {
+  type: "file";
+  mime: string;
+  filename?: string;
+  url: string;
+};
+
 export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
   const body = await parseBody(event, promptBodySchema);
 
+  const fileParts: AttachmentPart[] = (body.attachments ?? []).map(
+    (a) => ({ type: "file", mime: a.mime, filename: a.filename, url: a.url }),
+  );
+
   const client = getOpencodeClient(port);
   const promptBody = {
-    parts: [{ type: "text" as const, text: body.text }],
+    parts: [
+      ...fileParts,
+      { type: "text" as const, text: body.text },
+    ],
     model: body.model,
     agent: body.agent,
   };
