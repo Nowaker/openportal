@@ -3,7 +3,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
 import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
-import { SwatchIcon, CpuChipIcon, KeyIcon } from "@heroicons/react/24/outline";
+import {
+  SwatchIcon,
+  CpuChipIcon,
+  KeyIcon,
+  CommandLineIcon,
+} from "@heroicons/react/24/outline";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -12,6 +17,9 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
+import { useAgents } from "@/hooks/use-opencode";
+import { useAgentStore } from "@/stores/agent-store";
+import type { Agent } from "@opencode-ai/sdk";
 
 const themes = [
   { id: "light", title: "Light" },
@@ -59,6 +67,105 @@ const fonts = [
   { id: "system", title: "System Default" },
 ];
 
+const STRATEGIES = [
+  {
+    id: "specific" as const,
+    title: "Always use a specific agent",
+  },
+  {
+    id: "last-used" as const,
+    title: "Last used in any session (with fallback)",
+  },
+];
+
+function AgentSettings() {
+  const { data, isLoading } = useAgents();
+  const agents = (data ?? []) as Agent[];
+
+  const defaultAgentStrategy = useAgentStore((s) => s.defaultAgentStrategy);
+  const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
+  const setDefaultAgentStrategy = useAgentStore(
+    (s) => s.setDefaultAgentStrategy,
+  );
+  const setDefaultAgentName = useAgentStore((s) => s.setDefaultAgentName);
+  const lastUsedAgent = useAgentStore((s) => s.lastUsedAgent);
+
+  const fallbackLabel =
+    defaultAgentStrategy === "specific" ? "Default agent" : "Fallback agent";
+  const fallbackHelp =
+    defaultAgentStrategy === "specific"
+      ? "New sessions will start with this agent selected."
+      : "Used when no last-used agent is recorded yet, or when it no longer exists.";
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Agent</h2>
+        <p className="text-sm text-muted-fg">
+          Choose how Portal picks the agent for a new session.
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Default agent strategy</p>
+          <p className="text-xs text-muted-fg">
+            Whether new sessions inherit your last choice or always start from
+            a fixed agent.
+          </p>
+          <Select
+            selectedKey={defaultAgentStrategy}
+            onSelectionChange={(key) => {
+              if (key) setDefaultAgentStrategy(String(key) as never);
+            }}
+            placeholder="Select a strategy"
+            aria-label="Default agent strategy"
+          >
+            <SelectTrigger className="max-w-sm" />
+            <SelectContent>
+              {STRATEGIES.map((item) => (
+                <SelectItem key={item.id} id={item.id} textValue={item.title}>
+                  {item.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{fallbackLabel}</p>
+          <p className="text-xs text-muted-fg">{fallbackHelp}</p>
+          <Select
+            selectedKey={defaultAgentName}
+            onSelectionChange={(key) => {
+              if (key) setDefaultAgentName(String(key));
+            }}
+            placeholder={isLoading ? "Loading agents..." : "Select an agent"}
+            aria-label={fallbackLabel}
+          >
+            <SelectTrigger className="max-w-sm" />
+            <SelectContent items={agents}>
+              {(agent) => (
+                <SelectItem id={agent.name} textValue={agent.name}>
+                  {agent.name}
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {defaultAgentStrategy === "last-used" && (
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-fg">
+            {lastUsedAgent
+              ? `Currently last used: ${lastUsedAgent}`
+              : "No agent has been used yet — the fallback will be applied."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { fontFamily, setFontFamily } = useTheme();
   const { setPageTitle } = useBreadcrumb();
@@ -91,6 +198,10 @@ function SettingsPage() {
           <Tab id="model">
             <CpuChipIcon className="size-4" data-slot="icon" />
             Model
+          </Tab>
+          <Tab id="agent">
+            <CommandLineIcon className="size-4" data-slot="icon" />
+            Agent
           </Tab>
           <Tab id="api">
             <KeyIcon className="size-4" data-slot="icon" />
@@ -204,6 +315,10 @@ function SettingsPage() {
               </div>
             </div>
           </div>
+        </TabPanel>
+
+        <TabPanel id="agent" className="pt-6">
+          <AgentSettings />
         </TabPanel>
 
         <TabPanel id="api" className="pt-6">
