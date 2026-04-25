@@ -24,10 +24,13 @@ function toModelKey(model: SelectedModel): string {
 interface ModelState {
   selectedModel: SelectedModel;
   isInitialized: boolean;
+  defaultModelKey: string | null;
   setSelectedModel: (model: SelectedModel) => void;
   setModelFromKey: (key: string) => void;
   setModelFromDefault: (defaultKey: string | null) => void;
   getModelKey: () => string;
+  isOverridingDefault: () => boolean;
+  resetToDefault: () => void;
 }
 
 export const useModelStore = create<ModelState>()(
@@ -35,6 +38,7 @@ export const useModelStore = create<ModelState>()(
     (set, get) => ({
       selectedModel: DEFAULT_MODEL,
       isInitialized: true,
+      defaultModelKey: null,
       setSelectedModel: (model) => set({ selectedModel: model }),
       setModelFromKey: (key) => {
         const model = parseModelKey(key);
@@ -46,15 +50,33 @@ export const useModelStore = create<ModelState>()(
           current.providerID === DEFAULT_MODEL.providerID &&
           current.modelID === DEFAULT_MODEL.modelID;
 
-        if (defaultKey && isDefault) {
-          const model = parseModelKey(defaultKey);
-          set({ selectedModel: model });
+        if (defaultKey) {
+          set({ defaultModelKey: defaultKey });
+          if (isDefault) {
+            const model = parseModelKey(defaultKey);
+            set({ selectedModel: model });
+          }
         }
       },
       getModelKey: () => toModelKey(get().selectedModel),
+      isOverridingDefault: () => {
+        const { defaultModelKey } = get();
+        if (!defaultModelKey) return false;
+        return toModelKey(get().selectedModel) !== defaultModelKey;
+      },
+      resetToDefault: () => {
+        const { defaultModelKey } = get();
+        if (defaultModelKey) {
+          set({ selectedModel: parseModelKey(defaultModelKey) });
+        }
+      },
     }),
     {
       name: "opencode-selected-model",
+      partialize: (state) => ({
+        selectedModel: state.selectedModel,
+        defaultModelKey: state.defaultModelKey,
+      }),
     },
   ),
 );
