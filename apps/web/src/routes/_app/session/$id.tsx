@@ -1068,9 +1068,16 @@ function SessionPage() {
                 type="submit"
                 isDisabled={!input.trim()}
                 className="min-w-32"
+                aria-busy={sending}
               >
                 <SendIcon size="16px" />
-                {sending ? "Sending..." : "Send"}
+                Send
+                {sending && (
+                  <Loader
+                    aria-label="Sending"
+                    className="ml-1 size-4 shrink-0 text-current"
+                  />
+                )}
               </Button>
             </div>
           </div>
