@@ -1097,37 +1097,45 @@ function SessionPage() {
       </div>
 
       <div className="border-t border-border shrink-0 relative">
-        <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border/60 bg-muted/30">
-          <AgentSelect sessionId={sessionId} />
-          <ModelOverrideControl
-            isOverriding={isOverridingDefault()}
-            onReset={resetModelToDefault}
-          />
+        {composerCollapsed ? (
           <button
             type="button"
-            onClick={() => fileAttachInputRef.current?.click()}
-            className="rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
-            title="Attach image"
-            aria-label="Attach image"
+            onClick={() => setComposerCollapsed(false)}
+            className="flex w-full items-center justify-between px-3 py-1.5 text-xs text-muted-fg hover:bg-muted/40 transition-colors"
+            aria-label="Show composer"
+            title="Show composer"
           >
-            <PaperClipIcon className="size-4" />
+            <span>Composer hidden — tap to show.</span>
+            <ChevronUpIcon className="size-4 shrink-0" />
           </button>
-          <button
-            type="button"
-            onClick={() => setComposerCollapsed((v) => !v)}
-            className="ml-auto rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
-            aria-label={composerCollapsed ? "Show composer" : "Hide composer"}
-            title={composerCollapsed ? "Show composer" : "Hide composer"}
-          >
-            {composerCollapsed ? (
-              <ChevronUpIcon className="size-4" />
-            ) : (
-              <ChevronDownIcon className="size-4" />
-            )}
-          </button>
-        </div>
-        {!composerCollapsed && (
-          <div className="px-3 py-2 relative">
+        ) : (
+          <>
+            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border/60 bg-muted/30">
+              <AgentSelect sessionId={sessionId} />
+              <ModelOverrideControl
+                isOverriding={isOverridingDefault()}
+                onReset={resetModelToDefault}
+              />
+              <button
+                type="button"
+                onClick={() => fileAttachInputRef.current?.click()}
+                className="rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                title="Attach image"
+                aria-label="Attach image"
+              >
+                <PaperClipIcon className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerCollapsed(true)}
+                className="ml-auto rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                aria-label="Hide composer"
+                title="Hide composer"
+              >
+                <ChevronDownIcon className="size-4" />
+              </button>
+            </div>
+            <div className="px-3 py-2 relative">
             <FileMentionPopover
               isOpen={fileMention.isOpen}
               searchQuery={fileMention.searchQuery}
@@ -1265,7 +1273,8 @@ function SessionPage() {
                 </div>
               </div>
             </form>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
