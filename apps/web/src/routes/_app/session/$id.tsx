@@ -21,6 +21,12 @@ import IconEye from "@/components/icons/eye-icon";
 import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
+import {
+  PlayIcon,
+  StopIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+} from "@heroicons/react/24/solid";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
@@ -684,6 +690,7 @@ function SessionPage() {
   >([]);
   const [hasScrolledInitially, setHasScrolledInitially] = useState(false);
   const [fileResults, setFileResults] = useState<string[]>([]);
+  const [composerCollapsed, setComposerCollapsed] = useState(false);
   const isProcessingQueue = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -866,6 +873,17 @@ function SessionPage() {
     }
   }, [messageQueue, processQueue]);
 
+  const handleAbort = useCallback(async () => {
+    if (!port || !sessionId) return;
+    try {
+      await fetch(`/api/opencode/${port}/session/${sessionId}/abort`, {
+        method: "POST",
+      });
+    } catch {
+      // Best-effort abort: surface nothing if the round-trip fails.
+    }
+  }, [port, sessionId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !sessionId || !port) return;
@@ -967,114 +985,151 @@ function SessionPage() {
         )}
       </div>
 
-      <div className="border-t border-border p-4 shrink-0 relative">
-        <FileMentionPopover
-          isOpen={fileMention.isOpen}
-          searchQuery={fileMention.searchQuery}
-          textareaRef={textareaRef}
-          mentionStart={fileMention.mentionStart}
-          selectedIndex={fileMention.selectedIndex}
-          onSelectedIndexChange={fileMention.setSelectedIndex}
-          onFilesChange={setFileResults}
-          onClose={fileMention.close}
-          onSelect={(filePath) => {
-            const newValue = fileMention.handleSelect(filePath, input);
-            setInput(newValue);
-          }}
-        />
-        <form onSubmit={handleSubmit} className="w-full">
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => {
-              const value = e.target.value;
-              setInput(value);
-              if (fileMention.isOpen || value.includes("@")) {
-                const cursorPos = e.target.selectionStart ?? value.length;
-                fileMention.handleInputChange(value, cursorPos);
-              }
-            }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              const value = target.value;
-              if (value.includes("@")) {
-                const cursorPos = target.selectionStart ?? value.length;
-                fileMention.handleInputChange(value, cursorPos);
-              }
-            }}
-            onSelect={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              if (fileMention.isOpen || input.includes("@")) {
-                const cursorPos = target.selectionStart ?? input.length;
-                fileMention.handleInputChange(input, cursorPos);
-              }
-            }}
-            onKeyDown={(e) => {
-              const handled = fileMention.handleKeyDown(e, fileResults.length);
-              if (handled) {
-                if (
-                  (e.key === "Enter" || e.key === "Tab") &&
-                  fileResults.length > 0
-                ) {
-                  const selectedFile = fileResults[fileMention.selectedIndex];
-                  if (selectedFile) {
-                    const newValue = fileMention.handleSelect(
-                      selectedFile,
-                      input,
-                    );
-                    setInput(newValue);
+      <div className="border-t border-border shrink-0 relative">
+        <button
+          type="button"
+          onClick={() => setComposerCollapsed((v) => !v)}
+          className="absolute right-2 top-1 z-10 flex size-7 items-center justify-center rounded-md text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+          aria-label={composerCollapsed ? "Expand composer" : "Collapse composer"}
+          title={composerCollapsed ? "Expand composer" : "Collapse composer"}
+        >
+          {composerCollapsed ? (
+            <ChevronUpIcon className="size-4" />
+          ) : (
+            <ChevronDownIcon className="size-4" />
+          )}
+        </button>
+        {composerCollapsed ? (
+          <div className="px-4 py-2 text-xs text-muted-fg">
+            Composer hidden — click ▾ to show.
+          </div>
+        ) : (
+          <div className="px-4 py-2 sm:py-3">
+            <FileMentionPopover
+              isOpen={fileMention.isOpen}
+              searchQuery={fileMention.searchQuery}
+              textareaRef={textareaRef}
+              mentionStart={fileMention.mentionStart}
+              selectedIndex={fileMention.selectedIndex}
+              onSelectedIndexChange={fileMention.setSelectedIndex}
+              onFilesChange={setFileResults}
+              onClose={fileMention.close}
+              onSelect={(filePath) => {
+                const newValue = fileMention.handleSelect(filePath, input);
+                setInput(newValue);
+              }}
+            />
+            <form onSubmit={handleSubmit} className="w-full">
+              <Textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setInput(value);
+                  if (fileMention.isOpen || value.includes("@")) {
+                    const cursorPos = e.target.selectionStart ?? value.length;
+                    fileMention.handleInputChange(value, cursorPos);
                   }
-                }
-                return;
-              }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (input.trim()) {
-                  handleSubmit(e as unknown as React.FormEvent);
-                }
-              }
-            }}
-            placeholder="Type your message... (use @ to mention files)"
-            className="w-full resize-none min-h-32 max-h-32 overflow-y-auto"
-            rows={5}
-          />
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center justify-between gap-2 sm:justify-start">
-              <AgentSelect sessionId={sessionId} />
-            </div>
-            <div className="flex items-center justify-between gap-2 sm:justify-end">
-              {modelOverride ? (
-                <div className="flex items-center gap-1.5">
-                  <ModelSelect />
+                }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  const value = target.value;
+                  if (value.includes("@")) {
+                    const cursorPos = target.selectionStart ?? value.length;
+                    fileMention.handleInputChange(value, cursorPos);
+                  }
+                }}
+                onSelect={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  if (fileMention.isOpen || input.includes("@")) {
+                    const cursorPos = target.selectionStart ?? input.length;
+                    fileMention.handleInputChange(input, cursorPos);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  const handled = fileMention.handleKeyDown(
+                    e,
+                    fileResults.length,
+                  );
+                  if (handled) {
+                    if (
+                      (e.key === "Enter" || e.key === "Tab") &&
+                      fileResults.length > 0
+                    ) {
+                      const selectedFile =
+                        fileResults[fileMention.selectedIndex];
+                      if (selectedFile) {
+                        const newValue = fileMention.handleSelect(
+                          selectedFile,
+                          input,
+                        );
+                        setInput(newValue);
+                      }
+                    }
+                    return;
+                  }
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim()) {
+                      handleSubmit(e as unknown as React.FormEvent);
+                    }
+                  }
+                }}
+                placeholder="Type your message... (use @ to mention files)"
+                className="w-full resize-none min-h-24 max-h-32 overflow-y-auto"
+                rows={4}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <AgentSelect sessionId={sessionId} />
+                {modelOverride ? (
+                  <div className="flex min-w-0 items-center gap-1">
+                    <ModelSelect />
+                    <button
+                      type="button"
+                      onClick={() => setModelOverride(false)}
+                      className="rounded-md px-1.5 py-1 text-xs text-muted-fg hover:text-fg transition-colors"
+                      title="Use default model"
+                      aria-label="Reset to default model"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setModelOverride(false)}
-                    className="rounded-md px-1.5 py-1 text-xs text-muted-fg hover:text-fg transition-colors"
-                    title="Use default model"
+                    onClick={() => setModelOverride(true)}
+                    className="rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                    title="Override the default model for this session"
                   >
-                    &times;
+                    Default model
                   </button>
+                )}
+                <div className="ml-auto flex items-center">
+                  {sending ? (
+                    <Button
+                      type="button"
+                      onPress={handleAbort}
+                      intent="danger"
+                      className="size-10 !p-0"
+                      aria-label="Stop the current run"
+                    >
+                      <StopIcon className="size-5" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      isDisabled={!input.trim()}
+                      className="size-10 !p-0"
+                      aria-label="Send"
+                    >
+                      <PlayIcon className="size-5" />
+                    </Button>
+                  )}
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setModelOverride(true)}
-                  className="rounded-md border border-dashed border-border px-2.5 py-1.5 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors cursor-pointer"
-                >
-                  Override default model
-                </button>
-              )}
-              <Button
-                type="submit"
-                isDisabled={!input.trim()}
-                className="min-w-32"
-              >
-                <SendIcon size="16px" />
-                {sending ? "Sending..." : "Send"}
-              </Button>
-            </div>
+              </div>
+            </form>
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
