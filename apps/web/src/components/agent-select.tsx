@@ -20,12 +20,24 @@ interface AgentSelectProps {
   sessionId: string | null;
 }
 
-function isValidAgent(agents: Agent[], name?: string) {
+function isValidAgent(agents: Agent[], name?: string | null) {
   if (!name) return false;
   return agents.some((agent) => agent.name === name);
 }
 
-function getDefaultAgentName(agents: Agent[]) {
+function resolveDefaultAgentName(
+  agents: Agent[],
+  strategy: "specific" | "last-used",
+  defaultName: string,
+  lastUsed: string | null,
+) {
+  if (agents.length === 0) return undefined;
+
+  if (strategy === "last-used" && isValidAgent(agents, lastUsed)) {
+    return lastUsed!;
+  }
+  if (isValidAgent(agents, defaultName)) return defaultName;
+  // Hard fallback: prefer "plan" if present, otherwise the first available.
   return agents.find((agent) => agent.name === "plan")?.name ?? agents[0]?.name;
 }
 
@@ -35,16 +47,32 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
 
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
   const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
+  const defaultAgentStrategy = useAgentStore((s) => s.defaultAgentStrategy);
+  const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
+  const lastUsedAgent = useAgentStore((s) => s.lastUsedAgent);
 
   useEffect(() => {
     if (!sessionId || agents.length === 0) return;
     if (isValidAgent(agents, selectedAgent)) return;
 
-    const fallback = getDefaultAgentName(agents);
+    const fallback = resolveDefaultAgentName(
+      agents,
+      defaultAgentStrategy,
+      defaultAgentName,
+      lastUsedAgent,
+    );
     if (fallback) {
       setSelectedAgent(sessionId, fallback);
     }
-  }, [agents, sessionId, selectedAgent, setSelectedAgent]);
+  }, [
+    agents,
+    sessionId,
+    selectedAgent,
+    setSelectedAgent,
+    defaultAgentStrategy,
+    defaultAgentName,
+    lastUsedAgent,
+  ]);
 
   return (
     <Select
