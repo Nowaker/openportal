@@ -1019,6 +1019,10 @@ function SessionPage() {
           <Textarea
             ref={textareaRef}
             value={input}
+            inputMode="text"
+            enterKeyHint="send"
+            autoCapitalize="sentences"
+            autoCorrect="on"
             onChange={(e) => {
               const value = e.target.value;
               setInput(value);
@@ -1027,20 +1031,11 @@ function SessionPage() {
                 fileMention.handleInputChange(value, cursorPos);
               }
             }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              const value = target.value;
-              if (value.includes("@")) {
-                const cursorPos = target.selectionStart ?? value.length;
-                fileMention.handleInputChange(value, cursorPos);
-              }
-            }}
             onSelect={(e) => {
+              if (!fileMention.isOpen) return;
               const target = e.target as HTMLTextAreaElement;
-              if (fileMention.isOpen || input.includes("@")) {
-                const cursorPos = target.selectionStart ?? input.length;
-                fileMention.handleInputChange(input, cursorPos);
-              }
+              const cursorPos = target.selectionStart ?? input.length;
+              fileMention.handleInputChange(input, cursorPos);
             }}
             onKeyDown={(e) => {
               const handled = fileMention.handleKeyDown(e, fileResults.length);
@@ -1068,7 +1063,7 @@ function SessionPage() {
               }
             }}
             placeholder="Type your message... (use @ to mention files)"
-            className="w-full resize-none min-h-32 max-h-32 overflow-y-auto"
+            className="field-sizing-fixed w-full resize-none min-h-32 max-h-32 overflow-y-auto"
             rows={5}
           />
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
