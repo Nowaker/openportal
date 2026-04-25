@@ -22,6 +22,12 @@ import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
 import { PaperClipIcon } from "@heroicons/react/24/outline";
+import {
+  PlayIcon,
+  StopIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+} from "@heroicons/react/24/solid";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
@@ -721,6 +727,7 @@ function SessionPage() {
   const [pendingAttachments, setPendingAttachments] = useState<
     PromptAttachment[]
   >([]);
+  const [composerCollapsed, setComposerCollapsed] = useState(false);
   const isProcessingQueue = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -920,6 +927,17 @@ function SessionPage() {
     }
   }, [messageQueue, processQueue]);
 
+  const handleAbort = useCallback(async () => {
+    if (!port || !sessionId) return;
+    try {
+      await fetch(`/api/opencode/${port}/session/${sessionId}/abort`, {
+        method: "POST",
+      });
+    } catch {
+      // Best-effort abort.
+    }
+  }, [port, sessionId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionId || !port) return;
@@ -1078,146 +1096,177 @@ function SessionPage() {
         )}
       </div>
 
-      <div className="border-t border-border p-4 shrink-0 relative">
-        <FileMentionPopover
-          isOpen={fileMention.isOpen}
-          searchQuery={fileMention.searchQuery}
-          textareaRef={textareaRef}
-          mentionStart={fileMention.mentionStart}
-          selectedIndex={fileMention.selectedIndex}
-          onSelectedIndexChange={fileMention.setSelectedIndex}
-          onFilesChange={setFileResults}
-          onClose={fileMention.close}
-          onSelect={(filePath) => {
-            const newValue = fileMention.handleSelect(filePath, input);
-            setInput(newValue);
-          }}
-        />
-        <form onSubmit={handleSubmit} className="w-full">
-          <input
-            ref={fileAttachInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="sr-only"
-            onChange={(e) => {
-              if (e.target.files) {
-                handleAttachFiles(e.target.files);
-              }
-              e.target.value = "";
-            }}
+      <div className="border-t border-border shrink-0 relative">
+        <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border/60 bg-muted/30">
+          <AgentSelect sessionId={sessionId} />
+          <ModelOverrideControl
+            isOverriding={isOverridingDefault()}
+            onReset={resetModelToDefault}
           />
-          {pendingAttachments.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2">
-              {pendingAttachments.map((a, i) => (
-                <div
-                  key={`${a.filename ?? "image"}-${i}`}
-                  className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted"
-                >
-                  <img
-                    src={a.url}
-                    alt={a.filename ?? `Attachment ${i + 1}`}
-                    className="h-full w-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(i)}
-                    className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 px-1 text-[10px] leading-tight text-fg shadow hover:bg-bg"
-                    aria-label={`Remove ${a.filename ?? "attachment"}`}
-                    title="Remove"
-                  >
-                    &times;
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            inputMode="text"
-            enterKeyHint="send"
-            autoCapitalize="sentences"
-            autoCorrect="on"
-            onChange={(e) => {
-              const value = e.target.value;
-              setInput(value);
-              if (fileMention.isOpen || value.includes("@")) {
-                const cursorPos = e.target.selectionStart ?? value.length;
-                fileMention.handleInputChange(value, cursorPos);
-              }
-            }}
-            onSelect={(e) => {
-              if (!fileMention.isOpen) return;
-              const target = e.target as HTMLTextAreaElement;
-              const cursorPos = target.selectionStart ?? input.length;
-              fileMention.handleInputChange(input, cursorPos);
-            }}
-            onKeyDown={(e) => {
-              const handled = fileMention.handleKeyDown(e, fileResults.length);
-              if (handled) {
-                if (
-                  (e.key === "Enter" || e.key === "Tab") &&
-                  fileResults.length > 0
-                ) {
-                  const selectedFile = fileResults[fileMention.selectedIndex];
-                  if (selectedFile) {
-                    const newValue = fileMention.handleSelect(
-                      selectedFile,
-                      input,
-                    );
-                    setInput(newValue);
+          <button
+            type="button"
+            onClick={() => fileAttachInputRef.current?.click()}
+            className="rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+            title="Attach image"
+            aria-label="Attach image"
+          >
+            <PaperClipIcon className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setComposerCollapsed((v) => !v)}
+            className="ml-auto rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+            aria-label={composerCollapsed ? "Show composer" : "Hide composer"}
+            title={composerCollapsed ? "Show composer" : "Hide composer"}
+          >
+            {composerCollapsed ? (
+              <ChevronUpIcon className="size-4" />
+            ) : (
+              <ChevronDownIcon className="size-4" />
+            )}
+          </button>
+        </div>
+        {!composerCollapsed && (
+          <div className="px-3 py-2 relative">
+            <FileMentionPopover
+              isOpen={fileMention.isOpen}
+              searchQuery={fileMention.searchQuery}
+              textareaRef={textareaRef}
+              mentionStart={fileMention.mentionStart}
+              selectedIndex={fileMention.selectedIndex}
+              onSelectedIndexChange={fileMention.setSelectedIndex}
+              onFilesChange={setFileResults}
+              onClose={fileMention.close}
+              onSelect={(filePath) => {
+                const newValue = fileMention.handleSelect(filePath, input);
+                setInput(newValue);
+              }}
+            />
+            <form onSubmit={handleSubmit} className="w-full">
+              <input
+                ref={fileAttachInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    handleAttachFiles(e.target.files);
                   }
-                }
-                return;
-              }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (input.trim()) {
-                  handleSubmit(e as unknown as React.FormEvent);
-                }
-              }
-            }}
-            placeholder="Type your message... (use @ to mention files)"
-            className="field-sizing-fixed w-full resize-none min-h-32 max-h-32 overflow-y-auto"
-            rows={5}
-          />
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center justify-between gap-2 sm:justify-start">
-              <button
-                type="button"
-                onClick={() => fileAttachInputRef.current?.click()}
-                className="rounded-md border border-border px-2 py-1.5 text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
-                title="Attach image"
-                aria-label="Attach image"
-              >
-                <PaperClipIcon className="size-4" />
-              </button>
-              <AgentSelect sessionId={sessionId} />
-            </div>
-            <div className="flex items-center justify-between gap-2 sm:justify-end">
-              <ModelOverrideControl
-                isOverriding={isOverridingDefault()}
-                onReset={resetModelToDefault}
+                  e.target.value = "";
+                }}
               />
-              <Button
-                type="submit"
-                isDisabled={!input.trim()}
-                className="min-w-32"
-                aria-busy={sending}
-              >
-                <SendIcon size="16px" />
-                Send
-                {sending && (
-                  <Loader
-                    aria-label="Sending"
-                    className="ml-1 size-4 shrink-0 text-current"
+              {pendingAttachments.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {pendingAttachments.map((a, i) => (
+                    <div
+                      key={`${a.filename ?? "image"}-${i}`}
+                      className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted"
+                    >
+                      <img
+                        src={a.url}
+                        alt={a.filename ?? `Attachment ${i + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(i)}
+                        className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 px-1 text-[10px] leading-tight text-fg shadow hover:bg-bg"
+                        aria-label={`Remove ${a.filename ?? "attachment"}`}
+                        title="Remove"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-stretch gap-2">
+                <div className="min-w-0 flex-1">
+                  <Textarea
+                    ref={textareaRef}
+                    value={input}
+                    inputMode="text"
+                    enterKeyHint="send"
+                    autoCapitalize="sentences"
+                    autoCorrect="on"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setInput(value);
+                      if (fileMention.isOpen || value.includes("@")) {
+                        const cursorPos =
+                          e.target.selectionStart ?? value.length;
+                        fileMention.handleInputChange(value, cursorPos);
+                      }
+                    }}
+                    onSelect={(e) => {
+                      if (!fileMention.isOpen) return;
+                      const target = e.target as HTMLTextAreaElement;
+                      const cursorPos = target.selectionStart ?? input.length;
+                      fileMention.handleInputChange(input, cursorPos);
+                    }}
+                    onKeyDown={(e) => {
+                      const handled = fileMention.handleKeyDown(
+                        e,
+                        fileResults.length,
+                      );
+                      if (handled) {
+                        if (
+                          (e.key === "Enter" || e.key === "Tab") &&
+                          fileResults.length > 0
+                        ) {
+                          const selectedFile =
+                            fileResults[fileMention.selectedIndex];
+                          if (selectedFile) {
+                            const newValue = fileMention.handleSelect(
+                              selectedFile,
+                              input,
+                            );
+                            setInput(newValue);
+                          }
+                        }
+                        return;
+                      }
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (input.trim() || pendingAttachments.length > 0) {
+                          handleSubmit(e as unknown as React.FormEvent);
+                        }
+                      }
+                    }}
+                    placeholder="Type your message..."
+                    className="field-sizing-fixed h-full w-full resize-none min-h-24 max-h-32 overflow-y-auto"
+                    rows={3}
                   />
-                )}
-              </Button>
-            </div>
+                </div>
+                <div className="flex flex-col justify-end shrink-0">
+                  {sending ? (
+                    <Button
+                      type="button"
+                      onPress={handleAbort}
+                      intent="danger"
+                      className="size-12 !p-0"
+                      aria-label="Stop the current run"
+                    >
+                      <StopIcon className="size-6" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      isDisabled={
+                        !input.trim() && pendingAttachments.length === 0
+                      }
+                      className="size-12 !p-0"
+                      aria-label="Send"
+                    >
+                      <PlayIcon className="size-6" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </form>
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
