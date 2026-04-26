@@ -21,7 +21,7 @@ import IconEye from "@/components/icons/eye-icon";
 import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
-import { PaperClipIcon } from "@heroicons/react/24/outline";
+import { PaperClipIcon, PhotoIcon } from "@heroicons/react/24/outline";
 import {
   PlayIcon,
   StopIcon,
@@ -39,6 +39,7 @@ import {
   type MessageWithParts,
   type Part,
   type ToolPart,
+  type FilePart,
   type PermissionRequest,
   type QuestionAnswer,
   type QuestionInfo,
@@ -63,6 +64,10 @@ type PermissionReply = "once" | "always" | "reject";
 
 function isToolPart(part: Part): part is ToolPart {
   return part.type === "tool";
+}
+
+function isFilePart(part: Part): part is FilePart {
+  return part.type === "file";
 }
 
 function safeJsonParse(
@@ -646,6 +651,24 @@ const ToolCallItem = memo(function ToolCallItem({
   );
 });
 
+function AttachmentChip({ part }: { part: FilePart }) {
+  const isImage = part.mime?.startsWith("image/");
+  const Icon = isImage ? PhotoIcon : PaperClipIcon;
+  const label = part.filename || (isImage ? "image" : part.mime || "attachment");
+  return (
+    <a
+      href={part.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-fg/90 hover:border-fg/30 hover:bg-muted transition-colors"
+      title={label}
+    >
+      <Icon className="size-3 shrink-0 text-muted-fg" />
+      <span className="truncate">{label}</span>
+    </a>
+  );
+}
+
 const MessageItem = memo(function MessageItem({
   message,
   port,
@@ -666,6 +689,7 @@ const MessageItem = memo(function MessageItem({
   const textContent = getMessageContent(message.parts);
   const isAssistant = message.info.role === "assistant";
   const toolCalls = message.parts.filter(isToolPart);
+  const fileParts = message.parts.filter(isFilePart);
   const messagePermissions = pendingPermissions.filter(
     (perm) => perm.tool?.messageID === message.info.id,
   );
@@ -675,9 +699,10 @@ const MessageItem = memo(function MessageItem({
     ? describeMessageError(messageError)
     : null;
 
+  const hasHeaderRow = textContent || fileParts.length > 0;
   return (
     <div className="py-3 px-6">
-      {textContent && (
+      {hasHeaderRow && (
         <div className="flex gap-2">
           {isAssistant ? (
             <IconBadgeSparkle size="16px" className="shrink-0 mt-1" />
@@ -690,16 +715,29 @@ const MessageItem = memo(function MessageItem({
                 Queued
               </Badge>
             )}
-            <div
-              className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] ${!isAssistant ? "text-muted-fg" : ""}`}
-            >
-              <Markdown remarkPlugins={[remarkGfm]}>{textContent}</Markdown>
-            </div>
+            {textContent && (
+              <div
+                className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] ${!isAssistant ? "text-muted-fg" : ""}`}
+              >
+                <Markdown remarkPlugins={[remarkGfm]}>{textContent}</Markdown>
+              </div>
+            )}
+            {fileParts.length > 0 && (
+              <div
+                className={`${textContent ? "mt-2" : ""} flex flex-wrap gap-1.5`}
+              >
+                {fileParts.map((part) => (
+                  <AttachmentChip key={part.id} part={part} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
       {toolCalls.length > 0 && (
-        <div className={`${textContent ? "mt-2 ml-6" : ""} space-y-0.5`}>
+        <div
+          className={`${hasHeaderRow ? "mt-2 ml-6" : ""} space-y-0.5`}
+        >
           {toolCalls.map((part) => (
             <ToolCallItem
               key={part.callID || part.id}
@@ -743,12 +781,13 @@ const MessageItem = memo(function MessageItem({
 function hasVisibleContent(message: MessageWithParts): boolean {
   const textContent = getMessageContent(message.parts);
   const hasToolCalls = message.parts.some(isToolPart);
+  const hasFiles = message.parts.some(isFilePart);
   // An assistant turn that fails before producing any text or tool call still
   // carries info.error and must remain visible, otherwise a failed prompt
   // looks indistinguishable from the assistant being idle.
   const hasError =
     message.info.role === "assistant" && message.info.error != null;
-  return !!(textContent || hasToolCalls || hasError);
+  return !!(textContent || hasToolCalls || hasFiles || hasError);
 }
 
 function describeMessageError(

@@ -1,5 +1,6 @@
 import useSWR, { mutate } from "swr";
 import type {
+  FilePart,
   Message,
   Part,
   ToolPart,
@@ -15,7 +16,19 @@ import type {
 } from "@opencode-ai/sdk/v2";
 import { useInstanceStore } from "@/stores/instance-store";
 
-export type { Message, Part, ToolPart, ToolState, TextPart, PermissionRequest, QuestionAnswer, QuestionInfo, QuestionOption, QuestionRequest };
+export type {
+  FilePart,
+  Message,
+  Part,
+  ToolPart,
+  ToolState,
+  TextPart,
+  PermissionRequest,
+  QuestionAnswer,
+  QuestionInfo,
+  QuestionOption,
+  QuestionRequest,
+};
 
 export interface MessageWithParts {
   info: Message;
