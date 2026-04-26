@@ -22,7 +22,7 @@ const dropdownSectionStyles = tv({
   slots: {
     section: "col-span-full grid grid-cols-[auto_1fr]",
     header:
-      "col-span-full px-3 py-2 font-medium text-muted-fg text-sm/6 sm:px-2.5 sm:py-1.5 sm:text-xs/3",
+      "col-span-full px-2.5 py-1.5 font-medium text-muted-fg text-xs/4",
   },
 })
 
@@ -52,7 +52,7 @@ const dropdownItemStyles = tv({
     "not-has-[[slot=description]]:items-center",
     "group relative cursor-default select-none rounded-[calc(var(--radius-xl)-(--spacing(1)))] outline-0",
     // text
-    "text-base/6 text-fg sm:text-sm/6 forced-colors:text-[CanvasText]",
+    "text-sm/6 text-fg forced-colors:text-[CanvasText]",
     // avatar
     "*:data-[slot=avatar]:*:mr-(--mr-icon) *:data-[slot=avatar]:mr-(--mr-icon) has-[[slot=description]]:*:data-[slot=avatar]:row-span-2 *:data-[slot=avatar]:[--avatar-size:--spacing(6)] sm:*:data-[slot=avatar]:[--avatar-size:--spacing(5)]",
     // icon
