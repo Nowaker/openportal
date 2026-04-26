@@ -58,6 +58,13 @@ export interface PromptAttachment {
   url: string;
 }
 
+// Mirrors DEFAULT_INITIAL_LIMIT in
+// apps/web/src/server/opencode/[port]/session/[id]/messages.ts. Kept in
+// sync manually since the value crosses the client/server boundary; if
+// the server raises its limit, this only affects when the "Load earlier
+// messages" button stops appearing on otherwise-fully-loaded sessions.
+const INITIAL_MESSAGE_LIMIT = 50;
+
 type PermissionReply = "once" | "always" | "reject";
 
 
@@ -840,11 +847,12 @@ function SessionPage() {
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
 
+  const [loadAllMessages, setLoadAllMessages] = useState(false);
   const {
     messages,
     isLoading: loading,
     error: messagesError,
-  } = useSessionMessages(sessionId);
+  } = useSessionMessages(sessionId, { loadAll: loadAllMessages });
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   const selectedModel = useModelStore((s) => s.selectedModel);
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
@@ -1182,6 +1190,19 @@ function SessionPage() {
         )}
 
         <div className="divide-y divide-dashed divide-border overflow-x-hidden">
+          {!loading &&
+            !loadAllMessages &&
+            messages.length >= INITIAL_MESSAGE_LIMIT && (
+              <div className="px-6 py-3 text-center">
+                <button
+                  type="button"
+                  onClick={() => setLoadAllMessages(true)}
+                  className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                >
+                  Load earlier messages
+                </button>
+              </div>
+            )}
           {messageNodes}
           {unlinkedPermissions.length > 0 && (
             <div className="px-6 py-4 space-y-2 border-t border-dashed border-border">
