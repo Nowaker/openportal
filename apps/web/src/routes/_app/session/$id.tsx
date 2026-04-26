@@ -37,7 +37,7 @@ import { useModelStore } from "@/stores/model-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
-
+  addOptimisticMessage,
   mutateSessionMessages,
   type MessageWithParts,
   type Part,
@@ -58,12 +58,6 @@ export interface PromptAttachment {
   mime: string;
   filename?: string;
   url: string;
-}
-
-interface QueuedMessage {
-  id: string;
-  text: string;
-  attachments?: PromptAttachment[];
 }
 
 type PermissionReply = "once" | "always" | "reject";
@@ -726,10 +720,6 @@ function SessionPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasContent, setHasContent] = useState(false);
   const [sending, setSending] = useState(false);
-  const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
-  const [inFlightMessage, setInFlightMessage] = useState<QueuedMessage | null>(
-    null,
-  );
   const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
   const resetModelToDefault = useModelStore((s) => s.resetToDefault);
   const [pendingPermissions, setPendingPermissions] = useState<
@@ -741,7 +731,6 @@ function SessionPage() {
     PromptAttachment[]
   >([]);
   const [composerCollapsed, setComposerCollapsed] = useState(false);
-  const isProcessingQueue = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -852,95 +841,6 @@ function SessionPage() {
     isNearBottomRef.current = true;
   }, [sessionId]);
 
-  const sendMessage = useCallback(
-    async (
-      messageText: string,
-      messageId: string,
-      attachments?: PromptAttachment[],
-    ) => {
-      if (!sessionId || !port) return;
-
-      try {
-        const response = await fetch(
-          `/api/opencode/${port}/session/${sessionId}/prompt`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: messageText,
-              attachments: attachments?.length ? attachments : undefined,
-              model: isOverridingDefault() ? selectedModel : undefined,
-              agent: selectedAgent,
-            }),
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to send message");
-        }
-
-        mutateSessionMessages(port, sessionId);
-        isNearBottomRef.current = true;
-        mutateSessions();
-      } catch (err) {
-        setSendError(
-          err instanceof Error ? err.message : "Failed to send message",
-        );
-      }
-    },
-    [
-      sessionId,
-      port,
-      mutateSessions,
-      selectedModel,
-      selectedAgent,
-      isOverridingDefault,
-    ],
-  );
-
-  const processQueue = useCallback(async () => {
-    if (isProcessingQueue.current || !sessionId || !port) return;
-
-    isProcessingQueue.current = true;
-    setSending(true);
-
-    while (true) {
-      let nextMessage: QueuedMessage | undefined;
-      setMessageQueue((prev) => {
-        if (prev.length === 0) {
-          nextMessage = undefined;
-          return prev;
-        }
-        nextMessage = prev[0];
-        return prev.slice(1);
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      if (!nextMessage) break;
-
-      setInFlightMessage(nextMessage);
-      try {
-        await sendMessage(
-          nextMessage.text,
-          nextMessage.id,
-          nextMessage.attachments,
-        );
-      } finally {
-        setInFlightMessage(null);
-      }
-    }
-
-    isProcessingQueue.current = false;
-    setSending(false);
-  }, [sessionId, port, sendMessage]);
-
-  useEffect(() => {
-    if (messageQueue.length > 0 && !isProcessingQueue.current) {
-      processQueue();
-    }
-  }, [messageQueue, processQueue]);
-
   const handleAbort = useCallback(async () => {
     if (!port || !sessionId) return;
     try {
@@ -968,35 +868,9 @@ function SessionPage() {
     setPendingAttachments([]);
     setSendError(null);
 
-    setMessageQueue((prev) => [
-      ...prev,
-      { id: messageId, text: messageText, attachments: attachmentsForMessage },
-    ]);
-
-    isNearBottomRef.current = true;
-    scrollToBottom();
-  };
-
-  const optimisticMessages = useMemo<MessageWithParts[]>(() => {
-    if (!sessionId) return [];
-
-    // Once the server has confirmed the user message we just sent, drop the
-    // optimistic copy so it doesn't render twice. We compare on text content
-    // because the server picks its own ID and timestamp; same text from the
-    // same role within a window is good enough heuristic for chat.
-    const recentServerUserText = new Set<string>();
-    for (const m of messages) {
-      if (m.info.role !== "user") continue;
-      for (const part of m.parts) {
-        if (part.type === "text" && part.text) {
-          recentServerUserText.add(part.text);
-        }
-      }
-    }
-
-    const toMessage = (q: QueuedMessage, isQueued: boolean): MessageWithParts => ({
+    const optimisticMessage: MessageWithParts = {
       info: {
-        id: q.id,
+        id: messageId,
         sessionID: sessionId,
         role: "user",
         time: { created: Date.now() },
@@ -1004,40 +878,60 @@ function SessionPage() {
         model: { providerID: "", modelID: "" },
       },
       parts: [
-        ...(q.attachments ?? []).map((a, i) => ({
-          id: `${q.id}-file-${i}`,
+        ...attachmentsForMessage.map((a, i) => ({
+          id: `${messageId}-file-${i}`,
           sessionID: sessionId,
-          messageID: q.id,
+          messageID: messageId,
           type: "file" as const,
           mime: a.mime,
           filename: a.filename,
           url: a.url,
         })),
         {
-          id: `${q.id}-part`,
+          id: `${messageId}-part`,
           sessionID: sessionId,
-          messageID: q.id,
+          messageID: messageId,
           type: "text",
-          text: q.text,
+          text: messageText,
         },
       ],
-      isQueued,
-    });
+    };
+    addOptimisticMessage(port, sessionId, optimisticMessage);
+    isNearBottomRef.current = true;
+    scrollToBottom();
 
-    const result: MessageWithParts[] = [];
-    if (inFlightMessage && !recentServerUserText.has(inFlightMessage.text)) {
-      result.push(toMessage(inFlightMessage, false));
+    setSending(true);
+    try {
+      const response = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/prompt`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: messageText,
+            attachments: attachmentsForMessage.length
+              ? attachmentsForMessage
+              : undefined,
+            model: isOverridingDefault() ? selectedModel : undefined,
+            agent: selectedAgent,
+          }),
+        },
+      );
+      if (!response.ok) throw new Error("Failed to send message");
+      mutateSessionMessages(port, sessionId);
+      mutateSessions();
+    } catch (err) {
+      setSendError(
+        err instanceof Error ? err.message : "Failed to send message",
+      );
+    } finally {
+      setSending(false);
     }
-    for (const q of messageQueue) {
-      if (recentServerUserText.has(q.text)) continue;
-      result.push(toMessage(q, true));
-    }
-    return result;
-  }, [sessionId, inFlightMessage, messageQueue, messages]);
+  };
 
   const messageNodes = useMemo(
     () =>
-      [...messages, ...optimisticMessages]
+      messages
         .filter((message) => hasVisibleContent(message))
         .map((message) => (
           <MessageItem
@@ -1051,7 +945,6 @@ function SessionPage() {
         )),
     [
       messages,
-      optimisticMessages,
       port,
       sessionId,
       pendingPermissions,
