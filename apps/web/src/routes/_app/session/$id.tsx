@@ -963,6 +963,21 @@ function SessionPage() {
 
   const optimisticMessages = useMemo<MessageWithParts[]>(() => {
     if (!sessionId) return [];
+
+    // Once the server has confirmed the user message we just sent, drop the
+    // optimistic copy so it doesn't render twice. We compare on text content
+    // because the server picks its own ID and timestamp; same text from the
+    // same role within a window is good enough heuristic for chat.
+    const recentServerUserText = new Set<string>();
+    for (const m of messages) {
+      if (m.info.role !== "user") continue;
+      for (const part of m.parts) {
+        if (part.type === "text" && part.text) {
+          recentServerUserText.add(part.text);
+        }
+      }
+    }
+
     const toMessage = (q: QueuedMessage, isQueued: boolean): MessageWithParts => ({
       info: {
         id: q.id,
@@ -992,11 +1007,17 @@ function SessionPage() {
       ],
       isQueued,
     });
+
     const result: MessageWithParts[] = [];
-    if (inFlightMessage) result.push(toMessage(inFlightMessage, false));
-    for (const q of messageQueue) result.push(toMessage(q, true));
+    if (inFlightMessage && !recentServerUserText.has(inFlightMessage.text)) {
+      result.push(toMessage(inFlightMessage, false));
+    }
+    for (const q of messageQueue) {
+      if (recentServerUserText.has(q.text)) continue;
+      result.push(toMessage(q, true));
+    }
     return result;
-  }, [sessionId, inFlightMessage, messageQueue]);
+  }, [sessionId, inFlightMessage, messageQueue, messages]);
 
   const messageNodes = useMemo(
     () =>
