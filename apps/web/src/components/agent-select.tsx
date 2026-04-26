@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { Dialog, ListBox, Popover } from "react-aria-components";
+import { ListBox, Popover } from "react-aria-components";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
+import { Dialog } from "@/components/ui/dialog";
 import {
   Select,
   SelectItem,
