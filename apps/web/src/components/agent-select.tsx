@@ -61,7 +61,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
       <SelectTrigger className="w-40 text-xs sm:text-sm" />
       <SelectContent
         items={agents}
-        className="max-h-[min(70vh,28rem)] text-xs sm:text-sm"
+        className="max-h-[min(70vh,28rem)] [&_[role=option]]:!text-xs sm:[&_[role=option]]:!text-sm [&_[role=option]]:!py-1 sm:[&_[role=option]]:!py-1 [&_[role=group]>[role=presentation]]:!text-xs"
         popover={{
           className:
             "flex max-h-[min(80vh,32rem)] flex-col overflow-hidden",
