@@ -34,9 +34,7 @@ import { useModelStore } from "@/stores/model-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
-  addOptimisticMessage,
-  updateOptimisticMessage,
-  removeOptimisticMessage,
+
   mutateSessionMessages,
   type MessageWithParts,
   type Part,
@@ -717,6 +715,9 @@ function SessionPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  const [inFlightMessage, setInFlightMessage] = useState<QueuedMessage | null>(
+    null,
+  );
   const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
   const resetModelToDefault = useModelStore((s) => s.resetToDefault);
   const [pendingPermissions, setPendingPermissions] = useState<
@@ -783,23 +784,6 @@ function SessionPage() {
   );
   const unlinkedPermissions = pendingPermissions.filter(
     (perm) => !perm.tool?.messageID || !visibleMessageIds.has(perm.tool.messageID),
-  );
-
-  const messageNodes = useMemo(
-    () =>
-      messages
-        .filter((message) => hasVisibleContent(message))
-        .map((message) => (
-          <MessageItem
-            key={message.info.id}
-            message={message}
-            port={port}
-            sessionId={sessionId}
-            pendingPermissions={pendingPermissions}
-            onPermissionResolved={handlePermissionResolved}
-          />
-        )),
-    [messages, port, sessionId, pendingPermissions, handlePermissionResolved],
   );
 
   const scrollToBottom = useCallback(() => {
@@ -890,7 +874,6 @@ function SessionPage() {
         setSendError(
           err instanceof Error ? err.message : "Failed to send message",
         );
-        removeOptimisticMessage(port, sessionId, messageId);
       }
     },
     [
@@ -924,14 +907,16 @@ function SessionPage() {
 
       if (!nextMessage) break;
 
-      updateOptimisticMessage(port, sessionId, nextMessage.id, {
-        isQueued: false,
-      });
-      await sendMessage(
-        nextMessage.text,
-        nextMessage.id,
-        nextMessage.attachments,
-      );
+      setInFlightMessage(nextMessage);
+      try {
+        await sendMessage(
+          nextMessage.text,
+          nextMessage.id,
+          nextMessage.attachments,
+        );
+      } finally {
+        setInFlightMessage(null);
+      }
     }
 
     isProcessingQueue.current = false;
@@ -967,39 +952,6 @@ function SessionPage() {
     setPendingAttachments([]);
     setSendError(null);
 
-    const shouldQueue = sending || messageQueue.length > 0;
-
-    const optimisticMessage: MessageWithParts = {
-      info: {
-        id: messageId,
-        sessionID: sessionId,
-        role: "user",
-        time: { created: Date.now() },
-        agent: "user",
-        model: { providerID: "", modelID: "" },
-      },
-      parts: [
-        ...attachmentsForMessage.map((a, i) => ({
-          id: `${messageId}-file-${i}`,
-          sessionID: sessionId,
-          messageID: messageId,
-          type: "file" as const,
-          mime: a.mime,
-          filename: a.filename,
-          url: a.url,
-        })),
-        {
-          id: `${messageId}-part`,
-          sessionID: sessionId,
-          messageID: messageId,
-          type: "text",
-          text: messageText,
-        },
-      ],
-      isQueued: shouldQueue,
-    };
-    addOptimisticMessage(port, sessionId, optimisticMessage);
-
     setMessageQueue((prev) => [
       ...prev,
       { id: messageId, text: messageText, attachments: attachmentsForMessage },
@@ -1008,6 +960,67 @@ function SessionPage() {
     isNearBottomRef.current = true;
     scrollToBottom();
   };
+
+  const optimisticMessages = useMemo<MessageWithParts[]>(() => {
+    if (!sessionId) return [];
+    const toMessage = (q: QueuedMessage, isQueued: boolean): MessageWithParts => ({
+      info: {
+        id: q.id,
+        sessionID: sessionId,
+        role: "user",
+        time: { created: Date.now() },
+        agent: "user",
+        model: { providerID: "", modelID: "" },
+      },
+      parts: [
+        ...(q.attachments ?? []).map((a, i) => ({
+          id: `${q.id}-file-${i}`,
+          sessionID: sessionId,
+          messageID: q.id,
+          type: "file" as const,
+          mime: a.mime,
+          filename: a.filename,
+          url: a.url,
+        })),
+        {
+          id: `${q.id}-part`,
+          sessionID: sessionId,
+          messageID: q.id,
+          type: "text",
+          text: q.text,
+        },
+      ],
+      isQueued,
+    });
+    const result: MessageWithParts[] = [];
+    if (inFlightMessage) result.push(toMessage(inFlightMessage, false));
+    for (const q of messageQueue) result.push(toMessage(q, true));
+    return result;
+  }, [sessionId, inFlightMessage, messageQueue]);
+
+  const messageNodes = useMemo(
+    () =>
+      [...messages, ...optimisticMessages]
+        .filter((message) => hasVisibleContent(message))
+        .map((message) => (
+          <MessageItem
+            key={message.info.id}
+            message={message}
+            port={port}
+            sessionId={sessionId}
+            pendingPermissions={pendingPermissions}
+            onPermissionResolved={handlePermissionResolved}
+          />
+        )),
+    [
+      messages,
+      optimisticMessages,
+      port,
+      sessionId,
+      pendingPermissions,
+      handlePermissionResolved,
+    ],
+  );
 
   const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files);
