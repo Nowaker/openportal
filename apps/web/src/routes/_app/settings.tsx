@@ -21,6 +21,7 @@ import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
 import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useModelStore } from "@/stores/model-store";
+import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
 
 const themes = [
@@ -71,40 +72,6 @@ interface RawProvider {
   id: string;
   name: string;
   models?: Record<string, { id: string; name: string }>;
-}
-
-const VERSION_RE = /\d+(?:\.\d+)+/g;
-
-function compareModels(a: ModelListItem, b: ModelListItem): number {
-  const aBase = a.name
-    .replace(VERSION_RE, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-  const bBase = b.name
-    .replace(VERSION_RE, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-  if (aBase !== bBase) return aBase.localeCompare(bBase);
-
-  const aVersions = (a.name.match(VERSION_RE) ?? []).map((v) =>
-    v.split(".").map(Number),
-  );
-  const bVersions = (b.name.match(VERSION_RE) ?? []).map((v) =>
-    v.split(".").map(Number),
-  );
-  const len = Math.max(aVersions.length, bVersions.length);
-  for (let i = 0; i < len; i++) {
-    const av = aVersions[i] ?? [];
-    const bv = bVersions[i] ?? [];
-    const partLen = Math.max(av.length, bv.length);
-    for (let j = 0; j < partLen; j++) {
-      const cmp = (bv[j] ?? 0) - (av[j] ?? 0);
-      if (cmp !== 0) return cmp;
-    }
-  }
-  return a.name.localeCompare(b.name);
 }
 
 function buildProviderList(
