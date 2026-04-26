@@ -27,9 +27,7 @@ import { useModelStore } from "@/stores/model-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
-  addOptimisticMessage,
-  updateOptimisticMessage,
-  removeOptimisticMessage,
+
   mutateSessionMessages,
   type MessageWithParts,
   type Part,
@@ -678,6 +676,9 @@ function SessionPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  const [inFlightMessage, setInFlightMessage] = useState<QueuedMessage | null>(
+    null,
+  );
   const [modelOverride, setModelOverride] = useState(false);
   const [pendingPermissions, setPendingPermissions] = useState<
     PermissionRequest[]
@@ -823,7 +824,6 @@ function SessionPage() {
         setSendError(
           err instanceof Error ? err.message : "Failed to send message",
         );
-        removeOptimisticMessage(port, sessionId, messageId);
       }
     },
     [sessionId, port, mutateSessions, selectedModel, selectedAgent, modelOverride],
@@ -850,10 +850,12 @@ function SessionPage() {
 
       if (!nextMessage) break;
 
-      updateOptimisticMessage(port, sessionId, nextMessage.id, {
-        isQueued: false,
-      });
-      await sendMessage(nextMessage.text, nextMessage.id);
+      setInFlightMessage(nextMessage);
+      try {
+        await sendMessage(nextMessage.text, nextMessage.id);
+      } finally {
+        setInFlightMessage(null);
+      }
     }
 
     isProcessingQueue.current = false;
@@ -875,11 +877,17 @@ function SessionPage() {
     setInput("");
     setSendError(null);
 
-    const shouldQueue = sending || messageQueue.length > 0;
+    setMessageQueue((prev) => [...prev, { id: messageId, text: messageText }]);
 
-    const optimisticMessage: MessageWithParts = {
+    isNearBottomRef.current = true;
+    scrollToBottom();
+  };
+
+  const optimisticMessages = useMemo<MessageWithParts[]>(() => {
+    if (!sessionId) return [];
+    const toMessage = (q: QueuedMessage, isQueued: boolean): MessageWithParts => ({
       info: {
-        id: messageId,
+        id: q.id,
         sessionID: sessionId,
         role: "user",
         time: { created: Date.now() },
@@ -888,22 +896,20 @@ function SessionPage() {
       },
       parts: [
         {
-          id: `${messageId}-part`,
+          id: `${q.id}-part`,
           sessionID: sessionId,
-          messageID: messageId,
+          messageID: q.id,
           type: "text",
-          text: messageText,
+          text: q.text,
         },
       ],
-      isQueued: shouldQueue,
-    };
-    addOptimisticMessage(port, sessionId, optimisticMessage);
-
-    setMessageQueue((prev) => [...prev, { id: messageId, text: messageText }]);
-
-    isNearBottomRef.current = true;
-    scrollToBottom();
-  };
+      isQueued,
+    });
+    const result: MessageWithParts[] = [];
+    if (inFlightMessage) result.push(toMessage(inFlightMessage, false));
+    for (const q of messageQueue) result.push(toMessage(q, true));
+    return result;
+  }, [sessionId, inFlightMessage, messageQueue]);
 
   return (
     <div className="flex h-full flex-col -m-4">
@@ -930,7 +936,7 @@ function SessionPage() {
         )}
 
         <div className="divide-y divide-dashed divide-border overflow-x-hidden">
-          {messages
+          {[...messages, ...optimisticMessages]
             .filter((message) => hasVisibleContent(message))
             .map((message) => (
               <MessageItem
