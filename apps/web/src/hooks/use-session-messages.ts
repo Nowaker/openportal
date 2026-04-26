@@ -50,12 +50,17 @@ function usePort() {
   return instance?.port ?? null;
 }
 
-export function useSessionMessages(sessionId: string | undefined) {
+export interface UseSessionMessagesOptions {
+  loadAll?: boolean;
+}
+
+export function useSessionMessages(
+  sessionId: string | undefined,
+  options: UseSessionMessagesOptions = {},
+) {
   const port = usePort();
   const key =
-    port && sessionId
-      ? `/api/opencode/${port}/session/${sessionId}/messages`
-      : null;
+    port && sessionId ? getMessagesKey(port, sessionId, options.loadAll) : null;
 
   const {
     data,
@@ -76,12 +81,35 @@ export function useSessionMessages(sessionId: string | undefined) {
   };
 }
 
-export function getMessagesKey(port: number, sessionId: string) {
-  return `/api/opencode/${port}/session/${sessionId}/messages`;
+export function getMessagesKey(
+  port: number,
+  sessionId: string,
+  loadAll = false,
+) {
+  const base = `/api/opencode/${port}/session/${sessionId}/messages`;
+  return loadAll ? `${base}?limit=all` : base;
 }
 
 export function mutateSessionMessages(port: number, sessionId: string) {
-  mutate(getMessagesKey(port, sessionId));
+  // Revalidate any cached variant of this session's messages key, so callers
+  // that loaded the full history still get refreshed without us having to
+  // know which variant they used.
+  mutate(
+    (key) =>
+      typeof key === "string" &&
+      key.startsWith(`/api/opencode/${port}/session/${sessionId}/messages`),
+  );
+}
+
+function isMessagesKeyForSession(
+  port: number,
+  sessionId: string,
+  key: unknown,
+): key is string {
+  return (
+    typeof key === "string" &&
+    key.startsWith(`/api/opencode/${port}/session/${sessionId}/messages`)
+  );
 }
 
 export function addOptimisticMessage(
@@ -89,20 +117,28 @@ export function addOptimisticMessage(
   sessionId: string,
   message: MessageWithParts,
 ): () => void {
-  const key = getMessagesKey(port, sessionId);
-  let previousMessages: MessageWithParts[] = [];
+  const previousByKey = new Map<string, MessageWithParts[]>();
+  const keys = [
+    getMessagesKey(port, sessionId, false),
+    getMessagesKey(port, sessionId, true),
+  ];
 
-  mutate(
-    key,
-    (current: MessageWithParts[] | undefined) => {
-      previousMessages = current || [];
-      return [...previousMessages, message];
-    },
-    { revalidate: false },
-  );
+  for (const key of keys) {
+    mutate(
+      key,
+      (current: MessageWithParts[] | undefined) => {
+        const prev = current ?? [];
+        previousByKey.set(key, prev);
+        return [...prev, message];
+      },
+      { revalidate: false },
+    );
+  }
 
   return () => {
-    mutate(key, previousMessages, { revalidate: false });
+    for (const [key, prev] of previousByKey.entries()) {
+      mutate(key, prev, { revalidate: false });
+    }
   };
 }
 
@@ -112,10 +148,8 @@ export function updateOptimisticMessage(
   messageId: string,
   updates: Partial<MessageWithParts>,
 ) {
-  const key = getMessagesKey(port, sessionId);
-
   mutate(
-    key,
+    (key) => isMessagesKeyForSession(port, sessionId, key),
     (current: MessageWithParts[] | undefined) => {
       if (!current) return current;
       return current.map((m) =>
@@ -131,10 +165,8 @@ export function removeOptimisticMessage(
   sessionId: string,
   messageId: string,
 ) {
-  const key = getMessagesKey(port, sessionId);
-
   mutate(
-    key,
+    (key) => isMessagesKeyForSession(port, sessionId, key),
     (current: MessageWithParts[] | undefined) => {
       if (!current) return current;
       return current.filter((m) => m.info.id !== messageId);
