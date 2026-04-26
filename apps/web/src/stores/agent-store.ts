@@ -21,7 +21,7 @@ export const useAgentStore = create<AgentState>()(
     (set, get) => ({
       selectedAgents: {},
       lastUsedAgent: null,
-      defaultAgentStrategy: "specific",
+      defaultAgentStrategy: "last-used",
       defaultAgentName: "plan",
       setSelectedAgent: (sessionId, agent) =>
         set((state) => ({
