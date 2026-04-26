@@ -155,31 +155,31 @@ export function AppSidebarNav() {
         <Button
           size="xs"
           intent="outline"
-          className="uppercase font-mono"
+          className="!text-[11px] uppercase font-mono"
           onPress={handlePull}
           isDisabled={isLoading || !sessionId}
         >
-          <ArrowDownCircleIcon size="14px" />
+          <ArrowDownCircleIcon size="12px" />
           {isPulling ? "Pulling..." : "Pull"}
         </Button>
         <Button
           size="xs"
           intent="outline"
-          className="uppercase font-mono"
+          className="!text-[11px] uppercase font-mono"
           onPress={handlePush}
           isDisabled={isLoading || !sessionId}
         >
-          <ArrowUpCircleIcon size="14px" />
+          <ArrowUpCircleIcon size="12px" />
           {isPushing ? "Pushing..." : "Push"}
         </Button>
         <Button
           size="xs"
           intent="outline"
-          className="uppercase font-mono"
+          className="!text-[11px] uppercase font-mono"
           onPress={handleCreatePR}
           isDisabled={isLoading || !sessionId}
         >
-          <IconGitPullRequest size="14px" />
+          <IconGitPullRequest size="12px" />
           {isCreatingPR ? "Creating..." : "Create PR"}
         </Button>
       </span>
