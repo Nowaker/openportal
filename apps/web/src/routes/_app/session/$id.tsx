@@ -1115,24 +1115,21 @@ function SessionPage() {
         )}
       </div>
 
-      <div
-        className="border-t border-border shrink-0 relative"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        {composerCollapsed ? (
+      <div className="border-t border-border shrink-0 relative">
+        {composerCollapsed && (
           <button
             type="button"
             onClick={() => setComposerCollapsed(false)}
-            className="flex w-full items-center justify-between px-3 py-1.5 text-xs text-muted-fg hover:bg-muted/40 transition-colors"
+            className="absolute right-1 -top-9 z-20 flex size-8 items-center justify-center rounded-full border border-border bg-bg/90 text-muted-fg shadow hover:bg-muted hover:text-fg transition-colors"
             aria-label="Show composer"
             title="Show composer"
           >
-            <span>Composer hidden — tap to show.</span>
-            <ChevronUpIcon className="size-4 shrink-0" />
+            <ChevronUpIcon className="size-4" />
           </button>
-        ) : (
+        )}
+        {!composerCollapsed && (
           <>
-            <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 bg-muted/30">
+            <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 bg-muted/30 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
                 <AgentSelect sessionId={sessionId} />
                 <ModelOverrideControl
