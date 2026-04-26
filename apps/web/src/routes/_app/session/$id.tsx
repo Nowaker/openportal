@@ -785,6 +785,23 @@ function SessionPage() {
     (perm) => !perm.tool?.messageID || !visibleMessageIds.has(perm.tool.messageID),
   );
 
+  const messageNodes = useMemo(
+    () =>
+      messages
+        .filter((message) => hasVisibleContent(message))
+        .map((message) => (
+          <MessageItem
+            key={message.info.id}
+            message={message}
+            port={port}
+            sessionId={sessionId}
+            pendingPermissions={pendingPermissions}
+            onPermissionResolved={handlePermissionResolved}
+          />
+        )),
+    [messages, port, sessionId, pendingPermissions, handlePermissionResolved],
+  );
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -1059,18 +1076,7 @@ function SessionPage() {
         )}
 
         <div className="divide-y divide-dashed divide-border overflow-x-hidden">
-          {messages
-            .filter((message) => hasVisibleContent(message))
-            .map((message) => (
-              <MessageItem
-                key={message.info.id}
-                message={message}
-                port={port}
-                sessionId={sessionId}
-                pendingPermissions={pendingPermissions}
-                onPermissionResolved={handlePermissionResolved}
-              />
-            ))}
+          {messageNodes}
           {unlinkedPermissions.length > 0 && (
             <div className="px-6 py-4 space-y-2 border-t border-dashed border-border">
               {unlinkedPermissions.map((permission) => (
@@ -1096,7 +1102,10 @@ function SessionPage() {
         )}
       </div>
 
-      <div className="border-t border-border shrink-0 relative">
+      <div
+        className="border-t border-border shrink-0 relative"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
         {composerCollapsed ? (
           <button
             type="button"
@@ -1110,16 +1119,18 @@ function SessionPage() {
           </button>
         ) : (
           <>
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border/60 bg-muted/30">
-              <AgentSelect sessionId={sessionId} />
-              <ModelOverrideControl
-                isOverriding={isOverridingDefault()}
-                onReset={resetModelToDefault}
-              />
+            <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 bg-muted/30">
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
+                <AgentSelect sessionId={sessionId} />
+                <ModelOverrideControl
+                  isOverriding={isOverridingDefault()}
+                  onReset={resetModelToDefault}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}
-                className="rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 title="Attach image"
                 aria-label="Attach image"
               >
@@ -1128,14 +1139,14 @@ function SessionPage() {
               <button
                 type="button"
                 onClick={() => setComposerCollapsed(true)}
-                className="ml-auto rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 aria-label="Hide composer"
                 title="Hide composer"
               >
                 <ChevronDownIcon className="size-4" />
               </button>
             </div>
-            <div className="px-3 py-2 relative">
+            <div className="px-2 pt-1.5 pb-1 relative">
             <FileMentionPopover
               isOpen={fileMention.isOpen}
               searchQuery={fileMention.searchQuery}
@@ -1243,8 +1254,8 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="field-sizing-fixed h-full w-full resize-none min-h-24 max-h-32 overflow-y-auto"
-                    rows={3}
+                    className="field-sizing-fixed h-full w-full resize-none max-h-32 overflow-y-auto"
+                    rows={2}
                   />
                 </div>
                 <div className="flex flex-col justify-end shrink-0">
