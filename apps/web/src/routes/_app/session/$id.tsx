@@ -720,6 +720,21 @@ function SessionPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasContent, setHasContent] = useState(false);
   const [sending, setSending] = useState(false);
+
+  // The assistant is "busy" whenever the most recent message is from the
+  // user (not yet answered) or from the assistant but missing
+  // `time.completed`, which OpenCode only sets when the turn fully
+  // finishes. This drives the Stop button + Thinking indicator and is
+  // independent of `sending`, which only covers the brief POST round-trip.
+  const isAssistantBusy = useMemo(() => {
+    if (messages.length === 0) return false;
+    const last = messages[messages.length - 1];
+    if (!last) return false;
+    if (last.info.role === "user") return true;
+    const completed = (last.info as { time?: { completed?: number } }).time
+      ?.completed;
+    return !completed;
+  }, [messages]);
   const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
   const resetModelToDefault = useModelStore((s) => s.resetToDefault);
   const [pendingPermissions, setPendingPermissions] = useState<
@@ -1035,7 +1050,7 @@ function SessionPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {sending && (
+        {isAssistantBusy && (
           <div className="py-3 px-6">
             <div className="flex items-center gap-2">
               <Ripples size="30" speed="2" color="var(--color-primary)" />
@@ -1210,7 +1225,7 @@ function SessionPage() {
                   />
                 </div>
                 <div className="flex flex-col justify-end gap-1.5 shrink-0">
-                  {sending && (
+                  {isAssistantBusy && (
                     <Button
                       type="button"
                       onPress={handleAbort}
@@ -1227,7 +1242,9 @@ function SessionPage() {
                       !hasContent && pendingAttachments.length === 0
                     }
                     className="size-12 !p-0"
-                    aria-label={sending ? "Queue message" : "Send"}
+                    aria-label={
+                      isAssistantBusy ? "Queue message" : "Send"
+                    }
                   >
                     <PlayIcon className="size-6" />
                   </Button>
