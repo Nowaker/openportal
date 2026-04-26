@@ -294,16 +294,20 @@ function QuestionAnswerForm({
   port,
   sessionId,
   callID,
+  isAssistantBusy,
+  onAbort,
 }: {
   questions: QuestionInfo[];
   partKey: string;
   port: number;
   sessionId: string;
   callID: string;
+  isAssistantBusy: boolean;
+  onAbort: () => void;
 }) {
   const [selections, setSelections] = useState<Record<number, string[]>>({});
   const [freeformInputs, setFreeformInputs] = useState<Record<number, string>>({});
-  const [submitting, setSubmitting] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const toggleOption = (qIdx: number, label: string, isMulti: boolean) => {
@@ -322,19 +326,14 @@ function QuestionAnswerForm({
   };
 
   const handleSubmit = async () => {
-    setSubmitting(true);
+    setIsPosting(true);
     setSubmitError(null);
 
     try {
-      // Fetch pending questions to get the requestID
       const listRes = await fetch(`/api/opencode/${port}/questions`);
       if (!listRes.ok) throw new Error("Failed to fetch pending questions");
       const pendingQuestions = (await listRes.json()) as QuestionRequest[];
 
-      console.log("[handleSubmit] looking for sessionID:", sessionId, "callID:", callID);
-      console.log("[handleSubmit] pending questions:", JSON.stringify(pendingQuestions, null, 2));
-
-      // Match by callID first, then by sessionID as fallback
       const match =
         pendingQuestions.find((q) => q.tool?.callID === callID) ??
         pendingQuestions.find((q) => q.sessionID === sessionId);
@@ -343,7 +342,6 @@ function QuestionAnswerForm({
         throw new Error("Question request not found - it may have already been answered");
       }
 
-      // Build answers array: one string[] per question
       const answers: QuestionAnswer[] = questions.map((_, i) => {
         const selected = selections[i] || [];
         const freeform = freeformInputs[i]?.trim() || "";
@@ -361,12 +359,15 @@ function QuestionAnswerForm({
         },
       );
 
-      if (!replyRes.ok) throw new Error("Failed to submit answers");
+      if (!replyRes.ok) {
+        throw new Error(await readErrorMessage(replyRes));
+      }
 
       mutateSessionMessages(port, sessionId);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to submit answers");
-      setSubmitting(false);
+    } finally {
+      setIsPosting(false);
     }
   };
 
@@ -405,13 +406,13 @@ function QuestionAnswerForm({
                     <button
                       key={`opt-${idx}-${optIdx}`}
                       type="button"
-                      disabled={submitting}
+                      disabled={isPosting || isAssistantBusy}
                       onClick={() => toggleOption(idx, opt.label, !!q.multiple)}
                       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
                         isSelected
                           ? "border-primary bg-primary/10 text-primary"
                           : "border-border bg-bg hover:border-fg/30 text-fg/80"
-                      } ${submitting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                      } ${isPosting || isAssistantBusy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                     >
                       <span>{opt.label}</span>
                       {opt.description && (
@@ -426,7 +427,7 @@ function QuestionAnswerForm({
             {(q.options.length === 0 || q.custom) && (
               <input
                 type="text"
-                disabled={submitting}
+                disabled={isPosting || isAssistantBusy}
                 placeholder="Type your answer..."
                 value={freeformInputs[idx] || ""}
                 onChange={(e) =>
@@ -449,16 +450,31 @@ function QuestionAnswerForm({
         <div className="text-[11px] text-danger">{submitError}</div>
       )}
 
-      <Button
-        type="button"
-        size="sm"
-        isDisabled={!hasAnswersForAllQuestions || submitting}
-        onPress={handleSubmit}
-        className="mt-1"
-      >
-        <SendIcon size="12px" />
-        {submitting ? "Sending..." : "Submit Answers"}
-      </Button>
+      <div className="mt-1 flex items-center gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          isDisabled={!hasAnswersForAllQuestions || isPosting || isAssistantBusy}
+          onPress={handleSubmit}
+          className="text-xs"
+        >
+          <SendIcon size="12px" />
+          {isPosting ? "Sending..." : "Submit Answers"}
+        </Button>
+        {isAssistantBusy && !isPosting && (
+          <Button
+            type="button"
+            size="sm"
+            intent="danger"
+            onPress={onAbort}
+            aria-label="Stop the current run"
+            className="text-xs"
+          >
+            <StopIcon className="size-3" />
+            Stop
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -552,10 +568,14 @@ const ToolCallItem = memo(function ToolCallItem({
   part,
   port,
   sessionId,
+  isAssistantBusy,
+  onAbort,
 }: {
   part: ToolPart;
   port: number;
   sessionId: string;
+  isAssistantBusy: boolean;
+  onAbort: () => void;
 }) {
   const { icon, label, details } = formatToolCall(part);
   const isQuestionTool = (part.tool || "").toLowerCase() === "question";
@@ -591,6 +611,8 @@ const ToolCallItem = memo(function ToolCallItem({
             port={port}
             sessionId={sessionId}
             callID={part.callID || ""}
+            isAssistantBusy={isAssistantBusy}
+            onAbort={onAbort}
           />
         ) : (
           <div className="mt-2 space-y-2 text-fg/90">
@@ -630,12 +652,16 @@ const MessageItem = memo(function MessageItem({
   sessionId,
   pendingPermissions,
   onPermissionResolved,
+  isAssistantBusy,
+  onAbort,
 }: {
   message: MessageWithParts;
   port: number;
   sessionId: string;
   pendingPermissions: PermissionRequest[];
   onPermissionResolved: (requestId: string) => void;
+  isAssistantBusy: boolean;
+  onAbort: () => void;
 }) {
   const textContent = getMessageContent(message.parts);
   const isAssistant = message.info.role === "assistant";
@@ -680,6 +706,8 @@ const MessageItem = memo(function MessageItem({
               part={part}
               port={port}
               sessionId={sessionId}
+              isAssistantBusy={isAssistantBusy}
+              onAbort={onAbort}
             />
           ))}
         </div>
@@ -1033,6 +1061,8 @@ function SessionPage() {
             sessionId={sessionId}
             pendingPermissions={pendingPermissions}
             onPermissionResolved={handlePermissionResolved}
+            isAssistantBusy={isAssistantBusy}
+            onAbort={handleAbort}
           />
         )),
     [
@@ -1041,6 +1071,8 @@ function SessionPage() {
       sessionId,
       pendingPermissions,
       handlePermissionResolved,
+      isAssistantBusy,
+      handleAbort,
     ],
   );
 
