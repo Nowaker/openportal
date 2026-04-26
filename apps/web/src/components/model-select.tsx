@@ -143,7 +143,7 @@ export function ModelSelect() {
     <Select
       aria-label="Model"
       placeholder={isLoading ? "Loading models..." : "Select a model"}
-      className="w-auto"
+      className="w-full min-w-0"
       selectedKey={overriding ? selectedModelKey : USE_DEFAULT_KEY}
       onSelectionChange={(key) => {
         if (!key) return;
@@ -154,7 +154,7 @@ export function ModelSelect() {
         setModelFromKey(String(key));
       }}
     >
-      <SelectTrigger className="w-48 text-xs sm:text-sm" />
+      <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
       <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(80vh,32rem)] w-(--trigger-width) entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
         <Dialog aria-label="Model">
           <Autocomplete filter={contains}>

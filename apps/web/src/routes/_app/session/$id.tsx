@@ -677,9 +677,9 @@ function hasVisibleContent(message: MessageWithParts): boolean {
 function ModelOverrideControl({ isOverriding }: { isOverriding: boolean }) {
   return (
     <div
-      className={
-        isOverriding ? "rounded-lg ring-1 ring-primary/50" : undefined
-      }
+      className={`w-full min-w-0${
+        isOverriding ? " rounded-lg ring-1 ring-primary/50" : ""
+      }`}
     >
       <ModelSelect />
     </div>
@@ -1068,9 +1068,13 @@ function SessionPage() {
         {!composerCollapsed && (
           <>
             <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 bg-muted/30 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
-                <AgentSelect sessionId={sessionId} />
-                <ModelOverrideControl isOverriding={isOverridingDefault()} />
+              <div className="flex min-w-0 flex-1 items-center gap-1">
+                <div className="min-w-0 flex-1 max-w-40">
+                  <AgentSelect sessionId={sessionId} />
+                </div>
+                <div className="min-w-0 flex-[1.2] max-w-48">
+                  <ModelOverrideControl isOverriding={isOverridingDefault()} />
+                </div>
               </div>
               <button
                 type="button"
@@ -1210,7 +1214,7 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="field-sizing-fixed h-full w-full resize-none max-h-32 overflow-y-auto"
+                    className="field-sizing-fixed h-full w-full resize-none max-h-32 overflow-y-auto text-sm sm:text-base"
                     rows={2}
                   />
                 </div>
