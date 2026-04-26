@@ -18,7 +18,7 @@ const GridList = <T extends object>({ className, ...props }: GridListProps<T>) =
   <GridListPrimitive
     data-slot="grid-list"
     className={cx(
-      "relative flex flex-col gap-y-1 *:drop-target:border *:drop-target:border-accent has-data-[slot=grid-list-section]:gap-y-6 sm:text-sm/6",
+      "relative flex flex-col gap-y-1 text-sm/6 *:drop-target:border *:drop-target:border-accent has-data-[slot=grid-list-section]:gap-y-6",
       className,
     )}
     {...props}
