@@ -92,7 +92,10 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
           <SelectItem id={agent.name} textValue={agent.name}>
             <SelectLabel>{agent.name}</SelectLabel>
             {agent.description && (
-              <div className="col-start-2 row-start-2 flex items-center gap-2 text-muted-fg text-xs">
+              <div
+                slot="description"
+                className="col-start-2 row-start-2 flex items-center gap-2 text-muted-fg text-xs"
+              >
                 <span className="truncate max-w-[200px]">
                   {agent.description}
                 </span>
