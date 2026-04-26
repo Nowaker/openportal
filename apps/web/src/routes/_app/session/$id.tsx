@@ -1289,29 +1289,28 @@ function SessionPage() {
                     rows={2}
                   />
                 </div>
-                <div className="flex flex-col justify-end shrink-0">
-                  {sending ? (
+                <div className="flex flex-col justify-end gap-1.5 shrink-0">
+                  {sending && (
                     <Button
                       type="button"
                       onPress={handleAbort}
                       intent="danger"
-                      className="size-12 !p-0"
+                      className="size-9 !p-0"
                       aria-label="Stop the current run"
                     >
-                      <StopIcon className="size-6" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      isDisabled={
-                        !input.trim() && pendingAttachments.length === 0
-                      }
-                      className="size-12 !p-0"
-                      aria-label="Send"
-                    >
-                      <PlayIcon className="size-6" />
+                      <StopIcon className="size-4" />
                     </Button>
                   )}
+                  <Button
+                    type="submit"
+                    isDisabled={
+                      !input.trim() && pendingAttachments.length === 0
+                    }
+                    className="size-12 !p-0"
+                    aria-label={sending ? "Queue message" : "Send"}
+                  >
+                    <PlayIcon className="size-6" />
+                  </Button>
                 </div>
               </div>
             </form>
