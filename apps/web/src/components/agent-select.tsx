@@ -78,7 +78,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
     <Select
       aria-label="Agent"
       placeholder={isLoading ? "Loading agents..." : "Select agent"}
-      className="w-auto"
+      className="w-full min-w-0"
       selectedKey={selectedAgent}
       onSelectionChange={(key) => {
         if (sessionId && key) {
@@ -86,7 +86,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
         }
       }}
     >
-      <SelectTrigger className="w-40 text-xs sm:text-sm" />
+      <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
       <SelectContent
         items={agents}
         className="max-h-[min(70vh,28rem)] text-xs sm:text-sm"
