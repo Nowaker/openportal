@@ -14,12 +14,18 @@ const promptBodySchema = z.object({
   agent: z.string().optional(),
 });
 
+// Always use OpenCode's `promptAsync` endpoint. It returns 204 immediately
+// after the message is appended to the session, and OpenCode serialises
+// prompts at the session level on the server side. That makes a Portal-side
+// queue both unnecessary and harmful: a client-side queue means every
+// message typed while the assistant is busy lives only in the browser tab
+// and can be dropped on a refresh, race, or component unmount before it
+// ever reaches the backend.
 export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
   const body = await parseBody(event, promptBodySchema);
 
-  const client = getOpencodeClient(port);
   const promptBody = {
     parts: [{ type: "text" as const, text: body.text }],
     model: body.model,
@@ -27,26 +33,15 @@ export default defineHandler(async (event) => {
   };
 
   try {
-    const result = await client.session.prompt({
+    await getOpencodeClient(port).session.promptAsync({
       path: { id },
       body: promptBody,
     });
-    return result.data;
+    return { accepted: true };
   } catch (error) {
-    const isTimeout =
-      error instanceof Error &&
-      (error.name === "TimeoutError" || error.cause instanceof DOMException);
-
-    if (isTimeout) {
-      const asyncResult = await client.session.promptAsync({
-        path: { id },
-        body: promptBody,
-      });
-      return asyncResult.data;
-    }
-
-    throw new HTTPError(error instanceof Error ? error.message : "Prompt failed", {
-      status: 500,
-    });
+    throw new HTTPError(
+      error instanceof Error ? error.message : "Prompt failed",
+      { status: 500 },
+    );
   }
 });

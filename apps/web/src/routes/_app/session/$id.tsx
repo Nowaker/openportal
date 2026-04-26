@@ -28,8 +28,6 @@ import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
   addOptimisticMessage,
-  updateOptimisticMessage,
-  removeOptimisticMessage,
   mutateSessionMessages,
   type MessageWithParts,
   type Part,
@@ -45,11 +43,6 @@ import type { Session } from "@opencode-ai/sdk";
 export const Route = createFileRoute("/_app/session/$id")({
   component: SessionPage,
 });
-
-interface QueuedMessage {
-  id: string;
-  text: string;
-}
 
 type PermissionReply = "once" | "always" | "reject";
 
@@ -677,14 +670,13 @@ function SessionPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const [modelOverride, setModelOverride] = useState(false);
   const [pendingPermissions, setPendingPermissions] = useState<
     PermissionRequest[]
   >([]);
   const [hasScrolledInitially, setHasScrolledInitially] = useState(false);
   const [fileResults, setFileResults] = useState<string[]>([]);
-  const isProcessingQueue = useRef(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -794,78 +786,6 @@ function SessionPage() {
     isNearBottomRef.current = true;
   }, [sessionId]);
 
-  const sendMessage = useCallback(
-    async (messageText: string, messageId: string) => {
-      if (!sessionId || !port) return;
-
-      try {
-        const response = await fetch(
-          `/api/opencode/${port}/session/${sessionId}/prompt`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: messageText,
-              model: modelOverride ? selectedModel : undefined,
-              agent: selectedAgent,
-            }),
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to send message");
-        }
-
-        mutateSessionMessages(port, sessionId);
-        isNearBottomRef.current = true;
-        mutateSessions();
-      } catch (err) {
-        setSendError(
-          err instanceof Error ? err.message : "Failed to send message",
-        );
-        removeOptimisticMessage(port, sessionId, messageId);
-      }
-    },
-    [sessionId, port, mutateSessions, selectedModel, selectedAgent, modelOverride],
-  );
-
-  const processQueue = useCallback(async () => {
-    if (isProcessingQueue.current || !sessionId || !port) return;
-
-    isProcessingQueue.current = true;
-    setSending(true);
-
-    while (true) {
-      let nextMessage: QueuedMessage | undefined;
-      setMessageQueue((prev) => {
-        if (prev.length === 0) {
-          nextMessage = undefined;
-          return prev;
-        }
-        nextMessage = prev[0];
-        return prev.slice(1);
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      if (!nextMessage) break;
-
-      updateOptimisticMessage(port, sessionId, nextMessage.id, {
-        isQueued: false,
-      });
-      await sendMessage(nextMessage.text, nextMessage.id);
-    }
-
-    isProcessingQueue.current = false;
-    setSending(false);
-  }, [sessionId, port, sendMessage]);
-
-  useEffect(() => {
-    if (messageQueue.length > 0 && !isProcessingQueue.current) {
-      processQueue();
-    }
-  }, [messageQueue, processQueue]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !sessionId || !port) return;
@@ -874,8 +794,6 @@ function SessionPage() {
     const messageId = `temp-${Date.now()}`;
     setInput("");
     setSendError(null);
-
-    const shouldQueue = sending || messageQueue.length > 0;
 
     const optimisticMessage: MessageWithParts = {
       info: {
@@ -895,14 +813,35 @@ function SessionPage() {
           text: messageText,
         },
       ],
-      isQueued: shouldQueue,
     };
     addOptimisticMessage(port, sessionId, optimisticMessage);
-
-    setMessageQueue((prev) => [...prev, { id: messageId, text: messageText }]);
-
     isNearBottomRef.current = true;
     scrollToBottom();
+
+    setSending(true);
+    try {
+      const response = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/prompt`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: messageText,
+            model: modelOverride ? selectedModel : undefined,
+            agent: selectedAgent,
+          }),
+        },
+      );
+      if (!response.ok) throw new Error("Failed to send message");
+      mutateSessionMessages(port, sessionId);
+      mutateSessions();
+    } catch (err) {
+      setSendError(
+        err instanceof Error ? err.message : "Failed to send message",
+      );
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
