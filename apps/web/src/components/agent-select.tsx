@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { ListBox, Popover } from "react-aria-components";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
-import { Dialog } from "@/components/ui/dialog";
 import {
   Select,
   SelectItem,
@@ -89,8 +88,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
     >
       <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
       <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(50vh,24rem)] w-(--trigger-width) entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
-        <Dialog aria-label="Agent">
-          <ListBox
+        <ListBox
             items={agents}
             className="grid max-h-[min(45vh,22rem)] w-full grid-cols-[auto_1fr] flex-col gap-y-0.5 overflow-y-auto p-1 text-xs outline-hidden sm:text-sm"
           >
@@ -119,8 +117,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
                 )}
               </SelectItem>
             )}
-          </ListBox>
-        </Dialog>
+        </ListBox>
       </Popover>
     </Select>
   );
