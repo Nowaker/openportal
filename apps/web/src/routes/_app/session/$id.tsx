@@ -21,7 +21,6 @@ import IconEye from "@/components/icons/eye-icon";
 import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
-import { ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
@@ -650,36 +649,14 @@ function hasVisibleContent(message: MessageWithParts): boolean {
   return !!(textContent || hasToolCalls);
 }
 
-function ModelOverrideControl({
-  isOverriding,
-  onReset,
-}: {
-  isOverriding: boolean;
-  onReset: () => void;
-}) {
+function ModelOverrideControl({ isOverriding }: { isOverriding: boolean }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <div
-        className={
-          isOverriding
-            ? "rounded-lg ring-1 ring-primary/50"
-            : undefined
-        }
-      >
-        <ModelSelect />
-      </div>
-      {isOverriding && (
-        <button
-          type="button"
-          onClick={onReset}
-          className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
-          title="Use the default model again"
-          aria-label="Use default model"
-        >
-          <ArrowUturnLeftIcon className="size-3" />
-          <span>default</span>
-        </button>
-      )}
+    <div
+      className={
+        isOverriding ? "rounded-lg ring-1 ring-primary/50" : undefined
+      }
+    >
+      <ModelSelect />
     </div>
   );
 }
@@ -714,7 +691,6 @@ function SessionPage() {
   const [sending, setSending] = useState(false);
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
-  const resetModelToDefault = useModelStore((s) => s.resetToDefault);
   const [pendingPermissions, setPendingPermissions] = useState<
     PermissionRequest[]
   >([]);
@@ -1086,10 +1062,7 @@ function SessionPage() {
               <AgentSelect sessionId={sessionId} />
             </div>
             <div className="flex items-center justify-between gap-2 sm:justify-end">
-              <ModelOverrideControl
-                isOverriding={isOverridingDefault()}
-                onReset={resetModelToDefault}
-              />
+              <ModelOverrideControl isOverriding={isOverridingDefault()} />
               <Button
                 type="submit"
                 isDisabled={!input.trim()}
