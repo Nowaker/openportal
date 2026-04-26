@@ -27,6 +27,7 @@ import {
 } from "react-aria-components";
 import { twJoin, twMerge } from "tailwind-merge";
 import { cx } from "@/lib/primitive";
+import useMediaQuery from "@/hooks/use-media-query";
 import { DropdownKeyboard } from "./dropdown";
 import { Loader } from "./loader";
 import {
@@ -158,10 +159,11 @@ const CommandMenuSearch = ({
 }: CommandMenuSearchProps) => {
   const state = use(OverlayTriggerStateContext)!;
   const { isPending, escapeButton } = useCommandMenu();
+  const { isMobile } = useMediaQuery();
   return (
     <SearchField
       aria-label="Quick search"
-      autoFocus
+      autoFocus={!isMobile}
       className={cx("flex w-full items-center px-2.5 py-1", className)}
       {...props}
     >
@@ -175,7 +177,7 @@ const CommandMenuSearch = ({
       )}
       <Input
         placeholder={placeholder ?? "Search..."}
-        className="w-full min-w-0 bg-transparent px-2.5 py-2 text-base text-fg placeholder-muted-fg outline-hidden focus:outline-hidden sm:px-2 sm:py-1.5 sm:text-sm [&::-ms-reveal]:hidden [&::-webkit-search-cancel-button]:hidden"
+        className="w-full min-w-0 bg-transparent px-2.5 py-1.5 text-sm text-fg placeholder-muted-fg outline-hidden focus:outline-hidden [&::-ms-reveal]:hidden [&::-webkit-search-cancel-button]:hidden"
       />
       {escapeButton && (
         <Button

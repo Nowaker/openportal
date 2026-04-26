@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useModelStore } from "@/stores/model-store";
 import { useProviders } from "@/hooks/use-opencode";
+import useMediaQuery from "@/hooks/use-media-query";
 
 interface ModelItem {
   id: string;
@@ -75,6 +76,7 @@ function transformProviders(data: {
 export function ModelSelect() {
   const { data: rawData, isLoading } = useProviders();
   const { contains } = useFilter({ sensitivity: "base" });
+  const { isMobile } = useMediaQuery();
 
   const selectedModel = useModelStore((s) => s.selectedModel);
   const setModelFromKey = useModelStore((s) => s.setModelFromKey);
@@ -108,7 +110,10 @@ export function ModelSelect() {
         <Dialog aria-label="Model">
           <Autocomplete filter={contains}>
             <div className="border-b bg-muted p-2">
-              <SearchField className="rounded-lg bg-bg" autoFocus>
+              <SearchField
+                className="rounded-lg bg-bg [&_input]:!text-sm"
+                autoFocus={!isMobile}
+              >
                 <SearchInput placeholder="Search models..." />
               </SearchField>
             </div>
