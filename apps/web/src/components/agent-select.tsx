@@ -58,8 +58,15 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
         }
       }}
     >
-      <SelectTrigger className="w-40" />
-      <SelectContent items={agents}>
+      <SelectTrigger className="w-40 text-xs sm:text-sm" />
+      <SelectContent
+        items={agents}
+        className="max-h-[min(70vh,28rem)] text-xs sm:text-sm"
+        popover={{
+          className:
+            "flex max-h-[min(80vh,32rem)] flex-col overflow-hidden",
+        }}
+      >
         {(agent) => (
           <SelectItem id={agent.name} textValue={agent.name}>
             <SelectLabel>{agent.name}</SelectLabel>
