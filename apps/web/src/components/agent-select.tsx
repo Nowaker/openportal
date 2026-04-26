@@ -1,8 +1,8 @@
 import { useEffect } from "react";
+import { Dialog, ListBox, Popover } from "react-aria-components";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import {
   Select,
-  SelectContent,
   SelectItem,
   SelectLabel,
   SelectTrigger,
@@ -87,42 +87,40 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
       }}
     >
       <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
-      <SelectContent
-        items={agents}
-        className="max-h-[min(50vh,24rem)] [&_[role=option]]:!text-xs sm:[&_[role=option]]:!text-sm [&_[role=option]]:!py-1 [&_[role=option]]:!leading-tight [&_[role=group]>[role=presentation]]:!text-xs"
-        popover={{
-          offset: 0,
-          className: "flex flex-col overflow-hidden",
-        }}
-      >
-        {(agent) => (
-          <SelectItem id={agent.name} textValue={agent.name}>
-            <SelectLabel>{agent.name}</SelectLabel>
-            {agent.description && (
-              <div
-                slot="description"
-                className="col-start-2 row-start-2 flex items-center gap-1 text-muted-fg text-[10px] leading-tight sm:text-xs"
-              >
-                <span className="truncate">
-                  {agent.description}
-                </span>
-                <Tooltip delay={0}>
-                  <TooltipTrigger
-                    aria-label={`${agent.name} description`}
-                    className="shrink-0 p-0.5 text-muted-fg hover:text-fg"
-                    onPress={(event) => event.stopPropagation()}
+      <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(50vh,24rem)] w-(--trigger-width) entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
+        <Dialog aria-label="Agent">
+          <ListBox
+            items={agents}
+            className="grid max-h-[min(45vh,22rem)] w-full grid-cols-[auto_1fr] flex-col gap-y-0.5 overflow-y-auto p-1 text-xs outline-hidden sm:text-sm"
+          >
+            {(agent) => (
+              <SelectItem id={agent.name} textValue={agent.name}>
+                <SelectLabel>{agent.name}</SelectLabel>
+                {agent.description && (
+                  <div
+                    slot="description"
+                    className="col-start-2 row-start-2 flex items-center gap-1 text-muted-fg text-[10px] leading-tight sm:text-xs"
                   >
-                    <InformationCircleIcon className="size-3 sm:size-4" />
-                  </TooltipTrigger>
-                  <TooltipContent placement="right" className="max-w-xs">
-                    {agent.description}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
+                    <span className="truncate">{agent.description}</span>
+                    <Tooltip delay={0}>
+                      <TooltipTrigger
+                        aria-label={`${agent.name} description`}
+                        className="shrink-0 p-0.5 text-muted-fg hover:text-fg"
+                        onPress={(event) => event.stopPropagation()}
+                      >
+                        <InformationCircleIcon className="size-3 sm:size-4" />
+                      </TooltipTrigger>
+                      <TooltipContent placement="right" className="max-w-xs">
+                        {agent.description}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+              </SelectItem>
             )}
-          </SelectItem>
-        )}
-      </SelectContent>
+          </ListBox>
+        </Dialog>
+      </Popover>
     </Select>
   );
 }
