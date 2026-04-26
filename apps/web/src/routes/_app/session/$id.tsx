@@ -712,7 +712,7 @@ function SessionPage() {
   }, [currentSession?.title, setPageTitle]);
 
   const [sendError, setSendError] = useState<string | null>(null);
-  const [input, setInput] = useState("");
+  const [hasContent, setHasContent] = useState(false);
   const [sending, setSending] = useState(false);
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const [inFlightMessage, setInFlightMessage] = useState<QueuedMessage | null>(
@@ -943,12 +943,16 @@ function SessionPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionId || !port) return;
-    if (!input.trim() && pendingAttachments.length === 0) return;
+    const rawValue = textareaRef.current?.value ?? "";
+    const messageText = rawValue.trim();
+    if (!messageText && pendingAttachments.length === 0) return;
 
-    const messageText = input.trim();
     const attachmentsForMessage = pendingAttachments;
     const messageId = `temp-${Date.now()}`;
-    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.value = "";
+    }
+    setHasContent(false);
     setPendingAttachments([]);
     setSendError(null);
 
@@ -1188,8 +1192,12 @@ function SessionPage() {
               onFilesChange={setFileResults}
               onClose={fileMention.close}
               onSelect={(filePath) => {
-                const newValue = fileMention.handleSelect(filePath, input);
-                setInput(newValue);
+                const current = textareaRef.current?.value ?? "";
+                const newValue = fileMention.handleSelect(filePath, current);
+                if (textareaRef.current) {
+                  textareaRef.current.value = newValue;
+                  setHasContent(newValue.length > 0);
+                }
               }}
             />
             <form onSubmit={handleSubmit} className="w-full">
@@ -1235,14 +1243,14 @@ function SessionPage() {
                 <div className="min-w-0 flex-1">
                   <Textarea
                     ref={textareaRef}
-                    value={input}
                     inputMode="text"
                     enterKeyHint="send"
                     autoCapitalize="sentences"
                     autoCorrect="on"
                     onChange={(e) => {
                       const value = e.target.value;
-                      setInput(value);
+                      const ne = value.length > 0;
+                      if (ne !== hasContent) setHasContent(ne);
                       if (fileMention.isOpen || value.includes("@")) {
                         const cursorPos =
                           e.target.selectionStart ?? value.length;
@@ -1252,8 +1260,9 @@ function SessionPage() {
                     onSelect={(e) => {
                       if (!fileMention.isOpen) return;
                       const target = e.target as HTMLTextAreaElement;
-                      const cursorPos = target.selectionStart ?? input.length;
-                      fileMention.handleInputChange(input, cursorPos);
+                      const value = target.value;
+                      const cursorPos = target.selectionStart ?? value.length;
+                      fileMention.handleInputChange(value, cursorPos);
                     }}
                     onKeyDown={(e) => {
                       const handled = fileMention.handleKeyDown(
@@ -1268,18 +1277,24 @@ function SessionPage() {
                           const selectedFile =
                             fileResults[fileMention.selectedIndex];
                           if (selectedFile) {
+                            const current =
+                              textareaRef.current?.value ?? "";
                             const newValue = fileMention.handleSelect(
                               selectedFile,
-                              input,
+                              current,
                             );
-                            setInput(newValue);
+                            if (textareaRef.current) {
+                              textareaRef.current.value = newValue;
+                              setHasContent(newValue.length > 0);
+                            }
                           }
                         }
                         return;
                       }
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        if (input.trim() || pendingAttachments.length > 0) {
+                        const current = textareaRef.current?.value ?? "";
+                        if (current.trim() || pendingAttachments.length > 0) {
                           handleSubmit(e as unknown as React.FormEvent);
                         }
                       }
@@ -1304,7 +1319,7 @@ function SessionPage() {
                   <Button
                     type="submit"
                     isDisabled={
-                      !input.trim() && pendingAttachments.length === 0
+                      !hasContent && pendingAttachments.length === 0
                     }
                     className="size-12 !p-0"
                     aria-label={sending ? "Queue message" : "Send"}
