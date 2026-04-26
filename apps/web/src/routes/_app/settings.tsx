@@ -14,11 +14,13 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSection,
   SelectTrigger,
 } from "@/components/ui/select";
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
-import { useAgents } from "@/hooks/use-opencode";
+import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
+import { useModelStore } from "@/stores/model-store";
 import type { Agent } from "@opencode-ai/sdk";
 
 const themes = [
@@ -54,11 +56,84 @@ export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
 });
 
-const models = [
-  { id: "claude-3-5-sonnet", title: "Claude 3.5 Sonnet" },
-  { id: "gpt-4o", title: "GPT-4o" },
-  { id: "claude-3-opus", title: "Claude 3 Opus" },
-];
+interface ModelListItem {
+  id: string;
+  name: string;
+}
+
+interface SettingsProvider {
+  id: string;
+  name: string;
+  models: ModelListItem[];
+}
+
+interface RawProvider {
+  id: string;
+  name: string;
+  models?: Record<string, { id: string; name: string }>;
+}
+
+const VERSION_RE = /\d+(?:\.\d+)+/g;
+
+function compareModels(a: ModelListItem, b: ModelListItem): number {
+  const aBase = a.name
+    .replace(VERSION_RE, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  const bBase = b.name
+    .replace(VERSION_RE, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (aBase !== bBase) return aBase.localeCompare(bBase);
+
+  const aVersions = (a.name.match(VERSION_RE) ?? []).map((v) =>
+    v.split(".").map(Number),
+  );
+  const bVersions = (b.name.match(VERSION_RE) ?? []).map((v) =>
+    v.split(".").map(Number),
+  );
+  const len = Math.max(aVersions.length, bVersions.length);
+  for (let i = 0; i < len; i++) {
+    const av = aVersions[i] ?? [];
+    const bv = bVersions[i] ?? [];
+    const partLen = Math.max(av.length, bv.length);
+    for (let j = 0; j < partLen; j++) {
+      const cmp = (bv[j] ?? 0) - (av[j] ?? 0);
+      if (cmp !== 0) return cmp;
+    }
+  }
+  return a.name.localeCompare(b.name);
+}
+
+function buildProviderList(
+  raw: { providers?: RawProvider[]; default?: Record<string, string> } | null,
+): { providers: SettingsProvider[]; defaultKey: string | null } {
+  if (!raw) return { providers: [], defaultKey: null };
+
+  const defaults = raw.default ?? {};
+  let defaultKey: string | null = null;
+  for (const [providerId, modelId] of Object.entries(defaults)) {
+    if (modelId) {
+      defaultKey = `${providerId}/${modelId}`;
+      break;
+    }
+  }
+
+  const providers: SettingsProvider[] = (raw.providers ?? [])
+    .map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      models: Object.values(provider.models ?? {})
+        .map((m) => ({ id: `${provider.id}/${m.id}`, name: m.name }))
+        .sort(compareModels),
+    }))
+    .filter((p) => p.models.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return { providers, defaultKey };
+}
 
 const fonts = [
   { id: "inter", title: "Inter" },
@@ -169,9 +244,21 @@ function AgentSettings() {
 function SettingsPage() {
   const { fontFamily, setFontFamily } = useTheme();
   const { setPageTitle } = useBreadcrumb();
-  const [selectedModel, setSelectedModel] = React.useState<string | null>(
-    "claude-3-5-sonnet",
+  const { data: rawProviders, isLoading: providersLoading } = useProviders();
+  const selectedModel = useModelStore((s) => s.selectedModel);
+  const setModelFromKey = useModelStore((s) => s.setModelFromKey);
+  const setModelFromDefault = useModelStore((s) => s.setModelFromDefault);
+
+  const { providers, defaultKey } = React.useMemo(
+    () => buildProviderList(rawProviders ?? null),
+    [rawProviders],
   );
+
+  React.useEffect(() => {
+    if (defaultKey) setModelFromDefault(defaultKey);
+  }, [defaultKey, setModelFromDefault]);
+
+  const selectedKey = `${selectedModel.providerID}/${selectedModel.modelID}`;
 
   React.useEffect(() => {
     setPageTitle("Settings");
@@ -278,27 +365,48 @@ function SettingsPage() {
 
             <div className="space-y-6">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Default Model</p>
+                <p className="text-sm font-medium">Selected Model</p>
                 <p className="text-xs text-muted-fg">
-                  The model used for generating code and responses.
+                  The model used for generating code and responses. The server
+                  default is marked, and your selection is remembered locally.
                 </p>
                 <Select
-                  value={selectedModel}
-                  onChange={(value) =>
-                    setSelectedModel(value?.toString() ?? null)
+                  aria-label="Selected model"
+                  selectedKey={selectedKey}
+                  onSelectionChange={(key) => {
+                    if (!key) return;
+                    setModelFromKey(String(key));
+                  }}
+                  placeholder={
+                    providersLoading ? "Loading models..." : "Select a model"
                   }
-                  placeholder="Select a model"
+                  isDisabled={providersLoading || providers.length === 0}
                 >
                   <SelectTrigger className="max-w-sm" />
-                  <SelectContent>
-                    {models.map((item) => (
-                      <SelectItem
-                        key={item.id}
-                        id={item.id}
-                        textValue={item.title}
+                  <SelectContent
+                    className="max-h-[min(70vh,28rem)]"
+                    popover={{
+                      className:
+                        "flex max-h-[min(80vh,32rem)] flex-col overflow-hidden",
+                    }}
+                  >
+                    {providers.map((provider) => (
+                      <SelectSection
+                        key={provider.id}
+                        title={provider.name}
+                        items={provider.models}
                       >
-                        {item.title}
-                      </SelectItem>
+                        {(model) => (
+                          <SelectItem id={model.id} textValue={model.name}>
+                            {model.name}
+                            {model.id === defaultKey && (
+                              <span className="ml-1 text-muted-fg">
+                                (default)
+                              </span>
+                            )}
+                          </SelectItem>
+                        )}
+                      </SelectSection>
                     ))}
                   </SelectContent>
                 </Select>
