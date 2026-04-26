@@ -31,10 +31,10 @@ export function SearchInput(props: InputProps) {
       <Button
         className={twJoin(
           "touch-target grid place-content-center pressed:text-fg text-muted-fg hover:text-fg group-empty/search-field:invisible",
-          "px-3 py-2 sm:px-2.5 sm:py-1.5 sm:text-sm/5",
+          "px-2.5 py-1.5 text-sm/5",
         )}
       >
-        <XMarkIcon className="size-5 sm:size-4" />
+        <XMarkIcon className="size-4" />
       </Button>
     </InputGroup>
   );
