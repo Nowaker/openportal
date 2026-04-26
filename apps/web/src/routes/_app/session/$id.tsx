@@ -164,8 +164,27 @@ function formatToolCall(part: ToolPart): {
         details: path ? `in ${path}` : undefined,
       };
     }
+    case "question": {
+      const questions = Array.isArray(input.questions) ? input.questions : [];
+      const count = questions.length;
+      return {
+        icon: "?",
+        label: count === 1 ? "Asked 1 question" : `Asked ${count} questions`,
+      };
+    }
     default: {
-      const firstArg = Object.entries(input)[0];
+      // The previous fallback was: `${key}: ${String(value).slice(0,30)}...`,
+      // which produced "questions: [object Object],[object Object]..." for any
+      // tool whose first argument is a non-primitive (the question tool, but
+      // also any future tool with array/object inputs). Show only primitive
+      // first-args; otherwise omit details and let the tool body render below
+      // tell the story.
+      const firstArg = Object.entries(input).find(
+        ([, value]) =>
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean",
+      );
       return {
         icon: "◼︎",
         label: toolName || "unknown",
