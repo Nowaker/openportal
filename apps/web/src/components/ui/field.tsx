@@ -9,7 +9,7 @@ import { tv } from "tailwind-variants"
 import { cx } from "@/lib/primitive"
 
 export const labelStyles = tv({
-  base: "select-none text-base/6 text-fg in-disabled:opacity-50 group-disabled:opacity-50 sm:text-sm/6",
+  base: "select-none text-sm/6 text-fg in-disabled:opacity-50 group-disabled:opacity-50",
 })
 
 export const descriptionStyles = tv({
@@ -64,7 +64,7 @@ export function Legend({ className, ...props }: React.ComponentProps<"legend">) 
     <legend
       data-slot="legend"
       {...props}
-      className={twMerge("font-semibold text-base/6 data-disabled:opacity-50", className)}
+      className={twMerge("font-semibold text-sm/6 data-disabled:opacity-50", className)}
     />
   )
 }

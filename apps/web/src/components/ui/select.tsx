@@ -93,7 +93,7 @@ const SelectTrigger = ({
     <span data-slot="control" className="relative block w-full">
       <Button
         className={cx(
-          "group/select-trigger flex w-full min-w-0 cursor-default items-center gap-x-2 rounded-lg border border-input px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] text-start text-fg outline-hidden transition duration-200 sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)] sm:text-sm/6 sm:*:text-sm/6 dark:shadow-none",
+          "group/select-trigger flex w-full min-w-0 cursor-default items-center gap-x-2 rounded-lg border border-input px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1.5)-1px)] text-start text-sm/6 text-fg outline-hidden transition duration-200 *:text-sm/6 dark:shadow-none",
           "focus:border-ring/70 focus:ring-3 focus:ring-ring/20 focus:enabled:hover:border-ring/80",
           "enabled:hover:border-muted-fg/30",
           "group-open/select:border-ring/70 group-open/select:ring-3 group-open/select:ring-ring/20",
@@ -119,7 +119,7 @@ const SelectTrigger = ({
                 <SelectValue
                   data-slot="select-value"
                   className={twJoin([
-                    "truncate text-start data-placeholder:text-muted-fg sm:text-sm/6 [&_[slot=description]]:hidden",
+                    "truncate text-start text-sm/6 data-placeholder:text-muted-fg [&_[slot=description]]:hidden",
                     "has-data-[slot=avatar]:grid has-data-[slot=avatar]:grid-cols-[1fr_auto] has-data-[slot=avatar]:items-center has-data-[slot=avatar]:gap-x-2",
                     "has-data-[slot=icon]:grid has-data-[slot=icon]:grid-cols-[1fr_auto] has-data-[slot=icon]:items-center has-data-[slot=icon]:gap-x-2",
                     "*:data-[slot=icon]:size-5 sm:*:data-[slot=icon]:size-4",
