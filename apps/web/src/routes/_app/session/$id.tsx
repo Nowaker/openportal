@@ -65,6 +65,33 @@ function isToolPart(part: Part): part is ToolPart {
   return part.type === "tool";
 }
 
+function safeJsonParse(
+  text: string,
+): { message?: unknown; error?: unknown; statusMessage?: unknown } | null {
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
+  const fallback = `Failed to send message (HTTP ${response.status})`;
+  try {
+    const text = await response.text();
+    if (!text) return fallback;
+    const parsed = safeJsonParse(text);
+    const fromJson =
+      parsed &&
+      ((typeof parsed.message === "string" && parsed.message) ||
+        (typeof parsed.statusMessage === "string" && parsed.statusMessage) ||
+        (typeof parsed.error === "string" && parsed.error));
+    return fromJson || text;
+  } catch {
+    return fallback;
+  }
+}
+
 function parseToolQuestions(part: ToolPart): QuestionInfo[] {
   const input = (part.state?.input || {}) as Record<string, unknown>;
   const rawQuestions = input.questions;
@@ -616,6 +643,11 @@ const MessageItem = memo(function MessageItem({
   const messagePermissions = pendingPermissions.filter(
     (perm) => perm.tool?.messageID === message.info.id,
   );
+  const messageError =
+    message.info.role === "assistant" ? message.info.error : null;
+  const errorDescription = messageError
+    ? describeMessageError(messageError)
+    : null;
 
   return (
     <div className="py-3 px-6">
@@ -664,6 +696,18 @@ const MessageItem = memo(function MessageItem({
           ))}
         </div>
       )}
+      {errorDescription && (
+        <div
+          className={`${textContent || toolCalls.length > 0 ? "mt-2 ml-6" : ""} rounded-md border border-danger/40 bg-danger-subtle/30 p-3 text-xs text-danger-subtle-fg`}
+        >
+          <div className="font-semibold">{errorDescription.title}</div>
+          {errorDescription.detail && (
+            <div className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug">
+              {errorDescription.detail}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 });
@@ -671,7 +715,45 @@ const MessageItem = memo(function MessageItem({
 function hasVisibleContent(message: MessageWithParts): boolean {
   const textContent = getMessageContent(message.parts);
   const hasToolCalls = message.parts.some(isToolPart);
-  return !!(textContent || hasToolCalls);
+  // An assistant turn that fails before producing any text or tool call still
+  // carries info.error and must remain visible, otherwise a failed prompt
+  // looks indistinguishable from the assistant being idle.
+  const hasError =
+    message.info.role === "assistant" && message.info.error != null;
+  return !!(textContent || hasToolCalls || hasError);
+}
+
+function describeMessageError(
+  error: NonNullable<
+    Extract<MessageWithParts["info"], { role: "assistant" }>["error"]
+  >,
+): { title: string; detail?: string } {
+  switch (error.name) {
+    case "APIError": {
+      const status = error.data.statusCode;
+      return {
+        title: status
+          ? `Provider API error (HTTP ${status})`
+          : "Provider API error",
+        detail: error.data.message,
+      };
+    }
+    case "ProviderAuthError":
+      return {
+        title: `Provider auth error (${error.data.providerID})`,
+        detail: error.data.message,
+      };
+    case "MessageAbortedError":
+      return { title: "Aborted", detail: error.data.message };
+    case "MessageOutputLengthError":
+      return {
+        title: "Output length exceeded",
+        detail: "The model response hit its maximum length.",
+      };
+    case "UnknownError":
+    default:
+      return { title: "Unknown error", detail: error.data?.message };
+  }
 }
 
 function ModelOverrideControl({ isOverriding }: { isOverriding: boolean }) {
@@ -925,7 +1007,9 @@ function SessionPage() {
           }),
         },
       );
-      if (!response.ok) throw new Error("Failed to send message");
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
       mutateSessionMessages(port, sessionId);
       mutateSessions();
     } catch (err) {
