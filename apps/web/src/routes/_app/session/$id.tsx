@@ -601,14 +601,14 @@ const MessageItem = memo(function MessageItem({
           ) : (
             <IconUser size="16px" className="shrink-0 mt-1" />
           )}
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             {!isAssistant && message.isQueued && (
               <Badge intent="warning" className="mb-1">
                 Queued
               </Badge>
             )}
             <div
-              className={`prose prose-sm dark:prose-invert max-w-none overflow-x-hidden ${!isAssistant ? "text-muted-fg" : ""}`}
+              className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] ${!isAssistant ? "text-muted-fg" : ""}`}
             >
               <Markdown remarkPlugins={[remarkGfm]}>{textContent}</Markdown>
             </div>
