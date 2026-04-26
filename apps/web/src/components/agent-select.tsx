@@ -61,27 +61,27 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
       <SelectTrigger className="w-40 text-xs sm:text-sm" />
       <SelectContent
         items={agents}
-        className="max-h-[min(70vh,28rem)] [&_[role=option]]:!text-xs sm:[&_[role=option]]:!text-sm [&_[role=option]]:!py-1 sm:[&_[role=option]]:!py-1 [&_[role=group]>[role=presentation]]:!text-xs"
+        className="max-h-[min(50vh,24rem)] [&_[role=option]]:!text-xs sm:[&_[role=option]]:!text-sm [&_[role=option]]:!py-1 [&_[role=option]]:!leading-tight [&_[role=group]>[role=presentation]]:!text-xs"
         popover={{
-          className:
-            "flex max-h-[min(80vh,32rem)] flex-col overflow-hidden",
+          offset: 0,
+          className: "flex flex-col overflow-hidden",
         }}
       >
         {(agent) => (
           <SelectItem id={agent.name} textValue={agent.name}>
             <SelectLabel>{agent.name}</SelectLabel>
             {agent.description && (
-              <div className="col-start-2 row-start-2 flex items-center gap-2 text-muted-fg text-xs">
-                <span className="truncate max-w-[200px]">
+              <div className="col-start-2 row-start-2 flex items-center gap-1 text-muted-fg text-[10px] leading-tight sm:text-xs">
+                <span className="truncate">
                   {agent.description}
                 </span>
                 <Tooltip delay={0}>
                   <TooltipTrigger
                     aria-label={`${agent.name} description`}
-                    className="p-0.5 text-muted-fg hover:text-fg"
+                    className="shrink-0 p-0.5 text-muted-fg hover:text-fg"
                     onPress={(event) => event.stopPropagation()}
                   >
-                    <InformationCircleIcon className="size-4" />
+                    <InformationCircleIcon className="size-3 sm:size-4" />
                   </TooltipTrigger>
                   <TooltipContent placement="right" className="max-w-xs">
                     {agent.description}
