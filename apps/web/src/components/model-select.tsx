@@ -10,6 +10,7 @@ import { SearchField, SearchInput } from "@/components/ui/search-field";
 import {
   Select,
   SelectItem,
+  SelectLabel,
   SelectSection,
   SelectTrigger,
 } from "@/components/ui/select";
@@ -132,7 +133,7 @@ export function ModelSelect() {
       }}
     >
       <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
-      <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(80vh,32rem)] w-(--trigger-width) entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
+      <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(80vh,32rem)] min-w-(--trigger-width) w-screen max-w-[calc(100vw-1.5rem)] sm:max-w-md entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
         <Dialog aria-label="Model">
           <Autocomplete filter={contains}>
             <div className="border-b bg-muted p-2">
@@ -152,7 +153,9 @@ export function ModelSelect() {
                   textValue={`Default${defaultModelName ? ` ${defaultModelName}` : ""}`}
                   className="font-medium"
                 >
-                  Default{defaultModelName ? ` — ${defaultModelName}` : ""}
+                  <SelectLabel>
+                    Default{defaultModelName ? ` — ${defaultModelName}` : ""}
+                  </SelectLabel>
                 </SelectItem>
               )}
               {providers.map((provider) => (
@@ -163,10 +166,12 @@ export function ModelSelect() {
                 >
                   {(model) => (
                     <SelectItem id={model.id} textValue={model.name}>
-                      {model.name}
-                      {model.id === defaultModel && (
-                        <span className="ml-1 text-muted-fg">(default)</span>
-                      )}
+                      <SelectLabel>
+                        {model.name}
+                        {model.id === defaultModel && (
+                          <span className="ml-1 text-muted-fg">(default)</span>
+                        )}
+                      </SelectLabel>
                     </SelectItem>
                   )}
                 </SelectSection>
