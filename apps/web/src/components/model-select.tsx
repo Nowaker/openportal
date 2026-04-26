@@ -16,6 +16,7 @@ import {
 import { useModelStore } from "@/stores/model-store";
 import { useProviders } from "@/hooks/use-opencode";
 import useMediaQuery from "@/hooks/use-media-query";
+import { compareModels } from "@/lib/model-sort";
 
 interface ModelItem {
   id: string;
@@ -44,32 +45,6 @@ interface ModelsData {
   providers: ProviderWithModels[];
   defaultModel: string | null;
   defaultModelName: string | null;
-}
-
-const VERSION_RE = /\d+(?:\.\d+)+/g;
-
-// Sort: case-insensitive alphabetical on the non-numeric portion of the name,
-// version-descending when the base names match. So "Claude Haiku 4.5" sorts
-// before "Claude Opus 4.7" alphabetically, but "Claude Opus 4.7" sorts before
-// "Claude Opus 4.5".
-function compareModels(a: ModelItem, b: ModelItem): number {
-  const aBase = a.name.replace(VERSION_RE, "").replace(/\s+/g, " ").trim().toLowerCase();
-  const bBase = b.name.replace(VERSION_RE, "").replace(/\s+/g, " ").trim().toLowerCase();
-  if (aBase !== bBase) return aBase.localeCompare(bBase);
-
-  const aVersions = (a.name.match(VERSION_RE) ?? []).map((v) => v.split(".").map(Number));
-  const bVersions = (b.name.match(VERSION_RE) ?? []).map((v) => v.split(".").map(Number));
-  const len = Math.max(aVersions.length, bVersions.length);
-  for (let i = 0; i < len; i++) {
-    const av = aVersions[i] ?? [];
-    const bv = bVersions[i] ?? [];
-    const partLen = Math.max(av.length, bv.length);
-    for (let j = 0; j < partLen; j++) {
-      const cmp = (bv[j] ?? 0) - (av[j] ?? 0);
-      if (cmp !== 0) return cmp;
-    }
-  }
-  return a.name.localeCompare(b.name);
 }
 
 function transformProviders(data: {
