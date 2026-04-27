@@ -1,39 +1,59 @@
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
-import { getOpencodeClient } from "../../../../lib/opencode-client";
+import { getOpencodeBaseUrl } from "../../../../lib/opencode-client";
 import {
   parsePort,
   parseRouteParam,
   parseBody,
 } from "../../../../lib/validation";
 
+// 'Revert to message' as a user-facing action is a permanent prune of
+// the message list, not opencode's session.revert pointer. opencode's
+// pointer is transient: it auto-clears the moment the next prompt lands,
+// so any UI that filters by it loses the filter immediately and the user
+// sees their reverted messages reappear next to the new prompt - exactly
+// the no-op the user reported.
+//
+// This route physically DELETEs each message in the supplied list via
+// `DELETE /session/{id}/message/{messageID}`. The client computes the
+// list (target message + everything chronologically after, or just the
+// "after" part for assistant-mode reverts), sends them in one POST,
+// and we issue the deletes server-side in reverse order.
 const revertBodySchema = z.object({
-  messageID: z.string().min(1),
-  partID: z.string().optional(),
+  messageIDs: z.array(z.string().min(1)).min(1),
 });
 
 export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
-  const body = await parseBody(event, revertBodySchema);
+  const { messageIDs } = await parseBody(event, revertBodySchema);
 
-  try {
-    // The SDK v1 client uses `path: { id }` -> "/session/{id}/revert".
-    // Verified working with a direct curl POST against opencode 0.0.3 on
-    // port 4505: the call sets `session.revert.messageID` correctly. The
-    // initial revert UI bug was on the CLIENT side - the visible message
-    // list was not filtering by `session.revert.messageID`, so the user
-    // saw their old messages even though the backend had registered the
-    // revert pointer.
-    const result = await getOpencodeClient(port).session.revert({
-      path: { id },
-      body,
-    });
-    return result.data;
-  } catch (error) {
+  const baseUrl = getOpencodeBaseUrl(port);
+  const ordered = [...messageIDs].reverse();
+  const failures: Array<{ messageID: string; status: number }> = [];
+
+  for (const messageID of ordered) {
+    const url = `${baseUrl}/session/${encodeURIComponent(
+      id,
+    )}/message/${encodeURIComponent(messageID)}`;
+    try {
+      const response = await fetch(url, { method: "DELETE" });
+      if (!response.ok) {
+        failures.push({ messageID, status: response.status });
+      }
+    } catch {
+      failures.push({ messageID, status: 0 });
+    }
+  }
+
+  if (failures.length > 0) {
     throw new HTTPError(
-      error instanceof Error ? error.message : "Revert failed",
+      `Delete failed for ${failures.length}/${ordered.length} message(s): ${failures
+        .map((f) => `${f.messageID}=${f.status}`)
+        .join(", ")}`,
       { status: 500 },
     );
   }
+
+  return { deleted: ordered.length };
 });
