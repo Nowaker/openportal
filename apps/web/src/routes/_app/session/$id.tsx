@@ -900,10 +900,11 @@ function SessionPage() {
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const messagesListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
-  const isNearBottomRef = useRef(true);
-  const prevMessagesLengthRef = useRef(0);
+  const isStuckToBottomRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const fileMention = useFileMention();
 
   const error = messagesError?.message || sendError;
@@ -954,59 +955,78 @@ function SessionPage() {
     (perm) => !perm.tool?.messageID || !visibleMessageIds.has(perm.tool.messageID),
   );
 
+  // Sticky-bottom semantics:
+  //   - If the user is at the very bottom (within STICK_EPSILON pixels), we
+  //     are 'stuck' and any new content auto-scrolls to keep them at the
+  //     bottom. Any upward scroll, even by 1px, unsticks. Scrolling all the
+  //     way down re-sticks.
+  //   - Auto-scroll is keyed off a ResizeObserver on the message list, not
+  //     just messages.length, so a growing assistant turn (same message id,
+  //     text expanding as the model streams) keeps the viewport pinned.
+  const STICK_EPSILON = 1;
+
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = chatContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
   }, []);
 
-  const checkIfNearBottom = useCallback(() => {
+  const recomputeStuck = useCallback(() => {
     const container = chatContainerRef.current;
-    if (!container) return true;
-
-    const threshold = 100;
-    const isNear =
-      container.scrollHeight - container.scrollTop - container.clientHeight <
-      threshold;
-    isNearBottomRef.current = isNear;
-    return isNear;
+    if (!container) {
+      return isStuckToBottomRef.current;
+    }
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const isStuck = distanceFromBottom <= STICK_EPSILON;
+    isStuckToBottomRef.current = isStuck;
+    setShowJumpToBottom(!isStuck);
+    return isStuck;
   }, []);
 
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
-
-    const handleScroll = () => {
-      checkIfNearBottom();
-    };
-
+    const handleScroll = () => recomputeStuck();
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [checkIfNearBottom]);
+  }, [recomputeStuck]);
 
   useEffect(() => {
-    if (messages.length > prevMessagesLengthRef.current) {
-      if (isNearBottomRef.current) {
-        setTimeout(() => {
-          scrollToBottom();
-        }, 50);
+    const list = messagesListRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (isStuckToBottomRef.current) {
+        scrollToBottom();
       }
-    }
-    prevMessagesLengthRef.current = messages.length;
-  }, [messages.length, scrollToBottom]);
+      recomputeStuck();
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [recomputeStuck, scrollToBottom]);
 
   useEffect(() => {
     if (!hasScrolledInitially && !loading && messages.length > 0) {
       setTimeout(() => {
         scrollToBottom();
         setHasScrolledInitially(true);
-        isNearBottomRef.current = true;
+        isStuckToBottomRef.current = true;
+        setShowJumpToBottom(false);
       }, 100);
     }
   }, [hasScrolledInitially, loading, messages.length, scrollToBottom]);
 
   useEffect(() => {
     setHasScrolledInitially(false);
-    isNearBottomRef.current = true;
+    isStuckToBottomRef.current = true;
+    setShowJumpToBottom(false);
   }, [sessionId]);
+
+  const handleJumpToBottom = useCallback(() => {
+    scrollToBottom();
+    isStuckToBottomRef.current = true;
+    setShowJumpToBottom(false);
+  }, [scrollToBottom]);
 
   const handleAbort = useCallback(async () => {
     if (!port || !sessionId) return;
@@ -1064,7 +1084,8 @@ function SessionPage() {
       ],
     };
     addOptimisticMessage(port, sessionId, optimisticMessage);
-    isNearBottomRef.current = true;
+    isStuckToBottomRef.current = true;
+    setShowJumpToBottom(false);
     scrollToBottom();
 
     setSending(true);
@@ -1169,8 +1190,9 @@ function SessionPage() {
 
   return (
     <div className="flex h-full flex-col -m-4">
+      <div className="relative flex-1 min-h-0">
       <div
-        className="flex-1 overflow-auto overflow-x-hidden"
+        className="absolute inset-0 overflow-auto overflow-x-hidden"
         ref={chatContainerRef}
       >
         {loading && (
@@ -1191,7 +1213,10 @@ function SessionPage() {
           </div>
         )}
 
-        <div className="divide-y divide-dashed divide-border overflow-x-hidden">
+        <div
+          ref={messagesListRef}
+          className="divide-y divide-dashed divide-border overflow-x-hidden"
+        >
           {!loading &&
             !loadAllMessages &&
             messages.length >= INITIAL_MESSAGE_LIMIT && (
@@ -1228,6 +1253,18 @@ function SessionPage() {
               <span className="text-sm text-muted-fg">Thinking...</span>
             </div>
           </div>
+        )}
+      </div>
+        {showJumpToBottom && (
+          <button
+            type="button"
+            onClick={handleJumpToBottom}
+            className="absolute bottom-3 right-3 z-30 flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
+            aria-label="Jump to bottom"
+            title="Jump to bottom"
+          >
+            <ChevronDownIcon className="size-5" />
+          </button>
         )}
       </div>
 
