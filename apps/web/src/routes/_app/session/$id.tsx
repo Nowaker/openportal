@@ -1307,19 +1307,42 @@ function SessionPage() {
       // If the user has staged a revert, execute it before the prompt so the
       // backend truncation lands first and the new prompt picks up where the
       // truncated history left off.
+      //
+      // opencode's `revert` API takes `messageID` = the FIRST message to
+      // remove (everything from there to the end of history is reverted).
+      //   user-mode:      we delete the target user message itself + below
+      //                   so we send `target.messageId` directly.
+      //   assistant-mode: we keep the target assistant message and only
+      //                   delete what came AFTER it - so we have to pick
+      //                   the message immediately following the target.
+      //                   If there is none (target was already the last),
+      //                   there's nothing to revert; skip the call.
       if (revertTarget) {
-        const revertResponse = await fetch(
-          `/api/opencode/${port}/session/${sessionId}/revert`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messageID: revertTarget.messageId }),
-          },
-        );
-        if (!revertResponse.ok) {
-          throw new Error(
-            `Revert failed: ${await readErrorMessage(revertResponse)}`,
+        let revertMessageId: string | null = null;
+        if (revertTarget.mode === "user") {
+          revertMessageId = revertTarget.messageId;
+        } else {
+          const targetIdx = messages.findIndex(
+            (m) => m.info.id === revertTarget.messageId,
           );
+          if (targetIdx >= 0 && targetIdx < messages.length - 1) {
+            revertMessageId = messages[targetIdx + 1]!.info.id;
+          }
+        }
+        if (revertMessageId) {
+          const revertResponse = await fetch(
+            `/api/opencode/${port}/session/${sessionId}/revert`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ messageID: revertMessageId }),
+            },
+          );
+          if (!revertResponse.ok) {
+            throw new Error(
+              `Revert failed: ${await readErrorMessage(revertResponse)}`,
+            );
+          }
         }
         setRevertTarget(null);
       }
@@ -1368,7 +1391,33 @@ function SessionPage() {
   };
 
   const messageNodes = useMemo(() => {
-    const visible = messages.filter((message) => hasVisibleContent(message));
+    // Two layers of "reverted":
+    //
+    //   1. PERSISTED revert (`session.revert.messageID` returned by opencode)
+    //      means the user has already submitted a revert+prompt: those messages
+    //      must be HIDDEN entirely. opencode keeps them in the DB so a future
+    //      `unrevert` could restore them, but the visible thread should match
+    //      what the TUI shows.
+    //
+    //   2. STAGED revert (`revertTarget` client state) means the user has
+    //      clicked the revert icon but not submitted yet: those messages stay
+    //      visible but get the gray+strike preview so the user sees what's
+    //      about to be removed.
+    const persistedRevertId = currentSession?.revert?.messageID;
+    const visible = messages
+      .filter((message) => hasVisibleContent(message))
+      .filter((message) => {
+        if (!persistedRevertId) return true;
+        // Hide the reverted message and everything chronologically after it.
+        // We can't rely on array order alone because optimistic local inserts
+        // may temporarily appear after the persisted revert pointer; fall
+        // back to the absolute time if both messages have it.
+        const revertedTime = messages.find(
+          (m) => m.info.id === persistedRevertId,
+        )?.info.time.created;
+        if (revertedTime == null) return true;
+        return message.info.time.created < revertedTime;
+      });
     // Compute pending-delete flags based on the staged revertTarget.
     //   user-mode: target message and everything below it are pending delete.
     //   assistant-mode: only messages strictly below the target.
@@ -1384,10 +1433,34 @@ function SessionPage() {
           pendingDelete = idx > targetIndex;
         }
       }
+      // CodeNomad-style queue badge: a user message is "queued" if there is
+      // no assistant reply between it and the next user message (or end of
+      // history). If the assistant turn is busy, the LAST user message is
+      // "in progress" rather than "queued" - so we skip the badge for it.
+      let isQueued = false;
+      if (message.info.role === "user") {
+        let answered = false;
+        for (let j = idx + 1; j < visible.length; j++) {
+          const next = visible[j];
+          if (!next) break;
+          if (next.info.role === "user") break;
+          if (next.info.role === "assistant") {
+            answered = true;
+            break;
+          }
+        }
+        const isLastVisible = idx === visible.length - 1;
+        isQueued = !answered && !(isLastVisible && isAssistantBusy);
+      }
+      // Stamp the flag onto the message reference so the existing
+      // <MessageItem> Badge render picks it up without a new prop.
+      const messageWithQueueFlag = isQueued
+        ? { ...message, isQueued: true }
+        : message;
       return (
         <MessageItem
           key={message.info.id}
-          message={message}
+          message={messageWithQueueFlag}
           port={port}
           sessionId={sessionId}
           pendingPermissions={pendingPermissions}
@@ -1409,6 +1482,7 @@ function SessionPage() {
     handleAbort,
     revertTarget,
     handleRevertRequest,
+    currentSession?.revert?.messageID,
   ]);
 
   const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
