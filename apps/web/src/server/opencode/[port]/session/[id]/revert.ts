@@ -18,6 +18,13 @@ export default defineHandler(async (event) => {
   const body = await parseBody(event, revertBodySchema);
 
   try {
+    // The SDK v1 client uses `path: { id }` -> "/session/{id}/revert".
+    // Verified working with a direct curl POST against opencode 0.0.3 on
+    // port 4505: the call sets `session.revert.messageID` correctly. The
+    // initial revert UI bug was on the CLIENT side - the visible message
+    // list was not filtering by `session.revert.messageID`, so the user
+    // saw their old messages even though the backend had registered the
+    // revert pointer.
     const result = await getOpencodeClient(port).session.revert({
       path: { id },
       body,
