@@ -1539,7 +1539,7 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="field-sizing-content w-full resize-none min-h-[5lh] max-h-full overflow-y-auto text-sm sm:text-base"
+                    className="h-full w-full resize-none min-h-[5lh] overflow-y-auto text-sm sm:text-base"
                     rows={5}
                   />
                 </div>
