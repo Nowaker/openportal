@@ -11,7 +11,7 @@ interface ComposerState {
 export const useComposerStore = create<ComposerState>()(
   persist(
     (set) => ({
-      enterKeyAction: "submit",
+      enterKeyAction: "newline",
       setEnterKeyAction: (action) => set({ enterKeyAction: action }),
     }),
     {
