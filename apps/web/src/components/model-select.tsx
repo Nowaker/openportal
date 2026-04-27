@@ -116,6 +116,12 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
   const isOverridingDefault = useModelStore((s) =>
     s.isOverridingDefault(sessionId ?? null, instanceId ?? null),
   );
+  // The "default" in the dropdown is whatever the resolver would return
+  // if this session had no explicit pick. We compute it from the store
+  // by resolving with a sentinel sessionId guaranteed to be absent.
+  const effectiveDefaultKey = useModelStore((s) =>
+    s.resolveModelKey("__no_session__", instanceId ?? null),
+  );
 
   const data = useMemo(
     () => (rawData ? transformProviders(rawData) : null),
@@ -123,7 +129,14 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
   );
   const providers = data?.providers ?? [];
   const defaultModel = data?.defaultModel ?? null;
-  const defaultModelName = data?.defaultModelName ?? null;
+  const defaultModelName = useMemo(() => {
+    if (!effectiveDefaultKey) return null;
+    const [pid, ...rest] = effectiveDefaultKey.split("/");
+    const mid = rest.join("/");
+    const provider = providers.find((p) => p.id === pid);
+    const model = provider?.models.find((m) => m.id === effectiveDefaultKey);
+    return model?.name ?? effectiveDefaultKey;
+  }, [effectiveDefaultKey, providers]);
 
   useEffect(() => {
     if (defaultModel) {
@@ -165,14 +178,15 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
             <ListBox
               className="grid max-h-[min(70vh,28rem)] w-full grid-cols-[auto_1fr] flex-col gap-y-0.5 overflow-y-auto p-1 text-xs outline-hidden sm:text-sm *:[[role='group']+[role=group]]:mt-3 *:[[role='group']+[role=separator]]:mt-1 [&_[role=option]]:!text-xs sm:[&_[role=option]]:!text-sm [&_[role=option]]:!py-1 sm:[&_[role=option]]:!py-1 [&_[role=group]>[role=presentation]]:!text-xs"
             >
-              {defaultModel && (
+              {defaultModelName && (
                 <SelectItem
                   id={USE_DEFAULT_KEY}
-                  textValue={`Default${defaultModelName ? ` ${defaultModelName}` : ""}`}
+                  textValue={`${defaultModelName} (default)`}
                   className="font-medium"
                 >
                   <SelectLabel>
-                    Default{defaultModelName ? ` — ${defaultModelName}` : ""}
+                    {defaultModelName}
+                    <span className="ml-1 text-muted-fg">(default)</span>
                   </SelectLabel>
                 </SelectItem>
               )}
@@ -186,7 +200,7 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
                     <SelectItem id={model.id} textValue={model.name}>
                       <SelectLabel>
                         {model.name}
-                        {model.id === defaultModel && (
+                        {model.id === effectiveDefaultKey && (
                           <span className="ml-1 text-muted-fg">(default)</span>
                         )}
                       </SelectLabel>
