@@ -37,6 +37,7 @@ import {
   SidebarRail,
   SidebarSection,
   SidebarSectionGroup,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   useSessions,
@@ -94,6 +95,7 @@ export default function AppSidebar(
 ) {
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
+  const { setIsOpenOnMobile } = useSidebar();
   const instance = useInstanceStore((s) => s.instance);
   const { data: hostnameData } = useHostname();
   const hostname = hostnameData?.hostname ?? "Loading...";
@@ -264,7 +266,12 @@ export default function AppSidebar(
               <HomeIcon />
               Dashboard
             </MenuItem>
-            <MenuItem href="/settings">
+            <MenuItem
+              onAction={() => {
+                setIsOpenOnMobile(false);
+                navigate({ to: "/settings" });
+              }}
+            >
               <Cog6ToothIcon />
               Settings
             </MenuItem>
