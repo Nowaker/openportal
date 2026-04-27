@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import Markdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
@@ -727,7 +728,13 @@ const MessageItem = memo(function MessageItem({
               <div
                 className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] ${!isAssistant ? "text-muted-fg" : ""}`}
               >
-                <Markdown remarkPlugins={[remarkGfm]}>{textContent}</Markdown>
+                <Markdown
+                  remarkPlugins={
+                    isAssistant ? [remarkGfm] : [remarkGfm, remarkBreaks]
+                  }
+                >
+                  {textContent}
+                </Markdown>
               </div>
             )}
             {fileParts.length > 0 && (
