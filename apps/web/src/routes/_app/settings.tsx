@@ -21,6 +21,7 @@ import {
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
 import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
+import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
 import {
   FONT_SIZE_PRESETS,
@@ -177,20 +178,26 @@ function AgentSettings() {
   const { data, isLoading } = useAgents();
   const agents = (data ?? []) as Agent[];
 
+  const instance = useInstanceStore((s) => s.instance);
+  const instanceId = instance?.id ?? null;
+
   const defaultAgentStrategy = useAgentStore((s) => s.defaultAgentStrategy);
   const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
   const setDefaultAgentStrategy = useAgentStore(
     (s) => s.setDefaultAgentStrategy,
   );
   const setDefaultAgentName = useAgentStore((s) => s.setDefaultAgentName);
-  const lastUsedAgent = useAgentStore((s) => s.lastUsedAgentGlobal);
+  const lastUsedAgentGlobal = useAgentStore((s) => s.lastUsedAgentGlobal);
+  const lastUsedAgentForInstance = useAgentStore((s) =>
+    s.getLastUsedAgentForInstance(instanceId),
+  );
 
   const fallbackLabel =
     defaultAgentStrategy === "specific" ? "Default agent" : "Fallback agent";
   const fallbackHelp =
     defaultAgentStrategy === "specific"
       ? "New sessions will start with this agent selected."
-      : "Used when no last-used agent is recorded yet, or when it no longer exists.";
+      : "When 'last used' resolves to nothing on this server or globally, this is the agent the new session falls back to.";
 
   return (
     <div className="space-y-6">
@@ -250,10 +257,23 @@ function AgentSettings() {
         </div>
 
         {defaultAgentStrategy === "last-used" && (
-          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-fg">
-            {lastUsedAgent
-              ? `Currently last used: ${lastUsedAgent}`
-              : "No agent has been used yet — the fallback will be applied."}
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-fg space-y-1">
+            <div>
+              <span className="font-medium">On this server: </span>
+              {lastUsedAgentForInstance ?? (
+                <span className="opacity-60">none yet</span>
+              )}
+            </div>
+            <div>
+              <span className="font-medium">Anywhere (global): </span>
+              {lastUsedAgentGlobal ?? (
+                <span className="opacity-60">none yet</span>
+              )}
+            </div>
+            <div className="opacity-70 italic">
+              New sessions resolve in this order:
+              this server → any server → fallback above.
+            </div>
           </div>
         )}
       </div>
