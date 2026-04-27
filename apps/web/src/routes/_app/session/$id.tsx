@@ -1743,14 +1743,16 @@ function SessionPage() {
       </div>
 
       <div
-        className="border-t border-border shrink-0 relative overflow-hidden flex flex-col"
+        className={`border-t border-border shrink-0 relative flex flex-col ${
+          composerCollapsed ? "" : "overflow-hidden"
+        }`}
         style={{ maxHeight: `${composerMaxHeight}px` }}
       >
         {composerCollapsed && (
           <button
             type="button"
             onClick={() => setComposerCollapsed(false)}
-            className="absolute right-1 -top-9 z-20 flex size-8 items-center justify-center rounded-full border border-border bg-bg/90 text-muted-fg shadow hover:bg-muted hover:text-fg transition-colors"
+            className="absolute left-1 -top-9 z-40 flex size-8 items-center justify-center rounded-full border border-border bg-bg/90 text-muted-fg shadow hover:bg-muted hover:text-fg transition-colors"
             aria-label="Show composer"
             title="Show composer"
           >
