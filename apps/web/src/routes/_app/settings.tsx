@@ -22,6 +22,11 @@ import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
 import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
+import {
+  FONT_SIZE_PRESETS,
+  useFontSizeStore,
+  type FontSizeScale,
+} from "@/stores/font-size-store";
 import { useModelStore } from "@/stores/model-store";
 import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
@@ -50,6 +55,45 @@ function ThemeSetting() {
             {item.title}
           </SelectItem>
         ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function FontSizeSetting() {
+  const scale = useFontSizeStore((s) => s.scale);
+  const setScale = useFontSizeStore((s) => s.setScale);
+  const selected = String(scale);
+
+  return (
+    <Select
+      aria-label="Font size"
+      selectedKey={selected}
+      onSelectionChange={(key) => {
+        if (!key) return;
+        const next = Number(key) as FontSizeScale;
+        if (FONT_SIZE_PRESETS.includes(next)) setScale(next);
+      }}
+    >
+      <SelectTrigger className="max-w-sm" />
+      <SelectContent>
+        {FONT_SIZE_PRESETS.map((value) => {
+          const id = String(value);
+          const pct = Math.round(value * 100);
+          const isDefault = value === 1;
+          return (
+            <SelectItem
+              key={id}
+              id={id}
+              textValue={`${pct}%${isDefault ? " (default)" : ""}`}
+            >
+              {pct}%
+              {isDefault && (
+                <span className="ml-1 text-muted-fg">(default)</span>
+              )}
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </Select>
   );
@@ -376,6 +420,14 @@ function SettingsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Font Size</p>
+                <p className="text-xs text-muted-fg">
+                  Scale the entire interface up or down. 100% is the default.
+                </p>
+                <FontSizeSetting />
               </div>
             </div>
           </div>
