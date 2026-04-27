@@ -8,13 +8,23 @@ interface TextareaComponentProps extends TextAreaProps {
 
 export function Textarea({ className, ref, ...props }: TextareaComponentProps) {
   return (
-    <span data-slot="control" className="relative block w-full">
+    // The wrapper is a flex column with `h-full min-h-0` so callers placing
+    // the textarea inside a flex slot (composer, modal forms, ...) can rely
+    // on it to fill the available height instead of collapsing to its own
+    // intrinsic content. The inner <TextArea> uses `field-sizing-content`
+    // for natural growth with input AND `max-h-full` so growth caps at the
+    // wrapper - which is the slot's height. This is what makes the
+    // composer's 50dvh cap actually hold.
+    <span
+      data-slot="control"
+      className="relative flex flex-col w-full h-full min-h-0"
+    >
       <TextArea
         ref={ref}
         {...props}
         className={cx(
           twJoin([
-            "field-sizing-content relative block min-h-16 w-full appearance-none rounded-lg px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)]",
+            "field-sizing-content relative block min-h-16 max-h-full w-full appearance-none rounded-lg px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)]",
             "text-sm/6 text-fg placeholder:text-muted-fg",
             "border border-input enabled:hover:border-muted-fg/30",
             "outline-hidden focus:border-ring/70 focus:ring-3 focus:ring-ring/20 focus:enabled:hover:border-ring/80",
