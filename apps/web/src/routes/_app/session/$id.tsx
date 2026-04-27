@@ -1426,44 +1426,48 @@ function SessionPage() {
 
     setSending(true);
     try {
-      // If the user has staged a revert, execute it before the prompt so the
-      // backend truncation lands first and the new prompt picks up where the
-      // truncated history left off.
+      // If the user has staged a revert, physically delete the targeted
+      // messages BEFORE the prompt POST. opencode's session.revert pointer
+      // is transient - it's auto-cleared the moment the next prompt arrives,
+      // so any client-side filter hung off it would be a no-op as soon as
+      // we submit. Hard-deleting through the message-DELETE endpoint gives
+      // us a permanent truncation that survives F5 and matches the user's
+      // mental model of "remove everything from here onward".
       //
-      // opencode's `revert` API takes `messageID` = the FIRST message to
-      // remove (everything from there to the end of history is reverted).
-      //   user-mode:      we delete the target user message itself + below
-      //                   so we send `target.messageId` directly.
-      //   assistant-mode: we keep the target assistant message and only
-      //                   delete what came AFTER it - so we have to pick
-      //                   the message immediately following the target.
-      //                   If there is none (target was already the last),
-      //                   there's nothing to revert; skip the call.
+      //   user-mode:      delete the target user message itself + everything
+      //                   chronologically after it.
+      //   assistant-mode: keep the target assistant message; delete only
+      //                   what came after.
+      //
+      // Deletes run in reverse chronological order to avoid any opencode
+      // invariant that might key off the latest message.
       if (revertTarget) {
-        let revertMessageId: string | null = null;
-        if (revertTarget.mode === "user") {
-          revertMessageId = revertTarget.messageId;
-        } else {
-          const targetIdx = messages.findIndex(
-            (m) => m.info.id === revertTarget.messageId,
-          );
-          if (targetIdx >= 0 && targetIdx < messages.length - 1) {
-            revertMessageId = messages[targetIdx + 1]!.info.id;
+        const targetIdx = messages.findIndex(
+          (m) => m.info.id === revertTarget.messageId,
+        );
+        if (targetIdx >= 0) {
+          const startIdx =
+            revertTarget.mode === "user" ? targetIdx : targetIdx + 1;
+          const idsToDelete: string[] = [];
+          for (let i = startIdx; i < messages.length; i++) {
+            const id = messages[i]?.info.id;
+            if (id && !id.startsWith("temp-")) idsToDelete.push(id);
           }
-        }
-        if (revertMessageId) {
-          const revertResponse = await fetch(
-            `/api/opencode/${port}/session/${sessionId}/revert`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ messageID: revertMessageId }),
-            },
-          );
-          if (!revertResponse.ok) {
-            throw new Error(
-              `Revert failed: ${await readErrorMessage(revertResponse)}`,
+          for (let i = idsToDelete.length - 1; i >= 0; i--) {
+            const messageID = idsToDelete[i]!;
+            const deleteResponse = await fetch(
+              `/api/opencode/${port}/session/${sessionId}/message/${encodeURIComponent(
+                messageID,
+              )}`,
+              { method: "DELETE" },
             );
+            if (!deleteResponse.ok) {
+              throw new Error(
+                `Delete failed for ${messageID}: ${await readErrorMessage(
+                  deleteResponse,
+                )}`,
+              );
+            }
           }
         }
         setRevertTarget(null);
@@ -1513,33 +1517,12 @@ function SessionPage() {
   };
 
   const messageNodes = useMemo(() => {
-    // Two layers of "reverted":
-    //
-    //   1. PERSISTED revert (`session.revert.messageID` returned by opencode)
-    //      means the user has already submitted a revert+prompt: those messages
-    //      must be HIDDEN entirely. opencode keeps them in the DB so a future
-    //      `unrevert` could restore them, but the visible thread should match
-    //      what the TUI shows.
-    //
-    //   2. STAGED revert (`revertTarget` client state) means the user has
-    //      clicked the revert icon but not submitted yet: those messages stay
-    //      visible but get the gray+strike preview so the user sees what's
-    //      about to be removed.
-    const persistedRevertId = currentSession?.revert?.messageID;
-    const visible = messages
-      .filter((message) => hasVisibleContent(message))
-      .filter((message) => {
-        if (!persistedRevertId) return true;
-        // Hide the reverted message and everything chronologically after it.
-        // We can't rely on array order alone because optimistic local inserts
-        // may temporarily appear after the persisted revert pointer; fall
-        // back to the absolute time if both messages have it.
-        const revertedTime = messages.find(
-          (m) => m.info.id === persistedRevertId,
-        )?.info.time.created;
-        if (revertedTime == null) return true;
-        return message.info.time.created < revertedTime;
-      });
+    // No filter against session.revert.messageID here: that pointer is
+    // transient and gets cleared by opencode the moment a new prompt is
+    // appended. Permanent truncation is now done by hard-deleting messages
+    // through the message-DELETE route in handleSubmit, so the message list
+    // returned by /session/{id}/message is already authoritative.
+    const visible = messages.filter((message) => hasVisibleContent(message));
     // Compute pending-delete flags based on the staged revertTarget.
     //   user-mode: target message and everything below it are pending delete.
     //   assistant-mode: only messages strictly below the target.
@@ -1604,7 +1587,6 @@ function SessionPage() {
     handleAbort,
     revertTarget,
     handleRevertRequest,
-    currentSession?.revert?.messageID,
   ]);
 
   const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
