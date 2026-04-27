@@ -993,10 +993,53 @@ function writeDraft(sessionId: string, value: string) {
   }
 }
 
+// Composer max-height in pixels.
+//
+// dvh is supposed to track the visible viewport across keyboard show/hide,
+// but on Android Chrome and iOS Safari it's flaky: the value either lags or
+// stays at the full viewport while the soft keyboard is up, leaving the
+// composer overlapping the keyboard. visualViewport.height is the
+// browser-blessed source of truth for "how much of the page can the user
+// actually see right now", so we read that and cap the composer at 60% of
+// it. SSR / no-visualViewport fallback stays at 50% of innerHeight, which
+// matches the original 50dvh behaviour.
+function useComposerMaxHeight(): number {
+  const [maxPx, setMaxPx] = useState<number>(() => {
+    if (typeof window === "undefined") return 600;
+    const vv = window.visualViewport;
+    return Math.round((vv?.height ?? window.innerHeight) * 0.6);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const vv = window.visualViewport;
+    const update = () => {
+      const h = vv?.height ?? window.innerHeight;
+      setMaxPx(Math.round(h * 0.6));
+    };
+    update();
+    if (vv) {
+      vv.addEventListener("resize", update);
+      vv.addEventListener("scroll", update);
+    }
+    window.addEventListener("resize", update);
+    return () => {
+      if (vv) {
+        vv.removeEventListener("resize", update);
+        vv.removeEventListener("scroll", update);
+      }
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  return maxPx;
+}
+
 function SessionPage() {
   const { id: sessionId } = Route.useParams();
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
+  const composerMaxHeight = useComposerMaxHeight();
 
   const [loadAllMessages, setLoadAllMessages] = useState(false);
   const {
@@ -1717,7 +1760,10 @@ function SessionPage() {
         )}
       </div>
 
-      <div className="border-t border-border shrink-0 relative max-h-[50dvh] overflow-hidden flex flex-col">
+      <div
+        className="border-t border-border shrink-0 relative overflow-hidden flex flex-col"
+        style={{ maxHeight: `${composerMaxHeight}px` }}
+      >
         {composerCollapsed && (
           <button
             type="button"
