@@ -29,7 +29,6 @@ import {
   type FontSizeScale,
 } from "@/stores/font-size-store";
 import { useModelStore } from "@/stores/model-store";
-import { useInstanceStore } from "@/stores/instance-store";
 import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
 
