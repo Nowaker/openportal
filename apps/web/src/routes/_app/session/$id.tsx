@@ -661,6 +661,38 @@ const ToolCallItem = memo(function ToolCallItem({
   );
 });
 
+// "Thinking... 3m ago" - rough wall-clock since the last message arrived.
+// When opencode hangs (thinks it's still running but stopped emitting), the
+// number keeps growing past the model's typical response time, giving the
+// user a clear signal something is wrong without having to know the
+// expected latency for their model.
+//
+// Refresh once a minute via an interval. The interval is parked when no
+// messages exist (would be a no-op anyway) and torn down on unmount.
+function ThinkingStaleness({ messages }: { messages: MessageWithParts[] }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  if (messages.length === 0) return null;
+  const last = messages[messages.length - 1];
+  const lastTime = last?.info.time.created;
+  if (!lastTime) return null;
+
+  const minutes = Math.floor((now - lastTime) / 60_000);
+  if (minutes <= 0) return null;
+  const label =
+    minutes < 60
+      ? `${minutes}m ago`
+      : minutes < 1440
+        ? `${Math.floor(minutes / 60)}h ago`
+        : `${Math.floor(minutes / 1440)}d ago`;
+  return <span className="text-xs text-muted-fg/70">{label}</span>;
+}
+
 function AttachmentChip({ part }: { part: FilePart }) {
   const isImage = part.mime?.startsWith("image/");
   const Icon = isImage ? PhotoIcon : PaperClipIcon;
@@ -1355,6 +1387,7 @@ function SessionPage() {
             <div className="flex items-center gap-2">
               <Ripples size="30" speed="2" color="var(--color-primary)" />
               <span className="text-sm text-muted-fg">Thinking...</span>
+              <ThinkingStaleness messages={messages} />
             </div>
           </div>
         )}
