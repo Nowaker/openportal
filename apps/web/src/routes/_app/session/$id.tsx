@@ -843,6 +843,35 @@ function ModelOverrideControl({ isOverriding }: { isOverriding: boolean }) {
   );
 }
 
+const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
+
+function getDraftKey(sessionId: string) {
+  return `${DRAFT_KEY_PREFIX}${sessionId}`;
+}
+
+function readDraft(sessionId: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(getDraftKey(sessionId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeDraft(sessionId: string, value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      window.localStorage.setItem(getDraftKey(sessionId), value);
+    } else {
+      window.localStorage.removeItem(getDraftKey(sessionId));
+    }
+  } catch {
+    // localStorage can throw under quota / privacy modes; the draft is
+    // best-effort, never a hard requirement.
+  }
+}
+
 function SessionPage() {
   const { id: sessionId } = Route.useParams();
   const instance = useInstanceStore((s) => s.instance);
@@ -1028,6 +1057,48 @@ function SessionPage() {
     setShowJumpToBottom(false);
   }, [scrollToBottom]);
 
+  const draftSaveTimerRef = useRef<number | null>(null);
+
+  // Restore the draft for this session into the textarea on mount and on
+  // session change. The textarea is uncontrolled, so we set .value directly.
+  useEffect(() => {
+    if (!sessionId) return;
+    const draft = readDraft(sessionId);
+    if (textareaRef.current) {
+      textareaRef.current.value = draft;
+      setHasContent(draft.length > 0);
+    }
+  }, [sessionId]);
+
+  // Persist the draft only after the user has stopped typing for 250ms, so
+  // we don't thrash localStorage on every keystroke. On unmount or session
+  // change we flush whatever the textarea currently holds.
+  const scheduleDraftSave = useCallback(
+    (value: string) => {
+      if (!sessionId) return;
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+      }
+      draftSaveTimerRef.current = window.setTimeout(() => {
+        writeDraft(sessionId, value);
+        draftSaveTimerRef.current = null;
+      }, 250);
+    },
+    [sessionId],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      if (sessionId && textareaRef.current) {
+        writeDraft(sessionId, textareaRef.current.value);
+      }
+    };
+  }, [sessionId]);
+
   const handleAbort = useCallback(async () => {
     if (!port || !sessionId) return;
     try {
@@ -1048,10 +1119,6 @@ function SessionPage() {
 
     const attachmentsForMessage = pendingAttachments;
     const messageId = `temp-${Date.now()}`;
-    if (textareaRef.current) {
-      textareaRef.current.value = "";
-    }
-    setHasContent(false);
     setPendingAttachments([]);
     setSendError(null);
 
@@ -1108,12 +1175,27 @@ function SessionPage() {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
+      // Acknowledged. Now it's safe to clear the textarea and the persisted
+      // draft. If the network or backend had failed before this point, the
+      // user's text would still be both in the textarea and in localStorage.
+      if (textareaRef.current) {
+        textareaRef.current.value = "";
+      }
+      setHasContent(false);
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      writeDraft(sessionId, "");
       mutateSessionMessages(port, sessionId);
       mutateSessions();
     } catch (err) {
       setSendError(
         err instanceof Error ? err.message : "Failed to send message",
       );
+      // Restore attachments so the user can retry; the textarea retained
+      // the message text since we never cleared it.
+      setPendingAttachments(attachmentsForMessage);
     } finally {
       setSending(false);
     }
@@ -1380,6 +1462,7 @@ function SessionPage() {
                       const value = e.target.value;
                       const ne = value.length > 0;
                       if (ne !== hasContent) setHasContent(ne);
+                      scheduleDraftSave(value);
                       if (fileMention.isOpen || value.includes("@")) {
                         const cursorPos =
                           e.target.selectionStart ?? value.length;
