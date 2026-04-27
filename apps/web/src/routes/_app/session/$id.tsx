@@ -1235,10 +1235,30 @@ function SessionPage() {
   // Walk the message list (DOM-side, by data-role attribute) to find the
   // nearest user message above or below the current scroll position. We
   // anchor on the top edge of each message: previous = highest top that's
-  // still above the viewport's top; next = lowest top that's still below
-  // the viewport's top. A small epsilon (1px) prevents getting stuck on
-  // the user message that's currently at the top of the viewport when the
-  // user clicks "previous".
+  // still above the viewport's top; next = lowest top that's still below.
+  // A small epsilon (4px) prevents getting stuck on the user message
+  // that's currently at the top of the viewport.
+  //
+  // Special case for "previous" at the top of the visible window: if the
+  // initial-load cap is still active (the "Load earlier messages" button
+  // is showing), the user pressing ↑ at the top is best interpreted as
+  // "go back further in history". We trigger the full load and remember
+  // to scroll to the new topmost user message once the data lands.
+  const pendingLoadAndScrollRef = useRef<"first-user" | null>(null);
+
+  const scrollToUserNode = useCallback((node: HTMLElement) => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const targetTop =
+      node.getBoundingClientRect().top - containerRect.top + container.scrollTop;
+    container.scrollTo({
+      top: Math.max(0, targetTop - 8),
+      behavior: "smooth",
+    });
+    isStuckToBottomRef.current = false;
+  }, []);
+
   const handleJumpUserPrompt = useCallback(
     (direction: "previous" | "next") => {
       const container = chatContainerRef.current;
@@ -1246,7 +1266,17 @@ function SessionPage() {
       const userNodes = Array.from(
         container.querySelectorAll<HTMLElement>('[data-role="user"]'),
       );
-      if (userNodes.length === 0) return;
+      if (userNodes.length === 0) {
+        if (
+          direction === "previous" &&
+          !loadAllMessages &&
+          messages.length >= INITIAL_MESSAGE_LIMIT
+        ) {
+          pendingLoadAndScrollRef.current = "first-user";
+          setLoadAllMessages(true);
+        }
+        return;
+      }
 
       const containerRect = container.getBoundingClientRect();
       const offsets = userNodes.map(
@@ -1262,9 +1292,14 @@ function SessionPage() {
             break;
           }
         }
-        // If nothing is above, jump to the first user message anyway so
-        // the button is always responsive.
-        target ??= userNodes[0] ?? null;
+        if (!target) {
+          if (!loadAllMessages && messages.length >= INITIAL_MESSAGE_LIMIT) {
+            pendingLoadAndScrollRef.current = "first-user";
+            setLoadAllMessages(true);
+            return;
+          }
+          target = userNodes[0] ?? null;
+        }
       } else {
         for (let i = 0; i < userNodes.length; i++) {
           if ((offsets[i] ?? 0) > epsilon) {
@@ -1272,22 +1307,29 @@ function SessionPage() {
             break;
           }
         }
-        // If nothing is below, jump to the last user message.
         target ??= userNodes[userNodes.length - 1] ?? null;
       }
       if (!target) return;
-
-      const targetTop =
-        target.getBoundingClientRect().top - containerRect.top + container.scrollTop;
-      // Leave a tiny gap so the message header doesn't get clipped by
-      // any sticky chrome at the top of the chat area.
-      container.scrollTo({ top: Math.max(0, targetTop - 8), behavior: "smooth" });
-      // We're no longer pinned to the bottom; the scroll listener will
-      // recompute the jump-to-bottom visibility on its own.
-      isStuckToBottomRef.current = false;
+      scrollToUserNode(target);
     },
-    [],
+    [loadAllMessages, messages.length, scrollToUserNode],
   );
+
+  // After a "load earlier" triggered by ↑ at the top, jump to the new
+  // topmost user message so the user sees the previously-hidden history
+  // without losing their place. We watch the messages-length growth that
+  // loadAllMessages produces; on the first growth tick we scroll and
+  // clear the pending intent.
+  useEffect(() => {
+    if (pendingLoadAndScrollRef.current !== "first-user") return;
+    if (!loadAllMessages) return;
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const first = container.querySelector<HTMLElement>('[data-role="user"]');
+    if (!first) return;
+    pendingLoadAndScrollRef.current = null;
+    requestAnimationFrame(() => scrollToUserNode(first));
+  }, [loadAllMessages, messages.length, scrollToUserNode]);
 
   const draftSaveTimerRef = useRef<number | null>(null);
 
@@ -1727,17 +1769,25 @@ function SessionPage() {
             >
               <ChevronDownIcon className="size-5" />
             </button>
-            {showJumpToBottom && (
-              <button
-                type="button"
-                onClick={handleJumpToBottom}
-                className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
-                aria-label="Jump to bottom"
-                title="Jump to bottom"
-              >
-                <ChevronDoubleDownIcon className="size-5" />
-              </button>
-            )}
+            {/* Jump-to-bottom keeps its slot in the stack even when the
+                user is already at the bottom: visibility:hidden preserves
+                the layout box, so prev/next don't reflow downward as the
+                user scrolls in and out of stuck-at-bottom. aria-hidden +
+                tabIndex={-1} make the button inert for AT and keyboard
+                focus while it's not actionable. */}
+            <button
+              type="button"
+              onClick={handleJumpToBottom}
+              aria-label="Jump to bottom"
+              aria-hidden={!showJumpToBottom}
+              tabIndex={showJumpToBottom ? 0 : -1}
+              className={`flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors ${
+                showJumpToBottom ? "" : "invisible pointer-events-none"
+              }`}
+              title="Jump to bottom"
+            >
+              <ChevronDoubleDownIcon className="size-5" />
+            </button>
           </div>
         )}
       </div>
