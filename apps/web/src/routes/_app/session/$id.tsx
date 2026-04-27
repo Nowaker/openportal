@@ -935,14 +935,22 @@ function describeMessageError(
   }
 }
 
-function ModelOverrideControl({ isOverriding }: { isOverriding: boolean }) {
+function ModelOverrideControl({
+  isOverriding,
+  sessionId,
+  instanceId,
+}: {
+  isOverriding: boolean;
+  sessionId: string;
+  instanceId: string | null;
+}) {
   return (
     <div
       className={`w-full min-w-0${
         isOverriding ? " rounded-lg ring-1 ring-primary/50" : ""
       }`}
     >
-      <ModelSelect />
+      <ModelSelect sessionId={sessionId} instanceId={instanceId} />
     </div>
   );
 }
@@ -989,7 +997,14 @@ function SessionPage() {
     error: messagesError,
   } = useSessionMessages(sessionId, { loadAll: loadAllMessages });
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
-  const selectedModel = useModelStore((s) => s.selectedModel);
+  const instanceId = instance?.id ?? null;
+  const resolveModel = useModelStore((s) => s.resolveModel);
+  const isOverridingDefaultFn = useModelStore((s) => s.isOverridingDefault);
+  const selectedModel = resolveModel(sessionId, instanceId);
+  const isOverridingDefault = useCallback(
+    () => isOverridingDefaultFn(sessionId, instanceId),
+    [isOverridingDefaultFn, sessionId, instanceId],
+  );
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
   const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
   const { isMobile } = useMediaQuery();
@@ -1027,7 +1042,6 @@ function SessionPage() {
       ?.completed;
     return !completed;
   }, [messages]);
-  const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
   const [pendingPermissions, setPendingPermissions] = useState<
     PermissionRequest[]
   >([]);
@@ -1628,7 +1642,11 @@ function SessionPage() {
                   <AgentSelect sessionId={sessionId} />
                 </div>
                 <div className="min-w-0 flex-[1.2] max-w-48">
-                  <ModelOverrideControl isOverriding={isOverridingDefault()} />
+                  <ModelOverrideControl
+                    isOverriding={isOverridingDefault()}
+                    sessionId={sessionId}
+                    instanceId={instanceId}
+                  />
                 </div>
               </div>
               <button
