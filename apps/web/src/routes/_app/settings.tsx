@@ -176,7 +176,7 @@ function AgentSettings() {
     (s) => s.setDefaultAgentStrategy,
   );
   const setDefaultAgentName = useAgentStore((s) => s.setDefaultAgentName);
-  const lastUsedAgent = useAgentStore((s) => s.lastUsedAgent);
+  const lastUsedAgent = useAgentStore((s) => s.lastUsedAgentGlobal);
 
   const fallbackLabel =
     defaultAgentStrategy === "specific" ? "Default agent" : "Fallback agent";
