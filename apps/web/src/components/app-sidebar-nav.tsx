@@ -62,8 +62,9 @@ Make sure to:
 export function AppSidebarNav() {
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
+  const instanceId = instance?.id ?? null;
   const { pageTitle } = useBreadcrumb();
-  const selectedModel = useModelStore((s) => s.selectedModel);
+  const resolveModel = useModelStore((s) => s.resolveModel);
   const { mutate: mutateSessions } = useSessions();
 
   const [isCreatingPR, setIsCreatingPR] = useState(false);
@@ -82,6 +83,7 @@ export function AppSidebarNav() {
       return;
     }
 
+    const selectedModel = resolveModel(sessionId, instanceId);
     const response = await fetch(
       `/api/opencode/${port}/session/${sessionId}/prompt`,
       {

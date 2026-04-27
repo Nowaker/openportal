@@ -28,6 +28,7 @@ import {
   type FontSizeScale,
 } from "@/stores/font-size-store";
 import { useModelStore } from "@/stores/model-store";
+import { useInstanceStore } from "@/stores/instance-store";
 import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
 
@@ -316,8 +317,18 @@ function SettingsPage() {
   const { fontFamily, setFontFamily } = useTheme();
   const { setPageTitle } = useBreadcrumb();
   const { data: rawProviders, isLoading: providersLoading } = useProviders();
-  const selectedModel = useModelStore((s) => s.selectedModel);
-  const setModelFromKey = useModelStore((s) => s.setModelFromKey);
+  const instance = useInstanceStore((s) => s.instance);
+  const instanceId = instance?.id ?? null;
+  // Settings is "set the default for this server". With the layered store,
+  // Settings binds to the instance-scoped last-used pointer; it's not tied
+  // to a session, so we pass sessionId=null and let resolution fall through
+  // to instance / global / workspace default.
+  const resolvedKey = useModelStore((s) =>
+    s.resolveModelKey(null, instanceId),
+  );
+  const setInstanceDefaultModel = useModelStore(
+    (s) => s.setInstanceDefaultModel,
+  );
   const setModelFromDefault = useModelStore((s) => s.setModelFromDefault);
 
   const { providers, defaultKey } = React.useMemo(
@@ -329,7 +340,7 @@ function SettingsPage() {
     if (defaultKey) setModelFromDefault(defaultKey);
   }, [defaultKey, setModelFromDefault]);
 
-  const selectedKey = `${selectedModel.providerID}/${selectedModel.modelID}`;
+  const selectedKey = resolvedKey;
 
   React.useEffect(() => {
     setPageTitle("Settings");
@@ -468,7 +479,7 @@ function SettingsPage() {
                   selectedKey={selectedKey}
                   onSelectionChange={(key) => {
                     if (!key) return;
-                    setModelFromKey(String(key));
+                    setInstanceDefaultModel(String(key), instanceId);
                   }}
                   placeholder={
                     providersLoading ? "Loading models..." : "Select a model"
