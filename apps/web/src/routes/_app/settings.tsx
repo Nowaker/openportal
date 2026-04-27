@@ -8,6 +8,7 @@ import {
   CpuChipIcon,
   KeyIcon,
   CommandLineIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,6 +21,7 @@ import {
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
 import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
+import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
 import { useModelStore } from "@/stores/model-store";
 import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
@@ -208,6 +210,60 @@ function AgentSettings() {
   );
 }
 
+const enterKeyOptions: { id: EnterKeyAction; title: string; hint: string }[] = [
+  {
+    id: "submit",
+    title: "Send the message",
+    hint: "Shift+Enter inserts a newline",
+  },
+  {
+    id: "newline",
+    title: "Insert a newline",
+    hint: "Shift+Enter or Cmd/Ctrl+Enter sends the message",
+  },
+];
+
+function ComposerSettings() {
+  const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
+  const setEnterKeyAction = useComposerStore((s) => s.setEnterKeyAction);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Composer</h2>
+        <p className="text-sm text-muted-fg">
+          Customize the message composer behaviour.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Enter key behaviour</p>
+        <p className="text-xs text-muted-fg">
+          What pressing Enter (without modifiers) does in the composer.
+        </p>
+        <Select
+          aria-label="Enter key behaviour"
+          selectedKey={enterKeyAction}
+          onSelectionChange={(key) => {
+            if (!key) return;
+            setEnterKeyAction(String(key) as EnterKeyAction);
+          }}
+        >
+          <SelectTrigger className="max-w-sm" />
+          <SelectContent>
+            {enterKeyOptions.map((opt) => (
+              <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+                {opt.title}
+                <span className="ml-1 text-muted-fg text-xs">— {opt.hint}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { fontFamily, setFontFamily } = useTheme();
   const { setPageTitle } = useBreadcrumb();
@@ -256,6 +312,10 @@ function SettingsPage() {
           <Tab id="agent">
             <CommandLineIcon className="size-4" data-slot="icon" />
             Agent
+          </Tab>
+          <Tab id="composer">
+            <PencilSquareIcon className="size-4" data-slot="icon" />
+            Composer
           </Tab>
           <Tab id="api">
             <KeyIcon className="size-4" data-slot="icon" />
@@ -394,6 +454,10 @@ function SettingsPage() {
 
         <TabPanel id="agent" className="pt-6">
           <AgentSettings />
+        </TabPanel>
+
+        <TabPanel id="composer" className="pt-6">
+          <ComposerSettings />
         </TabPanel>
 
         <TabPanel id="api" className="pt-6">
