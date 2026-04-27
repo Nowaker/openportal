@@ -195,7 +195,16 @@ export default function AppSidebar(
               <SidebarItem key={session.id} tooltip={session.title}>
                 {({ isCollapsed, isFocused }) => (
                   <>
-                    <SidebarLink href={`/session/${session.id}`}>
+                    <SidebarLink
+                      href={`/session/${session.id}`}
+                      // On mobile, the sidebar overlays the chat. Tapping a
+                      // session would normally leave the overlay open, so
+                      // the user has to manually dismiss it before they can
+                      // see the session. Close the overlay synchronously
+                      // before the route change so the chat is visible the
+                      // moment navigation lands.
+                      onClick={() => setIsOpenOnMobile(false)}
+                    >
                       <SidebarLabel>
                         {truncateTitle(session.title)}
                       </SidebarLabel>
