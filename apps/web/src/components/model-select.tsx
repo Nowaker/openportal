@@ -90,16 +90,32 @@ function transformProviders(data: {
 
 const USE_DEFAULT_KEY = "__use_default__";
 
-export function ModelSelect() {
+interface ModelSelectProps {
+  // The session this picker is bound to. Per-session selection sits at
+  // the top of the four-layer fallback chain in the model store. When
+  // null/undefined, the picker still works but its selection lands in
+  // the instance and global layers only (used in the Settings page).
+  sessionId?: string | null;
+  // Identifies which opencode server we're connected to so the
+  // store can remember "last used on this server" independently from
+  // "last used globally". Same shape as agent-store.
+  instanceId?: string | null;
+}
+
+export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
   const { data: rawData, isLoading } = useProviders();
   const { contains } = useFilter({ sensitivity: "base" });
   const { isMobile } = useMediaQuery();
 
-  const selectedModel = useModelStore((s) => s.selectedModel);
-  const setModelFromKey = useModelStore((s) => s.setModelFromKey);
+  const resolvedKey = useModelStore((s) =>
+    s.resolveModelKey(sessionId ?? null, instanceId ?? null),
+  );
+  const setModelForSession = useModelStore((s) => s.setModelForSession);
+  const clearSessionModel = useModelStore((s) => s.clearSessionModel);
   const setModelFromDefault = useModelStore((s) => s.setModelFromDefault);
-  const resetToDefault = useModelStore((s) => s.resetToDefault);
-  const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
+  const isOverridingDefault = useModelStore((s) =>
+    s.isOverridingDefault(sessionId ?? null, instanceId ?? null),
+  );
 
   const data = useMemo(
     () => (rawData ? transformProviders(rawData) : null),
@@ -108,8 +124,6 @@ export function ModelSelect() {
   const providers = data?.providers ?? [];
   const defaultModel = data?.defaultModel ?? null;
   const defaultModelName = data?.defaultModelName ?? null;
-  const selectedModelKey = `${selectedModel.providerID}/${selectedModel.modelID}`;
-  const overriding = isOverridingDefault();
 
   useEffect(() => {
     if (defaultModel) {
@@ -122,14 +136,18 @@ export function ModelSelect() {
       aria-label="Model"
       placeholder={isLoading ? "Loading models..." : "Select a model"}
       className="w-full min-w-0"
-      selectedKey={overriding ? selectedModelKey : USE_DEFAULT_KEY}
+      selectedKey={isOverridingDefault ? resolvedKey : USE_DEFAULT_KEY}
       onSelectionChange={(key) => {
         if (!key) return;
         if (String(key) === USE_DEFAULT_KEY) {
-          resetToDefault();
+          // "Use default" means: forget the per-session pick so the next
+          // resolution falls through to instance/global/workspace default.
+          if (sessionId) clearSessionModel(sessionId);
           return;
         }
-        setModelFromKey(String(key));
+        if (sessionId) {
+          setModelForSession(sessionId, String(key), instanceId ?? null);
+        }
       }}
     >
       <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
