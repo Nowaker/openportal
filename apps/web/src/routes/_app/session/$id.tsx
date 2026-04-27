@@ -661,6 +661,23 @@ const ToolCallItem = memo(function ToolCallItem({
   );
 });
 
+function RevertIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      fill="none"
+      className={className}
+    >
+      <path
+        d="M5.83333 4.16406L2.5 7.4974L5.83333 10.8307M3.33333 7.4974H17.9167V15.4141H10"
+        stroke="currentColor"
+        strokeLinecap="square"
+      />
+    </svg>
+  );
+}
+
 function AttachmentChip({ part }: { part: FilePart }) {
   const isImage = part.mime?.startsWith("image/");
   const Icon = isImage ? PhotoIcon : PaperClipIcon;
@@ -687,6 +704,8 @@ const MessageItem = memo(function MessageItem({
   onPermissionResolved,
   isAssistantBusy,
   onAbort,
+  pendingDelete,
+  onRevertRequest,
 }: {
   message: MessageWithParts;
   port: number;
@@ -695,6 +714,8 @@ const MessageItem = memo(function MessageItem({
   onPermissionResolved: (requestId: string) => void;
   isAssistantBusy: boolean;
   onAbort: () => void;
+  pendingDelete: boolean;
+  onRevertRequest: (message: MessageWithParts, text: string) => void;
 }) {
   const textContent = getMessageContent(message.parts);
   const isAssistant = message.info.role === "assistant";
@@ -710,15 +731,40 @@ const MessageItem = memo(function MessageItem({
     : null;
 
   const hasHeaderRow = textContent || fileParts.length > 0;
+  // Visual decoration when a revert is staged: gray tone + strike-through.
+  // Nothing is destroyed in the backend yet - the actual truncate happens
+  // only when the user submits a new message.
+  const decoration = pendingDelete
+    ? "opacity-50 line-through"
+    : "";
   return (
-    <div className="py-3 px-6">
+    <div className={`py-3 px-6 ${decoration}`}>
       {hasHeaderRow && (
         <div className="flex gap-2">
-          {isAssistant ? (
-            <IconBadgeSparkle size="16px" className="shrink-0 mt-1" />
-          ) : (
-            <IconUser size="16px" className="shrink-0 mt-1" />
-          )}
+          <div className="shrink-0 mt-1 flex flex-col items-center gap-1">
+            {isAssistant ? (
+              <IconBadgeSparkle size="16px" />
+            ) : (
+              <IconUser size="16px" />
+            )}
+            <button
+              type="button"
+              onClick={() => onRevertRequest(message, textContent)}
+              className="text-muted-fg hover:text-fg transition-colors"
+              aria-label={
+                isAssistant
+                  ? "Revert to right after this message"
+                  : "Revert to before this message"
+              }
+              title={
+                isAssistant
+                  ? "Revert to right after this message"
+                  : "Revert to before this message"
+              }
+            >
+              <RevertIcon className="size-3.5" />
+            </button>
+          </div>
           <div className="min-w-0 flex-1">
             {!isAssistant && message.isQueued && (
               <Badge intent="warning" className="mb-1">
@@ -910,6 +956,10 @@ function SessionPage() {
 
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasContent, setHasContent] = useState(false);
+  const [revertTarget, setRevertTarget] = useState<{
+    mode: "user" | "assistant";
+    messageId: string;
+  } | null>(null);
   const [sending, setSending] = useState(false);
 
   // The assistant is "busy" whenever the most recent message is from the
@@ -1108,6 +1158,31 @@ function SessionPage() {
     };
   }, [sessionId]);
 
+  const handleRevertRequest = useCallback(
+    (message: MessageWithParts, text: string) => {
+      const isUser = message.info.role === "user";
+      // If clicking the same message that's already targeted, treat it as a
+      // toggle-off so the user can dismiss a staged revert without
+      // submitting.
+      if (revertTarget?.messageId === message.info.id) {
+        setRevertTarget(null);
+        return;
+      }
+      setRevertTarget({
+        mode: isUser ? "user" : "assistant",
+        messageId: message.info.id,
+      });
+      // For a user-message revert, copy its text into the composer so the
+      // user can edit and resubmit. Assistant-message reverts leave the
+      // composer untouched - the user types fresh.
+      if (isUser && textareaRef.current) {
+        textareaRef.current.value = text;
+        setHasContent(text.length > 0);
+      }
+    },
+    [revertTarget],
+  );
+
   const handleAbort = useCallback(async () => {
     if (!port || !sessionId) return;
     try {
@@ -1166,6 +1241,25 @@ function SessionPage() {
 
     setSending(true);
     try {
+      // If the user has staged a revert, execute it before the prompt so the
+      // backend truncation lands first and the new prompt picks up where the
+      // truncated history left off.
+      if (revertTarget) {
+        const revertResponse = await fetch(
+          `/api/opencode/${port}/session/${sessionId}/revert`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageID: revertTarget.messageId }),
+          },
+        );
+        if (!revertResponse.ok) {
+          throw new Error(
+            `Revert failed: ${await readErrorMessage(revertResponse)}`,
+          );
+        }
+        setRevertTarget(null);
+      }
       const response = await fetch(
         `/api/opencode/${port}/session/${sessionId}/prompt`,
         {
@@ -1210,32 +1304,49 @@ function SessionPage() {
     }
   };
 
-  const messageNodes = useMemo(
-    () =>
-      messages
-        .filter((message) => hasVisibleContent(message))
-        .map((message) => (
-          <MessageItem
-            key={message.info.id}
-            message={message}
-            port={port}
-            sessionId={sessionId}
-            pendingPermissions={pendingPermissions}
-            onPermissionResolved={handlePermissionResolved}
-            isAssistantBusy={isAssistantBusy}
-            onAbort={handleAbort}
-          />
-        )),
-    [
-      messages,
-      port,
-      sessionId,
-      pendingPermissions,
-      handlePermissionResolved,
-      isAssistantBusy,
-      handleAbort,
-    ],
-  );
+  const messageNodes = useMemo(() => {
+    const visible = messages.filter((message) => hasVisibleContent(message));
+    // Compute pending-delete flags based on the staged revertTarget.
+    //   user-mode: target message and everything below it are pending delete.
+    //   assistant-mode: only messages strictly below the target.
+    const targetIndex = revertTarget
+      ? visible.findIndex((m) => m.info.id === revertTarget.messageId)
+      : -1;
+    return visible.map((message, idx) => {
+      let pendingDelete = false;
+      if (revertTarget && targetIndex >= 0) {
+        if (revertTarget.mode === "user") {
+          pendingDelete = idx >= targetIndex;
+        } else {
+          pendingDelete = idx > targetIndex;
+        }
+      }
+      return (
+        <MessageItem
+          key={message.info.id}
+          message={message}
+          port={port}
+          sessionId={sessionId}
+          pendingPermissions={pendingPermissions}
+          onPermissionResolved={handlePermissionResolved}
+          isAssistantBusy={isAssistantBusy}
+          onAbort={handleAbort}
+          pendingDelete={pendingDelete}
+          onRevertRequest={handleRevertRequest}
+        />
+      );
+    });
+  }, [
+    messages,
+    port,
+    sessionId,
+    pendingPermissions,
+    handlePermissionResolved,
+    isAssistantBusy,
+    handleAbort,
+    revertTarget,
+    handleRevertRequest,
+  ]);
 
   const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files);
