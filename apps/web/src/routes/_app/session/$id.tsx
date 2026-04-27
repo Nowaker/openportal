@@ -28,6 +28,7 @@ import {
   StopIcon,
   ChevronUpIcon,
   ChevronDownIcon,
+  ChevronDoubleDownIcon,
 } from "@heroicons/react/24/solid";
 import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
@@ -788,7 +789,14 @@ const MessageItem = memo(function MessageItem({
     ? "opacity-50 line-through"
     : "";
   return (
-    <div className={`py-3 px-6 ${decoration}`}>
+    <div
+      className={`py-3 px-6 ${decoration}`}
+      // The role + id pair lets the prompt-nav buttons (prev / next user
+      // message) find each user message in the DOM and scroll it into view
+      // without lifting the message list into a controlled-scroll system.
+      data-role={message.info.role}
+      data-message-id={message.info.id}
+    >
       {hasHeaderRow && (
         <div className="flex gap-2">
           <div className="shrink-0 mt-1 flex flex-col items-center gap-1">
@@ -1180,6 +1188,63 @@ function SessionPage() {
     isStuckToBottomRef.current = true;
     setShowJumpToBottom(false);
   }, [scrollToBottom]);
+
+  // Walk the message list (DOM-side, by data-role attribute) to find the
+  // nearest user message above or below the current scroll position. We
+  // anchor on the top edge of each message: previous = highest top that's
+  // still above the viewport's top; next = lowest top that's still below
+  // the viewport's top. A small epsilon (1px) prevents getting stuck on
+  // the user message that's currently at the top of the viewport when the
+  // user clicks "previous".
+  const handleJumpUserPrompt = useCallback(
+    (direction: "previous" | "next") => {
+      const container = chatContainerRef.current;
+      if (!container) return;
+      const userNodes = Array.from(
+        container.querySelectorAll<HTMLElement>('[data-role="user"]'),
+      );
+      if (userNodes.length === 0) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const offsets = userNodes.map(
+        (node) => node.getBoundingClientRect().top - containerRect.top,
+      );
+
+      const epsilon = 4;
+      let target: HTMLElement | null = null;
+      if (direction === "previous") {
+        for (let i = userNodes.length - 1; i >= 0; i--) {
+          if ((offsets[i] ?? 0) < -epsilon) {
+            target = userNodes[i] ?? null;
+            break;
+          }
+        }
+        // If nothing is above, jump to the first user message anyway so
+        // the button is always responsive.
+        target ??= userNodes[0] ?? null;
+      } else {
+        for (let i = 0; i < userNodes.length; i++) {
+          if ((offsets[i] ?? 0) > epsilon) {
+            target = userNodes[i] ?? null;
+            break;
+          }
+        }
+        // If nothing is below, jump to the last user message.
+        target ??= userNodes[userNodes.length - 1] ?? null;
+      }
+      if (!target) return;
+
+      const targetTop =
+        target.getBoundingClientRect().top - containerRect.top + container.scrollTop;
+      // Leave a tiny gap so the message header doesn't get clipped by
+      // any sticky chrome at the top of the chat area.
+      container.scrollTo({ top: Math.max(0, targetTop - 8), behavior: "smooth" });
+      // We're no longer pinned to the bottom; the scroll listener will
+      // recompute the jump-to-bottom visibility on its own.
+      isStuckToBottomRef.current = false;
+    },
+    [],
+  );
 
   const draftSaveTimerRef = useRef<number | null>(null);
 
@@ -1609,16 +1674,46 @@ function SessionPage() {
           </div>
         )}
       </div>
-        {showJumpToBottom && (
-          <button
-            type="button"
-            onClick={handleJumpToBottom}
-            className="absolute bottom-3 right-3 z-30 flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
-            aria-label="Jump to bottom"
-            title="Jump to bottom"
-          >
-            <ChevronDownIcon className="size-5" />
-          </button>
+        {/* Vertical stack of nav buttons in the bottom-right of the chat
+            scroll area:
+              - prev user prompt
+              - next user prompt
+              - jump to very bottom (only when not already pinned)
+            The first two are always visible whenever the session has any
+            user messages; the third hides itself once you're at the bottom
+            (the user wanted >> to disappear when redundant). */}
+        {messages.some((m) => m.info.role === "user") && (
+          <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => handleJumpUserPrompt("previous")}
+              className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
+              aria-label="Previous user message"
+              title="Previous user message"
+            >
+              <ChevronUpIcon className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleJumpUserPrompt("next")}
+              className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
+              aria-label="Next user message"
+              title="Next user message"
+            >
+              <ChevronDownIcon className="size-5" />
+            </button>
+            {showJumpToBottom && (
+              <button
+                type="button"
+                onClick={handleJumpToBottom}
+                className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
+                aria-label="Jump to bottom"
+                title="Jump to bottom"
+              >
+                <ChevronDoubleDownIcon className="size-5" />
+              </button>
+            )}
+          </div>
         )}
       </div>
 
