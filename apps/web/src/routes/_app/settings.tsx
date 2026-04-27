@@ -5,9 +5,7 @@ import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   SwatchIcon,
-  CpuChipIcon,
   KeyIcon,
-  CommandLineIcon,
   PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 import { Input } from "@/components/ui/input";
@@ -15,6 +13,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectLabel,
   SelectSection,
   SelectTrigger,
 } from "@/components/ui/select";
@@ -297,8 +296,12 @@ function ComposerSettings() {
           <SelectContent>
             {enterKeyOptions.map((opt) => (
               <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
-                {opt.title}
-                <span className="ml-1 text-muted-fg text-xs">— {opt.hint}</span>
+                <SelectLabel>
+                  {opt.title}
+                  <span className="ml-1 text-muted-fg text-xs">
+                    — {opt.hint}
+                  </span>
+                </SelectLabel>
               </SelectItem>
             ))}
           </SelectContent>
@@ -343,23 +346,15 @@ function SettingsPage() {
         </p>
       </div>
 
-      <Tabs aria-label="Settings">
-        <TabList>
+      <Tabs aria-label="Settings" className="overflow-x-hidden">
+        <TabList className="flex overflow-x-auto scrollbar-none">
           <Tab id="appearance">
             <SwatchIcon className="size-4" data-slot="icon" />
             Appearance
           </Tab>
-          <Tab id="model">
-            <CpuChipIcon className="size-4" data-slot="icon" />
-            Model
-          </Tab>
-          <Tab id="agent">
-            <CommandLineIcon className="size-4" data-slot="icon" />
-            Agent
-          </Tab>
-          <Tab id="composer">
+          <Tab id="prompt">
             <PencilSquareIcon className="size-4" data-slot="icon" />
-            Composer
+            Prompt
           </Tab>
           <Tab id="api">
             <KeyIcon className="size-4" data-slot="icon" />
@@ -433,22 +428,25 @@ function SettingsPage() {
           </div>
         </TabPanel>
 
-        <TabPanel id="model" className="pt-6">
-          <div className="space-y-6">
+        <TabPanel id="prompt" className="pt-6">
+          <div className="space-y-10">
             <div>
-              <h2 className="text-lg font-semibold">Model Configuration</h2>
+              <h2 className="text-lg font-semibold">Prompt</h2>
               <p className="text-sm text-muted-fg">
-                Select the AI model that powers your assistant.
+                Configure how you compose and dispatch prompts: the model and
+                agent that handle them, and how the composer behaves.
               </p>
             </div>
 
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Selected Model</p>
+            <section className="space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold">Model</h3>
                 <p className="text-xs text-muted-fg">
                   The model used for generating code and responses. The server
                   default is marked, and your selection is remembered locally.
                 </p>
+              </div>
+              <div className="space-y-2">
                 <Select
                   aria-label="Selected model"
                   selectedKey={selectedKey}
@@ -477,12 +475,14 @@ function SettingsPage() {
                       >
                         {(model) => (
                           <SelectItem id={model.id} textValue={model.name}>
-                            {model.name}
-                            {model.id === defaultKey && (
-                              <span className="ml-1 text-muted-fg">
-                                (default)
-                              </span>
-                            )}
+                            <SelectLabel>
+                              {model.name}
+                              {model.id === defaultKey && (
+                                <span className="ml-1 text-muted-fg">
+                                  (default)
+                                </span>
+                              )}
+                            </SelectLabel>
                           </SelectItem>
                         )}
                       </SelectSection>
@@ -490,26 +490,16 @@ function SettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </section>
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Temperature</p>
-                <p className="text-xs text-muted-fg">
-                  Controls randomness in the model's output.
-                </p>
-                <div className="flex h-9 w-fit items-center rounded-lg border border-input px-3 text-sm text-muted-fg bg-muted/5">
-                  0.7
-                </div>
-              </div>
-            </div>
+            <section>
+              <AgentSettings />
+            </section>
+
+            <section>
+              <ComposerSettings />
+            </section>
           </div>
-        </TabPanel>
-
-        <TabPanel id="agent" className="pt-6">
-          <AgentSettings />
-        </TabPanel>
-
-        <TabPanel id="composer" className="pt-6">
-          <ComposerSettings />
         </TabPanel>
 
         <TabPanel id="api" className="pt-6">
