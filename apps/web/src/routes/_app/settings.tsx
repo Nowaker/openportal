@@ -14,6 +14,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectLabel,
   SelectSection,
   SelectTrigger,
 } from "@/components/ui/select";
@@ -85,10 +86,16 @@ function FontSizeSetting() {
               id={id}
               textValue={`${pct}%${isDefault ? " (default)" : ""}`}
             >
-              {pct}%
-              {isDefault && (
-                <span className="ml-1 text-muted-fg">(default)</span>
-              )}
+              {/* SelectLabel reserves the tick column in the grid layout
+                  used by SelectItem; without it, the row collapses to a
+                  single column and the tick / text / muted suffix all pile
+                  on top of each other. Same fix as ModelSelect. */}
+              <SelectLabel>
+                {pct}%
+                {isDefault && (
+                  <span className="ml-1 text-muted-fg">(default)</span>
+                )}
+              </SelectLabel>
             </SelectItem>
           );
         })}
