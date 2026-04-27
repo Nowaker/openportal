@@ -29,6 +29,7 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/solid";
 import { useAgentStore } from "@/stores/agent-store";
+import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
@@ -856,6 +857,7 @@ function SessionPage() {
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   const selectedModel = useModelStore((s) => s.selectedModel);
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
+  const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
   const { setPageTitle } = useBreadcrumb();
 
   const sessions: Session[] = sessionsData ?? [];
@@ -1381,17 +1383,26 @@ function SessionPage() {
                         }
                         return;
                       }
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        const current = textareaRef.current?.value ?? "";
-                        if (current.trim() || pendingAttachments.length > 0) {
-                          handleSubmit(e as unknown as React.FormEvent);
+                      if (e.key === "Enter") {
+                        const wantsSubmit =
+                          enterKeyAction === "submit"
+                            ? !e.shiftKey
+                            : e.shiftKey || e.metaKey || e.ctrlKey;
+                        if (wantsSubmit) {
+                          e.preventDefault();
+                          const current = textareaRef.current?.value ?? "";
+                          if (
+                            current.trim() ||
+                            pendingAttachments.length > 0
+                          ) {
+                            handleSubmit(e as unknown as React.FormEvent);
+                          }
                         }
                       }
                     }}
                     placeholder="Type your message..."
-                    className="field-sizing-fixed h-full w-full resize-none max-h-32 overflow-y-auto text-sm sm:text-base"
-                    rows={2}
+                    className="field-sizing-content w-full resize-none min-h-[5lh] max-h-[50dvh] overflow-y-auto text-sm sm:text-base"
+                    rows={5}
                   />
                 </div>
                 <div className="flex flex-col justify-end gap-1.5 shrink-0">
