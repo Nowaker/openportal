@@ -48,6 +48,7 @@ import {
   type QuestionRequest,
 } from "@/hooks/use-session-messages";
 import { useSessions } from "@/hooks/use-opencode";
+import useMediaQuery from "@/hooks/use-media-query";
 import type { Session } from "@opencode-ai/sdk";
 
 export const Route = createFileRoute("/_app/session/$id")({
@@ -894,6 +895,7 @@ function SessionPage() {
   const selectedModel = useModelStore((s) => s.selectedModel);
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
   const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
+  const { isMobile } = useMediaQuery();
   const { setPageTitle } = useBreadcrumb();
 
   const sessions: Session[] = sessionsData ?? [];
@@ -1357,7 +1359,7 @@ function SessionPage() {
         )}
       </div>
 
-      <div className="border-t border-border shrink-0 relative">
+      <div className="border-t border-border shrink-0 relative max-h-[50dvh] overflow-hidden flex flex-col">
         {composerCollapsed && (
           <button
             type="button"
@@ -1399,7 +1401,7 @@ function SessionPage() {
                 <ChevronDownIcon className="size-4" />
               </button>
             </div>
-            <div className="px-2 pt-1.5 pb-1 relative">
+            <div className="px-2 pt-1.5 pb-1 relative flex-1 min-h-0 flex flex-col">
             <FileMentionPopover
               isOpen={fileMention.isOpen}
               searchQuery={fileMention.searchQuery}
@@ -1418,7 +1420,7 @@ function SessionPage() {
                 }
               }}
             />
-            <form onSubmit={handleSubmit} className="w-full">
+            <form onSubmit={handleSubmit} className="w-full flex-1 min-h-0 flex flex-col">
               <input
                 ref={fileAttachInputRef}
                 type="file"
@@ -1457,12 +1459,11 @@ function SessionPage() {
                   ))}
                 </div>
               )}
-              <div className="flex items-stretch gap-2">
-                <div className="min-w-0 flex-1">
+              <div className="flex items-stretch gap-2 flex-1 min-h-0">
+                <div className="min-w-0 flex-1 flex flex-col">
                   <Textarea
                     ref={textareaRef}
                     inputMode="text"
-                    enterKeyHint="send"
                     autoCapitalize="sentences"
                     autoCorrect="on"
                     onChange={(e) => {
@@ -1511,10 +1512,20 @@ function SessionPage() {
                         return;
                       }
                       if (e.key === "Enter") {
+                        // Submit policy:
+                        //   Shift+Enter ALWAYS inserts a newline (browser
+                        //     default), regardless of platform / setting.
+                        //   On mobile, never submit via Enter - the soft
+                        //     keyboard's Enter is for newlines only; users
+                        //     submit by tapping the Send button.
+                        //   On desktop, Ctrl/Cmd+Enter always submits.
+                        //   On desktop, bare Enter submits ONLY in
+                        //     enterKeyAction='submit' mode.
+                        if (e.shiftKey || isMobile) return;
                         const wantsSubmit =
-                          enterKeyAction === "submit"
-                            ? !e.shiftKey
-                            : e.shiftKey || e.metaKey || e.ctrlKey;
+                          e.metaKey ||
+                          e.ctrlKey ||
+                          enterKeyAction === "submit";
                         if (wantsSubmit) {
                           e.preventDefault();
                           const current = textareaRef.current?.value ?? "";
@@ -1528,7 +1539,7 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="field-sizing-content w-full resize-none min-h-[5lh] max-h-[50dvh] overflow-y-auto text-sm sm:text-base"
+                    className="field-sizing-content w-full resize-none min-h-[5lh] max-h-full overflow-y-auto text-sm sm:text-base"
                     rows={5}
                   />
                 </div>
