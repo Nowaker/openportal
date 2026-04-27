@@ -1,11 +1,7 @@
 import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
 import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import {
-  ArrowRightStartOnRectangleIcon,
   Cog6ToothIcon,
-  HomeIcon,
-  LifebuoyIcon,
-  ShieldCheckIcon,
   TrashIcon,
   PlusIcon,
 } from "@heroicons/react/24/solid";
@@ -22,7 +18,6 @@ import {
   MenuHeader,
   MenuItem,
   MenuSection,
-  MenuSeparator,
   MenuTrigger,
 } from "@/components/ui/menu";
 import {
@@ -175,7 +170,7 @@ export default function AppSidebar(
               className="cursor-pointer gap-x-2"
             >
               <PlusIcon className="size-4 shrink-0" data-slot="icon" />
-              <SidebarLabel>
+              <SidebarLabel className="text-xs sm:text-sm">
                 {creating ? "Creating..." : "New Session"}
               </SidebarLabel>
             </SidebarItem>
@@ -186,7 +181,7 @@ export default function AppSidebar(
               badge={diffFileCount > 0 ? diffFileCount : undefined}
             >
               <FileDiffIcon className="size-4 shrink-0" data-slot="icon" />
-              <SidebarLabel>Diff</SidebarLabel>
+              <SidebarLabel className="text-xs sm:text-sm">Diff</SidebarLabel>
             </SidebarItem>
           </SidebarSection>
 
@@ -205,7 +200,7 @@ export default function AppSidebar(
                       // moment navigation lands.
                       onClick={() => setIsOpenOnMobile(false)}
                     >
-                      <SidebarLabel>
+                      <SidebarLabel className="text-xs sm:text-sm">
                         {truncateTitle(session.title)}
                       </SidebarLabel>
                     </SidebarLink>
@@ -271,10 +266,6 @@ export default function AppSidebar(
               </MenuHeader>
             </MenuSection>
 
-            <MenuItem href="#dashboard">
-              <HomeIcon />
-              Dashboard
-            </MenuItem>
             <MenuItem
               onAction={() => {
                 setIsOpenOnMobile(false);
@@ -283,20 +274,6 @@ export default function AppSidebar(
             >
               <Cog6ToothIcon />
               Settings
-            </MenuItem>
-            <MenuItem href="#security">
-              <ShieldCheckIcon />
-              Security
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem href="#contact">
-              <LifebuoyIcon />
-              Customer Support
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem href="#logout">
-              <ArrowRightStartOnRectangleIcon />
-              Log out
             </MenuItem>
           </MenuContent>
         </Menu>
