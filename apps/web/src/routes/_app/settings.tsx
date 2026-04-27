@@ -253,16 +253,26 @@ function AgentSettings() {
   );
 }
 
-const enterKeyOptions: { id: EnterKeyAction; title: string; hint: string }[] = [
+// Only the bare-Enter behaviour is variable. Shift+Enter ALWAYS inserts a
+// newline, Ctrl/Cmd+Enter ALWAYS submits, regardless of this setting. This
+// preference also drives the soft-keyboard Enter on phones (the on-screen
+// 'submit' arrow vs the newline arrow).
+const enterKeyOptions: {
+  id: EnterKeyAction;
+  title: string;
+  description: string;
+}[] = [
   {
     id: "submit",
     title: "Send the message",
-    hint: "Shift+Enter inserts a newline",
+    description:
+      "On mobile, the soft keyboard's Enter button submits the message instead of inserting a new line.",
   },
   {
     id: "newline",
-    title: "Insert a newline",
-    hint: "Shift+Enter or Cmd/Ctrl+Enter sends the message",
+    title: "Insert a new line",
+    description:
+      "On mobile, the soft keyboard's Enter button inserts a new line.",
   },
 ];
 
@@ -282,7 +292,10 @@ function ComposerSettings() {
       <div className="space-y-2">
         <p className="text-sm font-medium">Enter key behaviour</p>
         <p className="text-xs text-muted-fg">
-          What pressing Enter (without modifiers) does in the composer.
+          What unmodified Enter does in the composer.
+          {" "}
+          Shift+Enter always inserts a new line and Cmd/Ctrl+Enter always
+          submits, regardless of this setting.
         </p>
         <Select
           aria-label="Enter key behaviour"
@@ -296,12 +309,13 @@ function ComposerSettings() {
           <SelectContent>
             {enterKeyOptions.map((opt) => (
               <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
-                <SelectLabel>
-                  {opt.title}
-                  <span className="ml-1 text-muted-fg text-xs">
-                    — {opt.hint}
-                  </span>
-                </SelectLabel>
+                <SelectLabel>{opt.title}</SelectLabel>
+                <span
+                  slot="description"
+                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                >
+                  {opt.description}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
@@ -372,14 +386,6 @@ function SettingsPage() {
             </div>
 
             <div className="space-y-6">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Accent Color</p>
-                <p className="text-xs text-muted-fg">
-                  Select a primary color for buttons and highlights.
-                </p>
-                <AccentSelector />
-              </div>
-
               <div className="space-y-2">
                 <p className="text-sm font-medium">Theme Preference</p>
                 <p className="text-xs text-muted-fg">
