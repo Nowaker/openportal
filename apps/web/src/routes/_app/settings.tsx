@@ -4,6 +4,7 @@ import { AccentSelector } from "@/components/accent-selector";
 import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
+  ArrowLeftIcon,
   SwatchIcon,
   KeyIcon,
   PencilSquareIcon,
@@ -338,6 +339,21 @@ function SettingsPage() {
   return (
     <div className="container mx-auto space-y-8 px-4 py-10">
       <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              window.location.href = "/";
+            }
+          }}
+          className="inline-flex items-center gap-1 text-sm text-muted-fg hover:text-fg transition-colors"
+          aria-label="Back"
+        >
+          <ArrowLeftIcon className="size-4" />
+          Back
+        </button>
         <h1 className="bg-gradient-to-r from-fg to-muted-fg bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl">
           Settings
         </h1>
