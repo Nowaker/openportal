@@ -843,6 +843,7 @@ function ModelOverrideControl({ isOverriding }: { isOverriding: boolean }) {
 }
 
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
+const DRAFT_MIN_BYTES = 10;
 
 function getDraftKey(sessionId: string) {
   return `${DRAFT_KEY_PREFIX}${sessionId}`;
@@ -1049,14 +1050,21 @@ function SessionPage() {
   }, [sessionId]);
 
   // Persist the draft only after the user has stopped typing for 250ms, so
-  // we don't thrash localStorage on every keystroke. On unmount or session
-  // change we flush whatever the textarea currently holds.
+  // we don't thrash localStorage on every keystroke.
+  //
+  // Cross-tab safety: a typing-path write only happens when the textarea
+  // has at least DRAFT_MIN_BYTES of content. If a user opens a second tab
+  // and clears the textarea there, that empty/short value does NOT
+  // overwrite the stored draft - the original tab's draft survives.
+  // Empty drafts are only written via the acknowledged-submit path
+  // (handleSubmit), which calls writeDraft directly with "" to clear.
   const scheduleDraftSave = useCallback(
     (value: string) => {
       if (!sessionId) return;
       if (draftSaveTimerRef.current != null) {
         window.clearTimeout(draftSaveTimerRef.current);
       }
+      if (value.length < DRAFT_MIN_BYTES) return;
       draftSaveTimerRef.current = window.setTimeout(() => {
         writeDraft(sessionId, value);
         draftSaveTimerRef.current = null;
@@ -1072,7 +1080,10 @@ function SessionPage() {
         draftSaveTimerRef.current = null;
       }
       if (sessionId && textareaRef.current) {
-        writeDraft(sessionId, textareaRef.current.value);
+        const value = textareaRef.current.value;
+        if (value.length >= DRAFT_MIN_BYTES) {
+          writeDraft(sessionId, value);
+        }
       }
     };
   }, [sessionId]);
