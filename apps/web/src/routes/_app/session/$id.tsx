@@ -1049,8 +1049,10 @@ function SessionPage() {
     }
   }, [sessionId]);
 
-  // Persist the draft only after the user has stopped typing for 250ms, so
-  // we don't thrash localStorage on every keystroke.
+  // Persist the draft only after the user has stopped typing for 2 seconds,
+  // so we don't thrash localStorage on every keystroke. The unmount /
+  // session-change effect still flushes whatever the textarea currently
+  // holds, so an interrupted typing session loses at most ~2s of typing.
   //
   // Cross-tab safety: a typing-path write only happens when the textarea
   // has at least DRAFT_MIN_BYTES of content. If a user opens a second tab
@@ -1068,7 +1070,7 @@ function SessionPage() {
       draftSaveTimerRef.current = window.setTimeout(() => {
         writeDraft(sessionId, value);
         draftSaveTimerRef.current = null;
-      }, 250);
+      }, 2000);
     },
     [sessionId],
   );
