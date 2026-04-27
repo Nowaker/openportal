@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { useAgents } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
+import { useInstanceStore } from "@/stores/instance-store";
 import type { Agent } from "@opencode-ai/sdk";
 
 interface AgentSelectProps {
@@ -20,16 +21,24 @@ function isValidAgent(agents: Agent[], name?: string | null) {
   return agents.some((agent) => agent.name === name);
 }
 
+// Layered last-used resolution for brand-new sessions:
+//   1. agent already chosen for THIS session (handled before this is called)
+//   2. agent last picked on THIS server (lastUsedForInstance)
+//   3. agent last picked GLOBALLY (lastUsedGlobal)
+//   4. user-configured defaultName ("plan" by default)
+//   5. hard fallback: first available agent
 function resolveDefaultAgentName(
   agents: Agent[],
   strategy: "specific" | "last-used",
   defaultName: string,
-  lastUsed: string | null,
+  lastUsedForInstance: string | null,
+  lastUsedGlobal: string | null,
 ) {
   if (agents.length === 0) return undefined;
 
-  if (strategy === "last-used" && isValidAgent(agents, lastUsed)) {
-    return lastUsed!;
+  if (strategy === "last-used") {
+    if (isValidAgent(agents, lastUsedForInstance)) return lastUsedForInstance!;
+    if (isValidAgent(agents, lastUsedGlobal)) return lastUsedGlobal!;
   }
   if (isValidAgent(agents, defaultName)) return defaultName;
   return agents.find((agent) => agent.name === "plan")?.name ?? agents[0]?.name;
@@ -39,11 +48,17 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
   const { data, isLoading } = useAgents();
   const agents = (data ?? []) as Agent[];
 
+  const instance = useInstanceStore((s) => s.instance);
+  const instanceId = instance?.id ?? null;
+
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
   const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
   const defaultAgentStrategy = useAgentStore((s) => s.defaultAgentStrategy);
   const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
-  const lastUsedAgent = useAgentStore((s) => s.lastUsedAgent);
+  const lastUsedAgentGlobal = useAgentStore((s) => s.lastUsedAgentGlobal);
+  const lastUsedAgentForInstance = useAgentStore((s) =>
+    s.getLastUsedAgentForInstance(instanceId),
+  );
 
   useEffect(() => {
     if (!sessionId || agents.length === 0) return;
@@ -53,10 +68,11 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
       agents,
       defaultAgentStrategy,
       defaultAgentName,
-      lastUsedAgent,
+      lastUsedAgentForInstance,
+      lastUsedAgentGlobal,
     );
     if (fallback) {
-      setSelectedAgent(sessionId, fallback);
+      setSelectedAgent(sessionId, fallback, instanceId);
     }
   }, [
     agents,
@@ -65,7 +81,9 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
     setSelectedAgent,
     defaultAgentStrategy,
     defaultAgentName,
-    lastUsedAgent,
+    lastUsedAgentForInstance,
+    lastUsedAgentGlobal,
+    instanceId,
   ]);
 
   return (
@@ -76,7 +94,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
       selectedKey={selectedAgent}
       onSelectionChange={(key) => {
         if (sessionId && key) {
-          setSelectedAgent(sessionId, String(key));
+          setSelectedAgent(sessionId, String(key), instanceId);
         }
       }}
     >
