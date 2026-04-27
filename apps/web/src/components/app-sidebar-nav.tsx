@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMatch } from "@tanstack/react-router";
-import { Breadcrumbs, BreadcrumbsItem } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
@@ -9,9 +8,9 @@ import ArrowUpCircleIcon from "@/components/icons/arrow-up-circle-icon";
 import IconGitPullRequest from "@/components/icons/git-pull-request-icon";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
-import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { mutateSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions } from "@/hooks/use-opencode";
+import type { Session } from "@opencode-ai/sdk";
 
 const CREATE_PR_PROMPT = `Use gh CLI to create a pull request. Follow these steps:
 
@@ -59,13 +58,22 @@ Make sure to:
 - Handle any push rejections (e.g., if remote has new commits, pull first)
 - Report the result of the push operation`;
 
+// Take the deepest path component and use it as a short project label.
+// "session.directory" can be absolute ("/home/u/projekty/nowaker/blah") or
+// even a single-segment short name; either way the basename gives us
+// something useful to fit in the topbar.
+function projectLabelFromDirectory(directory?: string): string | null {
+  if (!directory) return null;
+  const parts = directory.replace(/\/+$/, "").split("/");
+  return parts[parts.length - 1] || null;
+}
+
 export function AppSidebarNav() {
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
   const instanceId = instance?.id ?? null;
-  const { pageTitle } = useBreadcrumb();
   const resolveModel = useModelStore((s) => s.resolveModel);
-  const { mutate: mutateSessions } = useSessions();
+  const { data: sessionsData, mutate: mutateSessions } = useSessions();
 
   const [isCreatingPR, setIsCreatingPR] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
@@ -76,6 +84,27 @@ export function AppSidebarNav() {
     shouldThrow: false,
   });
   const sessionId = sessionMatch?.params?.id;
+  const sessions: Session[] = sessionsData ?? [];
+  const currentSession = sessions.find((s) => s.id === sessionId);
+  const sessionTitle = currentSession?.title ?? null;
+  const projectLabel = projectLabelFromDirectory(currentSession?.directory);
+
+  // Browser tab title: '<project>: <session> - OpenPortal' when on a
+  // session route, plain 'OpenPortal' anywhere else. Restored on unmount
+  // / route change so other pages aren't stuck with the session label.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const previous = document.title;
+    if (sessionTitle) {
+      const prefix = projectLabel ? `${projectLabel}: ` : "";
+      document.title = `${prefix}${sessionTitle} - OpenPortal`;
+    } else {
+      document.title = "OpenPortal";
+    }
+    return () => {
+      document.title = previous;
+    };
+  }, [sessionTitle, projectLabel]);
 
   const sendPrompt = async (prompt: string) => {
     if (!sessionId || !port) {
@@ -144,14 +173,27 @@ export function AppSidebarNav() {
 
   return (
     <SidebarNav isSticky>
-      <span className="flex items-center gap-x-4">
-        <SidebarTrigger className="-ml-2" />
-        <Breadcrumbs className="hidden md:flex">
-          <BreadcrumbsItem href="/">
-            {instance?.name ?? "Instance"}
-          </BreadcrumbsItem>
-          {pageTitle && <BreadcrumbsItem>{pageTitle}</BreadcrumbsItem>}
-        </Breadcrumbs>
+      <span className="flex items-center gap-x-2 min-w-0 flex-1">
+        <SidebarTrigger className="-ml-2 shrink-0" />
+        {/* Session title fills the gap between the left/right hamburgers.
+            On a session route we render '<project>: <title>'; outside a
+            session, the instance name keeps the topbar from looking empty.
+            min-w-0 + truncate so long titles don't push the right buttons
+            off the screen on mobile. */}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
+          {sessionTitle ? (
+            <>
+              {projectLabel && (
+                <span className="text-muted-fg">{projectLabel}: </span>
+              )}
+              {sessionTitle}
+            </>
+          ) : (
+            <span className="text-muted-fg">
+              {instance?.name ?? "OpenPortal"}
+            </span>
+          )}
+        </span>
       </span>
       <span className="flex items-center gap-x-2 ml-auto">
         <Button
