@@ -1,12 +1,15 @@
 import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
-import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronUpDownIcon,
+  ChevronRightIcon,
+} from "@heroicons/react/24/outline";
 import {
   Cog6ToothIcon,
   TrashIcon,
   PlusIcon,
 } from "@heroicons/react/24/solid";
 import FileDiffIcon from "@/components/icons/file-diff-icon";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { parsePatchFiles } from "@pierre/diffs";
 import { Avatar } from "@/components/ui/avatar";
 import { Link as UILink } from "@/components/ui/link";
@@ -83,6 +86,192 @@ function truncateTitle(title: string, maxLength = 40): string {
   if (title.length <= maxLength) return title;
   const halfLength = Math.floor((maxLength - 3) / 2);
   return `${title.slice(0, halfLength)}...${title.slice(-halfLength)}`;
+}
+
+function projectBasename(directory: string): string {
+  const trimmed = directory.replace(/\/+$/g, "");
+  const last = trimmed.split("/").pop();
+  return last || directory;
+}
+
+interface ProjectGroupProps {
+  directory: string;
+  sessions: Session[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  currentSessionId: string | undefined;
+  onSessionClick: () => void;
+  onDeleteSession: (id: string) => void;
+}
+
+function ProjectGroup({
+  directory,
+  sessions,
+  isExpanded,
+  onToggle,
+  currentSessionId,
+  onSessionClick,
+  onDeleteSession,
+}: ProjectGroupProps) {
+  const [limit, setLimit] = useState(5);
+  useEffect(() => {
+    if (!isExpanded) setLimit(5);
+  }, [isExpanded]);
+
+  const visible = isExpanded ? sessions.slice(0, limit) : [];
+  const remaining = sessions.length - visible.length;
+  const projectName = projectBasename(directory);
+  const containsCurrent = sessions.some((s) => s.id === currentSessionId);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggle}
+        title={directory}
+        className="flex items-center gap-1 w-full text-left px-2 py-1 rounded hover:bg-muted/30 transition-colors"
+        data-current-project={containsCurrent || undefined}
+      >
+        <ChevronRightIcon
+          className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+        />
+        <span className="text-[12px] font-medium truncate flex-1">
+          {projectName}
+        </span>
+        <span className="text-[11px] text-muted-fg shrink-0">
+          {sessions.length}
+        </span>
+      </button>
+      {visible.map((session) => (
+        <SidebarItem key={session.id} tooltip={session.title}>
+          {({ isCollapsed, isFocused }) => (
+            <>
+              <SidebarLink
+                href={`/session/${session.id}`}
+                onClick={onSessionClick}
+              >
+                <SidebarLabel className="text-xs sm:text-sm">
+                  {truncateTitle(session.title)}
+                </SidebarLabel>
+              </SidebarLink>
+              {(!isCollapsed || isFocused) && (
+                <Menu>
+                  <SidebarMenuTrigger aria-label="Session options">
+                    <EllipsisHorizontalIcon />
+                  </SidebarMenuTrigger>
+                  <MenuContent
+                    popover={{
+                      offset: 0,
+                      placement: "right top",
+                    }}
+                  >
+                    <MenuItem
+                      intent="danger"
+                      onAction={() => onDeleteSession(session.id)}
+                    >
+                      <TrashIcon />
+                      Delete Session
+                    </MenuItem>
+                  </MenuContent>
+                </Menu>
+              )}
+            </>
+          )}
+        </SidebarItem>
+      ))}
+      {isExpanded && remaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setLimit((l) => l + 10)}
+          className="text-[11px] text-muted-fg hover:text-fg px-3 py-0.5 text-left"
+        >
+          Load {Math.min(10, remaining)} more
+        </button>
+      )}
+    </>
+  );
+}
+
+interface ProjectsListProps {
+  sessions: Session[];
+  currentSessionId: string | undefined;
+  onSessionClick: () => void;
+  onDeleteSession: (id: string) => void;
+}
+
+function ProjectsList({
+  sessions,
+  currentSessionId,
+  onSessionClick,
+  onDeleteSession,
+}: ProjectsListProps) {
+  const groups = useMemo(() => {
+    const byDir = new Map<string, Session[]>();
+    for (const s of sessions) {
+      const d = s.directory || "(no directory)";
+      const list = byDir.get(d) ?? [];
+      list.push(s);
+      byDir.set(d, list);
+    }
+    for (const list of byDir.values()) {
+      list.sort(
+        (a, b) => (b.time?.created ?? 0) - (a.time?.created ?? 0),
+      );
+    }
+    const arr = Array.from(byDir.entries()).map(([dir, ss]) => ({
+      dir,
+      sessions: ss,
+    }));
+    arr.sort(
+      (a, b) =>
+        (b.sessions[0]?.time?.created ?? 0) -
+        (a.sessions[0]?.time?.created ?? 0),
+    );
+    return arr;
+  }, [sessions]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const cs = sessions.find((s) => s.id === currentSessionId);
+    const dir = cs?.directory;
+    if (!dir) return;
+    setExpanded((prev) => {
+      if (prev.has(dir)) return prev;
+      return new Set([...prev, dir]);
+    });
+  }, [currentSessionId, sessions]);
+
+  if (groups.length === 0) {
+    return (
+      <div className="text-xs text-muted-fg px-3 py-2">No sessions yet</div>
+    );
+  }
+
+  return (
+    <>
+      {groups.map((group) => (
+        <ProjectGroup
+          key={group.dir}
+          directory={group.dir}
+          sessions={group.sessions}
+          isExpanded={expanded.has(group.dir)}
+          onToggle={() =>
+            setExpanded((prev) => {
+              const next = new Set(prev);
+              if (next.has(group.dir)) next.delete(group.dir);
+              else next.add(group.dir);
+              return next;
+            })
+          }
+          currentSessionId={currentSessionId}
+          onSessionClick={onSessionClick}
+          onDeleteSession={onDeleteSession}
+        />
+      ))}
+    </>
+  );
 }
 
 export default function AppSidebar(
@@ -185,50 +374,13 @@ export default function AppSidebar(
             </SidebarItem>
           </SidebarSection>
 
-          <SidebarSection label="Sessions">
-            {sessions.map((session) => (
-              <SidebarItem key={session.id} tooltip={session.title}>
-                {({ isCollapsed, isFocused }) => (
-                  <>
-                    <SidebarLink
-                      href={`/session/${session.id}`}
-                      // On mobile, the sidebar overlays the chat. Tapping a
-                      // session would normally leave the overlay open, so
-                      // the user has to manually dismiss it before they can
-                      // see the session. Close the overlay synchronously
-                      // before the route change so the chat is visible the
-                      // moment navigation lands.
-                      onClick={() => setIsOpenOnMobile(false)}
-                    >
-                      <SidebarLabel className="text-xs sm:text-sm">
-                        {truncateTitle(session.title)}
-                      </SidebarLabel>
-                    </SidebarLink>
-                    {(!isCollapsed || isFocused) && (
-                      <Menu>
-                        <SidebarMenuTrigger aria-label="Session options">
-                          <EllipsisHorizontalIcon />
-                        </SidebarMenuTrigger>
-                        <MenuContent
-                          popover={{
-                            offset: 0,
-                            placement: "right top",
-                          }}
-                        >
-                          <MenuItem
-                            intent="danger"
-                            onAction={() => handleDeleteSession(session.id)}
-                          >
-                            <TrashIcon />
-                            Delete Session
-                          </MenuItem>
-                        </MenuContent>
-                      </Menu>
-                    )}
-                  </>
-                )}
-              </SidebarItem>
-            ))}
+          <SidebarSection label="Projects">
+            <ProjectsList
+              sessions={sessions}
+              currentSessionId={currentSessionId}
+              onSessionClick={() => setIsOpenOnMobile(false)}
+              onDeleteSession={handleDeleteSession}
+            />
           </SidebarSection>
         </SidebarSectionGroup>
       </SidebarContent>
