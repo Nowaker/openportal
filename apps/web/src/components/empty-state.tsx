@@ -1,20 +1,28 @@
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
-import { ChevronRightIcon } from "@heroicons/react/24/outline";
-import { TrashIcon } from "@heroicons/react/24/solid";
+import {
+  ChevronRightIcon,
+  ArchiveBoxIcon,
+  ArchiveBoxArrowDownIcon,
+  ArrowUturnLeftIcon,
+} from "@heroicons/react/24/outline";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import { Button } from "@/components/ui/button";
 import { Keyboard } from "@/components/ui/keyboard";
 import { Link } from "@/components/ui/link";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
 import useMediaQuery from "@/hooks/use-media-query";
 import {
   useSessions,
   useCreateSession,
-  useDeleteSession,
+  useArchiveSession,
+  useUnarchiveSession,
 } from "@/hooks/use-opencode";
 import type { Session } from "@opencode-ai/sdk";
+
+function isArchived(s: Session): boolean {
+  const t = (s.time as { archived?: number } | undefined)?.archived;
+  return typeof t === "number" && t > 0;
+}
 
 function projectBasename(directory: string): string {
   const trimmed = directory.replace(/\/+$/g, "");
@@ -22,28 +30,33 @@ function projectBasename(directory: string): string {
   return last || directory;
 }
 
-function groupSessionsByDirectory(
-  sessions: Session[],
-): { dir: string; sessions: Session[] }[] {
-  const byDir = new Map<string, Session[]>();
+interface MobileBin {
+  dir: string;
+  sessions: Session[];
+  archivedSessions: Session[];
+}
+
+function groupSessionsByDirectory(sessions: Session[]): MobileBin[] {
+  const byDir = new Map<string, MobileBin>();
   for (const s of sessions) {
     if (s.parentID) continue;
     const d = s.directory || "(no directory)";
-    const list = byDir.get(d) ?? [];
-    list.push(s);
-    byDir.set(d, list);
+    let bin = byDir.get(d);
+    if (!bin) {
+      bin = { dir: d, sessions: [], archivedSessions: [] };
+      byDir.set(d, bin);
+    }
+    if (isArchived(s)) bin.archivedSessions.push(s);
+    else bin.sessions.push(s);
   }
-  for (const list of byDir.values()) {
-    list.sort(
-      (a, b) =>
-        (b.time?.updated ?? b.time?.created ?? 0) -
-        (a.time?.updated ?? a.time?.created ?? 0),
-    );
+  const sortByActivity = (a: Session, b: Session) =>
+    (b.time?.updated ?? b.time?.created ?? 0) -
+    (a.time?.updated ?? a.time?.created ?? 0);
+  for (const bin of byDir.values()) {
+    bin.sessions.sort(sortByActivity);
+    bin.archivedSessions.sort(sortByActivity);
   }
-  const arr = Array.from(byDir.entries()).map(([dir, ss]) => ({
-    dir,
-    sessions: ss,
-  }));
+  const arr = Array.from(byDir.values());
   arr.sort(
     (a, b) =>
       (b.sessions[0]?.time?.updated ?? b.sessions[0]?.time?.created ?? 0) -
@@ -64,7 +77,8 @@ export default function EmptyState() {
   const { isMobile } = useMediaQuery();
   const { data: sessionsData, error, isLoading, mutate } = useSessions();
   const createSession = useCreateSession();
-  const deleteSession = useDeleteSession();
+  const archiveSession = useArchiveSession();
+  const unarchiveSession = useUnarchiveSession();
 
   const sessions: Session[] = sessionsData ?? [];
 
@@ -82,12 +96,21 @@ export default function EmptyState() {
     }
   }, [creating, createSession, mutate, navigate]);
 
-  async function handleDeleteSession(sessionId: string) {
+  async function handleArchive(sessionId: string) {
     try {
-      await deleteSession(sessionId);
+      await archiveSession(sessionId);
       await mutate();
     } catch (err) {
-      console.error("Failed to delete session:", err);
+      console.error("Failed to archive session:", err);
+    }
+  }
+
+  async function handleUnarchive(sessionId: string) {
+    try {
+      await unarchiveSession(sessionId);
+      await mutate();
+    } catch (err) {
+      console.error("Failed to unarchive session:", err);
     }
   }
 
@@ -145,7 +168,8 @@ export default function EmptyState() {
           {!isLoading && !error && sessions.length > 0 && (
             <ProjectsListMobile
               sessions={sessions}
-              onDeleteSession={handleDeleteSession}
+              onArchiveSession={handleArchive}
+              onUnarchiveSession={handleUnarchive}
             />
           )}
         </div>
@@ -178,12 +202,14 @@ export default function EmptyState() {
 
 interface ProjectsListMobileProps {
   sessions: Session[];
-  onDeleteSession: (id: string) => void;
+  onArchiveSession: (id: string) => void;
+  onUnarchiveSession: (id: string) => void;
 }
 
 function ProjectsListMobile({
   sessions,
-  onDeleteSession,
+  onArchiveSession,
+  onUnarchiveSession,
 }: ProjectsListMobileProps) {
   const groups = useMemo(() => groupSessionsByDirectory(sessions), [sessions]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -206,9 +232,11 @@ function ProjectsListMobile({
             key={group.dir}
             directory={group.dir}
             sessions={group.sessions}
+            archivedSessions={group.archivedSessions}
             isExpanded={isExpanded}
             onToggle={() => toggle(group.dir)}
-            onDeleteSession={onDeleteSession}
+            onArchiveSession={onArchiveSession}
+            onUnarchiveSession={onUnarchiveSession}
           />
         );
       })}
@@ -219,25 +247,38 @@ function ProjectsListMobile({
 interface ProjectGroupMobileProps {
   directory: string;
   sessions: Session[];
+  archivedSessions: Session[];
   isExpanded: boolean;
   onToggle: () => void;
-  onDeleteSession: (id: string) => void;
+  onArchiveSession: (id: string) => void;
+  onUnarchiveSession: (id: string) => void;
 }
 
 function ProjectGroupMobile({
   directory,
   sessions,
+  archivedSessions,
   isExpanded,
   onToggle,
-  onDeleteSession,
+  onArchiveSession,
+  onUnarchiveSession,
 }: ProjectGroupMobileProps) {
   const [limit, setLimit] = useState(5);
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [archivedLimit, setArchivedLimit] = useState(5);
   useEffect(() => {
     if (!isExpanded) setLimit(5);
   }, [isExpanded]);
+  useEffect(() => {
+    if (!archivedExpanded) setArchivedLimit(5);
+  }, [archivedExpanded]);
 
   const visible = isExpanded ? sessions.slice(0, limit) : [];
   const remaining = sessions.length - visible.length;
+  const archivedVisible = archivedExpanded
+    ? archivedSessions.slice(0, archivedLimit)
+    : [];
+  const archivedRemaining = archivedSessions.length - archivedVisible.length;
 
   return (
     <li className="rounded-lg">
@@ -250,17 +291,17 @@ function ProjectGroupMobile({
         <ChevronRightIcon
           className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
         />
-        <span className="text-sm font-medium truncate flex-1 text-left">
+        <span className="text-sm truncate flex-1 text-left">
           {projectBasename(directory)}
-        </span>
-        <span className="text-xs text-muted-fg shrink-0">
-          {sessions.length}
+          {sessions.length > 0 && (
+            <span className="ml-1 text-muted-fg">({sessions.length})</span>
+          )}
         </span>
       </button>
       {visible.map((session) => (
         <div
           key={session.id}
-          className="group flex items-center justify-between pl-6 rounded hover:bg-secondary/50 transition-colors"
+          className="flex items-center justify-between pl-6 rounded hover:bg-secondary/50"
         >
           <Link
             href={`/session/${session.id}`}
@@ -270,20 +311,15 @@ function ProjectGroupMobile({
               session.title || `Session ${session.id.slice(0, 8)}`,
             )}
           </Link>
-          <Menu>
-            <MenuTrigger className="p-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity">
-              <EllipsisHorizontalIcon className="size-4" />
-            </MenuTrigger>
-            <MenuContent popover={{ offset: 0, placement: "bottom end" }}>
-              <MenuItem
-                intent="danger"
-                onAction={() => onDeleteSession(session.id)}
-              >
-                <TrashIcon />
-                Delete Session
-              </MenuItem>
-            </MenuContent>
-          </Menu>
+          <button
+            type="button"
+            onClick={() => onArchiveSession(session.id)}
+            title="Archive session"
+            aria-label={`Archive ${session.title}`}
+            className="shrink-0 inline-flex items-center justify-center size-8 rounded text-muted-fg hover:text-fg hover:bg-secondary/50"
+          >
+            <ArchiveBoxArrowDownIcon className="size-4" />
+          </button>
         </div>
       ))}
       {isExpanded && remaining > 0 && (
@@ -293,6 +329,52 @@ function ProjectGroupMobile({
           className="text-xs text-muted-fg hover:text-fg pl-6 px-3 py-1 text-left"
         >
           Load {Math.min(10, remaining)} more
+        </button>
+      )}
+      {isExpanded && archivedSessions.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setArchivedExpanded((v) => !v)}
+          className="flex items-center gap-1.5 pl-6 px-2 py-1 text-xs text-muted-fg hover:text-fg w-full text-left"
+        >
+          <ChevronRightIcon
+            className={`size-3 shrink-0 transition-transform ${archivedExpanded ? "rotate-90" : ""}`}
+          />
+          <ArchiveBoxIcon className="size-3 shrink-0" />
+          <span>Archived ({archivedSessions.length})</span>
+        </button>
+      )}
+      {archivedVisible.map((session) => (
+        <div
+          key={session.id}
+          className="flex items-center justify-between pl-12 rounded hover:bg-secondary/50 text-muted-fg"
+        >
+          <Link
+            href={`/session/${session.id}`}
+            className="flex-1 py-2 px-3 text-sm italic truncate"
+          >
+            {truncateTitle(
+              session.title || `Session ${session.id.slice(0, 8)}`,
+            )}
+          </Link>
+          <button
+            type="button"
+            onClick={() => onUnarchiveSession(session.id)}
+            title="Unarchive session"
+            aria-label={`Unarchive ${session.title}`}
+            className="shrink-0 inline-flex items-center justify-center size-8 rounded text-muted-fg hover:text-fg hover:bg-secondary/50"
+          >
+            <ArrowUturnLeftIcon className="size-4" />
+          </button>
+        </div>
+      ))}
+      {archivedExpanded && archivedRemaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setArchivedLimit((l) => l + 10)}
+          className="text-xs text-muted-fg hover:text-fg pl-12 px-3 py-1 text-left"
+        >
+          Load {Math.min(10, archivedRemaining)} more
         </button>
       )}
     </li>

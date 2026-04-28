@@ -1,11 +1,12 @@
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
 import {
   ChevronUpDownIcon,
   ChevronRightIcon,
+  ArchiveBoxIcon,
+  ArchiveBoxArrowDownIcon,
+  ArrowUturnLeftIcon,
 } from "@heroicons/react/24/outline";
 import {
   Cog6ToothIcon,
-  TrashIcon,
   PlusIcon,
   FolderOpenIcon,
 } from "@heroicons/react/24/solid";
@@ -41,7 +42,8 @@ import {
 import {
   useSessions,
   useCreateSession,
-  useDeleteSession,
+  useArchiveSession,
+  useUnarchiveSession,
   useCurrentProject,
   useHostname,
   useGitDiff,
@@ -100,33 +102,48 @@ function projectBasename(directory: string): string {
 interface ProjectGroupProps {
   directory: string;
   sessions: Session[];
+  archivedSessions: Session[];
   isExpanded: boolean;
   onToggle: () => void;
   onNewSessionInProject: () => void;
   currentSessionId: string | undefined;
   onSessionClick: () => void;
-  onDeleteSession: (id: string) => void;
+  onArchiveSession: (id: string) => void;
+  onUnarchiveSession: (id: string) => void;
 }
 
 function ProjectGroup({
   directory,
   sessions,
+  archivedSessions,
   isExpanded,
   onToggle,
   onNewSessionInProject,
   currentSessionId,
   onSessionClick,
-  onDeleteSession,
+  onArchiveSession,
+  onUnarchiveSession,
 }: ProjectGroupProps) {
   const [limit, setLimit] = useState(5);
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [archivedLimit, setArchivedLimit] = useState(5);
   useEffect(() => {
     if (!isExpanded) setLimit(5);
   }, [isExpanded]);
+  useEffect(() => {
+    if (!archivedExpanded) setArchivedLimit(5);
+  }, [archivedExpanded]);
 
   const visible = isExpanded ? sessions.slice(0, limit) : [];
   const remaining = sessions.length - visible.length;
+  const archivedVisible = archivedExpanded
+    ? archivedSessions.slice(0, archivedLimit)
+    : [];
+  const archivedRemaining = archivedSessions.length - archivedVisible.length;
   const projectName = projectBasename(directory);
-  const containsCurrent = sessions.some((s) => s.id === currentSessionId);
+  const containsCurrent =
+    sessions.some((s) => s.id === currentSessionId) ||
+    archivedSessions.some((s) => s.id === currentSessionId);
 
   return (
     <>
@@ -143,8 +160,11 @@ function ProjectGroup({
           <ChevronRightIcon
             className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           />
-          <span className="text-[12px] font-medium truncate">
+          <span className="text-[12px] truncate">
             {projectName}
+            {sessions.length > 0 && (
+              <span className="ml-1 text-muted-fg">({sessions.length})</span>
+            )}
           </span>
         </button>
         <button
@@ -155,58 +175,90 @@ function ProjectGroup({
           }}
           title={`New session in ${directory}`}
           aria-label={`New session in ${projectName}`}
-          className="rounded p-0.5 text-muted-fg hover:text-fg hover:bg-muted/50 shrink-0"
+          className="shrink-0 inline-flex items-center justify-center size-5 rounded border border-border text-muted-fg hover:text-fg hover:border-fg/40 hover:bg-muted/40"
         >
           <PlusIcon className="size-3" />
         </button>
-        <span className="text-[11px] text-muted-fg shrink-0 tabular-nums">
-          {sessions.length}
-        </span>
       </div>
       {visible.map((session) => (
-        <SidebarItem key={session.id} tooltip={session.title}>
-          {({ isCollapsed, isFocused }) => (
-            <>
-              <SidebarLink
-                href={`/session/${session.id}`}
-                onClick={onSessionClick}
-              >
-                <SidebarLabel className="text-xs sm:text-sm">
-                  {truncateTitle(session.title)}
-                </SidebarLabel>
-              </SidebarLink>
-              {(!isCollapsed || isFocused) && (
-                <Menu>
-                  <SidebarMenuTrigger aria-label="Session options">
-                    <EllipsisHorizontalIcon />
-                  </SidebarMenuTrigger>
-                  <MenuContent
-                    popover={{
-                      offset: 0,
-                      placement: "right top",
-                    }}
-                  >
-                    <MenuItem
-                      intent="danger"
-                      onAction={() => onDeleteSession(session.id)}
-                    >
-                      <TrashIcon />
-                      Delete Session
-                    </MenuItem>
-                  </MenuContent>
-                </Menu>
-              )}
-            </>
-          )}
-        </SidebarItem>
+        <div
+          key={session.id}
+          className="col-span-full grid grid-cols-[1fr_auto] items-center pl-3 pr-1 hover:bg-muted/20 rounded"
+        >
+          <SidebarLink
+            href={`/session/${session.id}`}
+            onClick={onSessionClick}
+            className="min-w-0"
+          >
+            <SidebarLabel className="text-xs sm:text-sm font-normal">
+              {truncateTitle(session.title)}
+            </SidebarLabel>
+          </SidebarLink>
+          <button
+            type="button"
+            onClick={() => onArchiveSession(session.id)}
+            title="Archive session"
+            aria-label={`Archive ${session.title}`}
+            className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+          >
+            <ArchiveBoxArrowDownIcon className="size-3.5" />
+          </button>
+        </div>
       ))}
       {isExpanded && remaining > 0 && (
         <button
           type="button"
           onClick={() => setLimit((l) => l + 10)}
-          className="col-span-full text-[11px] text-muted-fg hover:text-fg px-3 py-0.5 text-left"
+          className="col-span-full text-[11px] text-muted-fg hover:text-fg pl-6 py-0.5 text-left"
         >
           Load {Math.min(10, remaining)} more
+        </button>
+      )}
+      {isExpanded && archivedSessions.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setArchivedExpanded((v) => !v)}
+          className="col-span-full flex items-center gap-1 pl-3 pr-2 py-0.5 text-[11px] text-muted-fg hover:text-fg text-left"
+        >
+          <ChevronRightIcon
+            className={`size-3 shrink-0 transition-transform ${archivedExpanded ? "rotate-90" : ""}`}
+          />
+          <ArchiveBoxIcon className="size-3 shrink-0" />
+          <span>Archived ({archivedSessions.length})</span>
+        </button>
+      )}
+      {archivedVisible.map((session) => (
+        <div
+          key={session.id}
+          className="col-span-full grid grid-cols-[1fr_auto] items-center pl-6 pr-1 hover:bg-muted/20 rounded text-muted-fg"
+        >
+          <SidebarLink
+            href={`/session/${session.id}`}
+            onClick={onSessionClick}
+            className="min-w-0"
+          >
+            <SidebarLabel className="text-xs sm:text-sm font-normal italic">
+              {truncateTitle(session.title)}
+            </SidebarLabel>
+          </SidebarLink>
+          <button
+            type="button"
+            onClick={() => onUnarchiveSession(session.id)}
+            title="Unarchive session"
+            aria-label={`Unarchive ${session.title}`}
+            className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+          >
+            <ArrowUturnLeftIcon className="size-3.5" />
+          </button>
+        </div>
+      ))}
+      {archivedExpanded && archivedRemaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setArchivedLimit((l) => l + 10)}
+          className="col-span-full text-[11px] text-muted-fg hover:text-fg pl-9 py-0.5 text-left"
+        >
+          Load {Math.min(10, archivedRemaining)} more
         </button>
       )}
     </>
@@ -218,8 +270,20 @@ interface ProjectsListProps {
   currentSessionId: string | undefined;
   virtualDirectory: string | null;
   onSessionClick: () => void;
-  onDeleteSession: (id: string) => void;
+  onArchiveSession: (id: string) => void;
+  onUnarchiveSession: (id: string) => void;
   onNewSessionInProject: (directory: string) => void;
+}
+
+interface ProjectBin {
+  dir: string;
+  sessions: Session[];
+  archivedSessions: Session[];
+}
+
+function isArchived(s: Session): boolean {
+  const t = (s.time as { archived?: number } | undefined)?.archived;
+  return typeof t === "number" && t > 0;
 }
 
 function ProjectsList({
@@ -227,29 +291,31 @@ function ProjectsList({
   currentSessionId,
   virtualDirectory,
   onSessionClick,
-  onDeleteSession,
+  onArchiveSession,
+  onUnarchiveSession,
   onNewSessionInProject,
 }: ProjectsListProps) {
-  const groups = useMemo(() => {
-    const byDir = new Map<string, Session[]>();
+  const groups = useMemo<ProjectBin[]>(() => {
+    const byDir = new Map<string, ProjectBin>();
     for (const s of sessions) {
       if (s.parentID) continue;
       const d = s.directory || "(no directory)";
-      const list = byDir.get(d) ?? [];
-      list.push(s);
-      byDir.set(d, list);
+      let bin = byDir.get(d);
+      if (!bin) {
+        bin = { dir: d, sessions: [], archivedSessions: [] };
+        byDir.set(d, bin);
+      }
+      if (isArchived(s)) bin.archivedSessions.push(s);
+      else bin.sessions.push(s);
     }
-    for (const list of byDir.values()) {
-      list.sort(
-        (a, b) =>
-          (b.time?.updated ?? b.time?.created ?? 0) -
-          (a.time?.updated ?? a.time?.created ?? 0),
-      );
+    const sortByActivity = (a: Session, b: Session) =>
+      (b.time?.updated ?? b.time?.created ?? 0) -
+      (a.time?.updated ?? a.time?.created ?? 0);
+    for (const bin of byDir.values()) {
+      bin.sessions.sort(sortByActivity);
+      bin.archivedSessions.sort(sortByActivity);
     }
-    const arr = Array.from(byDir.entries()).map(([dir, ss]) => ({
-      dir,
-      sessions: ss,
-    }));
+    const arr = Array.from(byDir.values());
     arr.sort(
       (a, b) =>
         (b.sessions[0]?.time?.updated ??
@@ -265,7 +331,11 @@ function ProjectsList({
         const [existing] = arr.splice(existingIdx, 1);
         arr.unshift(existing);
       } else if (existingIdx < 0) {
-        arr.unshift({ dir: virtualDirectory, sessions: [] });
+        arr.unshift({
+          dir: virtualDirectory,
+          sessions: [],
+          archivedSessions: [],
+        });
       }
     }
     return arr;
@@ -305,6 +375,7 @@ function ProjectsList({
           key={group.dir}
           directory={group.dir}
           sessions={group.sessions}
+          archivedSessions={group.archivedSessions}
           isExpanded={expanded.has(group.dir)}
           onToggle={() =>
             setExpanded((prev) => {
@@ -317,7 +388,8 @@ function ProjectsList({
           onNewSessionInProject={() => onNewSessionInProject(group.dir)}
           currentSessionId={currentSessionId}
           onSessionClick={onSessionClick}
-          onDeleteSession={onDeleteSession}
+          onArchiveSession={onArchiveSession}
+          onUnarchiveSession={onUnarchiveSession}
         />
       ))}
     </>
@@ -337,7 +409,8 @@ export default function AppSidebar(
   const hostname = hostnameData?.hostname ?? "Loading...";
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   const createSession = useCreateSession();
-  const deleteSession = useDeleteSession();
+  const archiveSession = useArchiveSession();
+  const unarchiveSession = useUnarchiveSession();
   const sessions: Session[] = sessionsData ?? [];
 
   const { data: diffData } = useGitDiff();
@@ -383,18 +456,28 @@ export default function AppSidebar(
   });
   const currentSessionId = currentSessionMatch?.params?.id;
 
-  async function handleDeleteSession(sessionId: string) {
+  async function handleArchiveSession(sessionId: string) {
     try {
-      await deleteSession(sessionId);
+      await archiveSession(sessionId);
       await mutateSessions();
-      toast.success("Session deleted");
-      // If we deleted the current session, navigate to home
+      toast.success("Session archived");
       if (currentSessionId === sessionId) {
         navigate({ to: "/" });
       }
     } catch (error) {
-      console.error("Failed to delete session:", error);
-      toast.error("Failed to delete session");
+      console.error("Failed to archive session:", error);
+      toast.error("Failed to archive session");
+    }
+  }
+
+  async function handleUnarchiveSession(sessionId: string) {
+    try {
+      await unarchiveSession(sessionId);
+      await mutateSessions();
+      toast.success("Session unarchived");
+    } catch (error) {
+      console.error("Failed to unarchive session:", error);
+      toast.error("Failed to unarchive session");
     }
   }
 
@@ -452,7 +535,8 @@ export default function AppSidebar(
               currentSessionId={currentSessionId}
               virtualDirectory={virtualDirectory ?? null}
               onSessionClick={() => setIsOpenOnMobile(false)}
-              onDeleteSession={handleDeleteSession}
+              onArchiveSession={handleArchiveSession}
+              onUnarchiveSession={handleUnarchiveSession}
               onNewSessionInProject={(dir) => {
                 setIsOpenOnMobile(false);
                 setVirtualDirectory(dir);

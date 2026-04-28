@@ -159,6 +159,33 @@ export function useDeleteSession() {
   };
 }
 
+export function useArchiveSession() {
+  const port = usePort();
+  return async (sessionId: string) => {
+    if (!port) throw new Error("No instance selected");
+    const res = await fetch(
+      `/api/opencode/${port}/session/${sessionId}/archive`,
+      { method: "POST" },
+    );
+    if (!res.ok) throw new Error(`Failed to archive session: ${res.status}`);
+    return res.json();
+  };
+}
+
+export function useUnarchiveSession() {
+  const port = usePort();
+  return async (sessionId: string) => {
+    if (!port) throw new Error("No instance selected");
+    const res = await fetch(
+      `/api/opencode/${port}/session/${sessionId}/unarchive`,
+      { method: "POST" },
+    );
+    if (!res.ok)
+      throw new Error(`Failed to unarchive session: ${res.status}`);
+    return res.json();
+  };
+}
+
 export function useGitDiff() {
   const port = usePort();
 

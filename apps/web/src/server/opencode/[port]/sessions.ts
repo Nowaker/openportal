@@ -23,7 +23,9 @@ export default defineHandler(async (event) => {
 
   let sessions: Session[];
   try {
-    const res = await fetch(`${getOpencodeBaseUrl(port)}/experimental/session`);
+    const res = await fetch(
+      `${getOpencodeBaseUrl(port)}/experimental/session?archived=true`,
+    );
     if (!res.ok) throw new Error(`upstream ${res.status}`);
     sessions = (await res.json()) as Session[];
   } catch {
