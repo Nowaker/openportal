@@ -80,6 +80,7 @@ export default defineHandler(async () => {
       name: instance.name,
       directory: instance.directory,
       port: instance.opencodePort,
+      webPort: instance.port,
       hostname: instance.hostname,
       opencodePid: instance.opencodePid,
       webPid: instance.webPid,
