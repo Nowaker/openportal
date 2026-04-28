@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMatch } from "@tanstack/react-router";
 import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,10 @@ import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
-import { useToolsStore } from "@/stores/tools-store";
+import {
+  useToolsStore,
+  resolveToolsFromState,
+} from "@/stores/tools-store";
 import { mutateSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions } from "@/hooks/use-opencode";
 import type { Session } from "@opencode-ai/sdk";
@@ -28,7 +31,22 @@ export function AppSidebarNav() {
   const instanceId = instance?.id ?? null;
   const resolveModel = useModelStore((s) => s.resolveModel);
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
-  const enabledTools = useToolsStore((s) => s.enabledTools());
+  // Subscribe to the raw store slices and derive the resolved list via
+  // useMemo. Calling s.enabledTools() inside the Zustand selector returns
+  // a fresh array on every render and triggers React 18 error #185
+  // (infinite update loop) because Zustand sees a new identity each time.
+  const disabledIds = useToolsStore((s) => s.disabledIds);
+  const systemOverrides = useToolsStore((s) => s.systemOverrides);
+  const customTools = useToolsStore((s) => s.customTools);
+  const enabledTools = useMemo(
+    () =>
+      resolveToolsFromState({
+        disabledIds,
+        systemOverrides,
+        customTools,
+      }).filter((tool) => tool.enabled),
+    [disabledIds, systemOverrides, customTools],
+  );
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
 
