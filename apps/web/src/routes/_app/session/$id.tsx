@@ -483,16 +483,35 @@ function QuestionAnswerForm({
             )}
 
             {(q.options.length === 0 || q.custom) && (
-              <input
-                type="text"
-                disabled={isPosting}
-                placeholder="Type your answer..."
-                value={freeformInputs[idx] || ""}
-                onChange={(e) =>
-                  setFreeformInputs((prev) => ({ ...prev, [idx]: e.target.value }))
-                }
-                className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg placeholder:text-muted-fg focus:outline-none focus:border-primary"
-              />
+              <div className="space-y-1">
+                {q.options.length > 0 && q.custom && (
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-fg">
+                    <span aria-hidden className="text-fg/40">+</span>
+                    <span>and/or your own note (submits together)</span>
+                  </div>
+                )}
+                <input
+                  type="text"
+                  disabled={isPosting}
+                  placeholder={
+                    q.options.length > 0 && q.custom
+                      ? "Add a custom note (combines with selection above)..."
+                      : "Type your answer..."
+                  }
+                  value={freeformInputs[idx] || ""}
+                  onChange={(e) =>
+                    setFreeformInputs((prev) => ({
+                      ...prev,
+                      [idx]: e.target.value,
+                    }))
+                  }
+                  className={`w-full rounded-md border bg-bg px-2 py-1 text-xs text-fg placeholder:text-muted-fg focus:outline-none focus:border-primary ${
+                    q.options.length > 0 && q.custom
+                      ? "border-dashed border-fg/20"
+                      : "border-border"
+                  }`}
+                />
+              </div>
             )}
 
             {q.multiple && (
