@@ -33,6 +33,26 @@ export function useSession(id: string | null) {
   );
 }
 
+// opencode's GET /session/status returns a map of busy/retry sessions.
+// We use a short refresh interval because this is what powers the
+// 'Thinking...' indicator's TRUE-busy check - if the indicator is
+// telling the user 'still working' but the server says idle, the user
+// was misled by a dispatch-failure stuck state and we want to surface
+// that within a few seconds, not 60.
+export type SessionStatusMap = Record<
+  string,
+  { type: "busy" | "retry" | "idle" }
+>;
+
+export function useSessionStatus() {
+  const port = usePort();
+  return useSWR<SessionStatusMap>(
+    port ? `/api/opencode/${port}/session/status` : null,
+    fetcher,
+    { refreshInterval: 3000, revalidateOnFocus: true },
+  );
+}
+
 export function useSessionMessages(id: string | null) {
   const port = usePort();
 

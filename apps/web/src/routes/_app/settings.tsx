@@ -384,6 +384,43 @@ function SettingsPage() {
     return () => setPageTitle(null);
   }, [setPageTitle]);
 
+  // Drive the active settings tab from the URL hash so the browser back
+  // button steps between tabs naturally - the user can land in any tab
+  // via a deep link, switch tabs, and Back returns to the previous tab,
+  // then to whatever route they came from. Falling back to 'appearance'
+  // when the hash is empty or unknown.
+  const [settingsTab, setSettingsTabState] = React.useState<string>(() => {
+    if (typeof window === "undefined") return "appearance";
+    const hash = window.location.hash.replace(/^#/, "");
+    return ["appearance", "prompt", "api"].includes(hash) ? hash : "appearance";
+  });
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPop = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      setSettingsTabState(
+        ["appearance", "prompt", "api"].includes(hash) ? hash : "appearance",
+      );
+    };
+    window.addEventListener("popstate", onPop);
+    window.addEventListener("hashchange", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("hashchange", onPop);
+    };
+  }, []);
+
+  const setSettingsTab = React.useCallback((next: string) => {
+    setSettingsTabState(next);
+    if (typeof window !== "undefined") {
+      // pushState (not replaceState) so each tab change is its own
+      // history entry and Back walks tab-by-tab.
+      const url = `${window.location.pathname}${window.location.search}#${next}`;
+      window.history.pushState(null, "", url);
+    }
+  }, []);
+
   return (
     <div className="container mx-auto space-y-8 px-4 py-10">
       <div className="space-y-2">
@@ -410,7 +447,12 @@ function SettingsPage() {
         </p>
       </div>
 
-      <Tabs aria-label="Settings" className="overflow-x-hidden">
+      <Tabs
+        aria-label="Settings"
+        className="overflow-x-hidden"
+        selectedKey={settingsTab}
+        onSelectionChange={(key) => setSettingsTab(String(key))}
+      >
         <TabList className="flex overflow-x-auto scrollbar-none">
           <Tab id="appearance">
             <SwatchIcon className="size-4" data-slot="icon" />
