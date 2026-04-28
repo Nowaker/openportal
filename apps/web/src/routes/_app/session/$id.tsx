@@ -1803,7 +1803,7 @@ function SessionPage() {
   }, []);
 
   return (
-    <div className="flex h-full flex-col -m-4">
+    <div className="flex h-full flex-col">
       <div className="relative flex-1 min-h-0">
       <div
         className="absolute inset-0 overflow-auto overflow-x-hidden"
@@ -1972,7 +1972,7 @@ function SessionPage() {
           <button
             type="button"
             onClick={() => setComposerCollapsed(false)}
-            className="absolute left-1 -top-9 z-40 flex size-8 items-center justify-center rounded-full border border-border bg-bg/90 text-muted-fg shadow hover:bg-muted hover:text-fg transition-colors"
+            className="self-start mx-1 my-0.5 flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted hover:text-fg transition-colors"
             aria-label="Show composer"
             title="Show composer"
           >
@@ -2005,7 +2005,17 @@ function SessionPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setComposerCollapsed(true)}
+                onClick={() => {
+                  const value = textareaRef.current?.value;
+                  if (sessionId && typeof value === "string") {
+                    if (draftSaveTimerRef.current != null) {
+                      window.clearTimeout(draftSaveTimerRef.current);
+                      draftSaveTimerRef.current = null;
+                    }
+                    writeDraft(sessionId, value);
+                  }
+                  setComposerCollapsed(true);
+                }}
                 className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 aria-label="Hide composer"
                 title="Hide composer"
@@ -2013,7 +2023,7 @@ function SessionPage() {
                 <ChevronDownIcon className="size-4" />
               </button>
             </div>
-            <div className="px-2 pt-1.5 pb-1 relative flex-1 min-h-0 flex flex-col">
+            <div className="px-1 pt-0.5 pb-0.5 relative flex-1 min-h-0 flex flex-col">
             <FileMentionPopover
               isOpen={fileMention.isOpen}
               searchQuery={fileMention.searchQuery}
@@ -2165,8 +2175,7 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="resize-none overflow-y-auto text-sm sm:text-base"
-                    rows={5}
+                    className="resize-none overflow-y-auto text-sm sm:text-base min-h-full"
                   />
                 </div>
                 <div className="flex flex-col justify-end gap-1.5 shrink-0">

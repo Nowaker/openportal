@@ -63,10 +63,10 @@ function AppLayout() {
   return (
     <BreadcrumbProvider>
       <SidebarProvider className="h-dvh overflow-hidden">
-        <AppSidebar intent="inset" collapsible="dock" />
+        <AppSidebar collapsible="dock" />
         <SidebarInset className="overflow-hidden">
           <AppSidebarNav />
-          <div className="flex-1 overflow-auto p-4">
+          <div className="flex-1 overflow-hidden">
             <Outlet />
           </div>
         </SidebarInset>
