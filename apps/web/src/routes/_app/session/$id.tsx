@@ -48,7 +48,7 @@ import {
   type QuestionInfo,
   type QuestionRequest,
 } from "@/hooks/use-session-messages";
-import { useSessions } from "@/hooks/use-opencode";
+import { useSessions, useSessionStatus } from "@/hooks/use-opencode";
 import useMediaQuery from "@/hooks/use-media-query";
 import type { Session } from "@opencode-ai/sdk";
 
@@ -1048,6 +1048,10 @@ function SessionPage() {
     error: messagesError,
   } = useSessionMessages(sessionId, { loadAll: loadAllMessages });
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
+  const { data: sessionStatusMap } = useSessionStatus();
+  const serverThinks = sessionStatusMap?.[sessionId];
+  const isServerBusy =
+    serverThinks?.type === "busy" || serverThinks?.type === "retry";
   const instanceId = instance?.id ?? null;
   const resolveModel = useModelStore((s) => s.resolveModel);
   const isOverridingDefaultFn = useModelStore((s) => s.isOverridingDefault);
@@ -1421,6 +1425,55 @@ function SessionPage() {
     }
   }, [port, sessionId]);
 
+  // Recovery for the 'prompt accepted but generation never dispatched'
+  // failure mode. Walk the messages backwards to the last user-role
+  // message that has no assistant follow-up, take its text, and
+  // re-submit via prompt_async. opencode WILL create a new user
+  // message (no API to re-fire generation against an existing one) -
+  // the caller can revert the duplicate later if needed. The point is
+  // to unstick the session.
+  const handleRetryLastUserPrompt = useCallback(async () => {
+    if (!port || !sessionId) return;
+    let lastUserText: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m) continue;
+      if (m.info.role === "assistant") break;
+      if (m.info.role === "user") {
+        for (const part of m.parts) {
+          if (part.type === "text" && part.text) {
+            lastUserText = part.text;
+            break;
+          }
+        }
+        if (lastUserText) break;
+      }
+    }
+    if (!lastUserText) return;
+    try {
+      await fetch(`/api/opencode/${port}/session/${sessionId}/prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: lastUserText,
+          model: isOverridingDefault() ? selectedModel : undefined,
+          agent: selectedAgent,
+        }),
+      });
+      mutateSessionMessages(port, sessionId);
+    } catch {
+      // Best-effort; the indicator will continue to show the stuck
+      // state and the user can hit the button again.
+    }
+  }, [
+    port,
+    sessionId,
+    messages,
+    isOverridingDefault,
+    selectedModel,
+    selectedAgent,
+  ]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionId || !port) return;
@@ -1731,12 +1784,37 @@ function SessionPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {isAssistantBusy && (
+        {isAssistantBusy && isServerBusy && (
           <div className="py-3 px-6">
             <div className="flex items-center gap-2">
               <Ripples size="30" speed="2" color="var(--color-primary)" />
               <span className="text-sm text-muted-fg">Thinking...</span>
               <ThinkingStaleness messages={messages} />
+            </div>
+          </div>
+        )}
+        {/* Local heuristic says the assistant should be working (last
+            message is a user prompt with no completion time) but
+            opencode's /session/status reports the session as IDLE. That
+            means the prompt was persisted but generation never
+            dispatched - the bug we kept trying to repro. Surface it
+            instead of showing a misleading 'Thinking...' for an hour,
+            and offer a one-click retry that re-submits the last user
+            message. */}
+        {isAssistantBusy && !isServerBusy && (
+          <div className="py-3 px-6">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-warning-subtle-fg">
+                Server is idle - the prompt was received but the AI never
+                started generating.
+              </span>
+              <button
+                type="button"
+                onClick={() => handleRetryLastUserPrompt()}
+                className="text-xs underline underline-offset-2 text-fg hover:text-primary"
+              >
+                Resubmit
+              </button>
             </div>
           </div>
         )}
