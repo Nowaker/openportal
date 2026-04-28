@@ -7,6 +7,7 @@ import {
   Cog6ToothIcon,
   TrashIcon,
   PlusIcon,
+  FolderOpenIcon,
 } from "@heroicons/react/24/solid";
 import FileDiffIcon from "@/components/icons/file-diff-icon";
 import { useEffect, useState, useMemo } from "react";
@@ -48,6 +49,7 @@ import {
 import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
+import { FolderBrowserDialog } from "@/components/folder-browser";
 
 interface Project {
   id: string;
@@ -299,21 +301,31 @@ export default function AppSidebar(
     }
   }, [diffData?.diff]);
 
-  async function handleNewSession() {
+  async function handleNewSession(directory?: string) {
     if (creating) return;
     setCreating(true);
     try {
-      const session = await createSession();
+      const session = await createSession(
+        directory ? { directory } : undefined,
+      );
       await mutateSessions();
-      toast.success("Session created");
+      toast.success(
+        directory ? `Session created in ${directory}` : "Session created",
+      );
       navigate({ to: "/session/$id", params: { id: session.id } });
     } catch (error) {
       console.error("Failed to create session:", error);
-      toast.error("Failed to create session");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to create session",
+      );
     } finally {
       setCreating(false);
     }
   }
+
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   const currentSessionMatch = useMatch({
     from: "/_app/session/$id",
@@ -355,12 +367,22 @@ export default function AppSidebar(
           <SidebarSection>
             <SidebarItem
               tooltip="New Session"
-              onPress={handleNewSession}
+              onPress={() => handleNewSession()}
               className="cursor-pointer gap-x-2"
             >
               <PlusIcon className="size-4 shrink-0" data-slot="icon" />
               <SidebarLabel className="text-xs sm:text-sm">
                 {creating ? "Creating..." : "New Session"}
+              </SidebarLabel>
+            </SidebarItem>
+            <SidebarItem
+              tooltip="Open directory"
+              onPress={() => setBrowserOpen(true)}
+              className="cursor-pointer gap-x-2"
+            >
+              <FolderOpenIcon className="size-4 shrink-0" data-slot="icon" />
+              <SidebarLabel className="text-xs sm:text-sm">
+                Open directory
               </SidebarLabel>
             </SidebarItem>
             <SidebarItem
@@ -431,6 +453,14 @@ export default function AppSidebar(
         </Menu>
       </SidebarFooter>
       <SidebarRail />
+      <FolderBrowserDialog
+        isOpen={browserOpen}
+        onOpenChange={setBrowserOpen}
+        onSelect={(picked) => {
+          setIsOpenOnMobile(false);
+          handleNewSession(picked);
+        }}
+      />
     </Sidebar>
   );
 }
