@@ -18,7 +18,7 @@ export type ResolvedTool =
   | (SystemTool & { kind: "system"; enabled: boolean; isOverridden: boolean })
   | (CustomTool & { kind: "custom"; enabled: boolean });
 
-interface ToolsState {
+interface ToolsPersistedState {
   // Tool ids the user has unchecked in Settings. Default = all enabled.
   // We store the disabled set rather than the enabled set so newly-shipped
   // system tools opt the user IN by default - if we tracked enabled-set,
@@ -29,9 +29,9 @@ interface ToolsState {
   // Drop the override (resetToDefault) to fall back to the system text.
   systemOverrides: Record<string, { name?: string; prompt?: string }>;
   customTools: CustomTool[];
+}
 
-  resolveTools: () => ResolvedTool[];
-  enabledTools: () => ResolvedTool[];
+interface ToolsState extends ToolsPersistedState {
   setEnabled: (id: string, enabled: boolean) => void;
   setSystemOverride: (
     id: string,
@@ -40,6 +40,35 @@ interface ToolsState {
   resetSystemOverride: (id: string) => void;
   upsertCustomTool: (tool: CustomTool) => void;
   removeCustomTool: (id: string) => void;
+}
+
+// Pure derivation: given the persisted slices, return the resolved tool
+// list. Components subscribe to the raw slices and call this through a
+// useMemo - putting the spread/map inside a Zustand selector returns a
+// fresh array identity on every render and triggers React's infinite
+// update loop guard (error #185).
+export function resolveToolsFromState(
+  state: ToolsPersistedState,
+): ResolvedTool[] {
+  const disabled = new Set(state.disabledIds);
+  const systemResolved: ResolvedTool[] = SYSTEM_TOOLS.map((tool) => {
+    const override = state.systemOverrides[tool.id] ?? {};
+    return {
+      ...tool,
+      name: override.name ?? tool.name,
+      prompt: override.prompt ?? tool.prompt,
+      kind: "system" as const,
+      enabled: !disabled.has(tool.id),
+      isOverridden:
+        override.name !== undefined || override.prompt !== undefined,
+    };
+  });
+  const customResolved: ResolvedTool[] = state.customTools.map((tool) => ({
+    ...tool,
+    kind: "custom" as const,
+    enabled: !disabled.has(tool.id),
+  }));
+  return [...systemResolved, ...customResolved];
 }
 
 function customIdExists(state: ToolsState, id: string): boolean {
@@ -51,37 +80,10 @@ function customIdExists(state: ToolsState, id: string): boolean {
 
 export const useToolsStore = create<ToolsState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       disabledIds: [],
       systemOverrides: {},
       customTools: [],
-
-      resolveTools: () => {
-        const state = get();
-        const disabled = new Set(state.disabledIds);
-        const systemResolved: ResolvedTool[] = SYSTEM_TOOLS.map((tool) => {
-          const override = state.systemOverrides[tool.id] ?? {};
-          return {
-            ...tool,
-            name: override.name ?? tool.name,
-            prompt: override.prompt ?? tool.prompt,
-            kind: "system" as const,
-            enabled: !disabled.has(tool.id),
-            isOverridden:
-              override.name !== undefined || override.prompt !== undefined,
-          };
-        });
-        const customResolved: ResolvedTool[] = state.customTools.map(
-          (tool) => ({
-            ...tool,
-            kind: "custom" as const,
-            enabled: !disabled.has(tool.id),
-          }),
-        );
-        return [...systemResolved, ...customResolved];
-      },
-
-      enabledTools: () => get().resolveTools().filter((tool) => tool.enabled),
 
       setEnabled: (id, enabled) =>
         set((state) => {

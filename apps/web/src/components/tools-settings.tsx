@@ -1,9 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useToolsStore, type ResolvedTool } from "@/stores/tools-store";
+import {
+  resolveToolsFromState,
+  useToolsStore,
+  type ResolvedTool,
+} from "@/stores/tools-store";
+
+// Subscribe to the persisted slices and derive the resolved list via
+// useMemo. Calling resolveTools()/enabledTools() inside a Zustand
+// selector returns a fresh array identity on every render and trips
+// React error #185 (infinite update depth).
+function useResolvedTools(): ResolvedTool[] {
+  const disabledIds = useToolsStore((s) => s.disabledIds);
+  const systemOverrides = useToolsStore((s) => s.systemOverrides);
+  const customTools = useToolsStore((s) => s.customTools);
+  return useMemo(
+    () =>
+      resolveToolsFromState({ disabledIds, systemOverrides, customTools }),
+    [disabledIds, systemOverrides, customTools],
+  );
+}
 
 // Slugifies a free-form name into a stable id for new custom tools.
 // Falls back to a timestamp suffix if the user picks an empty name or
@@ -258,7 +277,7 @@ function CustomToolRow({ tool }: ToolRowProps) {
 
 function AddCustomTool() {
   const upsertCustomTool = useToolsStore((s) => s.upsertCustomTool);
-  const tools = useToolsStore((s) => s.resolveTools());
+  const tools = useResolvedTools();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -341,7 +360,7 @@ function AddCustomTool() {
 }
 
 export function ToolsSettings() {
-  const tools = useToolsStore((s) => s.resolveTools());
+  const tools = useResolvedTools();
 
   const systemTools = tools.filter((t) => t.kind === "system");
   const customTools = tools.filter((t) => t.kind === "custom");
