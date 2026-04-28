@@ -129,7 +129,7 @@ function ProjectGroup({
         type="button"
         onClick={onToggle}
         title={directory}
-        className="flex items-center gap-1 w-full text-left px-2 py-1 rounded hover:bg-muted/30 transition-colors"
+        className="col-span-full flex items-center gap-1 w-full text-left px-2 py-1 rounded hover:bg-muted/30 transition-colors"
         data-current-project={containsCurrent || undefined}
       >
         <ChevronRightIcon
@@ -183,7 +183,7 @@ function ProjectGroup({
         <button
           type="button"
           onClick={() => setLimit((l) => l + 10)}
-          className="text-[11px] text-muted-fg hover:text-fg px-3 py-0.5 text-left"
+          className="col-span-full text-[11px] text-muted-fg hover:text-fg px-3 py-0.5 text-left"
         >
           Load {Math.min(10, remaining)} more
         </button>
