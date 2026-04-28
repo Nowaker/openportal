@@ -4,6 +4,7 @@ import {
   ArchiveBoxIcon,
   ArchiveBoxArrowDownIcon,
   ArrowUturnLeftIcon,
+  BellAlertIcon,
 } from "@heroicons/react/24/outline";
 import {
   Cog6ToothIcon,
@@ -85,6 +86,10 @@ import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
 import { useVirtualSessionStore } from "@/stores/virtual-session-store";
 import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
+import {
+  useStatusNotifications,
+  requestNotificationPermission,
+} from "@/hooks/use-status-notifications";
 
 interface Project {
   id: string;
@@ -564,6 +569,12 @@ export default function AppSidebar(
   const sessions: Session[] = sessionsData ?? [];
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [notifPermission, setNotifPermission] =
+    useState<NotificationPermission>(
+      typeof window !== "undefined" && "Notification" in window
+        ? Notification.permission
+        : "denied",
+    );
 
   async function handleNewSession(directory?: string) {
     if (creating) return;
@@ -596,6 +607,12 @@ export default function AppSidebar(
     shouldThrow: false,
   });
   const currentSessionId = currentSessionMatch?.params?.id;
+
+  useStatusNotifications({
+    sessions,
+    statusMap,
+    currentSessionId,
+  });
 
   async function handleArchiveSession(sessionId: string) {
     try {
@@ -726,6 +743,17 @@ export default function AppSidebar(
               </MenuHeader>
             </MenuSection>
 
+            {notifPermission === "default" && (
+              <MenuItem
+                onAction={async () => {
+                  const result = await requestNotificationPermission();
+                  setNotifPermission(result);
+                }}
+              >
+                <BellAlertIcon />
+                Enable notifications
+              </MenuItem>
+            )}
             <MenuItem
               onAction={() => {
                 setIsOpenOnMobile(false);
