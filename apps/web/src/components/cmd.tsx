@@ -14,7 +14,7 @@ import {
   useDeleteSession,
   useInstances,
 } from "@/hooks/use-opencode";
-import { useInstanceStore, type Instance } from "@/stores/instance-store";
+import { useInstanceStore } from "@/stores/instance-store";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import IconBox from "@/components/icons/box-icon";
 import { IconThemeDark } from "@/components/icons/theme-dark-icon";
@@ -41,6 +41,7 @@ interface InstanceData {
   name: string;
   directory: string;
   port: number;
+  webPort: number | null;
   hostname: string;
   pid: number;
   startedAt: string;
@@ -60,7 +61,6 @@ export default function Cmd() {
   const deleteSession = useDeleteSession();
   const { setTheme } = useTheme();
   const currentInstance = useInstanceStore((s) => s.instance);
-  const setInstance = useInstanceStore((s) => s.setInstance);
 
   const sessions: Session[] = sessionsData ?? [];
   const instances: InstanceData[] = instancesData?.instances ?? [];
@@ -115,16 +115,22 @@ export default function Cmd() {
     setIsOpen(false);
   }
 
-  function handleInstanceSelect(instance: InstanceData) {
-    const newInstance: Instance = {
-      id: instance.id,
-      name: instance.name,
-      port: instance.port,
-    };
-    setInstance(newInstance);
-    toast.success(`Switched to ${instance.name}`);
+  function handleInstanceOpen(instance: InstanceData) {
+    if (instance.id === currentInstance?.id) {
+      setIsOpen(false);
+      return;
+    }
+    if (!instance.webPort) {
+      toast.error(`No web port registered for ${instance.name}`);
+      return;
+    }
+    const host =
+      instance.hostname === "0.0.0.0"
+        ? window.location.hostname
+        : instance.hostname;
+    const url = `${window.location.protocol}//${host}:${instance.webPort}/`;
+    window.open(url, "_blank", "noopener,noreferrer");
     setIsOpen(false);
-    navigate({ to: "/" });
   }
 
   return (
@@ -161,24 +167,25 @@ export default function Cmd() {
             </CommandMenuLabel>
           </CommandMenuItem>
           <CommandMenuItem
-            textValue="Manage instances"
+            textValue="Other Portals"
             onAction={() => {
               setIsOpen(false);
               navigate({ to: "/instances" });
             }}
           >
             <IconManageInstances className="size-4 mr-2" />
-            <CommandMenuLabel>Manage Instances</CommandMenuLabel>
+            <CommandMenuLabel>Other Portals</CommandMenuLabel>
           </CommandMenuItem>
         </CommandMenuSection>
 
         {instances.length > 0 && (
-          <CommandMenuSection label="Switch Instance">
+          <CommandMenuSection label="Open in another Portal">
             {instances.map((instance) => (
               <CommandMenuItem
                 key={instance.id}
                 textValue={instance.name}
-                onAction={() => handleInstanceSelect(instance)}
+                onAction={() => handleInstanceOpen(instance)}
+                isDisabled={currentInstance?.id === instance.id}
               >
                 {currentInstance?.id === instance.id ? (
                   <IconBox className="size-4 mr-2" />
