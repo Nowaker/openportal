@@ -10,9 +10,7 @@ import {
   PlusIcon,
   FolderOpenIcon,
 } from "@heroicons/react/24/solid";
-import FileDiffIcon from "@/components/icons/file-diff-icon";
 import { useEffect, useState, useMemo } from "react";
-import { parsePatchFiles } from "@pierre/diffs";
 import { Avatar } from "@/components/ui/avatar";
 import { Link as UILink } from "@/components/ui/link";
 import { toast } from "@/components/ui/toast";
@@ -46,13 +44,13 @@ import {
   useUnarchiveSession,
   useCurrentProject,
   useHostname,
-  useGitDiff,
 } from "@/hooks/use-opencode";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
 import { useVirtualSessionStore } from "@/stores/virtual-session-store";
+import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
 
 interface Project {
   id: string;
@@ -150,6 +148,7 @@ function ProjectGroup({
       <div
         className="col-span-full flex items-center gap-1 px-2 py-1 rounded hover:bg-muted/20 transition-colors"
         data-current-project={containsCurrent || undefined}
+        data-project-dir={directory}
       >
         <button
           type="button"
@@ -183,17 +182,15 @@ function ProjectGroup({
       {visible.map((session) => (
         <div
           key={session.id}
-          className="col-span-full grid grid-cols-[1fr_auto] items-center pl-3 pr-1 hover:bg-muted/20 rounded"
+          className="col-span-full flex items-center gap-1 pl-3 pr-1 hover:bg-muted/20 rounded"
         >
-          <SidebarLink
+          <UILink
             href={`/session/${session.id}`}
             onClick={onSessionClick}
-            className="min-w-0"
+            className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
           >
-            <SidebarLabel className="text-xs sm:text-sm font-normal">
-              {truncateTitle(session.title)}
-            </SidebarLabel>
-          </SidebarLink>
+            {truncateTitle(session.title)}
+          </UILink>
           <button
             type="button"
             onClick={() => onArchiveSession(session.id)}
@@ -230,17 +227,15 @@ function ProjectGroup({
       {archivedVisible.map((session) => (
         <div
           key={session.id}
-          className="col-span-full grid grid-cols-[1fr_auto] items-center pl-6 pr-1 hover:bg-muted/20 rounded text-muted-fg"
+          className="col-span-full flex items-center gap-1 pl-6 pr-1 hover:bg-muted/20 rounded text-muted-fg"
         >
-          <SidebarLink
+          <UILink
             href={`/session/${session.id}`}
             onClick={onSessionClick}
-            className="min-w-0"
+            className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal italic text-muted-fg hover:text-fg truncate block"
           >
-            <SidebarLabel className="text-xs sm:text-sm font-normal italic">
-              {truncateTitle(session.title)}
-            </SidebarLabel>
-          </SidebarLink>
+            {truncateTitle(session.title)}
+          </UILink>
           <button
             type="button"
             onClick={() => onUnarchiveSession(session.id)}
@@ -341,26 +336,23 @@ function ProjectsList({
     return arr;
   }, [sessions, virtualDirectory]);
 
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const expanded = useSidebarExpandStore((s) => s.expanded);
+  const expandedSet = useMemo(() => new Set(expanded), [expanded]);
+  const toggleExpand = useSidebarExpandStore((s) => s.toggle);
+  const expandKey = useSidebarExpandStore((s) => s.expand);
 
   useEffect(() => {
     if (!currentSessionId) return;
     const cs = sessions.find((s) => s.id === currentSessionId);
     const dir = cs?.directory;
     if (!dir) return;
-    setExpanded((prev) => {
-      if (prev.has(dir)) return prev;
-      return new Set([...prev, dir]);
-    });
-  }, [currentSessionId, sessions]);
+    expandKey(dir);
+  }, [currentSessionId, sessions, expandKey]);
 
   useEffect(() => {
     if (!virtualDirectory) return;
-    setExpanded((prev) => {
-      if (prev.has(virtualDirectory)) return prev;
-      return new Set([...prev, virtualDirectory]);
-    });
-  }, [virtualDirectory]);
+    expandKey(virtualDirectory);
+  }, [virtualDirectory, expandKey]);
 
   if (groups.length === 0) {
     return (
@@ -376,15 +368,8 @@ function ProjectsList({
           directory={group.dir}
           sessions={group.sessions}
           archivedSessions={group.archivedSessions}
-          isExpanded={expanded.has(group.dir)}
-          onToggle={() =>
-            setExpanded((prev) => {
-              const next = new Set(prev);
-              if (next.has(group.dir)) next.delete(group.dir);
-              else next.add(group.dir);
-              return next;
-            })
-          }
+          isExpanded={expandedSet.has(group.dir)}
+          onToggle={() => toggleExpand(group.dir)}
           onNewSessionInProject={() => onNewSessionInProject(group.dir)}
           currentSessionId={currentSessionId}
           onSessionClick={onSessionClick}
@@ -412,17 +397,6 @@ export default function AppSidebar(
   const archiveSession = useArchiveSession();
   const unarchiveSession = useUnarchiveSession();
   const sessions: Session[] = sessionsData ?? [];
-
-  const { data: diffData } = useGitDiff();
-  const diffFileCount = useMemo(() => {
-    if (!diffData?.diff) return 0;
-    try {
-      const patches = parsePatchFiles(diffData.diff);
-      return patches.reduce((count, patch) => count + patch.files.length, 0);
-    } catch {
-      return 0;
-    }
-  }, [diffData?.diff]);
 
   async function handleNewSession(directory?: string) {
     if (creating) return;
@@ -499,16 +473,6 @@ export default function AppSidebar(
 
           <SidebarSection>
             <SidebarItem
-              tooltip="New Session"
-              onPress={() => handleNewSession()}
-              className="cursor-pointer gap-x-2"
-            >
-              <PlusIcon className="size-4 shrink-0" data-slot="icon" />
-              <SidebarLabel className="text-xs sm:text-sm">
-                {creating ? "Creating..." : "New Session"}
-              </SidebarLabel>
-            </SidebarItem>
-            <SidebarItem
               tooltip="Open directory"
               onPress={() => setBrowserOpen(true)}
               className="cursor-pointer gap-x-2"
@@ -517,15 +481,6 @@ export default function AppSidebar(
               <SidebarLabel className="text-xs sm:text-sm">
                 Open directory
               </SidebarLabel>
-            </SidebarItem>
-            <SidebarItem
-              tooltip="View Git Diff"
-              href="/diff"
-              className="cursor-pointer gap-x-2"
-              badge={diffFileCount > 0 ? diffFileCount : undefined}
-            >
-              <FileDiffIcon className="size-4 shrink-0" data-slot="icon" />
-              <SidebarLabel className="text-xs sm:text-sm">Diff</SidebarLabel>
             </SidebarItem>
           </SidebarSection>
 

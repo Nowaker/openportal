@@ -13,6 +13,8 @@ import {
 } from "@/stores/tools-store";
 import { mutateSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions } from "@/hooks/use-opencode";
+import { useSidebar } from "@/components/ui/sidebar";
+import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
 import type { Session } from "@opencode-ai/sdk";
 
 // Take the deepest path component and use it as a short project label.
@@ -30,6 +32,8 @@ export function AppSidebarNav() {
   const port = instance?.port ?? 0;
   const instanceId = instance?.id ?? null;
   const resolveModel = useModelStore((s) => s.resolveModel);
+  const { setIsOpenOnMobile } = useSidebar();
+  const expandKey = useSidebarExpandStore((s) => s.expand);
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   // Subscribe to the raw store slices and derive the resolved list via
   // useMemo. Calling s.enabledTools() inside the Zustand selector returns
@@ -115,8 +119,32 @@ export function AppSidebarNav() {
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
           {sessionTitle ? (
             <>
-              {projectLabel && (
-                <span className="text-muted-fg">{projectLabel}: </span>
+              {projectLabel && currentSession?.directory && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const dir = currentSession.directory;
+                    if (!dir) return;
+                    expandKey(dir);
+                    setIsOpenOnMobile(true);
+                    requestAnimationFrame(() => {
+                      const el = document.querySelector(
+                        `[data-project-dir="${CSS.escape(dir)}"]`,
+                      );
+                      el?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                    });
+                  }}
+                  className="text-muted-fg hover:text-fg hover:underline underline-offset-2"
+                  title={`Jump to ${projectLabel} in sidebar`}
+                >
+                  {projectLabel}
+                </button>
+              )}
+              {projectLabel && currentSession?.directory && (
+                <span className="text-muted-fg">: </span>
               )}
               {sessionTitle}
             </>
