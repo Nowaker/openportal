@@ -144,6 +144,78 @@ function formatAnswersAsPrompt(
   return parts.join("\n\n");
 }
 
+const QUESTION_DRAFT_KEY_PREFIX = "opencode-question-draft:";
+
+interface QuestionDraft {
+  selections: Record<number, string[]>;
+  freeform: Record<number, string>;
+}
+
+function questionDraftKey(sessionId: string, callID: string): string {
+  return `${QUESTION_DRAFT_KEY_PREFIX}${sessionId}:${callID}`;
+}
+
+function readQuestionDraft(
+  sessionId: string,
+  callID: string,
+): QuestionDraft | null {
+  if (typeof window === "undefined") return null;
+  if (!sessionId || !callID) return null;
+  try {
+    const raw = window.localStorage.getItem(
+      questionDraftKey(sessionId, callID),
+    );
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<QuestionDraft>;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.selections === "object" &&
+      typeof parsed.freeform === "object"
+    ) {
+      return {
+        selections: parsed.selections as Record<string, string[]>,
+        freeform: parsed.freeform as Record<string, string>,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeQuestionDraft(
+  sessionId: string,
+  callID: string,
+  draft: QuestionDraft,
+): void {
+  if (typeof window === "undefined") return;
+  if (!sessionId || !callID) return;
+  const isEmpty =
+    Object.keys(draft.selections).length === 0 &&
+    Object.values(draft.freeform).every((v) => !v);
+  try {
+    if (isEmpty) {
+      window.localStorage.removeItem(questionDraftKey(sessionId, callID));
+    } else {
+      window.localStorage.setItem(
+        questionDraftKey(sessionId, callID),
+        JSON.stringify(draft),
+      );
+    }
+  } catch {
+  }
+}
+
+function clearQuestionDraft(sessionId: string, callID: string): void {
+  if (typeof window === "undefined") return;
+  if (!sessionId || !callID) return;
+  try {
+    window.localStorage.removeItem(questionDraftKey(sessionId, callID));
+  } catch {
+  }
+}
+
 function parseToolQuestions(part: ToolPart): QuestionInfo[] {
   const input = (part.state?.input || {}) as Record<string, unknown>;
   const rawQuestions = input.questions;
@@ -351,10 +423,41 @@ function QuestionAnswerForm({
   isAssistantBusy: boolean;
   onAbort: () => void;
 }) {
-  const [selections, setSelections] = useState<Record<number, string[]>>({});
-  const [freeformInputs, setFreeformInputs] = useState<Record<number, string>>({});
+  const initialDraft = useMemo(
+    () => readQuestionDraft(sessionId, callID),
+    [sessionId, callID],
+  );
+  const [selections, setSelections] = useState<Record<number, string[]>>(
+    () => {
+      if (!initialDraft) return {};
+      const out: Record<number, string[]> = {};
+      for (const [k, v] of Object.entries(initialDraft.selections)) {
+        const idx = Number(k);
+        if (Number.isInteger(idx)) out[idx] = Array.isArray(v) ? v : [];
+      }
+      return out;
+    },
+  );
+  const [freeformInputs, setFreeformInputs] = useState<Record<number, string>>(
+    () => {
+      if (!initialDraft) return {};
+      const out: Record<number, string> = {};
+      for (const [k, v] of Object.entries(initialDraft.freeform)) {
+        const idx = Number(k);
+        if (Number.isInteger(idx) && typeof v === "string") out[idx] = v;
+      }
+      return out;
+    },
+  );
   const [isPosting, setIsPosting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    writeQuestionDraft(sessionId, callID, {
+      selections,
+      freeform: freeformInputs,
+    });
+  }, [selections, freeformInputs, sessionId, callID]);
 
   const toggleOption = (qIdx: number, label: string, isMulti: boolean) => {
     setSelections((prev) => {
@@ -405,6 +508,7 @@ function QuestionAnswerForm({
         if (!replyRes.ok) {
           throw new Error(await readErrorMessage(replyRes));
         }
+        clearQuestionDraft(sessionId, callID);
         mutateSessionMessages(port, sessionId);
         return;
       }
@@ -421,6 +525,7 @@ function QuestionAnswerForm({
       if (!promptRes.ok) {
         throw new Error(await readErrorMessage(promptRes));
       }
+      clearQuestionDraft(sessionId, callID);
       mutateSessionMessages(port, sessionId);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to submit answers");
