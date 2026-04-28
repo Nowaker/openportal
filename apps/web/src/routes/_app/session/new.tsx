@@ -41,10 +41,19 @@ function NewSessionPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (!submittedRef.current) {
+        clearStore();
+      }
+    };
+  }, [clearStore]);
 
   const handleSubmit = async () => {
     if (sending) return;
@@ -78,6 +87,7 @@ function NewSessionPage() {
         throw new Error(`prompt failed: ${res.status}`);
       }
 
+      submittedRef.current = true;
       clearStore();
       await globalMutate(`/api/opencode/${port}/sessions`);
       mutateSWR(
