@@ -965,9 +965,20 @@ function ModelOverrideControl({
 
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
 const DRAFT_MIN_BYTES = 10;
+// Pending-prompt safety net: when the user submits, we copy the text into
+// this key BEFORE clearing the textarea. It stays until either (a) an
+// assistant message arrives in response, or (b) the user manually clears
+// it. If opencode silently drops the dispatch, the user can still recover
+// the exact text they sent. Separate from the typing-time draft so
+// freshly-typed content doesn't fight the safety net.
+const PENDING_PROMPT_KEY_PREFIX = "opencode-pending-prompt:";
 
 function getDraftKey(sessionId: string) {
   return `${DRAFT_KEY_PREFIX}${sessionId}`;
+}
+
+function getPendingPromptKey(sessionId: string) {
+  return `${PENDING_PROMPT_KEY_PREFIX}${sessionId}`;
 }
 
 function readDraft(sessionId: string): string {
@@ -990,6 +1001,28 @@ function writeDraft(sessionId: string, value: string) {
   } catch {
     // localStorage can throw under quota / privacy modes; the draft is
     // best-effort, never a hard requirement.
+  }
+}
+
+function readPendingPrompt(sessionId: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(getPendingPromptKey(sessionId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writePendingPrompt(sessionId: string, value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      window.localStorage.setItem(getPendingPromptKey(sessionId), value);
+    } else {
+      window.localStorage.removeItem(getPendingPromptKey(sessionId));
+    }
+  } catch {
+    // best-effort
   }
 }
 
@@ -1097,6 +1130,35 @@ function SessionPage() {
       ?.completed;
     return !completed;
   }, [messages]);
+
+  // Pending-prompt safety net: holds the text the user last submitted that
+  // hasn't yet received an assistant reply. Hydrated from localStorage on
+  // mount/sessionId change. Cleared when an assistant message arrives in
+  // the message list (which means dispatch worked). Surfaced as a banner +
+  // restore button when the dispatch has clearly failed (server idle but
+  // local thinks busy).
+  const [pendingPrompt, setPendingPrompt] = useState<string>("");
+
+  useEffect(() => {
+    if (!sessionId) {
+      setPendingPrompt("");
+      return;
+    }
+    setPendingPrompt(readPendingPrompt(sessionId));
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (last.info.role !== "assistant") return;
+    // An assistant reply landed - dispatch worked, drop the safety net.
+    if (pendingPrompt) {
+      writePendingPrompt(sessionId, "");
+      setPendingPrompt("");
+    }
+  }, [messages, sessionId, pendingPrompt]);
   const [pendingPermissions, setPendingPermissions] = useState<
     PermissionRequest[]
   >([]);
@@ -1519,6 +1581,12 @@ function SessionPage() {
     setShowJumpToBottom(false);
     scrollToBottom();
 
+    // Stash the in-flight prompt to localStorage BEFORE we touch the
+    // textarea. This is the safety net for the silent-dispatch-drop bug:
+    // if opencode accepts the POST but never starts generation, the
+    // text is still in localStorage and can be restored on reload or
+    // surfaced via the resubmit recovery UI.
+    writePendingPrompt(sessionId, messageText);
     setSending(true);
     try {
       // If the user has staged a revert, physically delete the targeted
@@ -1818,6 +1886,22 @@ function SessionPage() {
               >
                 Resubmit
               </button>
+              {pendingPrompt && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (textareaRef.current) {
+                      textareaRef.current.value = pendingPrompt;
+                      setHasContent(pendingPrompt.length > 0);
+                      textareaRef.current.focus();
+                    }
+                  }}
+                  className="text-xs underline underline-offset-2 text-fg hover:text-primary"
+                  title="Paste the prompt text back into the composer so you can edit and resend it"
+                >
+                  Restore to composer
+                </button>
+              )}
             </div>
           </div>
         )}
