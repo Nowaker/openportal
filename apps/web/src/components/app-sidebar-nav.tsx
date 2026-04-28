@@ -128,25 +128,19 @@ export function AppSidebarNav() {
         </span>
       </span>
       <span className="flex items-center gap-x-2 ml-auto shrink-0">
-        {/* Tools menu replaces the per-action buttons. The list is
-            user-configurable in Settings > Prompt > Tools; system
-            defaults (Pull / Push / Create PR) and any user-added
-            custom prompts both flow through the same toolsStore. */}
-        <Menu>
-          <MenuTrigger aria-label="Run a tool">
-            <Button
-              intent="outline"
-              size="sq-sm"
-              isDisabled={!canRun || isBusy}
-            >
-              <EllipsisVerticalIcon className="size-4" />
-            </Button>
-          </MenuTrigger>
-          <MenuContent placement="bottom end" className="min-w-48">
-            {enabledTools.length === 0 ? (
-              <MenuItem isDisabled>No tools enabled</MenuItem>
-            ) : (
-              enabledTools.map((tool) => (
+        {enabledTools.length > 0 && (
+          <Menu>
+            <MenuTrigger aria-label="Run a tool">
+              <Button
+                intent="outline"
+                size="sq-sm"
+                isDisabled={!canRun || isBusy}
+              >
+                <EllipsisVerticalIcon className="size-4" />
+              </Button>
+            </MenuTrigger>
+            <MenuContent placement="bottom end" className="min-w-48">
+              {enabledTools.map((tool) => (
                 <MenuItem
                   key={tool.id}
                   onAction={() =>
@@ -155,10 +149,10 @@ export function AppSidebarNav() {
                 >
                   {tool.name}
                 </MenuItem>
-              ))
-            )}
-          </MenuContent>
-        </Menu>
+              ))}
+            </MenuContent>
+          </Menu>
+        )}
       </span>
     </SidebarNav>
   );
