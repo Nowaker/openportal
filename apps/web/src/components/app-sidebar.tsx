@@ -44,7 +44,21 @@ import {
   useUnarchiveSession,
   useCurrentProject,
   useHostname,
+  useSessionStatus,
+  type SessionStatusMap,
 } from "@/hooks/use-opencode";
+
+const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
+
+function sessionHasDraft(sessionId: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const v = window.localStorage.getItem(DRAFT_KEY_PREFIX + sessionId);
+    return Boolean(v && v.length > 0);
+  } catch {
+    return false;
+  }
+}
 import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
@@ -108,6 +122,47 @@ interface ProjectGroupProps {
   onSessionClick: () => void;
   onArchiveSession: (id: string) => void;
   onUnarchiveSession: (id: string) => void;
+  statusMap: SessionStatusMap | undefined;
+}
+
+function SessionStatusDot({
+  status,
+  hasDraft,
+}: {
+  status: "busy" | "retry" | "idle" | undefined;
+  hasDraft: boolean;
+}) {
+  if (status === "busy") {
+    return (
+      <span
+        className="relative flex size-2 shrink-0"
+        aria-label="Session is running"
+        title="Session is running"
+      >
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+        <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+      </span>
+    );
+  }
+  if (status === "retry") {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-amber-600"
+        aria-label="Session is retrying"
+        title="Session is retrying"
+      />
+    );
+  }
+  if (hasDraft) {
+    return (
+      <span
+        className="size-1.5 shrink-0 rounded-full bg-sky-500"
+        aria-label="Has unsent draft"
+        title="Has unsent draft"
+      />
+    );
+  }
+  return null;
 }
 
 function ProjectGroup({
@@ -121,6 +176,7 @@ function ProjectGroup({
   onSessionClick,
   onArchiveSession,
   onUnarchiveSession,
+  statusMap,
 }: ProjectGroupProps) {
   const [limit, setLimit] = useState(5);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -179,29 +235,34 @@ function ProjectGroup({
           <PlusIcon className="size-3" />
         </button>
       </div>
-      {visible.map((session) => (
-        <div
-          key={session.id}
-          className="col-span-full flex items-center gap-1 pl-3 pr-1 hover:bg-muted/20 rounded"
-        >
-          <UILink
-            href={`/session/${session.id}`}
-            onClick={onSessionClick}
-            className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
+      {visible.map((session) => {
+        const status = statusMap?.[session.id]?.type;
+        const hasDraft = sessionHasDraft(session.id);
+        return (
+          <div
+            key={session.id}
+            className="col-span-full flex items-center gap-1.5 pl-3 pr-1 hover:bg-muted/20 rounded"
           >
-            {truncateTitle(session.title)}
-          </UILink>
-          <button
-            type="button"
-            onClick={() => onArchiveSession(session.id)}
-            title="Archive session"
-            aria-label={`Archive ${session.title}`}
-            className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
-          >
-            <ArchiveBoxArrowDownIcon className="size-3.5" />
-          </button>
-        </div>
-      ))}
+            <SessionStatusDot status={status} hasDraft={hasDraft} />
+            <UILink
+              href={`/session/${session.id}`}
+              onClick={onSessionClick}
+              className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
+            >
+              {truncateTitle(session.title)}
+            </UILink>
+            <button
+              type="button"
+              onClick={() => onArchiveSession(session.id)}
+              title="Archive session"
+              aria-label={`Archive ${session.title}`}
+              className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+            >
+              <ArchiveBoxArrowDownIcon className="size-3.5" />
+            </button>
+          </div>
+        );
+      })}
       {isExpanded && remaining > 0 && (
         <button
           type="button"
@@ -268,6 +329,7 @@ interface ProjectsListProps {
   onArchiveSession: (id: string) => void;
   onUnarchiveSession: (id: string) => void;
   onNewSessionInProject: (directory: string) => void;
+  statusMap: SessionStatusMap | undefined;
 }
 
 interface ProjectBin {
@@ -289,6 +351,7 @@ function ProjectsList({
   onArchiveSession,
   onUnarchiveSession,
   onNewSessionInProject,
+  statusMap,
 }: ProjectsListProps) {
   const groups = useMemo<ProjectBin[]>(() => {
     const byDir = new Map<string, ProjectBin>();
@@ -375,6 +438,7 @@ function ProjectsList({
           onSessionClick={onSessionClick}
           onArchiveSession={onArchiveSession}
           onUnarchiveSession={onUnarchiveSession}
+          statusMap={statusMap}
         />
       ))}
     </>
@@ -396,6 +460,7 @@ export default function AppSidebar(
   const createSession = useCreateSession();
   const archiveSession = useArchiveSession();
   const unarchiveSession = useUnarchiveSession();
+  const { data: statusMap } = useSessionStatus();
   const sessions: Session[] = sessionsData ?? [];
 
   async function handleNewSession(directory?: string) {
@@ -489,6 +554,7 @@ export default function AppSidebar(
               sessions={sessions}
               currentSessionId={currentSessionId}
               virtualDirectory={virtualDirectory ?? null}
+              statusMap={statusMap}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
