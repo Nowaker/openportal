@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -115,6 +116,47 @@ const SidebarProvider = ({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [toggleSidebar, shortcut]);
+
+  // Mobile sidebar: tying open/close to the browser history stack so
+  // the OS-level back button (or Esc-style gestures) close the
+  // overlay first instead of leaving the session route. We push a
+  // marker history entry when the sidebar opens and pop it when the
+  // sidebar closes for any other reason. A popstate event with the
+  // sidebar still open means the user pressed Back - close the
+  // overlay and consume the gesture.
+  const sidebarHistoryPushedRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isMobile) return;
+    if (openMobile && !sidebarHistoryPushedRef.current) {
+      window.history.pushState(
+        { __portalSidebar: true, ...(window.history.state ?? {}) },
+        "",
+      );
+      sidebarHistoryPushedRef.current = true;
+    } else if (!openMobile && sidebarHistoryPushedRef.current) {
+      // Sidebar was closed by something other than the back gesture
+      // (a session click, the X icon, clicking outside). Pop our
+      // marker so the back stack returns to the actual previous
+      // route, not to the just-closed sidebar overlay.
+      sidebarHistoryPushedRef.current = false;
+      if (window.history.state?.__portalSidebar) {
+        window.history.back();
+      }
+    }
+  }, [openMobile, isMobile]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handlePopstate = () => {
+      if (sidebarHistoryPushedRef.current) {
+        sidebarHistoryPushedRef.current = false;
+        setOpenMobile(false);
+      }
+    };
+    window.addEventListener("popstate", handlePopstate);
+    return () => window.removeEventListener("popstate", handlePopstate);
+  }, []);
 
   const state = open ? "expanded" : "collapsed";
 
