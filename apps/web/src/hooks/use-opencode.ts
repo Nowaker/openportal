@@ -18,6 +18,22 @@ export function useInstances() {
   return useSWR("/api/instances", fetcher);
 }
 
+export interface SelfInstance {
+  id: string;
+  name: string;
+  directory: string;
+  port: number;
+  hostname: string;
+}
+
+export function useSelfInstance() {
+  return useSWR<{ instance: SelfInstance | null; error?: string }>(
+    "/api/instance/self",
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+}
+
 export function useSessions() {
   const port = usePort();
 
