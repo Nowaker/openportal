@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -53,6 +52,10 @@ function SystemToolRow({ tool }: ToolRowProps) {
   const [draftName, setDraftName] = useState(tool.name);
   const [draftPrompt, setDraftPrompt] = useState(tool.prompt);
 
+  // Sync drafts back to current tool state when not editing. Deps are
+  // primitives (the strings themselves) rather than the tool object so
+  // a parent re-render with a new tool reference but identical values
+  // does NOT re-fire setState - this avoids React error #185.
   useEffect(() => {
     if (!editing) {
       setDraftName(tool.name);
@@ -65,9 +68,12 @@ function SystemToolRow({ tool }: ToolRowProps) {
   return (
     <div className="rounded-lg border border-border bg-bg p-3 space-y-2">
       <div className="flex items-start gap-3">
-        <Checkbox
-          isSelected={tool.enabled}
-          onChange={(value) => setEnabled(tool.id, value)}
+        <input
+          type="checkbox"
+          aria-label={`Enable ${tool.name}`}
+          className="mt-1 size-4 cursor-pointer accent-primary"
+          checked={tool.enabled}
+          onChange={(e) => setEnabled(tool.id, e.target.checked)}
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -157,29 +163,37 @@ function CustomToolRow({ tool }: ToolRowProps) {
   const upsertCustomTool = useToolsStore((s) => s.upsertCustomTool);
   const removeCustomTool = useToolsStore((s) => s.removeCustomTool);
 
+  const customDescription =
+    tool.kind === "custom" ? (tool.description ?? "") : "";
+
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(tool.name);
-  const [draftDescription, setDraftDescription] = useState(
-    "description" in tool ? (tool.description ?? "") : "",
-  );
+  const [draftDescription, setDraftDescription] = useState(customDescription);
   const [draftPrompt, setDraftPrompt] = useState(tool.prompt);
 
+  // Sync drafts when the underlying tool changes via primitive deps
+  // (NOT [tool] - the object reference is fresh on every parent render
+  // and would cause a redundant effect that, combined with React 18's
+  // strict double-invocation, can blank the page on rapid toggles).
   useEffect(() => {
     if (!editing) {
       setDraftName(tool.name);
-      setDraftDescription("description" in tool ? (tool.description ?? "") : "");
+      setDraftDescription(customDescription);
       setDraftPrompt(tool.prompt);
     }
-  }, [editing, tool]);
+  }, [editing, tool.name, tool.prompt, customDescription]);
 
   if (tool.kind !== "custom") return null;
 
   return (
     <div className="rounded-lg border border-border bg-bg p-3 space-y-2">
       <div className="flex items-start gap-3">
-        <Checkbox
-          isSelected={tool.enabled}
-          onChange={(value) => setEnabled(tool.id, value)}
+        <input
+          type="checkbox"
+          aria-label={`Enable ${tool.name}`}
+          className="mt-1 size-4 cursor-pointer accent-primary"
+          checked={tool.enabled}
+          onChange={(e) => setEnabled(tool.id, e.target.checked)}
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
