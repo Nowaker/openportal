@@ -122,6 +122,9 @@ function sortTreeRecursive<TBin>(
       return b.activity - a.activity;
     }
     if (!aLeaf && !bLeaf) {
+      const aHasSessions = a.activity > 0;
+      const bHasSessions = b.activity > 0;
+      if (aHasSessions !== bHasSessions) return aHasSessions ? -1 : 1;
       return a.child.name.localeCompare(b.child.name);
     }
     return aLeaf ? -1 : 1;

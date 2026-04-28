@@ -15,7 +15,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Link as UILink } from "@/components/ui/link";
 import { toast } from "@/components/ui/toast";
-import IconBox from "@/components/icons/box-icon";
+
 import {
   Menu,
   MenuContent,
@@ -43,7 +43,6 @@ import {
   useCreateSession,
   useArchiveSession,
   useUnarchiveSession,
-  useCurrentProject,
   useHostname,
   useSessionStatus,
   useQuestions,
@@ -100,39 +99,6 @@ import {
   useStatusNotifications,
   requestNotificationPermission,
 } from "@/hooks/use-status-notifications";
-
-interface Project {
-  id: string;
-  worktree: string;
-  vcs?: string;
-  time?: {
-    created?: number;
-    initialized?: number;
-    updated?: number;
-  };
-}
-
-function getProjectName(worktree: string): string {
-  const parts = worktree.split("/");
-  return parts[parts.length - 1] || worktree;
-}
-
-function CurrentProject() {
-  const { data: currentProject } = useCurrentProject() as {
-    data: Project | undefined;
-  };
-
-  const projectName = currentProject
-    ? getProjectName(currentProject.worktree)
-    : "Loading...";
-
-  return (
-    <div className="flex items-center gap-2 px-2 py-1.5">
-      <IconBox className="shrink-0" />
-      <div className="text-sm font-medium">{projectName}</div>
-    </div>
-  );
-}
 
 function truncateTitle(title: string, maxLength = 40): string {
   if (title.length <= maxLength) return title;
@@ -891,10 +857,6 @@ export default function AppSidebar(
       </SidebarHeader>
       <SidebarContent>
         <SidebarSectionGroup>
-          <SidebarSection>
-            <CurrentProject />
-          </SidebarSection>
-
           <SidebarSection>
             <SidebarItem
               tooltip="Open directory"

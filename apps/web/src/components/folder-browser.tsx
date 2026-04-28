@@ -7,6 +7,29 @@ import {
 } from "react-aria-components";
 import { FolderIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
+// Tracks visualViewport height to keep modal usable when on-screen keyboard
+// opens on Android Chrome. dvh units don't always shrink for the IME.
+function useVisualViewportHeight(): number | null {
+  const [h, setH] = useState<number | null>(() =>
+    typeof window !== "undefined" && window.visualViewport
+      ? window.visualViewport.height
+      : null,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const update = () => setH(vv.height);
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+  return h;
+}
+
 interface Entry {
   name: string;
   isDir: boolean;
@@ -76,7 +99,7 @@ export function FolderBrowserDialog({
         ].join(" ")
       }
     >
-      <Modal className="w-full max-w-2xl max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
+      <ResponsiveModal>
         <PrimitiveDialog className="flex flex-col flex-1 min-h-0 outline-none">
           {({ close }) => (
             <FolderBrowserBody
@@ -88,8 +111,23 @@ export function FolderBrowserDialog({
             />
           )}
         </PrimitiveDialog>
-      </Modal>
+      </ResponsiveModal>
     </ModalOverlay>
+  );
+}
+
+function ResponsiveModal({ children }: { children: React.ReactNode }) {
+  const vvHeight = useVisualViewportHeight();
+  const style = vvHeight
+    ? { maxHeight: `${Math.max(280, vvHeight - 24)}px` }
+    : undefined;
+  return (
+    <Modal
+      style={style}
+      className="w-full max-w-2xl max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none"
+    >
+      {children}
+    </Modal>
   );
 }
 

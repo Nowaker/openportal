@@ -89,6 +89,11 @@ export function useSessionStatus() {
   );
 }
 
+export interface QuestionRequestSummary {
+  id: string;
+  sessionID: string;
+}
+
 export function useSessionMessages(id: string | null) {
   const port = usePort();
 
@@ -248,10 +253,10 @@ export function useReplyPermission() {
 export function useQuestions() {
   const port = usePort();
 
-  return useSWR(
+  return useSWR<QuestionRequestSummary[]>(
     port ? `/api/opencode/${port}/questions` : null,
     fetcher,
-    { refreshInterval: 2000 },
+    { refreshInterval: 2000, revalidateOnFocus: true },
   );
 }
 
