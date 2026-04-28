@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
+import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
@@ -337,12 +338,12 @@ function ComposerSettings() {
             {enterKeyOptions.map((opt) => (
               <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
                 <SelectLabel>{opt.title}</SelectLabel>
-                <span
+                <div
                   slot="description"
                   className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
                 >
                   {opt.description}
-                </span>
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
@@ -556,6 +557,10 @@ function SettingsPage() {
 
             <section>
               <ComposerSettings />
+            </section>
+
+            <section>
+              <ToolsSettings />
             </section>
           </div>
         </TabPanel>
