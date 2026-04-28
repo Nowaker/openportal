@@ -112,16 +112,25 @@ export function useHostname() {
   return useSWR("/api/system/hostname", fetcher);
 }
 
+export interface CreateSessionOptions {
+  title?: string;
+  directory?: string;
+  parentID?: string;
+}
+
 export function useCreateSession() {
   const port = usePort();
 
-  return async (title?: string) => {
+  return async (opts?: CreateSessionOptions | string) => {
     if (!port) throw new Error("No instance selected");
+
+    const body: CreateSessionOptions =
+      typeof opts === "string" ? { title: opts } : (opts ?? {});
 
     const res = await fetch(`/api/opencode/${port}/session/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {

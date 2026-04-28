@@ -6,6 +6,7 @@ import { parsePort, parseBody } from "../../../lib/validation";
 const createSessionSchema = z.object({
   title: z.string().optional(),
   parentID: z.string().optional(),
+  directory: z.string().optional(),
 });
 
 export default defineHandler(async (event) => {
@@ -15,6 +16,7 @@ export default defineHandler(async (event) => {
   const client = getOpencodeClient(port);
   const session = await client.session.create({
     body: { title: body.title, parentID: body.parentID },
+    query: body.directory ? { directory: body.directory } : undefined,
   });
 
   return session.data;
