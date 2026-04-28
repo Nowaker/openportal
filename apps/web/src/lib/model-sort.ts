@@ -1,24 +1,40 @@
-const VERSION_RE = /\d+(?:\.\d+)+/g;
+const VERSION_RE = /\b\d+(?:\.\d+)*\b/g;
+
+const TIER_TOKENS = new Set([
+  "fast",
+  "thinking",
+  "reasoning",
+  "instant",
+  "turbo",
+  "lite",
+  "mini",
+]);
 
 /**
- * Sort comparator for items with a display `name` containing a version (e.g.
- * "Claude Opus 4.7"). Sort order:
+ * Sort comparator for model display names (e.g. "Claude Opus 4.7", "Claude
+ * Opus 4 fast", "Claude Opus 3"). The version-number part of the name is
+ * the primary intra-family key.
  *
- * 1. Case-insensitive alphabetical on the base name (numeric tokens stripped),
- *    so "Claude Haiku 4.5" sorts before "Claude Opus 4.5".
- * 2. Within the same base name, descending version, so "Claude Opus 4.7" sorts
- *    before "Claude Opus 4.5". A multi-segment version is compared part by
- *    part, and a missing part counts as zero (so "Opus 4" sorts after
- *    "Opus 4.1" because the missing minor is treated as 0).
- * 3. Final fallback: case-sensitive `localeCompare` on the original name, so
- *    items differing only by case get a stable order.
+ * Order:
+ *   1. Alphabetical (case-insensitive) on the family name. Family is the
+ *      name with version tokens AND tier tokens (fast/thinking/mini/...)
+ *      removed. So "Claude Opus 4.7" and "Claude Opus 4 fast" share a
+ *      family ("claude opus") and rank as siblings; "Claude Haiku 4.5"
+ *      ranks earlier alphabetically.
+ *   2. Within a family, version DESC. "4.7" > "4.6" > "4.1" > "4" > "3".
+ *      Single-integer versions (no dot) ARE matched, so "Opus 3" / "Opus 4"
+ *      participate in the version comparison. Each version segment compared
+ *      part-by-part; a missing part counts as zero.
+ *   3. Same-version tiebreaker: shorter name wins, so "Opus 4" sorts before
+ *      "Opus 4 fast" - the bare tier-less form is the canonical 'default'.
+ *   4. Final tiebreaker: localeCompare on the full name for stability.
  */
 export function compareModels<T extends { name: string }>(
   a: T,
   b: T,
 ): number {
-  const aBase = stripVersion(a.name);
-  const bBase = stripVersion(b.name);
+  const aBase = stripVersionAndTier(a.name);
+  const bBase = stripVersionAndTier(b.name);
   if (aBase !== bBase) return aBase.localeCompare(bBase);
 
   const aVersions = extractVersions(a.name);
@@ -33,14 +49,19 @@ export function compareModels<T extends { name: string }>(
       if (cmp !== 0) return cmp;
     }
   }
+
+  if (a.name.length !== b.name.length) {
+    return a.name.length - b.name.length;
+  }
   return a.name.localeCompare(b.name);
 }
 
-function stripVersion(name: string): string {
+function stripVersionAndTier(name: string): string {
   return name
     .replace(VERSION_RE, "")
-    .replace(/\s+/g, " ")
-    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length > 0 && !TIER_TOKENS.has(t.toLowerCase()))
+    .join(" ")
     .toLowerCase();
 }
 
