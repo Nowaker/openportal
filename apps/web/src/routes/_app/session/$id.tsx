@@ -15,6 +15,8 @@ import {
   FileMentionPopover,
   useFileMention,
 } from "@/components/file-mention-popover";
+import { TodoStrip } from "@/components/todo-strip";
+import { extractLatestTodos } from "@/lib/todos";
 import IconBadgeSparkle from "@/components/icons/badge-sparkle-icon";
 import IconUser from "@/components/icons/user-icon";
 import IconMagnifier from "@/components/icons/magnifier-icon";
@@ -113,11 +115,38 @@ async function readErrorMessage(response: Response): Promise<string> {
   }
 }
 
+// Fallback when opencode's runtime question registry has dropped the
+// pending question (most often because the opencode process restarted
+// while a question was awaiting reply - the message-state in SQLite
+// preserves the question but the in-memory QuestionRequest is gone).
+// We submit the answers as a normal prompt so the conversation can
+// continue. The dangling tool part stays in 'running' state in the
+// log, but the session moves forward.
+// Fallback when opencode's runtime question registry has dropped the
+// pending question (most often because the opencode process restarted
+// while a question was awaiting reply - the message-state in SQLite
+// preserves the question but the in-memory QuestionRequest is gone).
+// We submit the answers as a normal prompt so the conversation can
+// continue. The dangling tool part stays in 'running' state in the
+// log, but the session moves forward.
+function formatAnswersAsPrompt(
+  questions: QuestionInfo[],
+  answers: QuestionAnswer[],
+): string {
+  const parts: string[] = [];
+  questions.forEach((q, i) => {
+    const header = q.header ? `[${q.header}] ` : "";
+    const a = answers[i] ?? [];
+    parts.push(
+      `${header}${q.question}\n  → ${a.length > 0 ? a.join(" + ") : "(no answer)"}`,
+    );
+  });
+  return parts.join("\n\n");
+}
+
 function parseToolQuestions(part: ToolPart): QuestionInfo[] {
   const input = (part.state?.input || {}) as Record<string, unknown>;
   const rawQuestions = input.questions;
-
-  console.log("[parseToolQuestions] raw input:", JSON.stringify(input, null, 2));
 
   if (!Array.isArray(rawQuestions)) {
     return [];
@@ -128,28 +157,24 @@ function parseToolQuestions(part: ToolPart): QuestionInfo[] {
       (item): item is Record<string, unknown> =>
         typeof item === "object" && item !== null,
     )
-    .map((item) => {
-      console.log("[parseToolQuestions] raw question item:", JSON.stringify(item, null, 2));
-      console.log("[parseToolQuestions] custom field:", item.custom, "type:", typeof item.custom);
-      return {
-        question: String(item.question || ""),
-        header: String(item.header || ""),
-        options: Array.isArray(item.options)
-          ? item.options
-              .filter(
-                (opt): opt is Record<string, unknown> =>
-                  typeof opt === "object" && opt !== null,
-              )
-              .map((opt) => ({
-                label: String(opt.label || ""),
-                description: String(opt.description || ""),
-              }))
-              .filter((opt) => !!opt.label)
-          : [],
-        multiple: Boolean(item.multiple),
-        custom: item.custom !== false,
-      };
-    })
+    .map((item) => ({
+      question: String(item.question || ""),
+      header: String(item.header || ""),
+      options: Array.isArray(item.options)
+        ? item.options
+            .filter(
+              (opt): opt is Record<string, unknown> =>
+                typeof opt === "object" && opt !== null,
+            )
+            .map((opt) => ({
+              label: String(opt.label || ""),
+              description: String(opt.description || ""),
+            }))
+            .filter((opt) => !!opt.label)
+        : [],
+      multiple: Boolean(item.multiple),
+      custom: item.custom !== false,
+    }))
     .filter((q) => !!q.question);
 }
 
@@ -350,6 +375,15 @@ function QuestionAnswerForm({
     setIsPosting(true);
     setSubmitError(null);
 
+    const answers: QuestionAnswer[] = questions.map((_, i) => {
+      const selected = selections[i] || [];
+      const freeform = freeformInputs[i]?.trim() || "";
+      if (selected.length > 0 && freeform) return [...selected, freeform];
+      if (selected.length > 0) return selected;
+      if (freeform) return [freeform];
+      return [];
+    });
+
     try {
       const listRes = await fetch(`/api/opencode/${port}/questions`);
       if (!listRes.ok) throw new Error("Failed to fetch pending questions");
@@ -359,31 +393,34 @@ function QuestionAnswerForm({
         pendingQuestions.find((q) => q.tool?.callID === callID) ??
         pendingQuestions.find((q) => q.sessionID === sessionId);
 
-      if (!match) {
-        throw new Error("Question request not found - it may have already been answered");
+      if (match) {
+        const replyRes = await fetch(
+          `/api/opencode/${port}/question/${match.id}/reply`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ answers }),
+          },
+        );
+        if (!replyRes.ok) {
+          throw new Error(await readErrorMessage(replyRes));
+        }
+        mutateSessionMessages(port, sessionId);
+        return;
       }
 
-      const answers: QuestionAnswer[] = questions.map((_, i) => {
-        const selected = selections[i] || [];
-        const freeform = freeformInputs[i]?.trim() || "";
-        if (selected.length > 0) return selected;
-        if (freeform) return [freeform];
-        return [];
-      });
-
-      const replyRes = await fetch(
-        `/api/opencode/${port}/question/${match.id}/reply`,
+      const fallbackText = formatAnswersAsPrompt(questions, answers);
+      const promptRes = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/prompt`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ answers }),
+          body: JSON.stringify({ text: fallbackText }),
         },
       );
-
-      if (!replyRes.ok) {
-        throw new Error(await readErrorMessage(replyRes));
+      if (!promptRes.ok) {
+        throw new Error(await readErrorMessage(promptRes));
       }
-
       mutateSessionMessages(port, sessionId);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to submit answers");
@@ -427,13 +464,13 @@ function QuestionAnswerForm({
                     <button
                       key={`opt-${idx}-${optIdx}`}
                       type="button"
-                      disabled={isPosting || isAssistantBusy}
+                      disabled={isPosting}
                       onClick={() => toggleOption(idx, opt.label, !!q.multiple)}
                       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
                         isSelected
                           ? "border-primary bg-primary/10 text-primary"
                           : "border-border bg-bg hover:border-fg/30 text-fg/80"
-                      } ${isPosting || isAssistantBusy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                      } ${isPosting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                     >
                       <span>{opt.label}</span>
                       {opt.description && (
@@ -448,7 +485,7 @@ function QuestionAnswerForm({
             {(q.options.length === 0 || q.custom) && (
               <input
                 type="text"
-                disabled={isPosting || isAssistantBusy}
+                disabled={isPosting}
                 placeholder="Type your answer..."
                 value={freeformInputs[idx] || ""}
                 onChange={(e) =>
@@ -475,7 +512,7 @@ function QuestionAnswerForm({
         <Button
           type="button"
           size="sm"
-          isDisabled={!hasAnswersForAllQuestions || isPosting || isAssistantBusy}
+          isDisabled={!hasAnswersForAllQuestions || isPosting}
           onPress={handleSubmit}
           className="text-xs"
         >
@@ -1085,6 +1122,11 @@ function SessionPage() {
     isLoading: loading,
     error: messagesError,
   } = useSessionMessages(sessionId, { loadAll: loadAllMessages });
+
+  const todoSnapshot = useMemo(
+    () => extractLatestTodos(messages),
+    [messages],
+  );
 
   useEffect(() => {
     if (loading) return;
@@ -1995,6 +2037,9 @@ function SessionPage() {
         )}
         {!composerCollapsed && (
           <>
+            <div className="hidden sm:block">
+              <TodoStrip snapshot={todoSnapshot} variant="inline" />
+            </div>
             <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 bg-muted/30 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
               <div className="flex min-w-0 flex-1 items-center gap-1">
                 <div className="min-w-0 flex-1 max-w-40">
@@ -2007,6 +2052,9 @@ function SessionPage() {
                     instanceId={instanceId}
                   />
                 </div>
+              </div>
+              <div className="sm:hidden">
+                <TodoStrip snapshot={todoSnapshot} variant="indicator" />
               </div>
               <button
                 type="button"
