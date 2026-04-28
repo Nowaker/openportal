@@ -18,6 +18,26 @@ export function useInstances() {
   return useSWR("/api/instances", fetcher);
 }
 
+export interface PortalConfigResponse {
+  directories: string[];
+  baseDirs: { path: string; level: number; level1: string[] }[];
+}
+
+export function usePortalConfig() {
+  return useSWR<PortalConfigResponse>("/api/config/portal", fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
+}
+
+export function useProjectPaths() {
+  return useSWR<{ paths: string[]; errors: { base: string; error: string }[] }>(
+    "/api/fs/projects",
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  );
+}
+
 export interface SelfInstance {
   id: string;
   name: string;

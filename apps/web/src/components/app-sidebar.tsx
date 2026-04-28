@@ -46,8 +46,11 @@ import {
   useCurrentProject,
   useHostname,
   useSessionStatus,
+  usePortalConfig,
+  useProjectPaths,
   type SessionStatusMap,
 } from "@/hooks/use-opencode";
+import { resolveProjectPath, type BaseDirEntry } from "@/lib/project-path";
 
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
 const LAST_VIEWED_KEY_PREFIX = "opencode-last-viewed:";
@@ -393,6 +396,8 @@ interface ProjectsListProps {
   onNewSessionInProject: (directory: string) => void;
   statusMap: SessionStatusMap | undefined;
   searchQuery: string;
+  baseDirs: BaseDirEntry[];
+  emptyProjectPaths: string[];
 }
 
 interface ProjectBin {
@@ -416,16 +421,29 @@ function ProjectsList({
   onNewSessionInProject,
   statusMap,
   searchQuery,
+  baseDirs,
+  emptyProjectPaths,
 }: ProjectsListProps) {
   const groups = useMemo<ProjectBin[]>(() => {
     const byDir = new Map<string, ProjectBin>();
+
+    for (const path of emptyProjectPaths) {
+      if (!byDir.has(path)) {
+        byDir.set(path, { dir: path, sessions: [], archivedSessions: [] });
+      }
+    }
+
     for (const s of sessions) {
       if (s.parentID) continue;
-      const d = s.directory || "(no directory)";
-      let bin = byDir.get(d);
+      const sourceDir = s.directory || "";
+      const projectPath =
+        baseDirs.length > 0 && sourceDir
+          ? resolveProjectPath(sourceDir, baseDirs)
+          : sourceDir || "(no directory)";
+      let bin = byDir.get(projectPath);
       if (!bin) {
-        bin = { dir: d, sessions: [], archivedSessions: [] };
-        byDir.set(d, bin);
+        bin = { dir: projectPath, sessions: [], archivedSessions: [] };
+        byDir.set(projectPath, bin);
       }
       if (isArchived(s)) bin.archivedSessions.push(s);
       else bin.sessions.push(s);
@@ -438,15 +456,19 @@ function ProjectsList({
       bin.archivedSessions.sort(sortByActivity);
     }
     const arr = Array.from(byDir.values());
-    arr.sort(
-      (a, b) =>
-        (b.sessions[0]?.time?.updated ??
-          b.sessions[0]?.time?.created ??
-          0) -
-        (a.sessions[0]?.time?.updated ??
-          a.sessions[0]?.time?.created ??
-          0),
-    );
+    arr.sort((a, b) => {
+      const aHas = a.sessions.length > 0;
+      const bHas = b.sessions.length > 0;
+      if (aHas && !bHas) return -1;
+      if (!aHas && bHas) return 1;
+      if (aHas) {
+        return (
+          (b.sessions[0]?.time?.updated ?? b.sessions[0]?.time?.created ?? 0) -
+          (a.sessions[0]?.time?.updated ?? a.sessions[0]?.time?.created ?? 0)
+        );
+      }
+      return a.dir.localeCompare(b.dir);
+    });
     if (virtualDirectory) {
       const existingIdx = arr.findIndex((g) => g.dir === virtualDirectory);
       if (existingIdx > 0) {
@@ -461,7 +483,7 @@ function ProjectsList({
       }
     }
     return arr;
-  }, [sessions, virtualDirectory]);
+  }, [sessions, virtualDirectory, baseDirs, emptyProjectPaths]);
 
   const filteredGroups = useMemo<ProjectBin[]>(() => {
     if (!searchQuery) return groups;
@@ -566,6 +588,10 @@ export default function AppSidebar(
   const archiveSession = useArchiveSession();
   const unarchiveSession = useUnarchiveSession();
   const { data: statusMap } = useSessionStatus();
+  const { data: portalConfig } = usePortalConfig();
+  const baseDirs = portalConfig?.baseDirs ?? [];
+  const { data: projectPathsResp } = useProjectPaths();
+  const emptyProjectPaths = projectPathsResp?.paths ?? [];
   const sessions: Session[] = sessionsData ?? [];
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -694,6 +720,8 @@ export default function AppSidebar(
               virtualDirectory={virtualDirectory ?? null}
               statusMap={statusMap}
               searchQuery={searchQuery}
+              baseDirs={baseDirs}
+              emptyProjectPaths={emptyProjectPaths}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
