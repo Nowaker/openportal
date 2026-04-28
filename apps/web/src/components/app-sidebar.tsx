@@ -46,10 +46,12 @@ import {
   useCurrentProject,
   useHostname,
   useSessionStatus,
+  useQuestions,
   usePortalConfig,
   useProjectPaths,
   type SessionStatusMap,
 } from "@/hooks/use-opencode";
+import { useSessionErrorStore } from "@/stores/session-error-store";
 import {
   resolveProjectPath,
   buildProjectTree,
@@ -182,11 +184,25 @@ function SessionStatusDot({
   status,
   hasDraft,
   hasNewContent,
+  hasQuestion,
+  hasError,
 }: {
   status: "busy" | "retry" | "idle" | undefined;
   hasDraft: boolean;
   hasNewContent: boolean;
+  hasQuestion?: boolean;
+  hasError?: boolean;
 }) {
+  if (hasQuestion || hasError) {
+    const label = hasQuestion ? "AI is waiting on your answer" : "Session has error";
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-red-500"
+        aria-label={label}
+        title={label}
+      />
+    );
+  }
   if (status === "busy") {
     return (
       <span
@@ -211,9 +227,9 @@ function SessionStatusDot({
   if (hasNewContent) {
     return (
       <span
-        className="size-2 shrink-0 rounded-full bg-amber-400"
-        aria-label="Has new activity since last view"
-        title="Has new activity since last view"
+        className="size-2 shrink-0 rounded-full bg-emerald-500"
+        aria-label="Task complete - review needed"
+        title="Task complete - review needed"
       />
     );
   }
@@ -548,20 +564,6 @@ function ProjectsList({
     expandKey(virtualDirectory);
   }, [virtualDirectory, expandKey]);
 
-  if (groups.length === 0) {
-    return (
-      <div className="text-xs text-muted-fg px-3 py-2">No sessions yet</div>
-    );
-  }
-
-  if (searchQuery && filteredGroups.length === 0) {
-    return (
-      <div className="text-xs text-muted-fg px-3 py-2">
-        No matches for "{searchQuery}"
-      </div>
-    );
-  }
-
   const binMap = useMemo(() => {
     const m = new Map<string, ProjectBin>();
     for (const g of filteredGroups) m.set(g.dir, g);
@@ -604,6 +606,20 @@ function ProjectsList({
     }
     return out;
   }, [trees, baseDirs, filteredGroups]);
+
+  if (groups.length === 0) {
+    return (
+      <div className="text-xs text-muted-fg px-3 py-2">No sessions yet</div>
+    );
+  }
+
+  if (searchQuery && filteredGroups.length === 0) {
+    return (
+      <div className="text-xs text-muted-fg px-3 py-2">
+        No matches for "{searchQuery}"
+      </div>
+    );
+  }
 
   return (
     <>

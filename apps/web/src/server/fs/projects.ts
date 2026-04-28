@@ -13,7 +13,7 @@ async function listSubdirs(path: string): Promise<string[]> {
     const entries = await readdir(path, { withFileTypes: true });
     const names: string[] = [];
     for (const e of entries) {
-      if (e.name.startsWith(".")) continue;
+      if (e.name.startsWith(".") || e.name.startsWith("~")) continue;
       if (e.isDirectory()) {
         names.push(e.name);
         continue;
