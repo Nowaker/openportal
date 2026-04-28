@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
+import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
@@ -280,16 +281,26 @@ function AgentSettings() {
   );
 }
 
-const enterKeyOptions: { id: EnterKeyAction; title: string; hint: string }[] = [
+// Only the bare-Enter behaviour is variable. Shift+Enter ALWAYS inserts a
+// newline, Ctrl/Cmd+Enter ALWAYS submits, regardless of this setting. This
+// preference also drives the soft-keyboard Enter on phones (the on-screen
+// 'submit' arrow vs the newline arrow).
+const enterKeyOptions: {
+  id: EnterKeyAction;
+  title: string;
+  description: string;
+}[] = [
   {
     id: "submit",
     title: "Send the message",
-    hint: "Shift+Enter inserts a newline",
+    description:
+      "On mobile, the soft keyboard's Enter button submits the message instead of inserting a new line.",
   },
   {
     id: "newline",
-    title: "Insert a newline",
-    hint: "Shift+Enter or Cmd/Ctrl+Enter sends the message",
+    title: "Insert a new line",
+    description:
+      "On mobile, the soft keyboard's Enter button inserts a new line.",
   },
 ];
 
@@ -323,12 +334,13 @@ function ComposerSettings() {
           <SelectContent>
             {enterKeyOptions.map((opt) => (
               <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
-                <SelectLabel>
-                  {opt.title}
-                  <span className="ml-1 text-muted-fg text-xs">
-                    — {opt.hint}
-                  </span>
-                </SelectLabel>
+                <SelectLabel>{opt.title}</SelectLabel>
+                <div
+                  slot="description"
+                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                >
+                  {opt.description}
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
@@ -550,6 +562,10 @@ function SettingsPage() {
 
             <section>
               <ComposerSettings />
+            </section>
+
+            <section>
+              <ToolsSettings />
             </section>
           </div>
         </TabPanel>
