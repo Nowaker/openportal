@@ -53,8 +53,13 @@ import useMediaQuery from "@/hooks/use-media-query";
 import type { Session } from "@opencode-ai/sdk";
 
 export const Route = createFileRoute("/_app/session/$id")({
-  component: SessionPage,
+  component: SessionRouteWrapper,
 });
+
+function SessionRouteWrapper() {
+  const { id } = Route.useParams();
+  return <SessionPage key={id} />;
+}
 
 export interface PromptAttachment {
   mime: string;
