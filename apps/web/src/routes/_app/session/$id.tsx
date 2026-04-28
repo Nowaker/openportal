@@ -1085,6 +1085,20 @@ function SessionPage() {
     isLoading: loading,
     error: messagesError,
   } = useSessionMessages(sessionId, { loadAll: loadAllMessages });
+
+  useEffect(() => {
+    if (loading) return;
+    if (!sessionId) return;
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        `opencode-last-viewed:${sessionId}`,
+        String(Date.now()),
+      );
+    } catch {
+    }
+  }, [sessionId, loading, messages.length]);
+
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   const { data: sessionStatusMap } = useSessionStatus();
   const serverThinks = sessionStatusMap?.[sessionId];

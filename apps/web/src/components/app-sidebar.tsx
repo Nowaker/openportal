@@ -49,6 +49,7 @@ import {
 } from "@/hooks/use-opencode";
 
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
+const LAST_VIEWED_KEY_PREFIX = "opencode-last-viewed:";
 
 function sessionHasDraft(sessionId: string): boolean {
   if (typeof window === "undefined") return false;
@@ -58,6 +59,25 @@ function sessionHasDraft(sessionId: string): boolean {
   } catch {
     return false;
   }
+}
+
+function getLastViewed(sessionId: string): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = window.localStorage.getItem(
+      LAST_VIEWED_KEY_PREFIX + sessionId,
+    );
+    return raw ? parseInt(raw, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function sessionHasNewContent(session: Session, currentSessionId?: string): boolean {
+  if (session.id === currentSessionId) return false;
+  const updated = session.time?.updated ?? 0;
+  if (!updated) return false;
+  return updated > getLastViewed(session.id);
 }
 import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
@@ -146,9 +166,11 @@ interface ProjectGroupProps {
 function SessionStatusDot({
   status,
   hasDraft,
+  hasNewContent,
 }: {
   status: "busy" | "retry" | "idle" | undefined;
   hasDraft: boolean;
+  hasNewContent: boolean;
 }) {
   if (status === "busy") {
     return (
@@ -168,6 +190,15 @@ function SessionStatusDot({
         className="size-2 shrink-0 rounded-full bg-amber-600"
         aria-label="Session is retrying"
         title="Session is retrying"
+      />
+    );
+  }
+  if (hasNewContent) {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-amber-400"
+        aria-label="Has new activity since last view"
+        title="Has new activity since last view"
       />
     );
   }
@@ -257,12 +288,17 @@ function ProjectGroup({
       {visible.map((session) => {
         const status = statusMap?.[session.id]?.type;
         const hasDraft = sessionHasDraft(session.id);
+        const hasNewContent = sessionHasNewContent(session, currentSessionId);
         return (
           <div
             key={session.id}
             className="col-span-full flex items-center gap-1.5 pl-3 pr-1 hover:bg-muted/20 rounded"
           >
-            <SessionStatusDot status={status} hasDraft={hasDraft} />
+            <SessionStatusDot
+              status={status}
+              hasDraft={hasDraft}
+              hasNewContent={hasNewContent}
+            />
             <UILink
               href={`/session/${session.id}`}
               onClick={onSessionClick}
