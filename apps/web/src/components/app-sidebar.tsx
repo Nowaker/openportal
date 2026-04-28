@@ -50,7 +50,12 @@ import {
   useProjectPaths,
   type SessionStatusMap,
 } from "@/hooks/use-opencode";
-import { resolveProjectPath, type BaseDirEntry } from "@/lib/project-path";
+import {
+  resolveProjectPath,
+  buildProjectTree,
+  type BaseDirEntry,
+  type ProjectTreeNode,
+} from "@/lib/project-path";
 
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
 const LAST_VIEWED_KEY_PREFIX = "opencode-last-viewed:";
@@ -169,6 +174,8 @@ interface ProjectGroupProps {
   onUnarchiveSession: (id: string) => void;
   statusMap: SessionStatusMap | undefined;
   searchQuery: string;
+  displayName?: string;
+  depth?: number;
 }
 
 function SessionStatusDot({
@@ -235,6 +242,8 @@ function ProjectGroup({
   onUnarchiveSession,
   statusMap,
   searchQuery,
+  displayName,
+  depth = 0,
 }: ProjectGroupProps) {
   const [limit, setLimit] = useState(5);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -252,15 +261,18 @@ function ProjectGroup({
     ? archivedSessions.slice(0, archivedLimit)
     : [];
   const archivedRemaining = archivedSessions.length - archivedVisible.length;
-  const projectName = projectBasename(directory);
+  const projectName = displayName ?? projectBasename(directory);
   const containsCurrent =
     sessions.some((s) => s.id === currentSessionId) ||
     archivedSessions.some((s) => s.id === currentSessionId);
+  const headerStyle = depth > 0 ? { paddingLeft: `${0.5 + depth * 0.75}rem` } : undefined;
+  const sessionRowStyle = depth > 0 ? { paddingLeft: `${0.75 + depth * 0.75}rem` } : undefined;
 
   return (
     <>
       <div
-        className="col-span-full flex items-center gap-1 px-2 py-1 rounded hover:bg-muted/20 transition-colors"
+        className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-2" : "px-2"} py-1 rounded hover:bg-muted/20 transition-colors`}
+        style={headerStyle}
         data-current-project={containsCurrent || undefined}
         data-project-dir={directory}
       >
@@ -301,7 +313,8 @@ function ProjectGroup({
         return (
           <div
             key={session.id}
-            className={`col-span-full flex items-center gap-1.5 pl-3 pr-1 rounded ${isCurrent ? "bg-primary/15 border-l-2 border-primary -ml-px pl-[10px]" : "hover:bg-muted/20"}`}
+            className={`col-span-full flex items-center gap-1.5 ${depth > 0 ? "pr-1" : "pl-3 pr-1"} rounded ${isCurrent ? "bg-primary/15 border-l-2 border-primary -ml-px pl-[10px]" : "hover:bg-muted/20"}`}
+            style={depth > 0 ? sessionRowStyle : undefined}
             data-current-session={isCurrent || undefined}
           >
             <SessionStatusDot
@@ -549,25 +562,210 @@ function ProjectsList({
     );
   }
 
+  const binMap = useMemo(() => {
+    const m = new Map<string, ProjectBin>();
+    for (const g of filteredGroups) m.set(g.dir, g);
+    return m;
+  }, [filteredGroups]);
+
+  const trees = useMemo(() => {
+    if (baseDirs.length === 0) return [];
+    return buildProjectTree<ProjectBin>(
+      baseDirs,
+      binMap,
+      (bin) =>
+        bin.sessions[0]?.time?.updated ?? bin.sessions[0]?.time?.created ?? 0,
+    );
+  }, [baseDirs, binMap]);
+
+  // Skip the base-dir root container; render its children at top level. If the
+  // base itself is a project (rare: session.directory === base.path), surface
+  // it as a sibling leaf so it isn't lost.
+  const topLevelNodes = useMemo<ProjectTreeNode<ProjectBin>[]>(() => {
+    if (baseDirs.length === 0) {
+      return filteredGroups.map((g) => ({
+        name: projectBasename(g.dir),
+        path: g.dir,
+        isProject: true,
+        bin: g,
+        children: [],
+      }));
+    }
+    const out: ProjectTreeNode<ProjectBin>[] = [];
+    for (const root of trees) {
+      if (root.children.length > 0) {
+        out.push(...root.children);
+        if (root.isProject && root.bin) {
+          out.push({ ...root, children: [] });
+        }
+      } else if (root.isProject) {
+        out.push(root);
+      }
+    }
+    return out;
+  }, [trees, baseDirs, filteredGroups]);
+
   return (
     <>
-      {filteredGroups.map((group) => (
-        <ProjectGroup
-          key={group.dir}
-          directory={group.dir}
-          sessions={group.sessions}
-          archivedSessions={group.archivedSessions}
-          isExpanded={expandedSet.has(group.dir) || tempExpanded.has(group.dir)}
-          onToggle={() => toggleExpand(group.dir)}
-          onNewSessionInProject={() => onNewSessionInProject(group.dir)}
+      {topLevelNodes.map((node) => (
+        <TreeNodeRow
+          key={node.path}
+          node={node}
+          depth={0}
+          expandedSet={expandedSet}
+          tempExpanded={tempExpanded}
+          toggleExpand={toggleExpand}
           currentSessionId={currentSessionId}
           onSessionClick={onSessionClick}
           onArchiveSession={onArchiveSession}
           onUnarchiveSession={onUnarchiveSession}
+          onNewSessionInProject={onNewSessionInProject}
           statusMap={statusMap}
           searchQuery={searchQuery}
         />
       ))}
+    </>
+  );
+}
+
+interface AggregateStatus {
+  status: "busy" | "retry" | undefined;
+  newContent: boolean;
+  draft: boolean;
+  sessionCount: number;
+}
+
+function aggregateNodeStatus(
+  node: ProjectTreeNode<ProjectBin>,
+  statusMap: SessionStatusMap | undefined,
+  currentSessionId: string | undefined,
+): AggregateStatus {
+  const acc: AggregateStatus = {
+    status: undefined,
+    newContent: false,
+    draft: false,
+    sessionCount: 0,
+  };
+  const visit = (n: ProjectTreeNode<ProjectBin>) => {
+    if (n.bin) {
+      acc.sessionCount += n.bin.sessions.length;
+      for (const s of n.bin.sessions) {
+        const t = statusMap?.[s.id]?.type;
+        if (t === "busy") acc.status = "busy";
+        else if (t === "retry" && acc.status !== "busy") acc.status = "retry";
+        if (sessionHasNewContent(s, currentSessionId)) acc.newContent = true;
+        if (sessionHasDraft(s.id)) acc.draft = true;
+      }
+    }
+    for (const c of n.children) visit(c);
+  };
+  visit(node);
+  return acc;
+}
+
+interface TreeNodeRowProps {
+  node: ProjectTreeNode<ProjectBin>;
+  depth: number;
+  expandedSet: Set<string>;
+  tempExpanded: Set<string>;
+  toggleExpand: (key: string) => void;
+  currentSessionId: string | undefined;
+  onSessionClick: () => void;
+  onArchiveSession: (id: string) => void;
+  onUnarchiveSession: (id: string) => void;
+  onNewSessionInProject: (dir: string) => void;
+  statusMap: SessionStatusMap | undefined;
+  searchQuery: string;
+}
+
+function TreeNodeRow({
+  node,
+  depth,
+  expandedSet,
+  tempExpanded,
+  toggleExpand,
+  currentSessionId,
+  onSessionClick,
+  onArchiveSession,
+  onUnarchiveSession,
+  onNewSessionInProject,
+  statusMap,
+  searchQuery,
+}: TreeNodeRowProps) {
+  const isExpanded =
+    expandedSet.has(node.path) || tempExpanded.has(node.path);
+
+  if (node.children.length === 0 && node.bin) {
+    return (
+      <ProjectGroup
+        directory={node.bin.dir}
+        displayName={node.name}
+        depth={depth}
+        sessions={node.bin.sessions}
+        archivedSessions={node.bin.archivedSessions}
+        isExpanded={isExpanded}
+        onToggle={() => toggleExpand(node.path)}
+        onNewSessionInProject={() => onNewSessionInProject(node.bin!.dir)}
+        currentSessionId={currentSessionId}
+        onSessionClick={onSessionClick}
+        onArchiveSession={onArchiveSession}
+        onUnarchiveSession={onUnarchiveSession}
+        statusMap={statusMap}
+        searchQuery={searchQuery}
+      />
+    );
+  }
+
+  const aggregate = aggregateNodeStatus(node, statusMap, currentSessionId);
+
+  return (
+    <>
+      <div
+        className="col-span-full flex items-center gap-1 pr-2 py-1 rounded hover:bg-muted/20 transition-colors"
+        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+      >
+        <button
+          type="button"
+          onClick={() => toggleExpand(node.path)}
+          title={node.path}
+          className="flex flex-1 items-center gap-1 min-w-0 text-left"
+        >
+          <ChevronRightIcon
+            className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          />
+          <SessionStatusDot
+            status={aggregate.status}
+            hasNewContent={aggregate.newContent}
+            hasDraft={aggregate.draft}
+          />
+          <span className="text-[12px] truncate">
+            {highlightMatch(node.name, searchQuery)}
+            {aggregate.sessionCount > 0 && (
+              <span className="ml-1 text-muted-fg">
+                ({aggregate.sessionCount})
+              </span>
+            )}
+          </span>
+        </button>
+      </div>
+      {isExpanded &&
+        node.children.map((child) => (
+          <TreeNodeRow
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            expandedSet={expandedSet}
+            tempExpanded={tempExpanded}
+            toggleExpand={toggleExpand}
+            currentSessionId={currentSessionId}
+            onSessionClick={onSessionClick}
+            onArchiveSession={onArchiveSession}
+            onUnarchiveSession={onUnarchiveSession}
+            onNewSessionInProject={onNewSessionInProject}
+            statusMap={statusMap}
+            searchQuery={searchQuery}
+          />
+        ))}
     </>
   );
 }
