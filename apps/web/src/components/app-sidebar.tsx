@@ -289,10 +289,12 @@ function ProjectGroup({
         const status = statusMap?.[session.id]?.type;
         const hasDraft = sessionHasDraft(session.id);
         const hasNewContent = sessionHasNewContent(session, currentSessionId);
+        const isCurrent = session.id === currentSessionId;
         return (
           <div
             key={session.id}
-            className="col-span-full flex items-center gap-1.5 pl-3 pr-1 hover:bg-muted/20 rounded"
+            className={`col-span-full flex items-center gap-1.5 pl-3 pr-1 rounded ${isCurrent ? "bg-primary/15 border-l-2 border-primary -ml-px pl-[10px]" : "hover:bg-muted/20"}`}
+            data-current-session={isCurrent || undefined}
           >
             <SessionStatusDot
               status={status}
