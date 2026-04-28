@@ -15,6 +15,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppDiffRouteImport } from './routes/_app/diff'
+import { Route as AppSessionNewRouteImport } from './routes/_app/session/new'
 import { Route as AppSessionIdRouteImport } from './routes/_app/session/$id'
 
 const InstancesRoute = InstancesRouteImport.update({
@@ -46,6 +47,11 @@ const AppDiffRoute = AppDiffRouteImport.update({
   path: '/diff',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSessionNewRoute = AppSessionNewRouteImport.update({
+  id: '/session/new',
+  path: '/session/new',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSessionIdRoute = AppSessionIdRouteImport.update({
   id: '/session/$id',
   path: '/session/$id',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/session/$id': typeof AppSessionIdRoute
+  '/session/new': typeof AppSessionNewRoute
 }
 export interface FileRoutesByTo {
   '/about': typeof AboutRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/session/$id': typeof AppSessionIdRoute
+  '/session/new': typeof AppSessionNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/session/$id': typeof AppSessionIdRoute
+  '/_app/session/new': typeof AppSessionNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,8 +96,16 @@ export interface FileRouteTypes {
     | '/settings'
     | '/'
     | '/session/$id'
+    | '/session/new'
   fileRoutesByTo: FileRoutesByTo
-  to: '/about' | '/instances' | '/diff' | '/settings' | '/' | '/session/$id'
+  to:
+    | '/about'
+    | '/instances'
+    | '/diff'
+    | '/settings'
+    | '/'
+    | '/session/$id'
+    | '/session/new'
   id:
     | '__root__'
     | '/_app'
@@ -98,6 +115,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/'
     | '/_app/session/$id'
+    | '/_app/session/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -150,6 +168,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDiffRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/session/new': {
+      id: '/_app/session/new'
+      path: '/session/new'
+      fullPath: '/session/new'
+      preLoaderRoute: typeof AppSessionNewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/session/$id': {
       id: '/_app/session/$id'
       path: '/session/$id'
@@ -165,6 +190,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppSessionIdRoute: typeof AppSessionIdRoute
+  AppSessionNewRoute: typeof AppSessionNewRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -172,6 +198,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppSessionIdRoute: AppSessionIdRoute,
+  AppSessionNewRoute: AppSessionNewRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

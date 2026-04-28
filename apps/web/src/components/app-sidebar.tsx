@@ -50,6 +50,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
+import { useVirtualSessionStore } from "@/stores/virtual-session-store";
 
 interface Project {
   id: string;
@@ -100,20 +101,24 @@ interface ProjectGroupProps {
   directory: string;
   sessions: Session[];
   isExpanded: boolean;
+  isVirtual: boolean;
   onToggle: () => void;
   currentSessionId: string | undefined;
   onSessionClick: () => void;
   onDeleteSession: (id: string) => void;
+  onVirtualSessionClick: () => void;
 }
 
 function ProjectGroup({
   directory,
   sessions,
   isExpanded,
+  isVirtual,
   onToggle,
   currentSessionId,
   onSessionClick,
   onDeleteSession,
+  onVirtualSessionClick,
 }: ProjectGroupProps) {
   const [limit, setLimit] = useState(5);
   useEffect(() => {
@@ -124,6 +129,7 @@ function ProjectGroup({
   const remaining = sessions.length - visible.length;
   const projectName = projectBasename(directory);
   const containsCurrent = sessions.some((s) => s.id === currentSessionId);
+  const showVirtualSlot = isVirtual && isExpanded;
 
   return (
     <>
@@ -139,11 +145,28 @@ function ProjectGroup({
         />
         <span className="text-[12px] font-medium truncate flex-1">
           {projectName}
+          {isVirtual && (
+            <span className="ml-1 text-muted-fg italic">(new)</span>
+          )}
         </span>
         <span className="text-[11px] text-muted-fg shrink-0">
           {sessions.length}
+          {isVirtual && sessions.length === 0 ? "·" : ""}
         </span>
       </button>
+      {showVirtualSlot && (
+        <SidebarItem tooltip="New session in this directory">
+          <SidebarLink
+            href="/session/new"
+            onClick={onVirtualSessionClick}
+            className="italic"
+          >
+            <SidebarLabel className="text-xs sm:text-sm">
+              + Start new session
+            </SidebarLabel>
+          </SidebarLink>
+        </SidebarItem>
+      )}
       {visible.map((session) => (
         <SidebarItem key={session.id} tooltip={session.title}>
           {({ isCollapsed, isFocused }) => (
@@ -197,15 +220,19 @@ function ProjectGroup({
 interface ProjectsListProps {
   sessions: Session[];
   currentSessionId: string | undefined;
+  virtualDirectory: string | null;
   onSessionClick: () => void;
   onDeleteSession: (id: string) => void;
+  onVirtualSessionClick: () => void;
 }
 
 function ProjectsList({
   sessions,
   currentSessionId,
+  virtualDirectory,
   onSessionClick,
   onDeleteSession,
+  onVirtualSessionClick,
 }: ProjectsListProps) {
   const groups = useMemo(() => {
     const byDir = new Map<string, Session[]>();
@@ -229,8 +256,17 @@ function ProjectsList({
         (b.sessions[0]?.time?.created ?? 0) -
         (a.sessions[0]?.time?.created ?? 0),
     );
+    if (virtualDirectory) {
+      const existingIdx = arr.findIndex((g) => g.dir === virtualDirectory);
+      if (existingIdx > 0) {
+        const [existing] = arr.splice(existingIdx, 1);
+        arr.unshift(existing);
+      } else if (existingIdx < 0) {
+        arr.unshift({ dir: virtualDirectory, sessions: [] });
+      }
+    }
     return arr;
-  }, [sessions]);
+  }, [sessions, virtualDirectory]);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -244,6 +280,14 @@ function ProjectsList({
       return new Set([...prev, dir]);
     });
   }, [currentSessionId, sessions]);
+
+  useEffect(() => {
+    if (!virtualDirectory) return;
+    setExpanded((prev) => {
+      if (prev.has(virtualDirectory)) return prev;
+      return new Set([...prev, virtualDirectory]);
+    });
+  }, [virtualDirectory]);
 
   if (groups.length === 0) {
     return (
@@ -259,6 +303,7 @@ function ProjectsList({
           directory={group.dir}
           sessions={group.sessions}
           isExpanded={expanded.has(group.dir)}
+          isVirtual={group.dir === virtualDirectory}
           onToggle={() =>
             setExpanded((prev) => {
               const next = new Set(prev);
@@ -270,6 +315,7 @@ function ProjectsList({
           currentSessionId={currentSessionId}
           onSessionClick={onSessionClick}
           onDeleteSession={onDeleteSession}
+          onVirtualSessionClick={onVirtualSessionClick}
         />
       ))}
     </>
@@ -283,6 +329,8 @@ export default function AppSidebar(
   const navigate = useNavigate();
   const { setIsOpenOnMobile } = useSidebar();
   const instance = useInstanceStore((s) => s.instance);
+  const virtualDirectory = useVirtualSessionStore((s) => s.directory);
+  const setVirtualDirectory = useVirtualSessionStore((s) => s.setDirectory);
   const { data: hostnameData } = useHostname();
   const hostname = hostnameData?.hostname ?? "Loading...";
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
@@ -400,8 +448,10 @@ export default function AppSidebar(
             <ProjectsList
               sessions={sessions}
               currentSessionId={currentSessionId}
+              virtualDirectory={virtualDirectory ?? null}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onDeleteSession={handleDeleteSession}
+              onVirtualSessionClick={() => setIsOpenOnMobile(false)}
             />
           </SidebarSection>
         </SidebarSectionGroup>
@@ -458,7 +508,11 @@ export default function AppSidebar(
         onOpenChange={setBrowserOpen}
         onSelect={(picked) => {
           setIsOpenOnMobile(false);
-          handleNewSession(picked);
+          setVirtualDirectory(picked);
+          navigate({
+            to: "/session/new",
+            search: { directory: picked },
+          });
         }}
       />
     </Sidebar>
