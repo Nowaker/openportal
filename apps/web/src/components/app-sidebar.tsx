@@ -101,24 +101,22 @@ interface ProjectGroupProps {
   directory: string;
   sessions: Session[];
   isExpanded: boolean;
-  isVirtual: boolean;
   onToggle: () => void;
+  onNewSessionInProject: () => void;
   currentSessionId: string | undefined;
   onSessionClick: () => void;
   onDeleteSession: (id: string) => void;
-  onVirtualSessionClick: () => void;
 }
 
 function ProjectGroup({
   directory,
   sessions,
   isExpanded,
-  isVirtual,
   onToggle,
+  onNewSessionInProject,
   currentSessionId,
   onSessionClick,
   onDeleteSession,
-  onVirtualSessionClick,
 }: ProjectGroupProps) {
   const [limit, setLimit] = useState(5);
   useEffect(() => {
@@ -129,44 +127,42 @@ function ProjectGroup({
   const remaining = sessions.length - visible.length;
   const projectName = projectBasename(directory);
   const containsCurrent = sessions.some((s) => s.id === currentSessionId);
-  const showVirtualSlot = isVirtual && isExpanded;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onToggle}
-        title={directory}
-        className="col-span-full flex items-center gap-1 w-full text-left px-2 py-1 rounded hover:bg-muted/30 transition-colors"
+      <div
+        className="col-span-full flex items-center gap-1 px-2 py-1 rounded hover:bg-muted/20 transition-colors"
         data-current-project={containsCurrent || undefined}
       >
-        <ChevronRightIcon
-          className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-        />
-        <span className="text-[12px] font-medium truncate flex-1">
-          {projectName}
-          {isVirtual && (
-            <span className="ml-1 text-muted-fg italic">(new)</span>
-          )}
-        </span>
-        <span className="text-[11px] text-muted-fg shrink-0">
+        <button
+          type="button"
+          onClick={onToggle}
+          title={directory}
+          className="flex flex-1 items-center gap-1 min-w-0 text-left"
+        >
+          <ChevronRightIcon
+            className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          />
+          <span className="text-[12px] font-medium truncate">
+            {projectName}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNewSessionInProject();
+          }}
+          title={`New session in ${directory}`}
+          aria-label={`New session in ${projectName}`}
+          className="rounded p-0.5 text-muted-fg hover:text-fg hover:bg-muted/50 shrink-0"
+        >
+          <PlusIcon className="size-3" />
+        </button>
+        <span className="text-[11px] text-muted-fg shrink-0 tabular-nums">
           {sessions.length}
-          {isVirtual && sessions.length === 0 ? "·" : ""}
         </span>
-      </button>
-      {showVirtualSlot && (
-        <SidebarItem tooltip="New session in this directory">
-          <SidebarLink
-            href="/session/new"
-            onClick={onVirtualSessionClick}
-            className="italic"
-          >
-            <SidebarLabel className="text-xs sm:text-sm">
-              + Start new session
-            </SidebarLabel>
-          </SidebarLink>
-        </SidebarItem>
-      )}
+      </div>
       {visible.map((session) => (
         <SidebarItem key={session.id} tooltip={session.title}>
           {({ isCollapsed, isFocused }) => (
@@ -223,7 +219,7 @@ interface ProjectsListProps {
   virtualDirectory: string | null;
   onSessionClick: () => void;
   onDeleteSession: (id: string) => void;
-  onVirtualSessionClick: () => void;
+  onNewSessionInProject: (directory: string) => void;
 }
 
 function ProjectsList({
@@ -232,11 +228,12 @@ function ProjectsList({
   virtualDirectory,
   onSessionClick,
   onDeleteSession,
-  onVirtualSessionClick,
+  onNewSessionInProject,
 }: ProjectsListProps) {
   const groups = useMemo(() => {
     const byDir = new Map<string, Session[]>();
     for (const s of sessions) {
+      if (s.parentID) continue;
       const d = s.directory || "(no directory)";
       const list = byDir.get(d) ?? [];
       list.push(s);
@@ -244,7 +241,9 @@ function ProjectsList({
     }
     for (const list of byDir.values()) {
       list.sort(
-        (a, b) => (b.time?.created ?? 0) - (a.time?.created ?? 0),
+        (a, b) =>
+          (b.time?.updated ?? b.time?.created ?? 0) -
+          (a.time?.updated ?? a.time?.created ?? 0),
       );
     }
     const arr = Array.from(byDir.entries()).map(([dir, ss]) => ({
@@ -253,8 +252,12 @@ function ProjectsList({
     }));
     arr.sort(
       (a, b) =>
-        (b.sessions[0]?.time?.created ?? 0) -
-        (a.sessions[0]?.time?.created ?? 0),
+        (b.sessions[0]?.time?.updated ??
+          b.sessions[0]?.time?.created ??
+          0) -
+        (a.sessions[0]?.time?.updated ??
+          a.sessions[0]?.time?.created ??
+          0),
     );
     if (virtualDirectory) {
       const existingIdx = arr.findIndex((g) => g.dir === virtualDirectory);
@@ -303,7 +306,6 @@ function ProjectsList({
           directory={group.dir}
           sessions={group.sessions}
           isExpanded={expanded.has(group.dir)}
-          isVirtual={group.dir === virtualDirectory}
           onToggle={() =>
             setExpanded((prev) => {
               const next = new Set(prev);
@@ -312,10 +314,10 @@ function ProjectsList({
               return next;
             })
           }
+          onNewSessionInProject={() => onNewSessionInProject(group.dir)}
           currentSessionId={currentSessionId}
           onSessionClick={onSessionClick}
           onDeleteSession={onDeleteSession}
-          onVirtualSessionClick={onVirtualSessionClick}
         />
       ))}
     </>
@@ -451,7 +453,14 @@ export default function AppSidebar(
               virtualDirectory={virtualDirectory ?? null}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onDeleteSession={handleDeleteSession}
-              onVirtualSessionClick={() => setIsOpenOnMobile(false)}
+              onNewSessionInProject={(dir) => {
+                setIsOpenOnMobile(false);
+                setVirtualDirectory(dir);
+                navigate({
+                  to: "/session/new",
+                  search: { directory: dir },
+                });
+              }}
             />
           </SidebarSection>
         </SidebarSectionGroup>

@@ -27,13 +27,18 @@ function groupSessionsByDirectory(
 ): { dir: string; sessions: Session[] }[] {
   const byDir = new Map<string, Session[]>();
   for (const s of sessions) {
+    if (s.parentID) continue;
     const d = s.directory || "(no directory)";
     const list = byDir.get(d) ?? [];
     list.push(s);
     byDir.set(d, list);
   }
   for (const list of byDir.values()) {
-    list.sort((a, b) => (b.time?.created ?? 0) - (a.time?.created ?? 0));
+    list.sort(
+      (a, b) =>
+        (b.time?.updated ?? b.time?.created ?? 0) -
+        (a.time?.updated ?? a.time?.created ?? 0),
+    );
   }
   const arr = Array.from(byDir.entries()).map(([dir, ss]) => ({
     dir,
@@ -41,8 +46,8 @@ function groupSessionsByDirectory(
   }));
   arr.sort(
     (a, b) =>
-      (b.sessions[0]?.time?.created ?? 0) -
-      (a.sessions[0]?.time?.created ?? 0),
+      (b.sessions[0]?.time?.updated ?? b.sessions[0]?.time?.created ?? 0) -
+      (a.sessions[0]?.time?.updated ?? a.sessions[0]?.time?.created ?? 0),
   );
   return arr;
 }
