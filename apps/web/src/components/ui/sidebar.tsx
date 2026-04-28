@@ -117,13 +117,21 @@ const SidebarProvider = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [toggleSidebar, shortcut]);
 
-  // Mobile sidebar: tying open/close to the browser history stack so
-  // the OS-level back button (or Esc-style gestures) close the
-  // overlay first instead of leaving the session route. We push a
-  // marker history entry when the sidebar opens and pop it when the
-  // sidebar closes for any other reason. A popstate event with the
-  // sidebar still open means the user pressed Back - close the
-  // overlay and consume the gesture.
+  // Mobile sidebar back-gesture handling.
+  //
+  // When the sidebar opens we push a marker history entry. While that
+  // marker is at the top of the stack, the OS back button (or
+  // browser-level back) fires popstate and we close the overlay -
+  // consuming the gesture so the user stays on the current route.
+  //
+  // When the sidebar closes by any other means (clicking a session,
+  // the X icon, clicking outside) we DROP the ref without touching
+  // history. We can't pop the marker because TanStack Router has
+  // already pushed its own entry on top (the user navigated), and a
+  // history.back() at this point would rewind THAT navigation. The
+  // worst case is a 'phantom' entry one hop deeper in the back stack;
+  // pressing back there pops onto the previous route's URL with
+  // sidebar closed, which is the right outcome.
   const sidebarHistoryPushedRef = useRef(false);
 
   useEffect(() => {
@@ -135,14 +143,7 @@ const SidebarProvider = ({
       );
       sidebarHistoryPushedRef.current = true;
     } else if (!openMobile && sidebarHistoryPushedRef.current) {
-      // Sidebar was closed by something other than the back gesture
-      // (a session click, the X icon, clicking outside). Pop our
-      // marker so the back stack returns to the actual previous
-      // route, not to the just-closed sidebar overlay.
       sidebarHistoryPushedRef.current = false;
-      if (window.history.state?.__portalSidebar) {
-        window.history.back();
-      }
     }
   }, [openMobile, isMobile]);
 
