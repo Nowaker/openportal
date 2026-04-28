@@ -3,5 +3,8 @@ import { readPortalConfig } from "../lib/portal-config";
 
 export default defineHandler(() => {
   const config = readPortalConfig();
-  return { directories: config.directories };
+  return {
+    directories: config.directories,
+    baseDirs: config.baseDirs,
+  };
 });
