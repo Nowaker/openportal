@@ -36,6 +36,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
+import { useSessionErrorStore } from "@/stores/session-error-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
@@ -1275,6 +1276,21 @@ function SessionPage() {
     } catch {
     }
   }, [sessionId, loading, messages.length]);
+
+  const setSessionError = useSessionErrorStore((s) => s.setError);
+  useEffect(() => {
+    if (loading) return;
+    if (!sessionId) return;
+    let hasError = false;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.info.role === "assistant") {
+        hasError = m.info.error != null;
+        break;
+      }
+    }
+    setSessionError(sessionId, hasError);
+  }, [sessionId, loading, messages, setSessionError]);
 
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   const { data: sessionStatusMap } = useSessionStatus();

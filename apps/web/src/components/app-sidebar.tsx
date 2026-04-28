@@ -142,6 +142,8 @@ interface ProjectGroupProps {
   onUnarchiveSession: (id: string) => void;
   statusMap: SessionStatusMap | undefined;
   searchQuery: string;
+  questionSessionIds: Set<string>;
+  errorSessionIds: Set<string>;
   displayName?: string;
   depth?: number;
 }
@@ -224,6 +226,8 @@ function ProjectGroup({
   onUnarchiveSession,
   statusMap,
   searchQuery,
+  questionSessionIds,
+  errorSessionIds,
   displayName,
   depth = 0,
 }: ProjectGroupProps) {
@@ -291,6 +295,8 @@ function ProjectGroup({
         const status = statusMap?.[session.id]?.type;
         const hasDraft = sessionHasDraft(session.id);
         const hasNewContent = sessionHasNewContent(session, currentSessionId);
+        const hasQuestion = questionSessionIds.has(session.id);
+        const hasError = errorSessionIds.has(session.id);
         const isCurrent = session.id === currentSessionId;
         return (
           <div
@@ -303,6 +309,8 @@ function ProjectGroup({
               status={status}
               hasDraft={hasDraft}
               hasNewContent={hasNewContent}
+              hasQuestion={hasQuestion}
+              hasError={hasError}
             />
             <UILink
               href={`/session/${session.id}`}
@@ -393,6 +401,8 @@ interface ProjectsListProps {
   searchQuery: string;
   baseDirs: BaseDirEntry[];
   emptyProjectPaths: string[];
+  questionSessionIds: Set<string>;
+  errorSessionIds: Set<string>;
 }
 
 interface ProjectBin {
@@ -418,6 +428,8 @@ function ProjectsList({
   searchQuery,
   baseDirs,
   emptyProjectPaths,
+  questionSessionIds,
+  errorSessionIds,
 }: ProjectsListProps) {
   const groups = useMemo<ProjectBin[]>(() => {
     const byDir = new Map<string, ProjectBin>();
@@ -604,6 +616,8 @@ function ProjectsList({
           onNewSessionInProject={onNewSessionInProject}
           statusMap={statusMap}
           searchQuery={searchQuery}
+          questionSessionIds={questionSessionIds}
+          errorSessionIds={errorSessionIds}
         />
       ))}
     </>
@@ -614,6 +628,8 @@ interface AggregateStatus {
   status: "busy" | "retry" | undefined;
   newContent: boolean;
   draft: boolean;
+  question: boolean;
+  error: boolean;
   sessionCount: number;
 }
 
@@ -621,11 +637,15 @@ function aggregateNodeStatus(
   node: ProjectTreeNode<ProjectBin>,
   statusMap: SessionStatusMap | undefined,
   currentSessionId: string | undefined,
+  questionSessionIds: Set<string>,
+  errorSessionIds: Set<string>,
 ): AggregateStatus {
   const acc: AggregateStatus = {
     status: undefined,
     newContent: false,
     draft: false,
+    question: false,
+    error: false,
     sessionCount: 0,
   };
   const visit = (n: ProjectTreeNode<ProjectBin>) => {
@@ -637,6 +657,8 @@ function aggregateNodeStatus(
         else if (t === "retry" && acc.status !== "busy") acc.status = "retry";
         if (sessionHasNewContent(s, currentSessionId)) acc.newContent = true;
         if (sessionHasDraft(s.id)) acc.draft = true;
+        if (questionSessionIds.has(s.id)) acc.question = true;
+        if (errorSessionIds.has(s.id)) acc.error = true;
       }
     }
     for (const c of n.children) visit(c);
@@ -658,6 +680,8 @@ interface TreeNodeRowProps {
   onNewSessionInProject: (dir: string) => void;
   statusMap: SessionStatusMap | undefined;
   searchQuery: string;
+  questionSessionIds: Set<string>;
+  errorSessionIds: Set<string>;
 }
 
 function TreeNodeRow({
@@ -673,6 +697,8 @@ function TreeNodeRow({
   onNewSessionInProject,
   statusMap,
   searchQuery,
+  questionSessionIds,
+  errorSessionIds,
 }: TreeNodeRowProps) {
   const isExpanded =
     expandedSet.has(node.path) || tempExpanded.has(node.path);
@@ -694,11 +720,19 @@ function TreeNodeRow({
         onUnarchiveSession={onUnarchiveSession}
         statusMap={statusMap}
         searchQuery={searchQuery}
+        questionSessionIds={questionSessionIds}
+        errorSessionIds={errorSessionIds}
       />
     );
   }
 
-  const aggregate = aggregateNodeStatus(node, statusMap, currentSessionId);
+  const aggregate = aggregateNodeStatus(
+    node,
+    statusMap,
+    currentSessionId,
+    questionSessionIds,
+    errorSessionIds,
+  );
 
   return (
     <>
@@ -719,6 +753,8 @@ function TreeNodeRow({
             status={aggregate.status}
             hasNewContent={aggregate.newContent}
             hasDraft={aggregate.draft}
+            hasQuestion={aggregate.question}
+            hasError={aggregate.error}
           />
           <span className="text-[12px] truncate">
             {highlightMatch(node.name, searchQuery)}
@@ -746,6 +782,8 @@ function TreeNodeRow({
             onNewSessionInProject={onNewSessionInProject}
             statusMap={statusMap}
             searchQuery={searchQuery}
+            questionSessionIds={questionSessionIds}
+            errorSessionIds={errorSessionIds}
           />
         ))}
     </>
@@ -768,6 +806,16 @@ export default function AppSidebar(
   const archiveSession = useArchiveSession();
   const unarchiveSession = useUnarchiveSession();
   const { data: statusMap } = useSessionStatus();
+  const { data: questions } = useQuestions();
+  const questionSessionIds = useMemo(
+    () => new Set((questions ?? []).map((q) => q.sessionID)),
+    [questions],
+  );
+  const errorSessionIdsArr = useSessionErrorStore((s) => s.errors);
+  const errorSessionIds = useMemo(
+    () => new Set(errorSessionIdsArr),
+    [errorSessionIdsArr],
+  );
   const { data: portalConfig } = usePortalConfig();
   const baseDirs = portalConfig?.baseDirs ?? [];
   const { data: projectPathsResp } = useProjectPaths();
@@ -898,6 +946,8 @@ export default function AppSidebar(
               searchQuery={searchQuery}
               baseDirs={baseDirs}
               emptyProjectPaths={emptyProjectPaths}
+              questionSessionIds={questionSessionIds}
+              errorSessionIds={errorSessionIds}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
