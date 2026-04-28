@@ -2078,6 +2078,20 @@ function SessionPage() {
                     inputMode="text"
                     autoCapitalize="sentences"
                     autoCorrect="on"
+                    onPaste={(e) => {
+                      const items = e.clipboardData?.items;
+                      if (!items) return;
+                      const images: File[] = [];
+                      for (const item of items) {
+                        if (item.kind !== "file") continue;
+                        if (!item.type.startsWith("image/")) continue;
+                        const file = item.getAsFile();
+                        if (file) images.push(file);
+                      }
+                      if (images.length === 0) return;
+                      e.preventDefault();
+                      handleAttachFiles(images);
+                    }}
                     onChange={(e) => {
                       const value = e.target.value;
                       const ne = value.length > 0;
