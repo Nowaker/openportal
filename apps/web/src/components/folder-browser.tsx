@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr";
 import {
   ModalOverlay,
   Modal,
@@ -24,23 +25,40 @@ interface ListResponse {
   error?: string;
 }
 
+interface PortalConfig {
+  directories: string[];
+}
+
 interface FolderBrowserProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (path: string) => void;
-  initialPath?: string;
 }
+
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
 
 function joinPath(parent: string, child: string): string {
   if (parent === "/") return `/${child}`;
   return `${parent}/${child}`;
 }
 
+function isUnderAny(target: string, bases: string[]): boolean {
+  if (bases.length === 0) return true;
+  return bases.some((b) => target === b || target.startsWith(b + "/"));
+}
+
+function findContainingBase(target: string, bases: string[]): string | null {
+  return bases.find((b) => target === b || target.startsWith(b + "/")) ?? null;
+}
+
 export function FolderBrowserDialog({
   isOpen,
   onOpenChange,
   onSelect,
-  initialPath,
 }: FolderBrowserProps) {
   return (
     <ModalOverlay
@@ -49,15 +67,15 @@ export function FolderBrowserDialog({
       isDismissable
       className={({ isEntering, isExiting }) =>
         [
-          "fixed inset-0 z-50 flex items-center justify-center p-4",
+          "fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4",
           "bg-black/40 backdrop-blur-sm",
           isEntering ? "animate-in fade-in duration-200" : "",
           isExiting ? "animate-out fade-out duration-150" : "",
         ].join(" ")
       }
     >
-      <Modal className="w-full max-w-2xl max-h-[80vh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
-        <PrimitiveDialog className="flex flex-col h-full outline-none">
+      <Modal className="w-full max-w-2xl max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
+        <PrimitiveDialog className="flex flex-col flex-1 min-h-0 outline-none">
           {({ close }) => (
             <FolderBrowserBody
               onClose={close}
@@ -65,7 +83,6 @@ export function FolderBrowserDialog({
                 onSelect(p);
                 close();
               }}
-              initialPath={initialPath}
             />
           )}
         </PrimitiveDialog>
@@ -77,11 +94,20 @@ export function FolderBrowserDialog({
 interface BodyProps {
   onClose: () => void;
   onSelect: (path: string) => void;
-  initialPath?: string;
 }
 
-function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
-  const [path, setPath] = useState<string>(initialPath || "");
+function FolderBrowserBody({ onClose, onSelect }: BodyProps) {
+  const { data: configData } = useSWR<PortalConfig>(
+    "/api/config/portal",
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const baseDirs = useMemo(
+    () => configData?.directories ?? [],
+    [configData?.directories],
+  );
+
+  const [path, setPath] = useState<string | null>(null);
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
@@ -91,6 +117,22 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (path !== null) return;
+    if (!configData) return;
+    if (baseDirs.length === 1) {
+      setPath(baseDirs[0]);
+    } else if (baseDirs.length > 1) {
+      setPath("__BASES__");
+    } else {
+      setPath("");
+    }
+  }, [path, configData, baseDirs]);
+
+  useEffect(() => {
+    if (path === null || path === "__BASES__") {
+      setData(null);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     const url = path
@@ -101,7 +143,6 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
       .then((d: ListResponse) => {
         if (cancelled) return;
         setData(d);
-        if (!path && d.path) setPath(d.path);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -144,6 +185,17 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
           .filter((e) =>
             e.name.toLowerCase().startsWith(prefix.toLowerCase()),
           )
+          .filter((e) => {
+            if (baseDirs.length === 0) return true;
+            const candidate = joinPath(d.path, e.name);
+            return baseDirs.some(
+              (b) =>
+                candidate === b ||
+                candidate.startsWith(b + "/") ||
+                b.startsWith(candidate + "/") ||
+                b === candidate,
+            );
+          })
           .slice(0, 8);
         setCompletionParent(d.path);
         setCompletions(matches);
@@ -155,7 +207,7 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
     return () => {
       cancelled = true;
     };
-  }, [input]);
+  }, [input, baseDirs]);
 
   const sortedEntries = useMemo(
     () => data?.entries ?? [],
@@ -181,7 +233,7 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
         completions.length > 0 && completionParent
           ? joinPath(completionParent, completions[0].name)
           : input;
-      if (target) {
+      if (target && isUnderAny(target, baseDirs)) {
         setPath(target);
         setInput("");
         setShowCompletions(false);
@@ -195,24 +247,53 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
 
   const enterFolder = (name: string) => {
     if (!data) return;
-    setPath(joinPath(data.path, name));
+    const next = joinPath(data.path, name);
+    setPath(next);
+  };
+
+  const enterBase = (base: string) => {
+    setPath(base);
   };
 
   const goUp = () => {
-    if (data?.parent) setPath(data.parent);
+    if (path === "__BASES__") return;
+    if (!data) return;
+    const containingBase = findContainingBase(data.path, baseDirs);
+    if (containingBase && data.path === containingBase) {
+      if (baseDirs.length > 1) setPath("__BASES__");
+      return;
+    }
+    if (data.parent && isUnderAny(data.parent, baseDirs)) {
+      setPath(data.parent);
+    }
   };
 
   const goHome = () => {
-    if (data?.home) setPath(data.home);
+    if (baseDirs.length > 1) {
+      setPath("__BASES__");
+    } else if (baseDirs.length === 1) {
+      setPath(baseDirs[0]);
+    } else if (data?.home) {
+      setPath(data.home);
+    }
   };
+
+  const upDisabled =
+    path === "__BASES__" ||
+    !data ||
+    (baseDirs.length === 1 && data.path === baseDirs[0]) ||
+    (baseDirs.length === 0 && !data.parent);
+
+  const renderingBases = path === "__BASES__";
+  const headerPath = renderingBases ? "Configured base directories" : data?.path || "Loading…";
 
   return (
     <>
-      <div className="flex items-start justify-between gap-4 p-4 border-b border-border">
+      <div className="flex items-start justify-between gap-4 p-4 border-b border-border shrink-0">
         <div>
           <h2 className="text-base font-semibold">Open directory</h2>
           <p className="text-xs text-muted-fg">
-            Pick a folder to open as a project.
+            Pick a folder under your configured base directories.
           </p>
         </div>
         <button
@@ -225,7 +306,7 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
         </button>
       </div>
 
-      <div className="px-4 pt-3 pb-2 border-b border-border space-y-1.5">
+      <div className="px-4 pt-3 pb-2 border-b border-border space-y-1.5 shrink-0">
         <div className="relative">
           <input
             ref={inputRef}
@@ -238,7 +319,11 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
             onFocus={() => setShowCompletions(true)}
             onBlur={() => setTimeout(() => setShowCompletions(false), 150)}
             onKeyDown={onInputKeyDown}
-            placeholder="Type a path... (Tab to complete, Enter to open)"
+            placeholder={
+              baseDirs.length > 0
+                ? `Type a path within ${baseDirs[0]}... (Tab, Enter)`
+                : "Type a path... (Tab, Enter)"
+            }
             className="w-full rounded-md border border-border bg-muted/20 px-3 py-1.5 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             autoFocus
           />
@@ -263,16 +348,16 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border bg-muted/10">
+      <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border bg-muted/10 shrink-0">
         <div className="flex flex-col min-w-0 flex-1">
           <span className="text-[10px] uppercase tracking-wide text-muted-fg">
             Current Folder
           </span>
           <span
             className="font-mono text-sm truncate"
-            title={data?.path || path}
+            title={renderingBases ? "configured base directories" : data?.path}
           >
-            {data?.path || path || "Loading..."}
+            {headerPath}
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -287,7 +372,7 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
           <button
             type="button"
             onClick={goUp}
-            disabled={!data?.parent}
+            disabled={upDisabled}
             title="Up one level"
             className="rounded-md p-1.5 hover:bg-muted/40 text-muted-fg disabled:opacity-40"
           >
@@ -295,8 +380,8 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
           </button>
           <button
             type="button"
-            onClick={() => data?.path && onSelect(data.path)}
-            disabled={!data?.path}
+            onClick={() => !renderingBases && data?.path && onSelect(data.path)}
+            disabled={renderingBases || !data?.path}
             className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted/30 disabled:opacity-40"
           >
             Select Current
@@ -304,23 +389,52 @@ function FolderBrowserBody({ onClose, onSelect, initialPath }: BodyProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        {loading && (
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain">
+        {renderingBases &&
+          baseDirs.map((base) => (
+            <div
+              key={base}
+              className="flex items-center gap-2 border-b border-border/50 px-4 hover:bg-muted/20"
+            >
+              <button
+                type="button"
+                onClick={() => enterBase(base)}
+                className="flex flex-1 items-center gap-2 py-2 text-left text-sm min-w-0"
+                title={base}
+              >
+                <FolderIcon className="size-4 shrink-0 text-muted-fg" />
+                <span className="truncate font-mono">{base}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelect(base)}
+                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-primary hover:text-primary-fg"
+              >
+                Select
+              </button>
+            </div>
+          ))}
+        {!renderingBases && loading && (
           <div className="px-4 py-8 text-center text-sm text-muted-fg">
             Loading...
           </div>
         )}
-        {data?.error && (
+        {!renderingBases && data?.error && (
           <div className="px-4 py-3 text-sm text-danger-subtle-fg bg-danger-subtle">
             {data.error}
           </div>
         )}
-        {!loading && data && !data.error && sortedEntries.length === 0 && (
-          <div className="px-4 py-8 text-center text-sm text-muted-fg">
-            (no subdirectories)
-          </div>
-        )}
-        {!loading &&
+        {!renderingBases &&
+          !loading &&
+          data &&
+          !data.error &&
+          sortedEntries.length === 0 && (
+            <div className="px-4 py-8 text-center text-sm text-muted-fg">
+              (no subdirectories)
+            </div>
+          )}
+        {!renderingBases &&
+          !loading &&
           sortedEntries.map((entry) => {
             const fullPath = data ? joinPath(data.path, entry.name) : "";
             return (
