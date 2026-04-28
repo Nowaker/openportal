@@ -111,6 +111,23 @@ function projectBasename(directory: string): string {
   return last || directory;
 }
 
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const idx = lower.indexOf(q);
+  if (idx < 0) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-amber-300/40 text-fg rounded-sm px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 interface ProjectGroupProps {
   directory: string;
   sessions: Session[];
@@ -123,6 +140,7 @@ interface ProjectGroupProps {
   onArchiveSession: (id: string) => void;
   onUnarchiveSession: (id: string) => void;
   statusMap: SessionStatusMap | undefined;
+  searchQuery: string;
 }
 
 function SessionStatusDot({
@@ -177,6 +195,7 @@ function ProjectGroup({
   onArchiveSession,
   onUnarchiveSession,
   statusMap,
+  searchQuery,
 }: ProjectGroupProps) {
   const [limit, setLimit] = useState(5);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -216,7 +235,7 @@ function ProjectGroup({
             className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           />
           <span className="text-[12px] truncate">
-            {projectName}
+            {highlightMatch(projectName, searchQuery)}
             {sessions.length > 0 && (
               <span className="ml-1 text-muted-fg">({sessions.length})</span>
             )}
@@ -249,7 +268,7 @@ function ProjectGroup({
               onClick={onSessionClick}
               className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
             >
-              {truncateTitle(session.title)}
+              {highlightMatch(truncateTitle(session.title), searchQuery)}
             </UILink>
             <button
               type="button"
@@ -295,7 +314,7 @@ function ProjectGroup({
             onClick={onSessionClick}
             className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal italic text-muted-fg hover:text-fg truncate block"
           >
-            {truncateTitle(session.title)}
+            {highlightMatch(truncateTitle(session.title), searchQuery)}
           </UILink>
           <button
             type="button"
@@ -330,6 +349,7 @@ interface ProjectsListProps {
   onUnarchiveSession: (id: string) => void;
   onNewSessionInProject: (directory: string) => void;
   statusMap: SessionStatusMap | undefined;
+  searchQuery: string;
 }
 
 interface ProjectBin {
@@ -352,6 +372,7 @@ function ProjectsList({
   onUnarchiveSession,
   onNewSessionInProject,
   statusMap,
+  searchQuery,
 }: ProjectsListProps) {
   const groups = useMemo<ProjectBin[]>(() => {
     const byDir = new Map<string, ProjectBin>();
@@ -399,10 +420,42 @@ function ProjectsList({
     return arr;
   }, [sessions, virtualDirectory]);
 
+  const filteredGroups = useMemo<ProjectBin[]>(() => {
+    if (!searchQuery) return groups;
+    const q = searchQuery.toLowerCase();
+    const out: ProjectBin[] = [];
+    for (const g of groups) {
+      const projectMatches = projectBasename(g.dir)
+        .toLowerCase()
+        .includes(q);
+      const matchedSessions = g.sessions.filter((s) =>
+        (s.title ?? "").toLowerCase().includes(q),
+      );
+      const matchedArchived = g.archivedSessions.filter((s) =>
+        (s.title ?? "").toLowerCase().includes(q),
+      );
+      if (projectMatches) {
+        out.push(g);
+      } else if (matchedSessions.length || matchedArchived.length) {
+        out.push({
+          dir: g.dir,
+          sessions: matchedSessions,
+          archivedSessions: matchedArchived,
+        });
+      }
+    }
+    return out;
+  }, [groups, searchQuery]);
+
   const expanded = useSidebarExpandStore((s) => s.expanded);
   const expandedSet = useMemo(() => new Set(expanded), [expanded]);
   const toggleExpand = useSidebarExpandStore((s) => s.toggle);
   const expandKey = useSidebarExpandStore((s) => s.expand);
+
+  const tempExpanded = useMemo(() => {
+    if (!searchQuery) return new Set<string>();
+    return new Set(filteredGroups.map((g) => g.dir));
+  }, [filteredGroups, searchQuery]);
 
   useEffect(() => {
     if (!currentSessionId) return;
@@ -423,15 +476,23 @@ function ProjectsList({
     );
   }
 
+  if (searchQuery && filteredGroups.length === 0) {
+    return (
+      <div className="text-xs text-muted-fg px-3 py-2">
+        No matches for "{searchQuery}"
+      </div>
+    );
+  }
+
   return (
     <>
-      {groups.map((group) => (
+      {filteredGroups.map((group) => (
         <ProjectGroup
           key={group.dir}
           directory={group.dir}
           sessions={group.sessions}
           archivedSessions={group.archivedSessions}
-          isExpanded={expandedSet.has(group.dir)}
+          isExpanded={expandedSet.has(group.dir) || tempExpanded.has(group.dir)}
           onToggle={() => toggleExpand(group.dir)}
           onNewSessionInProject={() => onNewSessionInProject(group.dir)}
           currentSessionId={currentSessionId}
@@ -439,6 +500,7 @@ function ProjectsList({
           onArchiveSession={onArchiveSession}
           onUnarchiveSession={onUnarchiveSession}
           statusMap={statusMap}
+          searchQuery={searchQuery}
         />
       ))}
     </>
@@ -462,6 +524,8 @@ export default function AppSidebar(
   const unarchiveSession = useUnarchiveSession();
   const { data: statusMap } = useSessionStatus();
   const sessions: Session[] = sessionsData ?? [];
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   async function handleNewSession(directory?: string) {
     if (creating) return;
@@ -549,12 +613,32 @@ export default function AppSidebar(
             </SidebarItem>
           </SidebarSection>
 
+          <div className="col-span-full px-2 pb-1">
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  setSearchQuery(searchInput.trim());
+                } else if (e.key === "Escape") {
+                  setSearchInput("");
+                  setSearchQuery("");
+                }
+              }}
+              placeholder="Search sessions..."
+              className="w-full rounded border border-border bg-bg px-2 py-1 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
           <SidebarSection label="Projects">
             <ProjectsList
               sessions={sessions}
               currentSessionId={currentSessionId}
               virtualDirectory={virtualDirectory ?? null}
               statusMap={statusMap}
+              searchQuery={searchQuery}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
