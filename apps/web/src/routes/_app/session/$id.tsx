@@ -786,7 +786,18 @@ const ToolCallItem = memo(function ToolCallItem({
           {isPending && <span className="animate-pulse shrink-0">...</span>}
         </div>
 
-        {isPending && port ? (
+        {isCompleted && (
+          <div className="mt-2 space-y-2 text-fg/90">
+            <QuestionDisplay
+              questions={questions}
+              partKey={part.callID || part.id}
+            />
+            <div className="text-[10px] uppercase tracking-wide text-muted-fg/80 pt-1">
+              Resubmit answers
+            </div>
+          </div>
+        )}
+        {port ? (
           <QuestionAnswerForm
             questions={questions}
             partKey={part.callID || part.id}
