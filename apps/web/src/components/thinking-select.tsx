@@ -76,9 +76,10 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
     <Menu>
       <Button
         intent="outline"
-        size="sq-sm"
+        size="sm"
         aria-label={`Thinking effort: ${variantDisplayLabel(current)}`}
-        className="shrink-0"
+        data-slot="control"
+        className="shrink-0 px-2"
       >
         {variantIcon(current, "size-4")}
       </Button>
