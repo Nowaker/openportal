@@ -927,6 +927,76 @@ function AttachmentChip({ part }: { part: FilePart }) {
   );
 }
 
+// Renders markdown and tucks the timestamp into the very last <p> as an
+// inline trailing span. We count source-level paragraphs ahead of time and
+// override react-markdown's <p> renderer to append the timestamp only on
+// the matching index. Falls back gracefully (timestamp dropped) when the
+// content's last block isn't a paragraph (e.g. ends in a list / code
+// block / table) - those are uncommon in chat replies.
+function MarkdownWithTime({
+  text,
+  remarkPlugins,
+  timestamp,
+  titleAt,
+}: {
+  text: string;
+  remarkPlugins: NonNullable<React.ComponentProps<typeof Markdown>["remarkPlugins"]>;
+  timestamp: string;
+  titleAt: string | undefined;
+}) {
+  const totalParagraphs = useMemo(() => {
+    if (!text) return 0;
+    return text
+      .split(/\n{2,}/g)
+      .map((block) => block.trim())
+      .filter((block) => {
+        if (!block) return false;
+        const head = block.slice(0, 4);
+        if (block.startsWith("```")) return false;
+        if (block.startsWith("#")) return false;
+        if (block.startsWith(">")) return false;
+        if (/^\s*[-*+]\s/.test(block)) return false;
+        if (/^\s*\d+\.\s/.test(block)) return false;
+        if (block.startsWith("|")) return false;
+        if (head === "    ") return false;
+        return true;
+      }).length;
+  }, [text]);
+  const renderedRef = useRef(0);
+  renderedRef.current = 0;
+
+  const components = useMemo(
+    () => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      p: ({ children, ...props }: any) => {
+        renderedRef.current += 1;
+        const isLast =
+          totalParagraphs > 0 && renderedRef.current === totalParagraphs;
+        return (
+          <p {...props}>
+            {children}
+            {isLast && timestamp && (
+              <span
+                className="ml-2 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/50 select-none whitespace-nowrap"
+                title={titleAt}
+              >
+                {timestamp}
+              </span>
+            )}
+          </p>
+        );
+      },
+    }),
+    [timestamp, titleAt, totalParagraphs],
+  );
+
+  return (
+    <Markdown remarkPlugins={remarkPlugins} components={components}>
+      {text}
+    </Markdown>
+  );
+}
+
 const MessageItem = memo(function MessageItem({
   message,
   port,
@@ -1018,23 +1088,16 @@ const MessageItem = memo(function MessageItem({
             )}
             {textContent && (
               <div
-                className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_p:last-child]:inline [&_p:last-child]:after:content-[''] ${!isAssistant ? "text-muted-fg" : ""}`}
+                className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] ${!isAssistant ? "text-muted-fg" : ""}`}
               >
-                <Markdown
+                <MarkdownWithTime
+                  text={textContent}
                   remarkPlugins={
                     isAssistant ? [remarkGfm] : [remarkGfm, remarkBreaks]
                   }
-                >
-                  {textContent}
-                </Markdown>
-                {messageTimestamp && (
-                  <span
-                    className="ml-2 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/50 select-none whitespace-nowrap"
-                    title={messageTitleAt}
-                  >
-                    {messageTimestamp}
-                  </span>
-                )}
+                  timestamp={messageTimestamp}
+                  titleAt={messageTitleAt}
+                />
               </div>
             )}
             {fileParts.length > 0 && (
