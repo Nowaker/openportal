@@ -2524,11 +2524,39 @@ function SessionPage() {
                       key={`${a.filename ?? "image"}-${i}`}
                       className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted"
                     >
-                      <img
-                        src={a.url}
-                        alt={a.filename ?? `Attachment ${i + 1}`}
-                        className="h-full w-full object-cover"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = a.url ?? "";
+                          if (!url.startsWith("data:")) return;
+                          try {
+                            const blob = dataUrlToBlob(url);
+                            const objUrl = URL.createObjectURL(blob);
+                            window.open(
+                              objUrl,
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                            window.setTimeout(
+                              () => URL.revokeObjectURL(objUrl),
+                              60_000,
+                            );
+                          } catch {
+                            /* ignore - clicking the chip is a polish
+                               feature, drag/drop preview already proves
+                               the attachment is staged */
+                          }
+                        }}
+                        title="Preview attachment"
+                        aria-label="Preview attachment"
+                        className="block h-full w-full"
+                      >
+                        <img
+                          src={a.url}
+                          alt={a.filename ?? `Attachment ${i + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
                       <button
                         type="button"
                         onClick={() => removeAttachment(i)}

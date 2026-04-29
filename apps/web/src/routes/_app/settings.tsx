@@ -488,8 +488,8 @@ function SettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain">
-      <div className="container mx-auto space-y-8 px-4 py-10">
-        <div className="space-y-2">
+      <div className="container mx-auto space-y-8 px-4 py-6">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => {
@@ -499,19 +499,14 @@ function SettingsPage() {
                 window.location.href = "/";
               }
             }}
-            className="inline-flex items-center gap-1 text-sm text-muted-fg hover:text-fg transition-colors"
+            className="inline-flex items-center justify-center size-8 rounded text-muted-fg hover:text-fg hover:bg-muted/50 transition-colors"
             aria-label="Back"
+            title="Back"
           >
-            <ArrowLeftIcon className="size-4" />
-            Back
+            <ArrowLeftIcon className="size-5" />
           </button>
-        <h1 className="bg-gradient-to-r from-fg to-muted-fg bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl">
-          Settings
-        </h1>
-        <p className="text-lg text-muted-fg">
-          Manage your interface preferences and configurations.
-        </p>
-      </div>
+          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        </div>
 
       <Tabs
         aria-label="Settings"
@@ -519,7 +514,7 @@ function SettingsPage() {
         selectedKey={settingsTab}
         onSelectionChange={(key) => setSettingsTab(String(key))}
       >
-        <TabList className="flex overflow-x-auto scrollbar-none">
+        <TabList className="flex overflow-x-auto scrollbar-none !border-b-0 [&_*[data-slot=selected-indicator]]:hidden">
           <Tab id="appearance">
             <SwatchIcon className="size-4" data-slot="icon" />
             Appearance
