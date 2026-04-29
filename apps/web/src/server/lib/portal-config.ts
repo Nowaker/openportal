@@ -5,6 +5,43 @@ import { join, resolve } from "path";
 const NEW_CONFIG_PATH = join(homedir(), ".openportal.json");
 const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 
+// JSONC stripper. String-aware so `//` inside `"http://..."` is preserved.
+// Mirror of the helper in packages/cli/src/index.ts; keep them in sync.
+function stripJsoncComments(src: string): string {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const next = i + 1 < n ? src[i + 1] : "";
+    if (c === '"') {
+      out += c;
+      i++;
+      while (i < n) {
+        const ch = src[i];
+        out += ch;
+        if (ch === "\\" && i + 1 < n) {
+          out += src[i + 1];
+          i += 2;
+          continue;
+        }
+        i++;
+        if (ch === '"') break;
+      }
+    } else if (c === "/" && next === "/") {
+      while (i < n && src[i] !== "\n") i++;
+    } else if (c === "/" && next === "*") {
+      i += 2;
+      while (i + 1 < n && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i += 2;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
 export interface BaseDirEntry {
   path: string;
   level: number;
@@ -111,7 +148,7 @@ export function readPortalConfig(): OpenPortalConfig {
   if (existsSync(NEW_CONFIG_PATH)) {
     try {
       const raw = JSON.parse(
-        readFileSync(NEW_CONFIG_PATH, "utf-8"),
+        stripJsoncComments(readFileSync(NEW_CONFIG_PATH, "utf-8")),
       ) as RawConfig;
       rawEntries = raw.directories ?? [];
     } catch (e) {

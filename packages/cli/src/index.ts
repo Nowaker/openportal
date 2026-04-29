@@ -153,22 +153,101 @@ function isInstanceRunning(instance: PortalInstance): boolean {
   );
 }
 
-// Reads ~/.openportal.json for `decoupleOpencode: true`. When true, the CLI
-// runs in pidfile-driven attach mode: opencode children survive an openportal
-// restart, the next openportal startup attaches to the still-running opencode
-// instead of spawning a fresh one, and `openportal stop` does not terminate
-// opencode. Default is false (existing managed-child behaviour).
-function readDecoupleOpencodeFlag(): boolean {
+// JSONC support: ~/.openportal.json is read as JSONC (JSON-with-comments)
+// so users can leave inline rationale + commented-out backup configs. The
+// stripper walks character-by-character so it doesn't false-trigger on `//`
+// inside string values (URLs, paths). It does NOT strip trailing commas;
+// JSONC technically allows them but JSON.parse will reject them, and
+// supporting them here without a real parser is fragile.
+function stripJsoncComments(src: string): string {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const next = i + 1 < n ? src[i + 1] : "";
+    if (c === '"') {
+      out += c;
+      i++;
+      while (i < n) {
+        const ch = src[i];
+        out += ch;
+        if (ch === "\\" && i + 1 < n) {
+          out += src[i + 1];
+          i += 2;
+          continue;
+        }
+        i++;
+        if (ch === '"') break;
+      }
+    } else if (c === "/" && next === "/") {
+      while (i < n && src[i] !== "\n") i++;
+    } else if (c === "/" && next === "*") {
+      i += 2;
+      while (i + 1 < n && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i += 2;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
+interface OpenportalCliConfig {
+  decoupleOpencode?: boolean;
+  externalOpencode?: { port?: number };
+}
+
+// Reads ~/.openportal.json (JSONC). Returns an empty object on read/parse
+// failure so the CLI keeps booting. Three lifecycle modes, mutually
+// exclusive, evaluated in priority order in cmdDefault/cmdRun:
+//
+//   1. externalOpencode.port set      -> connect-only. NEVER spawn opencode.
+//      The pidfile mechanism is bypassed (we don't own the process). The
+//      configured port wins over --opencode-port. cmdStop won't kill it.
+//   2. decoupleOpencode === true      -> pidfile-driven attach. First start
+//      spawns + writes ~/.openportal-opencode-<port>.pid; subsequent starts
+//      attach if the pidfile points at a live opencode. cmdStop won't kill
+//      attached instances.
+//   3. neither set                    -> legacy managed-child behaviour.
+//      openportal spawns and (via cmdStop) kills opencode. Children still
+//      orphan when openportal exits without going through cmdStop.
+function readOpenportalConfig(): OpenportalCliConfig {
   try {
-    if (!existsSync(OPENPORTAL_CONFIG_PATH)) return false;
-    const raw = JSON.parse(readFileSync(OPENPORTAL_CONFIG_PATH, "utf-8"));
-    return raw?.decoupleOpencode === true;
+    if (!existsSync(OPENPORTAL_CONFIG_PATH)) return {};
+    const raw = readFileSync(OPENPORTAL_CONFIG_PATH, "utf-8");
+    return JSON.parse(stripJsoncComments(raw)) as OpenportalCliConfig;
   } catch (error) {
     console.warn(
       `[openportal-config] Failed to read ${OPENPORTAL_CONFIG_PATH}:`,
       error instanceof Error ? error.message : error,
     );
+    return {};
+  }
+}
+
+// Quick TCP-level reachability + protocol sanity check for an externally
+// managed opencode. Hits opencode's /config/providers (cheap, JSON, served
+// only by an actual opencode). Used in external mode at startup. Returns
+// false on any failure (timeout, connection refused, non-2xx, parse miss);
+// caller decides whether to abort startup or warn-and-continue.
+async function probeOpencode(
+  hostname: string,
+  port: number,
+  timeoutMs = 2000,
+): Promise<boolean> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`http://${hostname}:${port}/config/providers`, {
+      signal: ctrl.signal,
+    });
+    return res.ok;
+  } catch {
     return false;
+  } finally {
+    clearTimeout(t);
   }
 }
 
@@ -336,9 +415,27 @@ async function cmdDefault(
     options.port || options.p
       ? parseInt((options.port as string) || (options.p as string), 10)
       : await getPort({ host: hostname, port: DEFAULT_PORT });
-  const opencodePort = options["opencode-port"]
-    ? parseInt(options["opencode-port"] as string, 10)
-    : await getPort({ host: hostname, port: DEFAULT_OPENCODE_PORT });
+
+  const cfg = readOpenportalConfig();
+  const externalPort = cfg.externalOpencode?.port;
+  const decouple = cfg.decoupleOpencode === true;
+
+  let opencodePort: number;
+  if (typeof externalPort === "number") {
+    opencodePort = externalPort;
+    if (options["opencode-port"]) {
+      const cliPort = parseInt(options["opencode-port"] as string, 10);
+      if (cliPort !== externalPort) {
+        console.log(
+          `[openportal-config] externalOpencode.port=${externalPort} overrides --opencode-port ${cliPort}`,
+        );
+      }
+    }
+  } else if (options["opencode-port"]) {
+    opencodePort = parseInt(options["opencode-port"] as string, 10);
+  } else {
+    opencodePort = await getPort({ host: hostname, port: DEFAULT_OPENCODE_PORT });
+  }
 
   const existing = readConfig().instances.find((i) => i.directory === directory);
   if (existing && isInstanceRunning(existing)) {
@@ -363,20 +460,33 @@ async function cmdDefault(
     process.exit(1);
   }
 
-  const decouple = readDecoupleOpencodeFlag();
-
   console.log(`Starting OpenPortal...`);
   console.log(`  Name: ${name}`);
   console.log(`  Directory: ${directory}`);
   console.log(`  Web UI Port: ${port}`);
   console.log(`  OpenCode Port: ${opencodePort}`);
   console.log(`  Hostname: ${hostname}`);
-  if (decouple) console.log(`  Lifecycle: decoupled (opencode survives openportal restarts)`);
+  if (typeof externalPort === "number") {
+    console.log(`  Lifecycle: external (no spawn; connecting to existing opencode)`);
+  } else if (decouple) {
+    console.log(`  Lifecycle: decoupled (opencode survives openportal restarts)`);
+  }
 
   try {
-    let opencodePid: number;
+    let opencodePid: number | null;
     let attachedOpencode = false;
-    if (decouple) {
+    if (typeof externalPort === "number") {
+      const reachable = await probeOpencode(hostname, externalPort);
+      if (!reachable) {
+        console.warn(
+          `⚠️  external OpenCode at ${hostname}:${externalPort} did not respond on /config/providers. Starting web UI anyway; it will retry.`,
+        );
+      } else {
+        console.log(`Probed external OpenCode at ${hostname}:${externalPort} ✓`);
+      }
+      opencodePid = null;
+      attachedOpencode = true;
+    } else if (decouple) {
       const existingPid = readLiveOpencodePidfile(opencodePort);
       if (existingPid !== null) {
         opencodePid = existingPid;
@@ -414,7 +524,11 @@ async function cmdDefault(
     const displayHost = hostname === "0.0.0.0" ? "localhost" : hostname;
 
     console.log(`\n✅ OpenPortal started!`);
-    console.log(`   OpenCode PID: ${opencodePid}${attachedOpencode ? " (attached)" : ""}`);
+    if (opencodePid !== null) {
+      console.log(`   OpenCode PID: ${opencodePid}${attachedOpencode ? " (attached)" : ""}`);
+    } else {
+      console.log(`   OpenCode: external (not managed by openportal)`);
+    }
     console.log(`   Web UI PID: ${webPid}`);
     console.log(`\n📱 Access OpenPortal at http://${displayHost}:${port}`);
     console.log(`🔧 OpenCode API at http://${displayHost}:${opencodePort}`);
@@ -448,7 +562,14 @@ async function cmdRun(options: Record<string, string | boolean | undefined>) {
     return;
   }
 
-  const decouple = readDecoupleOpencodeFlag();
+  const cfg = readOpenportalConfig();
+  if (typeof cfg.externalOpencode?.port === "number") {
+    console.error(
+      `❌ 'openportal run' is incompatible with externalOpencode mode (no opencode to spawn). Remove externalOpencode from ~/.openportal.json or use 'openportal' (default) which only starts the web UI.`,
+    );
+    process.exit(1);
+  }
+  const decouple = cfg.decoupleOpencode === true;
 
   console.log(`Starting OpenCode server...`);
   console.log(`  Name: ${name}`);
