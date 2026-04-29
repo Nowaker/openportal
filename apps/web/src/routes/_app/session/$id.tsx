@@ -919,11 +919,32 @@ function RevertIcon({ className }: { className?: string }) {
   );
 }
 
-// Chrome (and most modern browsers) blocks top-level navigation to data:
-// URLs as a phishing mitigation. <a href="data:..." target="_blank"> opens
-// a tab with the URL string in the address bar but no rendered content.
-// Workaround: fetch the data URL into a Blob, create an object URL, and
-// navigate to that. Object URLs are not blocked.
+// Chrome blocks top-level navigation to data: URLs as a phishing mitigation,
+// so a plain <a href="data:..." target="_blank"> opens a blank tab. We convert
+// the data URL to a Blob + object URL on click and open THAT - object URLs
+// are not blocked. The conversion runs synchronously from the click handler
+// so window.open() retains the user-gesture and isn't popup-blocked. (An
+// async fetch() + then() chain would lose the gesture and pop the blocker.)
+// Right-click "Open in new tab" continues to work natively because the <a>
+// still has the original href as a fallback.
+function dataUrlToBlob(dataUrl: string): Blob {
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx < 0) throw new Error("Malformed data URL");
+  const header = dataUrl.slice(5, commaIdx);
+  const payload = dataUrl.slice(commaIdx + 1);
+  const isBase64 = header.endsWith(";base64");
+  const mime =
+    (isBase64 ? header.slice(0, -7) : header).split(";")[0] ||
+    "application/octet-stream";
+  if (isBase64) {
+    const binary = atob(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+  return new Blob([decodeURIComponent(payload)], { type: mime });
+}
+
 function AttachmentChip({ part }: { part: FilePart }) {
   const isImage = part.mime?.startsWith("image/");
   const Icon = isImage ? PhotoIcon : PaperClipIcon;
@@ -940,21 +961,16 @@ function AttachmentChip({ part }: { part: FilePart }) {
       onClick={
         isDataUrl
           ? (e) => {
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
               e.preventDefault();
-              fetch(url)
-                .then((r) => r.blob())
-                .then((blob) => {
-                  const objUrl = URL.createObjectURL(blob);
-                  const w = window.open(objUrl, "_blank", "noopener,noreferrer");
-                  if (!w) {
-                    URL.revokeObjectURL(objUrl);
-                    return;
-                  }
-                  window.setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
-                })
-                .catch(() => {
-                  /* fall back to whatever the browser does with the data URL */
-                });
+              try {
+                const blob = dataUrlToBlob(url);
+                const objUrl = URL.createObjectURL(blob);
+                window.open(objUrl, "_blank", "noopener,noreferrer");
+                window.setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+              } catch {
+                /* fall back to native <a href=data:...> nav */
+              }
             }
           : undefined
       }
