@@ -919,17 +919,45 @@ function RevertIcon({ className }: { className?: string }) {
   );
 }
 
+// Chrome (and most modern browsers) blocks top-level navigation to data:
+// URLs as a phishing mitigation. <a href="data:..." target="_blank"> opens
+// a tab with the URL string in the address bar but no rendered content.
+// Workaround: fetch the data URL into a Blob, create an object URL, and
+// navigate to that. Object URLs are not blocked.
 function AttachmentChip({ part }: { part: FilePart }) {
   const isImage = part.mime?.startsWith("image/");
   const Icon = isImage ? PhotoIcon : PaperClipIcon;
   const label = part.filename || (isImage ? "image" : part.mime || "attachment");
+  const url = part.url ?? "";
+  const isDataUrl = url.startsWith("data:");
   return (
     <a
-      href={part.url}
+      href={url}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1 max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-fg/90 hover:border-fg/30 hover:bg-muted transition-colors"
       title={label}
+      onClick={
+        isDataUrl
+          ? (e) => {
+              e.preventDefault();
+              fetch(url)
+                .then((r) => r.blob())
+                .then((blob) => {
+                  const objUrl = URL.createObjectURL(blob);
+                  const w = window.open(objUrl, "_blank", "noopener,noreferrer");
+                  if (!w) {
+                    URL.revokeObjectURL(objUrl);
+                    return;
+                  }
+                  window.setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+                })
+                .catch(() => {
+                  /* fall back to whatever the browser does with the data URL */
+                });
+            }
+          : undefined
+      }
     >
       <Icon className="size-3 shrink-0 text-muted-fg" />
       <span className="truncate">{label}</span>
