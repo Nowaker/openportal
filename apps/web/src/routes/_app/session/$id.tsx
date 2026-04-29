@@ -977,21 +977,13 @@ const MessageItem = memo(function MessageItem({
     : "";
   return (
     <div
-      className={`relative py-3 px-6 ${decoration}`}
+      className={`py-3 px-6 ${decoration}`}
       // The role + id pair lets the prompt-nav buttons (prev / next user
       // message) find each user message in the DOM and scroll it into view
       // without lifting the message list into a controlled-scroll system.
       data-role={message.info.role}
       data-message-id={message.info.id}
     >
-      {messageTimestamp && (
-        <span
-          className="hidden sm:block absolute top-3 right-2 text-[10px] font-mono tabular-nums text-muted-fg/70 select-none pointer-events-none"
-          title={messageTitleAt}
-        >
-          {messageTimestamp}
-        </span>
-      )}
       {hasHeaderRow && (
         <div className="flex gap-2">
           <div className="shrink-0 mt-1 flex flex-col items-center gap-1">
@@ -1026,7 +1018,7 @@ const MessageItem = memo(function MessageItem({
             )}
             {textContent && (
               <div
-                className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] ${!isAssistant ? "text-muted-fg" : ""}`}
+                className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_p:last-child]:inline [&_p:last-child]:after:content-[''] ${!isAssistant ? "text-muted-fg" : ""}`}
               >
                 <Markdown
                   remarkPlugins={
@@ -1035,9 +1027,9 @@ const MessageItem = memo(function MessageItem({
                 >
                   {textContent}
                 </Markdown>
-                {isAssistant && messageTimestamp && (
+                {messageTimestamp && (
                   <span
-                    className="sm:hidden ml-1.5 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/60 select-none"
+                    className="ml-2 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/50 select-none whitespace-nowrap"
                     title={messageTitleAt}
                   >
                     {messageTimestamp}
