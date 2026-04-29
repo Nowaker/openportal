@@ -73,7 +73,8 @@ export function useSessionMessages(
   } = useSWR<MessageWithParts[]>(key, fetcher, {
     refreshInterval: 3000,
     keepPreviousData: true,
-    revalidateOnFocus: false,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
   });
 
   return {
@@ -118,33 +119,39 @@ function isMessagesKeyForSession(
   );
 }
 
+// Append an optimistic message to every cached variant of this session's
+// messages key (paginated `?limit=<n>`, `?limit=all`, or unsuffixed).
+// Targeting only the unsuffixed + ?limit=all variants would miss the
+// active SWR subscription whenever the page mounted with a numeric limit,
+// causing the message to silently disappear from the chat until F5.
 export function addOptimisticMessage(
   port: number,
   sessionId: string,
   message: MessageWithParts,
 ): () => void {
-  const previousByKey = new Map<string, MessageWithParts[]>();
-  const keys = [
-    getMessagesKey(port, sessionId, false),
-    getMessagesKey(port, sessionId, true),
-  ];
-
-  for (const key of keys) {
-    mutate(
-      key,
-      (current: MessageWithParts[] | undefined) => {
-        const prev = current ?? [];
-        previousByKey.set(key, prev);
-        return [...prev, message];
-      },
-      { revalidate: false },
-    );
-  }
+  const matchedKeys: string[] = [];
+  mutate(
+    (key) => {
+      if (isMessagesKeyForSession(port, sessionId, key)) {
+        matchedKeys.push(key);
+        return true;
+      }
+      return false;
+    },
+    (current: MessageWithParts[] | undefined) =>
+      current ? [...current, message] : [message],
+    { revalidate: false },
+  );
 
   return () => {
-    for (const [key, prev] of previousByKey.entries()) {
-      mutate(key, prev, { revalidate: false });
-    }
+    mutate(
+      (key) => isMessagesKeyForSession(port, sessionId, key),
+      (current: MessageWithParts[] | undefined) =>
+        current
+          ? current.filter((m) => m.info.id !== message.info.id)
+          : current,
+      { revalidate: false },
+    );
   };
 }
 

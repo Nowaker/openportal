@@ -30,6 +30,7 @@ import {
   type FontSizeScale,
 } from "@/stores/font-size-store";
 import { useModelStore } from "@/stores/model-store";
+import { useDateFormatStore } from "@/stores/date-format-store";
 import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
 
@@ -57,6 +58,35 @@ function ThemeSetting() {
             {item.title}
           </SelectItem>
         ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function DateFormatSetting() {
+  const format = useDateFormatStore((s) => s.format);
+  const setFormat = useDateFormatStore((s) => s.setFormat);
+
+  return (
+    <Select
+      aria-label="Date and time format"
+      selectedKey={format}
+      onSelectionChange={(key) => {
+        if (key === "12h" || key === "24h") setFormat(key);
+      }}
+    >
+      <SelectTrigger className="max-w-sm" />
+      <SelectContent>
+        <SelectItem id="12h" textValue="12-hour (2:23pm)">
+          <SelectLabel>
+            12-hour <span className="ml-1 text-muted-fg">(2:23pm)</span>
+          </SelectLabel>
+        </SelectItem>
+        <SelectItem id="24h" textValue="24-hour (14:23)">
+          <SelectLabel>
+            24-hour <span className="ml-1 text-muted-fg">(14:23)</span>
+          </SelectLabel>
+        </SelectItem>
       </SelectContent>
     </Select>
   );
@@ -520,6 +550,16 @@ function SettingsPage() {
                   Scale the entire interface up or down. 100% is the default.
                 </p>
                 <FontSizeSetting />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Date and time format</p>
+                <p className="text-xs text-muted-fg">
+                  Display format for chat message timestamps. Date prefix
+                  (e.g. <code>4/3</code>) is added when the message is from
+                  a previous day.
+                </p>
+                <DateFormatSetting />
               </div>
             </div>
           </div>

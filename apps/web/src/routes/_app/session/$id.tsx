@@ -17,6 +17,7 @@ import {
 } from "@/components/file-mention-popover";
 import { TodoStrip, TodoFloat } from "@/components/todo-strip";
 import { extractLatestTodos } from "@/lib/todos";
+import { formatMessageTime } from "@/lib/format-time";
 import IconBadgeSparkle from "@/components/icons/badge-sparkle-icon";
 import IconUser from "@/components/icons/user-icon";
 import IconMagnifier from "@/components/icons/magnifier-icon";
@@ -37,6 +38,7 @@ import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
+import { useDateFormatStore } from "@/stores/date-format-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
@@ -958,6 +960,13 @@ const MessageItem = memo(function MessageItem({
   const errorDescription = messageError
     ? describeMessageError(messageError)
     : null;
+  const dateFormat = useDateFormatStore((s) => s.format);
+  const messageTimestamp = message.info.time?.created
+    ? formatMessageTime(message.info.time.created, dateFormat)
+    : "";
+  const messageTitleAt = message.info.time?.created
+    ? new Date(message.info.time.created).toLocaleString()
+    : undefined;
 
   const hasHeaderRow = textContent || fileParts.length > 0;
   // Visual decoration when a revert is staged: gray tone + strike-through.
@@ -968,13 +977,21 @@ const MessageItem = memo(function MessageItem({
     : "";
   return (
     <div
-      className={`py-3 px-6 ${decoration}`}
+      className={`relative py-3 px-6 ${decoration}`}
       // The role + id pair lets the prompt-nav buttons (prev / next user
       // message) find each user message in the DOM and scroll it into view
       // without lifting the message list into a controlled-scroll system.
       data-role={message.info.role}
       data-message-id={message.info.id}
     >
+      {messageTimestamp && (
+        <span
+          className="hidden sm:block absolute top-3 right-2 text-[10px] font-mono tabular-nums text-muted-fg/70 select-none pointer-events-none"
+          title={messageTitleAt}
+        >
+          {messageTimestamp}
+        </span>
+      )}
       {hasHeaderRow && (
         <div className="flex gap-2">
           <div className="shrink-0 mt-1 flex flex-col items-center gap-1">
@@ -1018,6 +1035,14 @@ const MessageItem = memo(function MessageItem({
                 >
                   {textContent}
                 </Markdown>
+                {isAssistant && messageTimestamp && (
+                  <span
+                    className="sm:hidden ml-1.5 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/60 select-none"
+                    title={messageTitleAt}
+                  >
+                    {messageTimestamp}
+                  </span>
+                )}
               </div>
             )}
             {fileParts.length > 0 && (
