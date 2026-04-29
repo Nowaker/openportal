@@ -48,9 +48,15 @@ export interface BaseDirEntry {
   level1: string[];
 }
 
+export interface ConfigDrop {
+  path: string;
+  reason: string;
+}
+
 export interface OpenPortalConfig {
   directories: string[];
   baseDirs: BaseDirEntry[];
+  drops: ConfigDrop[];
 }
 
 interface RawConfigEntryObject {
@@ -199,6 +205,7 @@ export function readPortalConfig(): OpenPortalConfig {
   cached = {
     directories: kept.map((e) => e.path),
     baseDirs: kept,
+    drops: dropped.map((d) => ({ path: d.entry.path, reason: d.reason })),
   };
   return cached;
 }

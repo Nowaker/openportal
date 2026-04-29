@@ -160,6 +160,7 @@ export function DiagnosticsPanel() {
   ).filter((inst) => inst.id !== selfInstance?.id);
 
   const baseDirs = portalConfig.data?.baseDirs ?? [];
+  const configDrops = portalConfig.data?.drops ?? [];
   const projectErrors = projectPaths.data?.errors ?? [];
   const discoveredProjects = projectPaths.data?.paths ?? [];
 
@@ -260,6 +261,17 @@ export function DiagnosticsPanel() {
               {projectErrors.map((e) => (
                 <li key={e.base}>
                   {e.base}: {e.error}
+                </li>
+              ))}
+            </ul>
+          </Row>
+        )}
+        {configDrops.length > 0 && (
+          <Row label="Config warnings">
+            <ul className="space-y-0.5 text-warning">
+              {configDrops.map((d) => (
+                <li key={d.path}>
+                  {d.path}: {d.reason}
                 </li>
               ))}
             </ul>

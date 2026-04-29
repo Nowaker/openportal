@@ -7,6 +7,7 @@ export default defineHandler(() => {
   return {
     directories: config.directories,
     baseDirs: config.baseDirs,
+    drops: config.drops,
     home: homedir(),
   };
 });

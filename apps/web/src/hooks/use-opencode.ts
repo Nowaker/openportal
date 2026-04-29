@@ -21,6 +21,7 @@ export function useInstances() {
 export interface PortalConfigResponse {
   directories: string[];
   baseDirs: { path: string; level: number; level1: string[] }[];
+  drops: { path: string; reason: string }[];
   home: string;
 }
 

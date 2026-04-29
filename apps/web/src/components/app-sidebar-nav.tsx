@@ -76,22 +76,18 @@ export function AppSidebarNav() {
   const sessionTitle = currentSession?.title ?? null;
   const projectLabel = projectLabelFromDirectory(currentSession?.directory);
 
-  // Browser tab title: '<project>: <session> - OpenPortal' on a session
-  // route, plain 'OpenPortal' elsewhere. Restored on unmount so other
-  // pages don't inherit a stale session label.
+  // Browser tab title: 'OP: <sessionTitle>' on a session route, plain
+  // 'OpenPortal' elsewhere. Short 'OP:' prefix keeps the title legible in
+  // narrow tab strips while still clearly signalling which app the tab is.
+  // Restored on unmount so other pages don't inherit a stale session label.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const previous = document.title;
-    if (sessionTitle) {
-      const prefix = projectLabel ? `${projectLabel}: ` : "";
-      document.title = `${prefix}${sessionTitle} - OpenPortal`;
-    } else {
-      document.title = "OpenPortal";
-    }
+    document.title = sessionTitle ? `OP: ${sessionTitle}` : "OpenPortal";
     return () => {
       document.title = previous;
     };
-  }, [sessionTitle, projectLabel]);
+  }, [sessionTitle]);
 
   const runTool = async (toolId: string, prompt: string, label: string) => {
     if (!sessionId || !port) {
