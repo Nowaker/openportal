@@ -12,7 +12,7 @@ import {
   PlusIcon,
   FolderOpenIcon,
 } from "@heroicons/react/24/solid";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Fragment } from "react";
 import useMediaQuery from "@/hooks/use-media-query";
 import { Avatar } from "@/components/ui/avatar";
 import { Link as UILink } from "@/components/ui/link";
@@ -345,13 +345,13 @@ function ProjectGroup({
             style={depth > 0 ? sessionRowStyle : undefined}
             data-current-session={isCurrent || undefined}
           >
+            <DraftIndicator hasDraft={hasDraft} />
             <SessionStatusDot
               status={status}
               hasNewContent={hasNewContent}
               hasQuestion={hasQuestion}
               hasError={hasError}
             />
-            <DraftIndicator hasDraft={hasDraft} />
             <UILink
               href={`/session/${session.id}`}
               onClick={onSessionClick}
@@ -444,6 +444,7 @@ interface ProjectsListProps {
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
   lastViewedMap: Record<string, number>;
+  home: string;
 }
 
 interface ProjectBin {
@@ -472,6 +473,7 @@ function ProjectsList({
   questionSessionIds,
   errorSessionIds,
   lastViewedMap,
+  home,
 }: ProjectsListProps) {
   const groups = useMemo<ProjectBin[]>(() => {
     const byDir = new Map<string, ProjectBin>();
@@ -613,31 +615,39 @@ function ProjectsList({
     );
   }, [baseDirs, binMap]);
 
-  // Skip the base-dir root container; render its children at top level. If the
-  // base itself is a project (rare: session.directory === base.path), surface
-  // it as a sibling leaf so it isn't lost.
-  const topLevelNodes = useMemo<ProjectTreeNode<ProjectBin>[]>(() => {
+  // Group top-level nodes BY base dir so each base can render with its own
+  // path header. Each base-dir root container is unwrapped: its children
+  // become top-level rows for that section. If the base itself is a project
+  // (rare: session.directory === base.path), surface it as a sibling leaf.
+  const sections = useMemo<
+    Array<{ basePath: string; nodes: ProjectTreeNode<ProjectBin>[] }>
+  >(() => {
     if (baseDirs.length === 0) {
-      return filteredGroups.map((g) => ({
-        name: projectBasename(g.dir),
-        path: g.dir,
-        isProject: true,
-        bin: g,
-        children: [],
-      }));
+      return [
+        {
+          basePath: "",
+          nodes: filteredGroups.map((g) => ({
+            name: projectBasename(g.dir),
+            path: g.dir,
+            isProject: true,
+            bin: g,
+            children: [],
+          })),
+        },
+      ];
     }
-    const out: ProjectTreeNode<ProjectBin>[] = [];
-    for (const root of trees) {
+    return trees.map((root) => {
+      const nodes: ProjectTreeNode<ProjectBin>[] = [];
       if (root.children.length > 0) {
-        out.push(...root.children);
+        nodes.push(...root.children);
         if (root.isProject && root.bin) {
-          out.push({ ...root, children: [] });
+          nodes.push({ ...root, children: [] });
         }
       } else if (root.isProject) {
-        out.push(root);
+        nodes.push(root);
       }
-    }
-    return out;
+      return { basePath: root.path, nodes };
+    });
   }, [trees, baseDirs, filteredGroups]);
 
   if (groups.length === 0) {
@@ -655,23 +665,64 @@ function ProjectsList({
   }
 
   return (
-    <TreeChildren
-      nodes={topLevelNodes}
-      depth={0}
-      expandedSet={expandedSet}
-      tempExpanded={tempExpanded}
-      toggleExpand={toggleExpand}
-      currentSessionId={currentSessionId}
-      onSessionClick={onSessionClick}
-      onArchiveSession={onArchiveSession}
-      onUnarchiveSession={onUnarchiveSession}
-      onNewSessionInProject={onNewSessionInProject}
-      statusMap={statusMap}
-      searchQuery={searchQuery}
-      questionSessionIds={questionSessionIds}
-      errorSessionIds={errorSessionIds}
-      lastViewedMap={lastViewedMap}
-    />
+    <>
+      {sections.map((section, idx) => (
+        <Fragment key={section.basePath || `unset-${idx}`}>
+          {section.basePath && (
+            <div
+              className="col-span-full pt-2 pb-1 text-[11px] text-muted-fg/80 uppercase tracking-wide"
+              style={{ paddingLeft: "0.5rem" }}
+              title={section.basePath}
+            >
+              <CompactPath path={section.basePath} home={home} />
+            </div>
+          )}
+          <TreeChildren
+            nodes={section.nodes}
+            depth={0}
+            expandedSet={expandedSet}
+            tempExpanded={tempExpanded}
+            toggleExpand={toggleExpand}
+            currentSessionId={currentSessionId}
+            onSessionClick={onSessionClick}
+            onArchiveSession={onArchiveSession}
+            onUnarchiveSession={onUnarchiveSession}
+            onNewSessionInProject={onNewSessionInProject}
+            statusMap={statusMap}
+            searchQuery={searchQuery}
+            questionSessionIds={questionSessionIds}
+            errorSessionIds={errorSessionIds}
+            lastViewedMap={lastViewedMap}
+          />
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+// Renders an absolute path with `~` substitution. The wrapper splits into
+// a fixed prefix (always shown) plus a body using direction:rtl + ellipsis,
+// which truncates from the LEFT - so when there's no room, the user sees
+// `~/...end-of-path` rather than `~/start-of-pat...`. The wrapping span sets
+// unicode-bidi:plaintext so the body still renders left-to-right visually.
+function CompactPath({ path, home }: { path: string; home: string }) {
+  const display = home && path.startsWith(home) ? "~" + path.slice(home.length) : path;
+  if (display.length <= 24) {
+    return <span className="block truncate">{display}</span>;
+  }
+  const slash = display.indexOf("/", 1);
+  const head = slash > 0 ? display.slice(0, slash) : "~";
+  const tail = slash > 0 ? display.slice(slash) : "";
+  return (
+    <span className="flex items-baseline gap-0 min-w-0">
+      <span className="shrink-0">{head}</span>
+      <span
+        className="block truncate min-w-0"
+        style={{ direction: "rtl", unicodeBidi: "plaintext" }}
+      >
+        {tail}
+      </span>
+    </span>
   );
 }
 
@@ -877,13 +928,13 @@ function TreeNodeRow({
           <ChevronRightIcon
             className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           />
+          <DraftIndicator hasDraft={aggregate.draft} />
           <SessionStatusDot
             status={aggregate.status}
             hasNewContent={aggregate.newContent}
             hasQuestion={aggregate.question}
             hasError={aggregate.error}
           />
-          <DraftIndicator hasDraft={aggregate.draft} />
           <span className="text-[12px] truncate">
             {highlightMatch(node.name, searchQuery)}
             {aggregate.sessionCount > 0 && (
@@ -1087,6 +1138,7 @@ export default function AppSidebar(
               questionSessionIds={questionSessionIds}
               errorSessionIds={errorSessionIds}
               lastViewedMap={lastViewedMap}
+              home={portalConfig?.home ?? ""}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}

@@ -2398,7 +2398,7 @@ function SessionPage() {
           style={{ maxHeight: `${composerMaxHeight}px` }}
         >
           <>
-            <div className="flex items-center gap-1 px-2 py-1 bg-muted/30 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
+            <div className="flex items-center gap-1 px-2 py-1 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
               <div className="flex min-w-0 flex-1 items-center gap-1">
                 <div className="min-w-0 flex-1 max-w-40">
                   <AgentSelect sessionId={sessionId} />
@@ -2410,8 +2410,8 @@ function SessionPage() {
                     instanceId={instanceId}
                   />
                 </div>
-                <ThinkingSelect sessionId={sessionId} />
               </div>
+              <ThinkingSelect sessionId={sessionId} />
               <TodoStrip snapshot={todoSnapshot} />
               <button
                 type="button"
