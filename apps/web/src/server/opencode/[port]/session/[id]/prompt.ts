@@ -26,6 +26,7 @@ const promptBodySchema = z.object({
     })
     .optional(),
   agent: z.string().optional(),
+  variant: z.string().optional(),
 });
 
 type AttachmentPart = {
@@ -252,6 +253,7 @@ export default defineHandler(async (event) => {
     parts: [...fileParts, { type: "text" as const, text: body.text }],
     model: body.model,
     agent: body.agent,
+    variant: body.variant,
   };
 
   const cleanup = await cleanupStuckSession(port, id);

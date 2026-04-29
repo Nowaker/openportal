@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
+import { ThinkingSelect } from "@/components/thinking-select";
 import {
   FileMentionPopover,
   useFileMention,
@@ -44,6 +45,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
+import { useThinkingStore } from "@/stores/thinking-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useMarkViewed } from "@/hooks/use-last-viewed";
@@ -1438,6 +1440,8 @@ function SessionPage() {
     [isOverridingDefaultFn, sessionId, instanceId],
   );
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
+  const resolveThinking = useThinkingStore((s) => s.resolve);
+  const thinkingEffort = resolveThinking(sessionId);
   const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
   const { isMobile } = useMediaQuery();
   const { setPageTitle } = useBreadcrumb();
@@ -1894,6 +1898,7 @@ function SessionPage() {
           text: lastUserText,
           model: isOverridingDefault() ? selectedModel : undefined,
           agent: selectedAgent,
+          variant: thinkingEffort || undefined,
         }),
       });
       mutateSessionMessages(port, sessionId);
@@ -2021,6 +2026,7 @@ function SessionPage() {
               : undefined,
             model: isOverridingDefault() ? selectedModel : undefined,
             agent: selectedAgent,
+            variant: thinkingEffort || undefined,
           }),
         },
       );
@@ -2404,6 +2410,7 @@ function SessionPage() {
                     instanceId={instanceId}
                   />
                 </div>
+                <ThinkingSelect sessionId={sessionId} />
               </div>
               <TodoStrip snapshot={todoSnapshot} />
               <button

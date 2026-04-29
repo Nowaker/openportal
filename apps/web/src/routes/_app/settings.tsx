@@ -31,6 +31,7 @@ import {
 } from "@/stores/font-size-store";
 import { useModelStore } from "@/stores/model-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
+import { useThinkingStore } from "@/stores/thinking-store";
 import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
 
@@ -56,6 +57,37 @@ function ThemeSetting() {
         {themes.map((item) => (
           <SelectItem key={item.id} id={item.id} textValue={item.title}>
             {item.title}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function DefaultThinkingSetting() {
+  const value = useThinkingStore((s) => s.defaultEffort);
+  const setDefault = useThinkingStore((s) => s.setDefault);
+  const options: { id: string; label: string }[] = [
+    { id: "default", label: "Default (no extra reasoning)" },
+    { id: "low", label: "Low" },
+    { id: "medium", label: "Medium" },
+    { id: "high", label: "High" },
+    { id: "max", label: "Max" },
+  ];
+  return (
+    <Select
+      aria-label="Default thinking effort"
+      selectedKey={value || "default"}
+      onSelectionChange={(key) => {
+        if (!key) return;
+        setDefault(String(key) === "default" ? "" : String(key));
+      }}
+    >
+      <SelectTrigger className="max-w-sm" />
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.id} id={o.id} textValue={o.label}>
+            <SelectLabel>{o.label}</SelectLabel>
           </SelectItem>
         ))}
       </SelectContent>
@@ -635,6 +667,18 @@ function SettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </section>
+
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Default thinking effort</h3>
+                <p className="text-xs text-muted-fg">
+                  Reasoning budget for new sessions. Applied per request as
+                  the model's variant; ignored when the chosen model doesn't
+                  support that level.
+                </p>
+              </div>
+              <DefaultThinkingSetting />
             </section>
 
             <section>
