@@ -1,6 +1,7 @@
 import { defineHandler, getQuery } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
+import { stashDataUrl } from "../../../../lib/blob-cache";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -18,7 +19,9 @@ export default defineHandler(async (event) => {
     query: limit !== undefined ? { limit } : undefined,
   });
 
-  return stripDiagnosticFixes(messages.data);
+  const stripped = stripDiagnosticFixes(messages.data);
+  rewriteImageDataUrls(stripped, id);
+  return stripped;
 });
 
 function parseLimit(raw: unknown): number | undefined {
@@ -69,6 +72,36 @@ function stripPartDiagnostics(part: unknown): void {
   for (const c of candidates) {
     if (c?.metadata && "diagnostics" in c.metadata) {
       delete c.metadata.diagnostics;
+    }
+  }
+}
+
+// Rewrite `file` parts whose `url` is an inline `data:image/...;base64,...`
+// string: stash the bytes under ~/.cache/openportal/blobs/<sessionId>/ and
+// replace the url with /api/blob/<sessionId>/<hash>.<ext>. Idempotent on
+// already-rewritten parts (skips anything that doesn't start with "data:").
+// opencode's DB still has the inline base64 - this is purely a
+// wire-format optimization for the Portal client. The browser will fetch
+// the blob lazily through the rewritten URL and cache it (immutable
+// cache-control on the serving endpoint).
+function rewriteImageDataUrls(messages: unknown, sessionId: string): void {
+  if (!Array.isArray(messages)) return;
+  for (const msg of messages) {
+    const parts = (msg as { parts?: unknown }).parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (!part || typeof part !== "object") continue;
+      const p = part as {
+        type?: string;
+        url?: string;
+        mime?: string;
+      };
+      if (p.type !== "file") continue;
+      if (typeof p.url !== "string") continue;
+      if (!p.url.startsWith("data:")) continue;
+      const stashed = stashDataUrl(sessionId, p.url, p.mime);
+      if (!stashed) continue;
+      p.url = `/api/blob/${sessionId}/${stashed.hash}.${stashed.ext}`;
     }
   }
 }
