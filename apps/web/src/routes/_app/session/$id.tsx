@@ -2129,49 +2129,57 @@ function SessionPage() {
           ref={messagesListRef}
           className="divide-y divide-dashed divide-border overflow-x-hidden"
         >
-          {!loading &&
-            !loadAllMessages &&
-            messages.length >= messageLimit && (
-              <div className="px-6 py-3 flex items-center justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMessageLimit((n) => n + 100)}
-                  className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
-                >
-                  Load 100 more
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLoadAllMessages(true)}
-                  title="Loading the entire history can take long on big sessions"
-                  className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
-                >
-                  Load all (slow)
-                </button>
-              </div>
-            )}
-          <div className="px-6">
-            <TodoFloat snapshot={todoSnapshot} />
-          </div>
-          <div className="flex justify-end px-6 pt-2">
-            <button
-              type="button"
-              onClick={() => setOnlyUserMessages((v) => !v)}
-              title={
-                onlyUserMessages
-                  ? "Show all messages"
-                  : "Show only user messages"
-              }
-              aria-pressed={onlyUserMessages}
-              className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-                onlyUserMessages
-                  ? "border-primary/40 bg-primary/10 text-fg"
-                  : "border-border bg-bg text-muted-fg hover:border-fg/30 hover:text-fg"
-              }`}
-            >
-              {onlyUserMessages ? "Showing prompts only" : "Show prompts only"}
-            </button>
-          </div>
+          {!loading && !error && (
+            <>
+              {!loadAllMessages && messages.length >= messageLimit && (
+                <div className="px-6 py-3 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMessageLimit((n) => n + 100)}
+                    className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                  >
+                    Load 100 more
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLoadAllMessages(true)}
+                    title="Loading the entire history can take long on big sessions"
+                    className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                  >
+                    Load all (slow)
+                  </button>
+                </div>
+              )}
+              {todoSnapshot && (
+                <div className="px-6">
+                  <TodoFloat snapshot={todoSnapshot} />
+                </div>
+              )}
+              {messages.length > 0 && (
+                <div className="flex justify-end px-6 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setOnlyUserMessages((v) => !v)}
+                    title={
+                      onlyUserMessages
+                        ? "Show all messages"
+                        : "Show only user messages"
+                    }
+                    aria-pressed={onlyUserMessages}
+                    className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+                      onlyUserMessages
+                        ? "border-primary/40 bg-primary/10 text-fg"
+                        : "border-border bg-bg text-muted-fg hover:border-fg/30 hover:text-fg"
+                    }`}
+                  >
+                    {onlyUserMessages
+                      ? "Showing prompts only"
+                      : "Show prompts only"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
           {messageNodes}
           {unlinkedPermissions.length > 0 && (
             <div className="px-6 py-4 space-y-2 border-t border-dashed border-border">
