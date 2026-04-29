@@ -2196,11 +2196,11 @@ function SessionPage() {
           <button
             type="button"
             onClick={() => setComposerCollapsed(false)}
-            className="absolute bottom-3 right-16 z-30 flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
+            className="absolute bottom-5 right-16 z-30 rounded-md border border-border bg-bg/95 p-1.5 text-muted-fg shadow-sm hover:bg-muted hover:text-fg transition-colors"
             aria-label="Show composer"
             title="Show composer"
           >
-            <ChevronUpIcon className="size-5" />
+            <ChevronUpIcon className="size-4" />
           </button>
         )}
         {messages.some((m) => m.info.role === "user") && (
