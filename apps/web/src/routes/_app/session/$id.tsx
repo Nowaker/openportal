@@ -2057,15 +2057,17 @@ function SessionPage() {
       }
       // CodeNomad-style queue badge: a user message is "queued" if there is
       // no assistant reply between it and the next user message (or end of
-      // history). The LAST user message is "in progress" (no badge) only
-      // when the SERVER actually says the session is busy - if local
-      // heuristic thinks busy but opencode reports idle, the last message
-      // is just as stuck as the others ahead of it, so we badge it too.
+      // history). Always scan the UNFILTERED list (baseVisible) - in
+      // prompts-only mode the visible array drops every assistant reply, so
+      // scanning `visible` would mis-flag every prompt as queued.
       let isQueued = false;
       if (message.info.role === "user") {
+        const baseIdx = baseVisible.findIndex(
+          (m) => m.info.id === message.info.id,
+        );
         let answered = false;
-        for (let j = idx + 1; j < visible.length; j++) {
-          const next = visible[j];
+        for (let j = baseIdx + 1; j < baseVisible.length; j++) {
+          const next = baseVisible[j];
           if (!next) break;
           if (next.info.role === "user") break;
           if (next.info.role === "assistant") {
@@ -2073,8 +2075,9 @@ function SessionPage() {
             break;
           }
         }
-        const isLastVisible = idx === visible.length - 1;
-        isQueued = !answered && !(isLastVisible && isServerBusy);
+        const isLastInBase =
+          baseIdx >= 0 && baseIdx === baseVisible.length - 1;
+        isQueued = !answered && !(isLastInBase && isServerBusy);
       }
       // Stamp the flag onto the message reference so the existing
       // <MessageItem> Badge render picks it up without a new prop.
