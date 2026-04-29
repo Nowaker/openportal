@@ -4,13 +4,8 @@ import {
   FireIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-} from "@/components/ui/select";
+import { Menu, MenuContent, MenuItem } from "@/components/ui/menu";
+import { Button } from "@/components/ui/button";
 import { useProviders } from "@/hooks/use-opencode";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useModelStore } from "@/stores/model-store";
@@ -45,6 +40,9 @@ interface RawProvider {
   >;
 }
 
+// Uses Menu (not Select) so the trigger is a plain Button without
+// SelectTrigger's `w-full` cascade that was blowing out the picker bar
+// width and crowding the Agent/Model dropdowns to invisibility.
 export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
   const { data: providersData } = useProviders();
   const instance = useInstanceStore((s) => s.instance);
@@ -75,36 +73,40 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
   if (variants.length === 0) return null;
 
   return (
-    <Select
-      aria-label="Thinking effort"
-      selectedKey={current || "default"}
-      onSelectionChange={(key) => {
-        if (!sessionId) return;
-        const v = String(key);
-        setForSession(sessionId, v === "default" ? "" : v);
-      }}
-    >
-      <SelectTrigger className="shrink-0">
-        <span className="flex items-center">
-          {variantIcon(current, "size-4")}
-        </span>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem id="default" textValue="Default">
+    <Menu>
+      <Button
+        intent="outline"
+        size="sq-sm"
+        aria-label={`Thinking effort: ${variantDisplayLabel(current)}`}
+        className="shrink-0"
+      >
+        {variantIcon(current, "size-4")}
+      </Button>
+      <MenuContent placement="bottom end" className="min-w-32">
+        <MenuItem
+          onAction={() => {
+            if (sessionId) setForSession(sessionId, "");
+          }}
+        >
           <span className="flex items-center gap-2">
             {variantIcon("", "size-4")}
-            <SelectLabel>Default</SelectLabel>
+            <span>Default</span>
           </span>
-        </SelectItem>
+        </MenuItem>
         {variants.map((v) => (
-          <SelectItem key={v} id={v} textValue={variantDisplayLabel(v)}>
+          <MenuItem
+            key={v}
+            onAction={() => {
+              if (sessionId) setForSession(sessionId, v);
+            }}
+          >
             <span className="flex items-center gap-2">
               {variantIcon(v, "size-4")}
-              <SelectLabel>{variantDisplayLabel(v)}</SelectLabel>
+              <span>{variantDisplayLabel(v)}</span>
             </span>
-          </SelectItem>
+          </MenuItem>
         ))}
-      </SelectContent>
-    </Select>
+      </MenuContent>
+    </Menu>
   );
 }
