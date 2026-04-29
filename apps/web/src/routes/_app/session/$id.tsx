@@ -1252,7 +1252,21 @@ const MessageItem = memo(function MessageItem({
         <div
           className={`${textContent || toolCalls.length > 0 ? "mt-2 ml-6" : ""} rounded-md border border-danger/40 bg-danger-subtle/30 p-3 text-xs text-danger-subtle-fg`}
         >
-          <div className="font-semibold">{errorDescription.title}</div>
+          <div className="flex items-start justify-between gap-2">
+            <div className="font-semibold">{errorDescription.title}</div>
+            <button
+              type="button"
+              onClick={() =>
+                useSessionErrorStore
+                  .getState()
+                  .acknowledge(sessionId, message.info.id)
+              }
+              className="shrink-0 rounded-md border border-border bg-bg/40 px-2 py-0.5 text-[11px] font-medium text-fg hover:bg-bg/80"
+              title="Mark this error as seen and clear the red indicator"
+            >
+              Acknowledge
+            </button>
+          </div>
           {errorDescription.detail && (
             <div className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug">
               {errorDescription.detail}
@@ -1473,14 +1487,16 @@ function SessionPage() {
     if (loading) return;
     if (!sessionId) return;
     let hasError = false;
+    let errorMessageId: string | undefined;
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (m.info.role === "assistant") {
         hasError = m.info.error != null;
+        if (hasError) errorMessageId = m.info.id;
         break;
       }
     }
-    setSessionError(sessionId, hasError);
+    setSessionError(sessionId, hasError, errorMessageId);
   }, [sessionId, loading, messages, setSessionError]);
 
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
