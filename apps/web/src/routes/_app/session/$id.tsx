@@ -25,7 +25,12 @@ import IconEye from "@/components/icons/eye-icon";
 import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
-import { PaperClipIcon, PhotoIcon } from "@heroicons/react/24/outline";
+import {
+  PaperClipIcon,
+  PhotoIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
+} from "@heroicons/react/24/outline";
 import {
   PlayIcon,
   StopIcon,
@@ -958,6 +963,45 @@ const rehypeMarkLastParagraph = () => (tree: any) => {
   }
 };
 
+function CopyMarkdownButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handle = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard API may be denied; silent failure */
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      title={copied ? "Copied!" : "Copy message markdown"}
+      aria-label="Copy message markdown"
+      className="ml-1 inline-flex align-baseline items-center text-muted-fg/50 hover:text-fg transition-colors"
+    >
+      {copied ? (
+        <CheckIcon className="size-3 text-emerald-500" />
+      ) : (
+        <ClipboardDocumentIcon className="size-3" />
+      )}
+    </button>
+  );
+}
+
 function MarkdownWithTime({
   text,
   remarkPlugins,
@@ -977,19 +1021,24 @@ function MarkdownWithTime({
         return (
           <p {...props}>
             {children}
-            {isLast && timestamp && (
-              <span
-                className="ml-2 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/50 select-none whitespace-nowrap"
-                title={titleAt}
-              >
-                {timestamp}
-              </span>
+            {isLast && (
+              <>
+                {timestamp && (
+                  <span
+                    className="ml-2 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/50 select-none whitespace-nowrap"
+                    title={titleAt}
+                  >
+                    {timestamp}
+                  </span>
+                )}
+                <CopyMarkdownButton text={text} />
+              </>
             )}
           </p>
         );
       },
     }),
-    [timestamp, titleAt],
+    [timestamp, titleAt, text],
   );
 
   return (
