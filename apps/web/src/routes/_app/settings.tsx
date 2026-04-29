@@ -553,6 +553,14 @@ function SettingsPage() {
               </div>
 
               <div className="space-y-2">
+                <p className="text-sm font-medium">Accent Color</p>
+                <p className="text-xs text-muted-fg">
+                  Primary color for buttons and highlights.
+                </p>
+                <AccentSelector />
+              </div>
+
+              <div className="space-y-2">
                 <p className="text-sm font-medium">Date and time format</p>
                 <p className="text-xs text-muted-fg">
                   Display format for chat message timestamps. Date prefix
