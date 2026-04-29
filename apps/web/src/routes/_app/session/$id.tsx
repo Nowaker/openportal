@@ -303,10 +303,10 @@ function formatToolCall(part: ToolPart): {
     }
     case "bash": {
       const command = String(input.command || input.cmd || "");
-      const shortCmd = command.split("\n")[0]?.slice(0, 50) || "";
+      const shortCmd = command.split("\n")[0]?.slice(0, 200) || "";
       return {
         icon: "$",
-        label: `bash ${shortCmd}${command.length > 50 ? "..." : ""}`,
+        label: `bash ${shortCmd}${command.length > 200 ? "..." : ""}`,
         details: input.description ? `# ${input.description}` : undefined,
       };
     }
@@ -349,12 +349,16 @@ function formatToolCall(part: ToolPart): {
           typeof value === "number" ||
           typeof value === "boolean",
       );
+      let details: string | undefined;
+      if (firstArg) {
+        const raw = String(firstArg[1]);
+        const truncated = raw.length > 120 ? raw.slice(0, 120) + "..." : raw;
+        details = `${firstArg[0]}: ${truncated}`;
+      }
       return {
         icon: "◼︎",
         label: toolName || "unknown",
-        details: firstArg
-          ? `${firstArg[0]}: ${String(firstArg[1]).slice(0, 30)}...`
-          : undefined,
+        details,
       };
     }
   }
