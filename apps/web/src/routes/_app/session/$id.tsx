@@ -927,12 +927,37 @@ function AttachmentChip({ part }: { part: FilePart }) {
   );
 }
 
-// Renders markdown and tucks the timestamp into the very last <p> as an
-// inline trailing span. We count source-level paragraphs ahead of time and
-// override react-markdown's <p> renderer to append the timestamp only on
-// the matching index. Falls back gracefully (timestamp dropped) when the
-// content's last block isn't a paragraph (e.g. ends in a list / code
-// block / table) - those are uncommon in chat replies.
+// Marks the last <p> element in the rendered tree (depth-first, regardless
+// of nesting under blockquote/list/etc.) by adding a data-last-p attribute.
+// react-markdown forwards rehype hast-tree mutations to the React render,
+// so the corresponding <p> renderer can detect this flag via props.node and
+// append the inline timestamp only on the genuinely-last paragraph.
+//
+// Counting source-level paragraphs is unreliable: blockquotes wrap their
+// inner text in <p>, so a quote-then-reply message produced two <p>s but
+// the source-paragraph parser excluded the blockquote, mis-injecting the
+// timestamp into the first <p>.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rehypeMarkLastParagraph = () => (tree: any) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let lastP: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (node: any) => {
+    if (!node) return;
+    if (node.type === "element" && node.tagName === "p") {
+      lastP = node;
+    }
+    if (Array.isArray(node.children)) {
+      for (const c of node.children) walk(c);
+    }
+  };
+  walk(tree);
+  if (lastP) {
+    lastP.properties = lastP.properties || {};
+    lastP.properties.dataLastP = "true";
+  }
+};
+
 function MarkdownWithTime({
   text,
   remarkPlugins,
@@ -944,34 +969,11 @@ function MarkdownWithTime({
   timestamp: string;
   titleAt: string | undefined;
 }) {
-  const totalParagraphs = useMemo(() => {
-    if (!text) return 0;
-    return text
-      .split(/\n{2,}/g)
-      .map((block) => block.trim())
-      .filter((block) => {
-        if (!block) return false;
-        const head = block.slice(0, 4);
-        if (block.startsWith("```")) return false;
-        if (block.startsWith("#")) return false;
-        if (block.startsWith(">")) return false;
-        if (/^\s*[-*+]\s/.test(block)) return false;
-        if (/^\s*\d+\.\s/.test(block)) return false;
-        if (block.startsWith("|")) return false;
-        if (head === "    ") return false;
-        return true;
-      }).length;
-  }, [text]);
-  const renderedRef = useRef(0);
-  renderedRef.current = 0;
-
   const components = useMemo(
     () => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      p: ({ children, ...props }: any) => {
-        renderedRef.current += 1;
-        const isLast =
-          totalParagraphs > 0 && renderedRef.current === totalParagraphs;
+      p: ({ node, children, ...props }: any) => {
+        const isLast = node?.properties?.dataLastP === "true";
         return (
           <p {...props}>
             {children}
@@ -987,11 +989,15 @@ function MarkdownWithTime({
         );
       },
     }),
-    [timestamp, titleAt, totalParagraphs],
+    [timestamp, titleAt],
   );
 
   return (
-    <Markdown remarkPlugins={remarkPlugins} components={components}>
+    <Markdown
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={[rehypeMarkLastParagraph]}
+      components={components}
+    >
       {text}
     </Markdown>
   );
