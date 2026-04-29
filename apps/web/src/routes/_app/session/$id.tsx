@@ -993,7 +993,7 @@ function CopyMarkdownButton({ text }: { text: string }) {
       onClick={handle}
       title={copied ? "Copied!" : "Copy message markdown"}
       aria-label="Copy message markdown"
-      className="ml-1 inline-flex align-baseline items-center text-muted-fg/50 hover:text-fg transition-colors"
+      className="inline-flex items-center hover:text-fg transition-colors"
     >
       {copied ? (
         <CheckIcon className="size-3 text-emerald-500" />
@@ -1024,17 +1024,17 @@ function MarkdownWithTime({
           <p {...props}>
             {children}
             {isLast && (
-              <>
+              <span className="ml-2 inline-flex items-center gap-1 align-middle text-muted-fg/50">
                 {timestamp && (
                   <span
-                    className="ml-2 align-baseline text-[10px] font-mono tabular-nums text-muted-fg/50 select-none whitespace-nowrap"
+                    className="text-[10px] font-mono tabular-nums select-none whitespace-nowrap"
                     title={titleAt}
                   >
                     {timestamp}
                   </span>
                 )}
                 <CopyMarkdownButton text={text} />
-              </>
+              </span>
             )}
           </p>
         );
@@ -1479,6 +1479,34 @@ function SessionPage() {
       ?.completed;
     return !completed;
   }, [messages]);
+
+  // Race-window grace period for the busy/idle disagreement banner: between
+  // the moment a prompt is appended (local-busy=true) and opencode flipping
+  // its /session/status to busy + our 3s SWR poll catching it, there's a
+  // legit 3-5s window where the warning would lie. Only show the "Server is
+  // idle" banner if the disagreement has persisted past that grace.
+  const STALL_GRACE_MS = 5000;
+  const [busyIdleSince, setBusyIdleSince] = useState<number | null>(null);
+  useEffect(() => {
+    const inDisagreement = isAssistantBusy && !isServerBusy;
+    if (!inDisagreement) {
+      if (busyIdleSince !== null) setBusyIdleSince(null);
+      return;
+    }
+    if (busyIdleSince === null) {
+      setBusyIdleSince(Date.now());
+    }
+  }, [isAssistantBusy, isServerBusy, busyIdleSince]);
+  const [stallElapsedTick, setStallElapsedTick] = useState(0);
+  useEffect(() => {
+    if (busyIdleSince === null) return;
+    const id = window.setInterval(() => setStallElapsedTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [busyIdleSince]);
+  const showStallBanner =
+    busyIdleSince !== null &&
+    Date.now() - busyIdleSince >= STALL_GRACE_MS &&
+    stallElapsedTick >= 0;
 
   // Pending-prompt safety net: holds the text the user last submitted that
   // hasn't yet received an assistant reply. Hydrated from localStorage on
@@ -2245,7 +2273,7 @@ function SessionPage() {
             instead of showing a misleading 'Thinking...' for an hour,
             and offer a one-click retry that re-submits the last user
             message. */}
-        {isAssistantBusy && !isServerBusy && (
+        {showStallBanner && (
           <div className="py-3 px-6">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm text-warning-subtle-fg">

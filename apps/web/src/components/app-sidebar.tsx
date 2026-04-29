@@ -13,6 +13,7 @@ import {
   FolderOpenIcon,
 } from "@heroicons/react/24/solid";
 import { useEffect, useState, useMemo } from "react";
+import useMediaQuery from "@/hooks/use-media-query";
 import { Avatar } from "@/components/ui/avatar";
 import { Link as UILink } from "@/components/ui/link";
 import { toast } from "@/components/ui/toast";
@@ -232,15 +233,17 @@ function ProjectGroup({
   displayName,
   depth = 0,
 }: ProjectGroupProps) {
-  const [limit, setLimit] = useState(5);
+  const { isMobile } = useMediaQuery();
+  const sessionStep = isMobile ? 5 : 10;
+  const [limit, setLimit] = useState(sessionStep);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
-  const [archivedLimit, setArchivedLimit] = useState(5);
+  const [archivedLimit, setArchivedLimit] = useState(sessionStep);
   useEffect(() => {
-    if (!isExpanded) setLimit(5);
-  }, [isExpanded]);
+    if (!isExpanded) setLimit(sessionStep);
+  }, [isExpanded, sessionStep]);
   useEffect(() => {
-    if (!archivedExpanded) setArchivedLimit(5);
-  }, [archivedExpanded]);
+    if (!archivedExpanded) setArchivedLimit(sessionStep);
+  }, [archivedExpanded, sessionStep]);
 
   // If the user is viewing a session that lives below the per-project
   // visible window, hoist it to the top of the visible slice so they can
@@ -356,10 +359,10 @@ function ProjectGroup({
       {isExpanded && remaining > 0 && (
         <button
           type="button"
-          onClick={() => setLimit((l) => l + 10)}
+          onClick={() => setLimit((l) => l + sessionStep)}
           className="col-span-full text-[11px] text-muted-fg hover:text-fg pl-6 py-0.5 text-left"
         >
-          Load {Math.min(10, remaining)} more
+          Show {Math.min(sessionStep, remaining)} more
         </button>
       )}
       {isExpanded && archivedSessions.length > 0 && (
@@ -401,10 +404,10 @@ function ProjectGroup({
       {archivedExpanded && archivedRemaining > 0 && (
         <button
           type="button"
-          onClick={() => setArchivedLimit((l) => l + 10)}
+          onClick={() => setArchivedLimit((l) => l + sessionStep)}
           className="col-span-full text-[11px] text-muted-fg hover:text-fg pl-9 py-0.5 text-left"
         >
-          Load {Math.min(10, archivedRemaining)} more
+          Show {Math.min(sessionStep, archivedRemaining)} more
         </button>
       )}
     </>
@@ -622,27 +625,22 @@ function ProjectsList({
   }
 
   return (
-    <>
-      {topLevelNodes.map((node) => (
-        <TreeNodeRow
-          key={node.path}
-          node={node}
-          depth={0}
-          expandedSet={expandedSet}
-          tempExpanded={tempExpanded}
-          toggleExpand={toggleExpand}
-          currentSessionId={currentSessionId}
-          onSessionClick={onSessionClick}
-          onArchiveSession={onArchiveSession}
-          onUnarchiveSession={onUnarchiveSession}
-          onNewSessionInProject={onNewSessionInProject}
-          statusMap={statusMap}
-          searchQuery={searchQuery}
-          questionSessionIds={questionSessionIds}
-          errorSessionIds={errorSessionIds}
-        />
-      ))}
-    </>
+    <TreeChildren
+      nodes={topLevelNodes}
+      depth={0}
+      expandedSet={expandedSet}
+      tempExpanded={tempExpanded}
+      toggleExpand={toggleExpand}
+      currentSessionId={currentSessionId}
+      onSessionClick={onSessionClick}
+      onArchiveSession={onArchiveSession}
+      onUnarchiveSession={onUnarchiveSession}
+      onNewSessionInProject={onNewSessionInProject}
+      statusMap={statusMap}
+      searchQuery={searchQuery}
+      questionSessionIds={questionSessionIds}
+      errorSessionIds={errorSessionIds}
+    />
   );
 }
 
@@ -687,6 +685,76 @@ function aggregateNodeStatus(
   };
   visit(node);
   return acc;
+}
+
+function nodeHasAnySessions(node: ProjectTreeNode<ProjectBin>): boolean {
+  if (node.bin && node.bin.sessions.length > 0) return true;
+  for (const c of node.children) {
+    if (nodeHasAnySessions(c)) return true;
+  }
+  return false;
+}
+
+interface TreeChildrenProps {
+  nodes: ProjectTreeNode<ProjectBin>[];
+  depth: number;
+  expandedSet: Set<string>;
+  tempExpanded: Set<string>;
+  toggleExpand: (key: string) => void;
+  currentSessionId: string | undefined;
+  onSessionClick: () => void;
+  onArchiveSession: (id: string) => void;
+  onUnarchiveSession: (id: string) => void;
+  onNewSessionInProject: (dir: string) => void;
+  statusMap: SessionStatusMap | undefined;
+  searchQuery: string;
+  questionSessionIds: Set<string>;
+  errorSessionIds: Set<string>;
+}
+
+// Splits a node's children into "has-sessions" (rendered always) vs "empty"
+// (no descendant has any active session, hidden behind a per-level "Show N
+// more" reveal). Each TreeChildren instance owns its own emptyLimit state,
+// so each branch in the tree paginates its own empty-folder list.
+function TreeChildren({ nodes, ...rest }: TreeChildrenProps) {
+  const { isMobile } = useMediaQuery();
+  const emptyStep = isMobile ? 10 : 20;
+  const [emptyLimit, setEmptyLimit] = useState(0);
+
+  const { withSessions, empty } = useMemo(() => {
+    const ws: ProjectTreeNode<ProjectBin>[] = [];
+    const em: ProjectTreeNode<ProjectBin>[] = [];
+    for (const n of nodes) {
+      if (nodeHasAnySessions(n)) ws.push(n);
+      else em.push(n);
+    }
+    return { withSessions: ws, empty: em };
+  }, [nodes]);
+
+  const visibleEmpty = empty.slice(0, emptyLimit);
+  const remainingEmpty = empty.length - visibleEmpty.length;
+
+  return (
+    <>
+      {withSessions.map((node) => (
+        <TreeNodeRow key={node.path} node={node} {...rest} />
+      ))}
+      {visibleEmpty.map((node) => (
+        <TreeNodeRow key={node.path} node={node} {...rest} />
+      ))}
+      {remainingEmpty > 0 && (
+        <button
+          type="button"
+          onClick={() => setEmptyLimit((l) => l + emptyStep)}
+          className="col-span-full text-[11px] text-muted-fg hover:text-fg py-0.5 text-left"
+          style={{ paddingLeft: `${0.5 + rest.depth * 0.75}rem` }}
+        >
+          Show {Math.min(emptyStep, remainingEmpty)} more
+          {emptyLimit === 0 ? " empty" : ""}
+        </button>
+      )}
+    </>
+  );
 }
 
 interface TreeNodeRowProps {
@@ -788,26 +856,24 @@ function TreeNodeRow({
           </span>
         </button>
       </div>
-      {isExpanded &&
-        node.children.map((child) => (
-          <TreeNodeRow
-            key={child.path}
-            node={child}
-            depth={depth + 1}
-            expandedSet={expandedSet}
-            tempExpanded={tempExpanded}
-            toggleExpand={toggleExpand}
-            currentSessionId={currentSessionId}
-            onSessionClick={onSessionClick}
-            onArchiveSession={onArchiveSession}
-            onUnarchiveSession={onUnarchiveSession}
-            onNewSessionInProject={onNewSessionInProject}
-            statusMap={statusMap}
-            searchQuery={searchQuery}
-            questionSessionIds={questionSessionIds}
-            errorSessionIds={errorSessionIds}
-          />
-        ))}
+      {isExpanded && (
+        <TreeChildren
+          nodes={node.children}
+          depth={depth + 1}
+          expandedSet={expandedSet}
+          tempExpanded={tempExpanded}
+          toggleExpand={toggleExpand}
+          currentSessionId={currentSessionId}
+          onSessionClick={onSessionClick}
+          onArchiveSession={onArchiveSession}
+          onUnarchiveSession={onUnarchiveSession}
+          onNewSessionInProject={onNewSessionInProject}
+          statusMap={statusMap}
+          searchQuery={searchQuery}
+          questionSessionIds={questionSessionIds}
+          errorSessionIds={errorSessionIds}
+        />
+      )}
     </>
   );
 }
