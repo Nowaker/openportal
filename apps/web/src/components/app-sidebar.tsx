@@ -1153,6 +1153,7 @@ export default function AppSidebar(
     sessions,
     statusMap,
     currentSessionId,
+    questionSessionIds,
   });
 
   async function handleArchiveSession(sessionId: string) {
