@@ -7,6 +7,7 @@ interface Args {
   statusMap: SessionStatusMap | undefined;
   currentSessionId: string | undefined;
   questionSessionIds: Set<string>;
+  onSelect: (sessionId: string) => void;
 }
 
 // Fires browser notifications on two transitions:
@@ -15,12 +16,16 @@ interface Args {
 //      asked something and is waiting on the user
 // Both suppress when the user is currently viewing the affected session
 // AND the tab is visible. Click on either notification focuses the window
-// and navigates to that session.
+// and invokes onSelect(sessionId), which the caller binds to in-app router
+// navigation. window.location.href would force a full reload and lose the
+// tab's SWR cache, in-flight prompt drafts in localStorage, sidebar scroll
+// position, etc.
 function spawnNotification(
   id: string,
   title: string,
   body: string,
   tagSuffix: string,
+  onSelect: (sessionId: string) => void,
 ) {
   if (typeof window === "undefined") return;
   if (!("Notification" in window)) return;
@@ -32,7 +37,7 @@ function spawnNotification(
     });
     notif.onclick = () => {
       window.focus();
-      window.location.href = `/session/${id}`;
+      onSelect(id);
       notif.close();
     };
   } catch {
@@ -53,6 +58,7 @@ export function useStatusNotifications({
   statusMap,
   currentSessionId,
   questionSessionIds,
+  onSelect,
 }: Args) {
   const prevStatusRef = useRef<Record<string, string>>({});
   const prevQuestionsRef = useRef<Set<string>>(new Set());
@@ -76,10 +82,11 @@ export function useStatusNotifications({
         session?.title || "Session done",
         session?.directory || "",
         "done",
+        onSelect,
       );
     }
     prevStatusRef.current = next;
-  }, [statusMap, sessions, currentSessionId]);
+  }, [statusMap, sessions, currentSessionId, onSelect]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -92,10 +99,16 @@ export function useStatusNotifications({
       const title = session?.title
         ? `Question: ${session.title}`
         : "Waiting on your answer";
-      spawnNotification(id, title, "AI is asking for input", "question");
+      spawnNotification(
+        id,
+        title,
+        "AI is asking for input",
+        "question",
+        onSelect,
+      );
     }
     prevQuestionsRef.current = new Set(questionSessionIds);
-  }, [questionSessionIds, sessions, currentSessionId]);
+  }, [questionSessionIds, sessions, currentSessionId, onSelect]);
 }
 
 export async function requestNotificationPermission(): Promise<NotificationPermission> {

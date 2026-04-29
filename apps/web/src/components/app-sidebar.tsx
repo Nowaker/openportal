@@ -1154,6 +1154,9 @@ export default function AppSidebar(
     statusMap,
     currentSessionId,
     questionSessionIds,
+    onSelect: (id) => {
+      void navigate({ to: "/session/$id", params: { id } });
+    },
   });
 
   async function handleArchiveSession(sessionId: string) {

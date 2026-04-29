@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { BellAlertIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import AppSidebar from "@/components/app-sidebar";
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -7,10 +8,65 @@ import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useSelfInstance } from "@/hooks/use-opencode";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import { requestNotificationPermission } from "@/hooks/use-status-notifications";
 import {
   PullToRefreshIndicator,
   PullToRefreshWrapper,
 } from "@/components/pull-to-refresh-indicator";
+
+const NOTIF_DISMISS_KEY = "opencode-notif-prompt-dismissed";
+
+function NotificationPermissionBanner() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "default") return;
+    try {
+      if (localStorage.getItem(NOTIF_DISMISS_KEY) === "1") return;
+    } catch {
+      // private mode / quota - fall through and show the banner
+    }
+    setShow(true);
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border bg-bg/95 px-3 py-2 text-sm">
+      <BellAlertIcon className="size-4 shrink-0 text-muted-fg" />
+      <span className="flex-1 text-fg">
+        Get notified when sessions complete or need attention.
+      </span>
+      <button
+        type="button"
+        onClick={async () => {
+          await requestNotificationPermission();
+          setShow(false);
+        }}
+        className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium hover:bg-muted"
+      >
+        Enable
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          try {
+            localStorage.setItem(NOTIF_DISMISS_KEY, "1");
+          } catch {
+            // ignore quota / private-mode errors
+          }
+          setShow(false);
+        }}
+        className="rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+        aria-label="Dismiss"
+      >
+        <XMarkIcon className="size-4" />
+      </button>
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -73,6 +129,7 @@ function AppLayout() {
         <SidebarProvider className="h-dvh overflow-hidden">
           <AppSidebar collapsible="dock" />
           <SidebarInset className="overflow-hidden">
+            <NotificationPermissionBanner />
             <AppSidebarNav />
             <div className="flex-1 overflow-hidden">
               <Outlet />
