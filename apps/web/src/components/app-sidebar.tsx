@@ -54,7 +54,7 @@ import {
   type SessionStatusMap,
 } from "@/hooks/use-opencode";
 import { useSessionErrorStore } from "@/stores/session-error-store";
-import { useLastViewed } from "@/hooks/use-last-viewed";
+import { useLastViewed, useMarkManyViewed } from "@/hooks/use-last-viewed";
 import {
   resolveProjectPath,
   buildProjectTree,
@@ -741,7 +741,47 @@ function ProjectsList({
           />
         </Fragment>
       ))}
+      <ProjectsListBottomActions
+        sessions={sessions}
+        lastViewedMap={lastViewedMap}
+        currentSessionId={currentSessionId}
+      />
     </>
+  );
+}
+
+// Bottom row of less-frequently-used sidebar actions. Currently just one
+// (mark-all-reviewed); add new entries here as siblings rather than further
+// cluttering the per-project / per-session rows above.
+function ProjectsListBottomActions({
+  sessions,
+  lastViewedMap,
+  currentSessionId,
+}: {
+  sessions: Session[];
+  lastViewedMap: Record<string, number>;
+  currentSessionId: string | undefined;
+}) {
+  const markMany = useMarkManyViewed();
+  const candidates = sessions.filter(
+    (s) =>
+      s.id !== currentSessionId &&
+      sessionHasNewContent(s, lastViewedMap, currentSessionId),
+  );
+  if (candidates.length === 0) return null;
+  return (
+    <div className="col-span-full mt-2 px-3 py-1 border-t border-dashed border-border/50">
+      <button
+        type="button"
+        onClick={() => {
+          void markMany(candidates.map((s) => s.id));
+        }}
+        title={`Mark ${candidates.length} session${candidates.length === 1 ? "" : "s"} as reviewed`}
+        className="text-[11px] text-muted-fg hover:text-fg py-0.5 text-left"
+      >
+        Mark {candidates.length} reviewed
+      </button>
+    </div>
   );
 }
 

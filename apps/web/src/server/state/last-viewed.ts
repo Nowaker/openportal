@@ -8,13 +8,21 @@ export default defineHandler(async (event) => {
   }
   if (method === "POST") {
     const body = (await readBody(event)) as
-      | { sessionId?: string; ms?: number }
+      | { sessionId?: string; sessionIds?: string[]; ms?: number }
       | undefined;
+    const ms = typeof body?.ms === "number" ? body.ms : Date.now();
+
+    if (Array.isArray(body?.sessionIds)) {
+      for (const id of body.sessionIds) {
+        if (typeof id === "string" && id) setLastViewed(id, ms);
+      }
+      return { ok: true, count: body.sessionIds.length, ms };
+    }
+
     const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
     if (!sessionId) {
-      throw new Error("sessionId required");
+      throw new Error("sessionId or sessionIds required");
     }
-    const ms = typeof body?.ms === "number" ? body.ms : Date.now();
     setLastViewed(sessionId, ms);
     return { ok: true, sessionId, ms };
   }
