@@ -1455,6 +1455,15 @@ function SessionPage() {
     void markViewed(sessionId, Date.now());
   }, [sessionId, loading, messages.length, markViewed]);
 
+  useEffect(() => {
+    if (!sessionId) return;
+    try {
+      localStorage.setItem("opencode-last-session", sessionId);
+    } catch {
+      // ignore quota / private-mode errors
+    }
+  }, [sessionId]);
+
   const setSessionError = useSessionErrorStore((s) => s.setError);
   useEffect(() => {
     if (loading) return;
