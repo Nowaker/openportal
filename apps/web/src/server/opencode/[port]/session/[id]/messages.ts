@@ -31,16 +31,19 @@ function parseLimit(raw: unknown): number | undefined {
   return Math.min(Math.floor(n), MAX_LIMIT);
 }
 
-// opencode's write/edit tools persist whole-workspace LSP diagnostics into
-// state.metadata.diagnostics on the resulting tool part. kotlin-ls (and any
-// LSP that returns rich code-action data) stuffs full-file oldText/newText
-// blobs into each diagnostic.data.fixes[*].modCommandData - 20-50 KB per
-// fix, two fixes per diagnostic, dozens of diagnostics per project = MB
-// per tool part, multiplied across every tool call in a session. The model
-// only ever consults the textual error (severity/message/range); fixes are
-// dead weight on the wire. Strip them before returning to the Portal
-// client. Both shapes seen in the wild: part.state.metadata.diagnostics
-// (newer opencode), part.data.state.metadata.diagnostics (older).
+// opencode's write/edit tools snapshot the full workspace LSP diagnostics
+// map onto state.metadata.diagnostics of every resulting tool part. With
+// rich-LSP servers like kotlin-ls, a single Kotlin/Android session
+// accumulates tens of thousands of diagnostic objects (the same ~hundred
+// errors snapshotted into every one of hundreds of tool parts), each
+// carrying psi parser state, code-action fixes with full-file oldText/
+// newText blobs, etc. The Portal frontend never reads
+// state.metadata.diagnostics anywhere - confirmed by grep. The model
+// already consumed those diagnostics at tool-call time; re-shipping them
+// to the browser on every messages?limit=N fetch is pure overhead. Strip
+// the entire `diagnostics` field from every part before returning. Both
+// shapes seen in the wild: part.state.metadata.diagnostics (newer
+// opencode) and part.data.state.metadata.diagnostics (older).
 function stripDiagnosticFixes(messages: unknown): unknown {
   if (!Array.isArray(messages)) return messages;
   for (const msg of messages) {
@@ -53,12 +56,8 @@ function stripDiagnosticFixes(messages: unknown): unknown {
   return messages;
 }
 
-interface DiagnosticLike {
-  data?: { fixes?: unknown };
-}
-
 interface MetadataLike {
-  metadata?: { diagnostics?: Record<string, DiagnosticLike[]> };
+  metadata?: { diagnostics?: unknown };
 }
 
 function stripPartDiagnostics(part: unknown): void {
@@ -68,16 +67,8 @@ function stripPartDiagnostics(part: unknown): void {
     ((part as { data?: { state?: MetadataLike } }).data ?? {}).state,
   ];
   for (const c of candidates) {
-    const diags = c?.metadata?.diagnostics;
-    if (!diags || typeof diags !== "object") continue;
-    for (const file of Object.keys(diags)) {
-      const arr = diags[file];
-      if (!Array.isArray(arr)) continue;
-      for (const d of arr) {
-        if (d?.data && typeof d.data === "object" && "fixes" in d.data) {
-          delete d.data.fixes;
-        }
-      }
+    if (c?.metadata && "diagnostics" in c.metadata) {
+      delete c.metadata.diagnostics;
     }
   }
 }
