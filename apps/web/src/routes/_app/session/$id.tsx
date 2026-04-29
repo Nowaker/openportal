@@ -1340,6 +1340,18 @@ function ModelOverrideControl({
 
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
 const DRAFT_MIN_BYTES = 10;
+// BroadcastChannel name for cross-tab composer sync. When any tab submits
+// a draft to opencode, it posts the submitted text on this channel; other
+// tabs viewing the same session clear their input ONLY if their staged
+// content is a substring of (or equal to) the submitted text. Divergent
+// in-flight drafts are preserved.
+const COMPOSER_SYNC_CHANNEL = "opencode-composer-sync";
+
+interface ComposerSyncMessage {
+  kind: "draft-submitted";
+  sessionId: string;
+  content: string;
+}
 // Pending-prompt safety net: when the user submits, we copy the text into
 // this key BEFORE clearing the textarea. It stays until either (a) an
 // assistant message arrives in response, or (b) the user manually clears
@@ -1847,6 +1859,7 @@ function SessionPage() {
   }, [loadAllMessages, messages.length, scrollToUserNode]);
 
   const draftSaveTimerRef = useRef<number | null>(null);
+  const composerChannelRef = useRef<BroadcastChannel | null>(null);
 
   // Restore the draft for this session into the textarea on mount, on
   // session change, and whenever the composer toggles back from collapsed
@@ -1860,6 +1873,43 @@ function SessionPage() {
       setHasContent(draft.length > 0);
     }
   }, [sessionId, composerCollapsed]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    if (typeof window === "undefined") return;
+    if (typeof BroadcastChannel === "undefined") return;
+    let channel: BroadcastChannel;
+    try {
+      channel = new BroadcastChannel(COMPOSER_SYNC_CHANNEL);
+    } catch {
+      return;
+    }
+    composerChannelRef.current = channel;
+    const handler = (ev: MessageEvent<ComposerSyncMessage>) => {
+      const msg = ev.data;
+      if (!msg || msg.kind !== "draft-submitted") return;
+      if (msg.sessionId !== sessionId) return;
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const current = ta.value;
+      if (!current) return;
+      if (msg.content.includes(current)) {
+        ta.value = "";
+        setHasContent(false);
+        if (draftSaveTimerRef.current != null) {
+          window.clearTimeout(draftSaveTimerRef.current);
+          draftSaveTimerRef.current = null;
+        }
+        writeDraft(sessionId, "");
+      }
+    };
+    channel.addEventListener("message", handler);
+    return () => {
+      channel.removeEventListener("message", handler);
+      channel.close();
+      composerChannelRef.current = null;
+    };
+  }, [sessionId]);
 
   // Persist the draft only after the user has stopped typing for 2 seconds,
   // so we don't thrash localStorage on every keystroke. The unmount /
@@ -2118,6 +2168,15 @@ function SessionPage() {
         draftSaveTimerRef.current = null;
       }
       writeDraft(sessionId, "");
+      try {
+        composerChannelRef.current?.postMessage({
+          kind: "draft-submitted",
+          sessionId,
+          content: messageText,
+        } satisfies ComposerSyncMessage);
+      } catch {
+        /* channel closed or unavailable - cross-tab sync is best-effort */
+      }
       mutateSessionMessages(port, sessionId);
       mutateSessions();
     } catch (err) {
