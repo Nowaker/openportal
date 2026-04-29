@@ -6,6 +6,7 @@ import {
   ArrowUturnLeftIcon,
   BellAlertIcon,
   PencilSquareIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
   Cog6ToothIcon,
@@ -289,8 +290,17 @@ function ProjectGroup({
   const containsCurrent =
     sessions.some((s) => s.id === currentSessionId) ||
     archivedSessions.some((s) => s.id === currentSessionId);
-  const headerStyle = depth > 0 ? { paddingLeft: `${0.5 + depth * 0.75}rem` } : undefined;
-  const sessionRowStyle = depth > 0 ? { paddingLeft: `${0.75 + depth * 0.75}rem` } : undefined;
+  // Project header AND its session rows share the same paddingLeft so the
+  // sessions' indicators (after a chevron-width invisible spacer added
+  // below) line up with the project's indicators above. Only the chevron
+  // and the spacer differ - everything past them is at the same x.
+  const headerPaddingLeft = depth > 0 ? `${0.5 + depth * 0.75}rem` : undefined;
+  const headerStyle = headerPaddingLeft
+    ? { paddingLeft: headerPaddingLeft }
+    : undefined;
+  const sessionRowStyle = headerPaddingLeft
+    ? { paddingLeft: headerPaddingLeft }
+    : undefined;
 
   // Cascade per-session indicators up to the project header so the user can
   // see at-a-glance whether ANY session in this project needs attention,
@@ -376,10 +386,11 @@ function ProjectGroup({
         return (
           <div
             key={session.id}
-            className={`col-span-full flex items-center gap-1.5 ${depth > 0 ? "pr-3" : "pl-3 pr-3"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
+            className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-3" : "pl-3 pr-3"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
             style={depth > 0 ? sessionRowStyle : undefined}
             data-current-session={isCurrent || undefined}
           >
+            <span className="size-3 shrink-0" aria-hidden />
             <DraftIndicator hasDraft={hasDraft} />
             <SessionStatusDot
               status={status}
@@ -1154,18 +1165,16 @@ export default function AppSidebar(
             </SidebarItem>
           </SidebarSection>
 
-          <div className="col-span-full px-3 pb-1">
+          <div className="col-span-full px-3 pb-1 relative">
             <input
-              type="search"
+              type="text"
               value={searchInput}
               onChange={(e) => {
                 const v = e.target.value;
                 setSearchInput(v);
-                // Clearing the input via the X button (type=search native
-                // clear) or backspace-to-empty does not fire keydown=Enter,
-                // so the previously-applied filter would otherwise persist.
-                // Auto-submit the empty query whenever the field becomes
-                // empty so the filter resets in lock-step with the box.
+                // Auto-submit empty query whenever the field becomes empty
+                // (backspace-to-zero or our X button below) so the filter
+                // resets in lock-step with the input.
                 if (v.length === 0) setSearchQuery("");
               }}
               onKeyDown={(e) => {
@@ -1178,8 +1187,22 @@ export default function AppSidebar(
                 }
               }}
               placeholder="Search sessions..."
-              className="w-full rounded border border-border bg-bg px-2 py-1 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              className="w-full rounded border border-border bg-bg px-2 py-1 pr-7 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             />
+            {searchInput.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInput("");
+                  setSearchQuery("");
+                }}
+                aria-label="Clear search"
+                title="Clear search"
+                className="absolute top-1/2 right-4 -translate-y-1/2 inline-flex size-5 items-center justify-center rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+              >
+                <XMarkIcon className="size-3.5" />
+              </button>
+            )}
           </div>
 
           <SidebarSection>
