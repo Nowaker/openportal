@@ -30,6 +30,8 @@ import {
   PhotoIcon,
   ClipboardDocumentIcon,
   CheckIcon,
+  ChatBubbleLeftRightIcon,
+  UserIcon,
 } from "@heroicons/react/24/outline";
 import {
   PlayIcon,
@@ -1257,7 +1259,6 @@ function describeMessageError(
 }
 
 function ModelOverrideControl({
-  isOverriding,
   sessionId,
   instanceId,
 }: {
@@ -1266,11 +1267,7 @@ function ModelOverrideControl({
   instanceId: string | null;
 }) {
   return (
-    <div
-      className={`w-full min-w-0${
-        isOverriding ? " rounded-lg ring-1 ring-primary/50" : ""
-      }`}
-    >
+    <div className="w-full min-w-0">
       <ModelSelect sessionId={sessionId} instanceId={instanceId} />
     </div>
   );
@@ -2210,29 +2207,6 @@ function SessionPage() {
                   <TodoFloat snapshot={todoSnapshot} />
                 </div>
               )}
-              {messages.length > 0 && (
-                <div className="flex justify-end px-6 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setOnlyUserMessages((v) => !v)}
-                    title={
-                      onlyUserMessages
-                        ? "Show all messages"
-                        : "Show only user messages"
-                    }
-                    aria-pressed={onlyUserMessages}
-                    className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
-                      onlyUserMessages
-                        ? "border-primary/40 bg-primary/10 text-fg"
-                        : "border-border bg-bg text-muted-fg hover:border-fg/30 hover:text-fg"
-                    }`}
-                  >
-                    {onlyUserMessages
-                      ? "Showing prompts only"
-                      : "Show prompts only"}
-                  </button>
-                </div>
-              )}
             </>
           )}
           {messageNodes}
@@ -2331,6 +2305,28 @@ function SessionPage() {
               title="Previous user message"
             >
               <ChevronUpIcon className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setOnlyUserMessages((v) => !v)}
+              aria-pressed={onlyUserMessages}
+              className={`flex size-10 items-center justify-center rounded-full border bg-bg/95 shadow-lg transition-colors ${
+                onlyUserMessages
+                  ? "border-primary/40 bg-primary/10 text-fg hover:bg-primary/20"
+                  : "border-border text-fg hover:bg-muted"
+              }`}
+              aria-label={
+                onlyUserMessages ? "Show all messages" : "Show prompts only"
+              }
+              title={
+                onlyUserMessages ? "Show all messages" : "Show prompts only"
+              }
+            >
+              {onlyUserMessages ? (
+                <UserIcon className="size-5" />
+              ) : (
+                <ChatBubbleLeftRightIcon className="size-5" />
+              )}
             </button>
             <button
               type="button"
