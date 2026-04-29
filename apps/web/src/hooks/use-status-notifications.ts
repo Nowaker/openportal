@@ -5,7 +5,6 @@ import type { SessionStatusMap } from "@/hooks/use-opencode";
 interface Args {
   sessions: Session[];
   statusMap: SessionStatusMap | undefined;
-  currentSessionId: string | undefined;
   questionSessionIds: Set<string>;
   onSelect: (sessionId: string) => void;
 }
@@ -14,12 +13,17 @@ interface Args {
 //   1. busy -> idle: "session complete" - notify because the run finished
 //   2. question newly appears for a session: "needs attention" - the model
 //      asked something and is waiting on the user
-// Both suppress when the user is currently viewing the affected session
-// AND the tab is visible. Click on either notification focuses the window
-// and invokes onSelect(sessionId), which the caller binds to in-app router
-// navigation. window.location.href would force a full reload and lose the
-// tab's SWR cache, in-flight prompt drafts in localStorage, sidebar scroll
-// position, etc.
+// Always fires when the OS-level Notification permission is granted,
+// regardless of whether the tab is in foreground or which session the user
+// is currently viewing. Multi-monitor environments make "tab is visible"
+// an unreliable signal of "the user is actually watching": the tab can be
+// the active tab in a window the user is not looking at right now.
+//
+// Click on either notification focuses the window and invokes
+// onSelect(sessionId), which the caller binds to in-app router navigation.
+// window.location.href would force a full reload and lose the tab's SWR
+// cache, in-flight prompt drafts in localStorage, sidebar scroll position,
+// etc.
 function spawnNotification(
   id: string,
   title: string,
@@ -45,18 +49,9 @@ function spawnNotification(
   }
 }
 
-function shouldSuppress(id: string, currentSessionId: string | undefined) {
-  if (id === currentSessionId) return true;
-  if (typeof window === "undefined") return true;
-  const onSessionPage = window.location.pathname === `/session/${id}`;
-  const isVisible = document.visibilityState === "visible";
-  return onSessionPage && isVisible;
-}
-
 export function useStatusNotifications({
   sessions,
   statusMap,
-  currentSessionId,
   questionSessionIds,
   onSelect,
 }: Args) {
@@ -75,7 +70,6 @@ export function useStatusNotifications({
       const wasBusy = prevStatusRef.current[id] === "busy";
       const nowIdle = s.type === "idle";
       if (!wasBusy || !nowIdle) continue;
-      if (shouldSuppress(id, currentSessionId)) continue;
       const session = sessions.find((x) => x.id === id);
       spawnNotification(
         id,
@@ -86,7 +80,7 @@ export function useStatusNotifications({
       );
     }
     prevStatusRef.current = next;
-  }, [statusMap, sessions, currentSessionId, onSelect]);
+  }, [statusMap, sessions, onSelect]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -94,7 +88,6 @@ export function useStatusNotifications({
     const prev = prevQuestionsRef.current;
     for (const id of questionSessionIds) {
       if (prev.has(id)) continue;
-      if (shouldSuppress(id, currentSessionId)) continue;
       const session = sessions.find((x) => x.id === id);
       const title = session?.title
         ? `Question: ${session.title}`
@@ -108,7 +101,7 @@ export function useStatusNotifications({
       );
     }
     prevQuestionsRef.current = new Set(questionSessionIds);
-  }, [questionSessionIds, sessions, currentSessionId, onSelect]);
+  }, [questionSessionIds, sessions, onSelect]);
 }
 
 export async function requestNotificationPermission(): Promise<NotificationPermission> {

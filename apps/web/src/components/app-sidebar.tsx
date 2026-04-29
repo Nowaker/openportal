@@ -1152,7 +1152,6 @@ export default function AppSidebar(
   useStatusNotifications({
     sessions,
     statusMap,
-    currentSessionId,
     questionSessionIds,
     onSelect: (id) => {
       void navigate({ to: "/session/$id", params: { id } });
