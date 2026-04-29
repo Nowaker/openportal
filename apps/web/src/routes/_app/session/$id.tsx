@@ -1254,6 +1254,7 @@ function SessionPage() {
 
   const [loadAllMessages, setLoadAllMessages] = useState(false);
   const [messageLimit, setMessageLimit] = useState<number>(INITIAL_MESSAGE_LIMIT);
+  const [onlyUserMessages, setOnlyUserMessages] = useState(false);
   const {
     messages,
     isLoading: loading,
@@ -1615,16 +1616,18 @@ function SessionPage() {
 
   const draftSaveTimerRef = useRef<number | null>(null);
 
-  // Restore the draft for this session into the textarea on mount and on
-  // session change. The textarea is uncontrolled, so we set .value directly.
+  // Restore the draft for this session into the textarea on mount, on
+  // session change, and whenever the composer toggles back from collapsed
+  // (which unmounts the textarea node, dropping its uncontrolled value).
   useEffect(() => {
     if (!sessionId) return;
+    if (composerCollapsed) return;
     const draft = readDraft(sessionId);
     if (textareaRef.current) {
       textareaRef.current.value = draft;
       setHasContent(draft.length > 0);
     }
-  }, [sessionId]);
+  }, [sessionId, composerCollapsed]);
 
   // Persist the draft only after the user has stopped typing for 2 seconds,
   // so we don't thrash localStorage on every keystroke. The unmount /
@@ -1901,7 +1904,10 @@ function SessionPage() {
     // appended. Permanent truncation is now done by hard-deleting messages
     // through the message-DELETE route in handleSubmit, so the message list
     // returned by /session/{id}/message is already authoritative.
-    const visible = messages.filter((message) => hasVisibleContent(message));
+    const baseVisible = messages.filter((message) => hasVisibleContent(message));
+    const visible = onlyUserMessages
+      ? baseVisible.filter((m) => m.info.role === "user")
+      : baseVisible;
     // Compute pending-delete flags based on the staged revertTarget.
     //   user-mode: target message and everything below it are pending delete.
     //   assistant-mode: only messages strictly below the target.
@@ -1969,6 +1975,7 @@ function SessionPage() {
     handleAbort,
     revertTarget,
     handleRevertRequest,
+    onlyUserMessages,
   ]);
 
   const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
@@ -2065,6 +2072,25 @@ function SessionPage() {
             )}
           <div className="px-6">
             <TodoFloat snapshot={todoSnapshot} />
+          </div>
+          <div className="flex justify-end px-6 pt-2">
+            <button
+              type="button"
+              onClick={() => setOnlyUserMessages((v) => !v)}
+              title={
+                onlyUserMessages
+                  ? "Show all messages"
+                  : "Show only user messages"
+              }
+              aria-pressed={onlyUserMessages}
+              className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+                onlyUserMessages
+                  ? "border-primary/40 bg-primary/10 text-fg"
+                  : "border-border bg-bg text-muted-fg hover:border-fg/30 hover:text-fg"
+              }`}
+            >
+              {onlyUserMessages ? "Showing prompts only" : "Show prompts only"}
+            </button>
           </div>
           {messageNodes}
           {unlinkedPermissions.length > 0 && (
@@ -2372,19 +2398,19 @@ function SessionPage() {
                       }
                       if (e.key === "Enter") {
                         // Submit policy:
-                        //   Shift+Enter ALWAYS inserts a newline (browser
-                        //     default), regardless of platform / setting.
-                        //   On mobile, never submit via Enter - the soft
-                        //     keyboard's Enter is for newlines only; users
-                        //     submit by tapping the Send button.
-                        //   On desktop, Ctrl/Cmd+Enter always submits.
-                        //   On desktop, bare Enter submits ONLY in
-                        //     enterKeyAction='submit' mode.
-                        if (e.shiftKey || isMobile) return;
+                        //   Shift+Enter ALWAYS inserts a newline.
+                        //   Ctrl/Cmd+Enter ALWAYS submits, regardless of
+                        //     viewport - this covers desktop browsers that
+                        //     transiently match (max-width:640px) when a
+                        //     devtools panel is docked.
+                        //   Bare Enter submits only on non-mobile viewports
+                        //     when enterKeyAction='submit'. On mobile the
+                        //     soft keyboard's Enter is reserved for newlines.
+                        if (e.shiftKey) return;
+                        const isModified = e.metaKey || e.ctrlKey;
                         const wantsSubmit =
-                          e.metaKey ||
-                          e.ctrlKey ||
-                          enterKeyAction === "submit";
+                          isModified ||
+                          (!isMobile && enterKeyAction === "submit");
                         if (wantsSubmit) {
                           e.preventDefault();
                           const current = textareaRef.current?.value ?? "";

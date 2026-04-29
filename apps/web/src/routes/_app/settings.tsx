@@ -387,11 +387,10 @@ function SettingsPage() {
     return () => setPageTitle(null);
   }, [setPageTitle]);
 
-  // Drive the active settings tab from the URL hash so the browser back
-  // button steps between tabs naturally - the user can land in any tab
-  // via a deep link, switch tabs, and Back returns to the previous tab,
-  // then to whatever route they came from. Falling back to 'appearance'
-  // when the hash is empty or unknown.
+  // Active tab is reflected in the URL hash for deep-linking and reload
+  // recovery, but tab-switching uses replaceState so the browser Back
+  // button skips over tab changes and goes straight to the previous route
+  // (i.e. the session the user came from).
   const [settingsTab, setSettingsTabState] = React.useState<string>(() => {
     if (typeof window === "undefined") return "appearance";
     const hash = window.location.hash.replace(/^#/, "");
@@ -400,48 +399,45 @@ function SettingsPage() {
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const onPop = () => {
+    const onHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       setSettingsTabState(
         ["appearance", "prompt", "api"].includes(hash) ? hash : "appearance",
       );
     };
-    window.addEventListener("popstate", onPop);
-    window.addEventListener("hashchange", onPop);
+    window.addEventListener("hashchange", onHash);
     return () => {
-      window.removeEventListener("popstate", onPop);
-      window.removeEventListener("hashchange", onPop);
+      window.removeEventListener("hashchange", onHash);
     };
   }, []);
 
   const setSettingsTab = React.useCallback((next: string) => {
     setSettingsTabState(next);
     if (typeof window !== "undefined") {
-      // pushState (not replaceState) so each tab change is its own
-      // history entry and Back walks tab-by-tab.
       const url = `${window.location.pathname}${window.location.search}#${next}`;
-      window.history.pushState(null, "", url);
+      window.history.replaceState(null, "", url);
     }
   }, []);
 
   return (
-    <div className="container mx-auto space-y-8 px-4 py-10">
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (window.history.length > 1) {
-              window.history.back();
-            } else {
-              window.location.href = "/";
-            }
-          }}
-          className="inline-flex items-center gap-1 text-sm text-muted-fg hover:text-fg transition-colors"
-          aria-label="Back"
-        >
-          <ArrowLeftIcon className="size-4" />
-          Back
-        </button>
+    <div className="h-full overflow-y-auto overscroll-contain">
+      <div className="container mx-auto space-y-8 px-4 py-10">
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                window.location.href = "/";
+              }
+            }}
+            className="inline-flex items-center gap-1 text-sm text-muted-fg hover:text-fg transition-colors"
+            aria-label="Back"
+          >
+            <ArrowLeftIcon className="size-4" />
+            Back
+          </button>
         <h1 className="bg-gradient-to-r from-fg to-muted-fg bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl">
           Settings
         </h1>
@@ -645,6 +641,7 @@ function SettingsPage() {
           </div>
         </TabPanel>
       </Tabs>
+      </div>
     </div>
   );
 }

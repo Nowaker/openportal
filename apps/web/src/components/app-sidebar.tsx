@@ -5,6 +5,7 @@ import {
   ArchiveBoxArrowDownIcon,
   ArrowUturnLeftIcon,
   BellAlertIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 import {
   Cog6ToothIcon,
@@ -150,13 +151,11 @@ interface ProjectGroupProps {
 
 function SessionStatusDot({
   status,
-  hasDraft,
   hasNewContent,
   hasQuestion,
   hasError,
 }: {
   status: "busy" | "retry" | "idle" | undefined;
-  hasDraft: boolean;
   hasNewContent: boolean;
   hasQuestion?: boolean;
   hasError?: boolean;
@@ -201,16 +200,18 @@ function SessionStatusDot({
       />
     );
   }
-  if (hasDraft) {
-    return (
-      <span
-        className="size-1.5 shrink-0 rounded-full bg-sky-500"
-        aria-label="Has unsent draft"
-        title="Has unsent draft"
-      />
-    );
-  }
   return null;
+}
+
+function DraftIndicator({ hasDraft }: { hasDraft: boolean }) {
+  if (!hasDraft) return null;
+  return (
+    <PencilSquareIcon
+      className="size-3 shrink-0 text-sky-500"
+      aria-label="Unsent draft"
+      title="Unsent draft"
+    />
+  );
 }
 
 function ProjectGroup({
@@ -301,17 +302,17 @@ function ProjectGroup({
         return (
           <div
             key={session.id}
-            className={`col-span-full flex items-center gap-1.5 ${depth > 0 ? "pr-1" : "pl-3 pr-1"} rounded ${isCurrent ? "bg-primary/15 border-l-2 border-primary -ml-px pl-[10px]" : "hover:bg-muted/20"}`}
+            className={`col-span-full flex items-center gap-1.5 ${depth > 0 ? "pr-1" : "pl-3 pr-1"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
             style={depth > 0 ? sessionRowStyle : undefined}
             data-current-session={isCurrent || undefined}
           >
             <SessionStatusDot
               status={status}
-              hasDraft={hasDraft}
               hasNewContent={hasNewContent}
               hasQuestion={hasQuestion}
               hasError={hasError}
             />
+            <DraftIndicator hasDraft={hasDraft} />
             <UILink
               href={`/session/${session.id}`}
               onClick={onSessionClick}
@@ -752,10 +753,10 @@ function TreeNodeRow({
           <SessionStatusDot
             status={aggregate.status}
             hasNewContent={aggregate.newContent}
-            hasDraft={aggregate.draft}
             hasQuestion={aggregate.question}
             hasError={aggregate.error}
           />
+          <DraftIndicator hasDraft={aggregate.draft} />
           <span className="text-[12px] truncate">
             {highlightMatch(node.name, searchQuery)}
             {aggregate.sessionCount > 0 && (
