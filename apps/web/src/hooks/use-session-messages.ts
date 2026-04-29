@@ -52,6 +52,7 @@ function usePort() {
 
 export interface UseSessionMessagesOptions {
   loadAll?: boolean;
+  limit?: number;
 }
 
 export function useSessionMessages(
@@ -60,7 +61,9 @@ export function useSessionMessages(
 ) {
   const port = usePort();
   const key =
-    port && sessionId ? getMessagesKey(port, sessionId, options.loadAll) : null;
+    port && sessionId
+      ? getMessagesKey(port, sessionId, options.loadAll, options.limit)
+      : null;
 
   const {
     data,
@@ -85,9 +88,12 @@ export function getMessagesKey(
   port: number,
   sessionId: string,
   loadAll = false,
+  limit?: number,
 ) {
   const base = `/api/opencode/${port}/session/${sessionId}/messages`;
-  return loadAll ? `${base}?limit=all` : base;
+  if (loadAll) return `${base}?limit=all`;
+  if (typeof limit === "number" && limit > 0) return `${base}?limit=${limit}`;
+  return base;
 }
 
 export function mutateSessionMessages(port: number, sessionId: string) {

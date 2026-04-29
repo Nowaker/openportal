@@ -15,7 +15,7 @@ import {
   FileMentionPopover,
   useFileMention,
 } from "@/components/file-mention-popover";
-import { TodoStrip } from "@/components/todo-strip";
+import { TodoStrip, TodoFloat } from "@/components/todo-strip";
 import { extractLatestTodos } from "@/lib/todos";
 import IconBadgeSparkle from "@/components/icons/badge-sparkle-icon";
 import IconUser from "@/components/icons/user-icon";
@@ -1253,11 +1253,15 @@ function SessionPage() {
   const composerMaxHeight = useComposerMaxHeight();
 
   const [loadAllMessages, setLoadAllMessages] = useState(false);
+  const [messageLimit, setMessageLimit] = useState<number>(INITIAL_MESSAGE_LIMIT);
   const {
     messages,
     isLoading: loading,
     error: messagesError,
-  } = useSessionMessages(sessionId, { loadAll: loadAllMessages });
+  } = useSessionMessages(sessionId, {
+    loadAll: loadAllMessages,
+    limit: messageLimit,
+  });
 
   const todoSnapshot = useMemo(
     () => extractLatestTodos(messages),
@@ -2040,17 +2044,28 @@ function SessionPage() {
         >
           {!loading &&
             !loadAllMessages &&
-            messages.length >= INITIAL_MESSAGE_LIMIT && (
-              <div className="px-6 py-3 text-center">
+            messages.length >= messageLimit && (
+              <div className="px-6 py-3 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMessageLimit((n) => n + 100)}
+                  className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                >
+                  Load 100 more
+                </button>
                 <button
                   type="button"
                   onClick={() => setLoadAllMessages(true)}
-                  className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                  title="Loading the entire history can take long on big sessions"
+                  className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
                 >
-                  Load earlier messages
+                  Load all (slow)
                 </button>
               </div>
             )}
+          <div className="px-6">
+            <TodoFloat snapshot={todoSnapshot} />
+          </div>
           {messageNodes}
           {unlinkedPermissions.length > 0 && (
             <div className="px-6 py-4 space-y-2 border-t border-dashed border-border">
@@ -2188,9 +2203,6 @@ function SessionPage() {
         )}
         {!composerCollapsed && (
           <>
-            <div className="hidden sm:block">
-              <TodoStrip snapshot={todoSnapshot} variant="inline" />
-            </div>
             <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 bg-muted/30 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
               <div className="flex min-w-0 flex-1 items-center gap-1">
                 <div className="min-w-0 flex-1 max-w-40">
@@ -2204,9 +2216,7 @@ function SessionPage() {
                   />
                 </div>
               </div>
-              <div className="sm:hidden">
-                <TodoStrip snapshot={todoSnapshot} variant="indicator" />
-              </div>
+              <TodoStrip snapshot={todoSnapshot} />
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}
@@ -2388,7 +2398,7 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="resize-none overflow-y-auto text-sm sm:text-base min-h-full"
+                    className="resize-none overflow-y-auto text-sm min-h-[max(4.5rem,100%)]"
                   />
                 </div>
                 <div className="flex flex-col justify-end gap-1.5 shrink-0">
