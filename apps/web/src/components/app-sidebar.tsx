@@ -705,8 +705,7 @@ function ProjectsList({
         <Fragment key={section.basePath || `unset-${idx}`}>
           {section.basePath && (
             <div
-              className="col-span-full pt-2 pb-1 text-[11px] text-muted-fg/80 font-mono"
-              style={{ paddingLeft: "0.75rem" }}
+              className="col-span-full pt-2 pb-1 px-3 text-[11px] text-muted-fg"
               title={section.basePath}
             >
               <CompactPath path={section.basePath} home={home} />

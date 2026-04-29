@@ -22,18 +22,17 @@ interface ThinkingSelectProps {
 
 const KNOWN_ORDER = ["low", "medium", "high", "max"] as const;
 
-function variantIcon(variant: string, size = "size-4") {
+export function variantIcon(variant: string, size = "size-4") {
   if (!variant) return <BoltSlashIcon className={`${size} text-muted-fg/60`} />;
   const v = variant.toLowerCase();
   if (v === "low") return <BoltIcon className={`${size} text-fg/60`} />;
   if (v === "medium") return <BoltIcon className={`${size} text-fg`} />;
   if (v === "high") return <FireIcon className={`${size} text-amber-500`} />;
-  if (v === "max")
-    return <FireIcon className={`${size} text-red-500 animate-pulse`} />;
+  if (v === "max") return <FireIcon className={`${size} text-red-500`} />;
   return <SparklesIcon className={`${size} text-fg`} />;
 }
 
-function variantLabel(variant: string) {
+export function variantDisplayLabel(variant: string) {
   if (!variant) return "Default";
   return variant.charAt(0).toUpperCase() + variant.slice(1);
 }
@@ -85,8 +84,8 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
         setForSession(sessionId, v === "default" ? "" : v);
       }}
     >
-      <SelectTrigger className="shrink-0 w-9 h-7 px-1 justify-center">
-        <span className="flex items-center justify-center">
+      <SelectTrigger className="shrink-0">
+        <span className="flex items-center">
           {variantIcon(current, "size-4")}
         </span>
       </SelectTrigger>
@@ -98,10 +97,10 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
           </span>
         </SelectItem>
         {variants.map((v) => (
-          <SelectItem key={v} id={v} textValue={variantLabel(v)}>
+          <SelectItem key={v} id={v} textValue={variantDisplayLabel(v)}>
             <span className="flex items-center gap-2">
               {variantIcon(v, "size-4")}
-              <SelectLabel>{variantLabel(v)}</SelectLabel>
+              <SelectLabel>{variantDisplayLabel(v)}</SelectLabel>
             </span>
           </SelectItem>
         ))}

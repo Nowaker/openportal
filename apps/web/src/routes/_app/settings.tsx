@@ -32,6 +32,10 @@ import {
 import { useModelStore } from "@/stores/model-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useThinkingStore } from "@/stores/thinking-store";
+import {
+  variantIcon,
+  variantDisplayLabel,
+} from "@/components/thinking-select";
 import { compareModels } from "@/lib/model-sort";
 import type { Agent } from "@opencode-ai/sdk";
 
@@ -67,13 +71,7 @@ function ThemeSetting() {
 function DefaultThinkingSetting() {
   const value = useThinkingStore((s) => s.defaultEffort);
   const setDefault = useThinkingStore((s) => s.setDefault);
-  const options: { id: string; label: string }[] = [
-    { id: "default", label: "Default (no extra reasoning)" },
-    { id: "low", label: "Low" },
-    { id: "medium", label: "Medium" },
-    { id: "high", label: "High" },
-    { id: "max", label: "Max" },
-  ];
+  const options = ["", "low", "medium", "high", "max"];
   return (
     <Select
       aria-label="Default thinking effort"
@@ -85,9 +83,16 @@ function DefaultThinkingSetting() {
     >
       <SelectTrigger className="max-w-sm" />
       <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o.id} id={o.id} textValue={o.label}>
-            <SelectLabel>{o.label}</SelectLabel>
+        {options.map((v) => (
+          <SelectItem
+            key={v || "default"}
+            id={v || "default"}
+            textValue={variantDisplayLabel(v)}
+          >
+            <span className="flex items-center gap-2">
+              {variantIcon(v, "size-4")}
+              <SelectLabel>{variantDisplayLabel(v)}</SelectLabel>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>

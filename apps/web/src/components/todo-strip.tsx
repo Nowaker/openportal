@@ -88,28 +88,26 @@ export function TodoFloat({ snapshot }: FloatProps) {
   if (!expanded || !snapshot || snapshot.todos.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed right-3 top-16 z-30 w-[min(20rem,calc(100vw-1.5rem))]">
-      <div className="pointer-events-auto rounded-md border border-border bg-bg/95 shadow-lg backdrop-blur-sm">
-        <div className="flex items-center justify-between border-b border-border/60 px-2 py-1">
-          <span className="flex items-center gap-1.5 text-xs text-muted-fg">
-            <ClipboardDocumentListIcon className="size-3.5" />
-            <span className="tabular-nums">
-              {snapshot.todos.filter((t) => t.status === "completed").length}/
-              {snapshot.todos.length} done
-            </span>
+    <div className="fixed right-3 top-16 z-[100] w-[min(20rem,calc(100vw-1.5rem))] rounded-md border border-border bg-bg shadow-xl">
+      <div className="flex items-center justify-between border-b border-border/60 px-2 py-1">
+        <span className="flex items-center gap-1.5 text-xs text-muted-fg">
+          <ClipboardDocumentListIcon className="size-3.5" />
+          <span className="tabular-nums">
+            {snapshot.todos.filter((t) => t.status === "completed").length}/
+            {snapshot.todos.length} done
           </span>
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Close plan"
-            className="rounded p-0.5 text-muted-fg hover:bg-muted/40 hover:text-fg"
-          >
-            <XMarkIcon className="size-3.5" />
-          </button>
-        </div>
-        <div className="max-h-[60vh] overflow-y-auto">
-          <TodoBody todos={snapshot.todos} />
-        </div>
+        </span>
+        <button
+          type="button"
+          onClick={close}
+          aria-label="Close plan"
+          className="rounded p-0.5 text-muted-fg hover:bg-muted/40 hover:text-fg"
+        >
+          <XMarkIcon className="size-3.5" />
+        </button>
+      </div>
+      <div className="max-h-[60vh] overflow-y-auto">
+        <TodoBody todos={snapshot.todos} />
       </div>
     </div>
   );
