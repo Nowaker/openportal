@@ -242,8 +242,29 @@ function ProjectGroup({
     if (!archivedExpanded) setArchivedLimit(5);
   }, [archivedExpanded]);
 
-  const visible = isExpanded ? sessions.slice(0, limit) : [];
-  const remaining = sessions.length - visible.length;
+  // If the user is viewing a session that lives below the per-project
+  // visible window, hoist it to the top of the visible slice so they can
+  // always see (and click back to) the session they're currently in.
+  // Falls back to natural ordering automatically when currentSessionId
+  // changes, so navigating away "unpins" the session.
+  const visibleAndCount = useMemo(() => {
+    if (!isExpanded) return { rows: [] as typeof sessions, count: 0 };
+    const head = sessions.slice(0, limit);
+    if (
+      currentSessionId &&
+      !head.some((s) => s.id === currentSessionId) &&
+      sessions.some((s) => s.id === currentSessionId)
+    ) {
+      const pinned = sessions.find((s) => s.id === currentSessionId)!;
+      const rest = sessions
+        .filter((s) => s.id !== currentSessionId)
+        .slice(0, Math.max(0, limit - 1));
+      return { rows: [pinned, ...rest], count: limit };
+    }
+    return { rows: head, count: head.length };
+  }, [isExpanded, sessions, limit, currentSessionId]);
+  const visible = visibleAndCount.rows;
+  const remaining = sessions.length - visibleAndCount.count;
   const archivedVisible = archivedExpanded
     ? archivedSessions.slice(0, archivedLimit)
     : [];
