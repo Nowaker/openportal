@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMatch } from "@tanstack/react-router";
-import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
+import {
+  EllipsisVerticalIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuSection,
+  MenuSeparator,
+  MenuTrigger,
+} from "@/components/ui/menu";
+import { SessionInfoModal } from "@/components/session-info-modal";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -53,6 +64,7 @@ export function AppSidebarNav() {
   );
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
+  const [showSessionInfo, setShowSessionInfo] = useState(false);
 
   const sessionMatch = useMatch({
     from: "/_app/session/$id",
@@ -156,32 +168,50 @@ export function AppSidebarNav() {
         </span>
       </span>
       <span className="flex items-center gap-x-2 ml-auto shrink-0">
-        {enabledTools.length > 0 && (
+        {(sessionId || enabledTools.length > 0) && (
           <Menu>
-            <MenuTrigger aria-label="Run a tool">
-              <Button
-                intent="outline"
-                size="sq-sm"
-                isDisabled={!canRun || isBusy}
-              >
+            <MenuTrigger aria-label="Open menu">
+              <Button intent="outline" size="sq-sm">
                 <EllipsisVerticalIcon className="size-4" />
               </Button>
             </MenuTrigger>
-            <MenuContent placement="bottom end" className="min-w-48">
-              {enabledTools.map((tool) => (
-                <MenuItem
-                  key={tool.id}
-                  onAction={() =>
-                    runTool(tool.id, tool.prompt, tool.name)
-                  }
-                >
-                  {tool.name}
-                </MenuItem>
-              ))}
+            <MenuContent placement="bottom end" className="min-w-56">
+              {sessionId && (
+                <MenuSection label="Native">
+                  <MenuItem onAction={() => setShowSessionInfo(true)}>
+                    <InformationCircleIcon
+                      className="size-4"
+                      data-slot="icon"
+                    />
+                    Session info
+                  </MenuItem>
+                </MenuSection>
+              )}
+              {sessionId && enabledTools.length > 0 && <MenuSeparator />}
+              {enabledTools.length > 0 && (
+                <MenuSection label="Prompt templates">
+                  {enabledTools.map((tool) => (
+                    <MenuItem
+                      key={tool.id}
+                      isDisabled={!canRun || isBusy}
+                      onAction={() => runTool(tool.id, tool.prompt, tool.name)}
+                    >
+                      {tool.name}
+                    </MenuItem>
+                  ))}
+                </MenuSection>
+              )}
             </MenuContent>
           </Menu>
         )}
       </span>
+      {sessionId && (
+        <SessionInfoModal
+          isOpen={showSessionInfo}
+          sessionId={sessionId}
+          onOpenChange={setShowSessionInfo}
+        />
+      )}
     </SidebarNav>
   );
 }
