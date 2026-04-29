@@ -658,8 +658,28 @@ function ProjectsList({
       binMap,
       (bin) =>
         bin.sessions[0]?.time?.updated ?? bin.sessions[0]?.time?.created ?? 0,
+      (bin) => {
+        for (const s of bin.sessions) {
+          const t = statusMap?.[s.id]?.type;
+          if (t === "busy" || t === "retry") return true;
+          if (questionSessionIds.has(s.id)) return true;
+          if (errorSessionIds.has(s.id)) return true;
+          if (sessionHasNewContent(s, lastViewedMap, currentSessionId))
+            return true;
+          if (sessionHasDraft(s.id)) return true;
+        }
+        return false;
+      },
     );
-  }, [baseDirs, binMap]);
+  }, [
+    baseDirs,
+    binMap,
+    statusMap,
+    questionSessionIds,
+    errorSessionIds,
+    lastViewedMap,
+    currentSessionId,
+  ]);
 
   // Group top-level nodes BY base dir so each base can render with its own
   // path header. Each base-dir root container is unwrapped: its children

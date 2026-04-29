@@ -50,6 +50,7 @@ export function buildProjectTree<TBin>(
   baseDirs: BaseDirEntry[],
   bins: Map<string, TBin>,
   binActivity: (bin: TBin) => number,
+  binHasIndicator?: (bin: TBin) => boolean,
 ): ProjectTreeNode<TBin>[] {
   const trees: ProjectTreeNode<TBin>[] = [];
   for (const base of baseDirs) {
@@ -98,40 +99,62 @@ export function buildProjectTree<TBin>(
       }
     }
 
-    sortTreeRecursive(root, binActivity);
+    sortTreeRecursive(root, binActivity, binHasIndicator);
     trees.push(root);
   }
   return trees;
 }
 
+interface NodeRank {
+  activity: number;
+  hasIndicator: boolean;
+}
+
+// Sort priority at every level: nodes whose subtree contains ANY indicator
+// (busy/retry/question/error/draft/new-content) come first; ties broken by
+// most-recent activity. Indicator-free nodes follow, also by activity desc.
+// Old behaviour preserved when binHasIndicator is omitted: pure activity sort
+// with empty-categories alphabetically last.
 function sortTreeRecursive<TBin>(
   node: ProjectTreeNode<TBin>,
   binActivity: (bin: TBin) => number,
-): number {
+  binHasIndicator: ((bin: TBin) => boolean) | undefined,
+): NodeRank {
   if (node.children.length === 0) {
-    return node.bin ? binActivity(node.bin) : 0;
+    const activity = node.bin ? binActivity(node.bin) : 0;
+    const hasIndicator =
+      binHasIndicator && node.bin ? binHasIndicator(node.bin) : false;
+    return { activity, hasIndicator };
   }
-  const childActivities = node.children.map((c) => ({
+  const ranks = node.children.map((c) => ({
     child: c,
-    activity: sortTreeRecursive(c, binActivity),
+    rank: sortTreeRecursive(c, binActivity, binHasIndicator),
   }));
-  childActivities.sort((a, b) => {
+  ranks.sort((a, b) => {
+    if (binHasIndicator) {
+      if (a.rank.hasIndicator !== b.rank.hasIndicator) {
+        return a.rank.hasIndicator ? -1 : 1;
+      }
+      return b.rank.activity - a.rank.activity;
+    }
     const aLeaf = a.child.children.length === 0;
     const bLeaf = b.child.children.length === 0;
-    if (aLeaf && bLeaf) {
-      return b.activity - a.activity;
-    }
+    if (aLeaf && bLeaf) return b.rank.activity - a.rank.activity;
     if (!aLeaf && !bLeaf) {
-      const aHasSessions = a.activity > 0;
-      const bHasSessions = b.activity > 0;
-      if (aHasSessions !== bHasSessions) return aHasSessions ? -1 : 1;
+      const aHas = a.rank.activity > 0;
+      const bHas = b.rank.activity > 0;
+      if (aHas !== bHas) return aHas ? -1 : 1;
       return a.child.name.localeCompare(b.child.name);
     }
     return aLeaf ? -1 : 1;
   });
-  node.children = childActivities.map((c) => c.child);
-  return Math.max(
-    node.bin ? binActivity(node.bin) : 0,
-    ...childActivities.map((c) => c.activity),
-  );
+  node.children = ranks.map((r) => r.child);
+  const ownActivity = node.bin ? binActivity(node.bin) : 0;
+  const ownIndicator =
+    binHasIndicator && node.bin ? binHasIndicator(node.bin) : false;
+  return {
+    activity: Math.max(ownActivity, ...ranks.map((r) => r.rank.activity)),
+    hasIndicator:
+      ownIndicator || ranks.some((r) => r.rank.hasIndicator),
+  };
 }
