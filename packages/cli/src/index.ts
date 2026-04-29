@@ -18,6 +18,7 @@ const __dirname = dirname(__filename);
 
 const CONFIG_PATH = join(homedir(), ".portal.json");
 const CONFIG_LOCK_PATH = `${CONFIG_PATH}.lock`;
+const OPENPORTAL_CONFIG_PATH = join(homedir(), ".openportal.json");
 const DEFAULT_HOSTNAME = "0.0.0.0";
 const DEFAULT_PORT = 3000;
 const DEFAULT_OPENCODE_PORT = 4000;
@@ -34,6 +35,7 @@ interface PortalInstance {
   opencodePid: number | null;
   webPid: number | null;
   startedAt: string;
+  attachedOpencode?: boolean;
 }
 
 interface PortalConfig {
@@ -149,6 +151,65 @@ function isInstanceRunning(instance: PortalInstance): boolean {
   return (
     isProcessRunning(instance.opencodePid) || isProcessRunning(instance.webPid)
   );
+}
+
+// Reads ~/.openportal.json for `decoupleOpencode: true`. When true, the CLI
+// runs in pidfile-driven attach mode: opencode children survive an openportal
+// restart, the next openportal startup attaches to the still-running opencode
+// instead of spawning a fresh one, and `openportal stop` does not terminate
+// opencode. Default is false (existing managed-child behaviour).
+function readDecoupleOpencodeFlag(): boolean {
+  try {
+    if (!existsSync(OPENPORTAL_CONFIG_PATH)) return false;
+    const raw = JSON.parse(readFileSync(OPENPORTAL_CONFIG_PATH, "utf-8"));
+    return raw?.decoupleOpencode === true;
+  } catch (error) {
+    console.warn(
+      `[openportal-config] Failed to read ${OPENPORTAL_CONFIG_PATH}:`,
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
+
+function opencodePidfilePath(port: number): string {
+  return join(homedir(), `.openportal-opencode-${port}.pid`);
+}
+
+function writeOpencodePidfile(port: number, pid: number): void {
+  try {
+    writeFileSync(opencodePidfilePath(port), `${pid}\n`);
+  } catch (error) {
+    console.warn(
+      `[pidfile] Failed to write opencode pidfile for port ${port}:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+// Returns the live opencode PID for `port` if we have a pidfile pointing at
+// a running opencode process, else null. PID validation: exists in pidfile,
+// process is alive, and on Linux /proc/<pid>/cmdline contains "opencode" so
+// a recycled PID belonging to an unrelated process can't be mistaken for
+// opencode. Non-Linux hosts skip the cmdline check (alive-only validation).
+function readLiveOpencodePidfile(port: number): number | null {
+  const path = opencodePidfilePath(port);
+  if (!existsSync(path)) return null;
+  let pid: number;
+  try {
+    pid = parseInt(readFileSync(path, "utf-8").trim(), 10);
+  } catch {
+    return null;
+  }
+  if (!Number.isFinite(pid) || pid <= 0) return null;
+  if (!isProcessRunning(pid)) return null;
+  try {
+    const cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf-8");
+    if (!cmdline.includes("opencode")) return null;
+  } catch {
+    // /proc unavailable (non-Linux); trust the alive check above.
+  }
+  return pid;
 }
 
 function printHelp() {
@@ -302,19 +363,32 @@ async function cmdDefault(
     process.exit(1);
   }
 
+  const decouple = readDecoupleOpencodeFlag();
+
   console.log(`Starting OpenPortal...`);
   console.log(`  Name: ${name}`);
   console.log(`  Directory: ${directory}`);
   console.log(`  Web UI Port: ${port}`);
   console.log(`  OpenCode Port: ${opencodePort}`);
   console.log(`  Hostname: ${hostname}`);
+  if (decouple) console.log(`  Lifecycle: decoupled (opencode survives openportal restarts)`);
 
   try {
-    const opencodePid = await startOpenCodeServer(
-      directory,
-      opencodePort,
-      hostname,
-    );
+    let opencodePid: number;
+    let attachedOpencode = false;
+    if (decouple) {
+      const existingPid = readLiveOpencodePidfile(opencodePort);
+      if (existingPid !== null) {
+        opencodePid = existingPid;
+        attachedOpencode = true;
+        console.log(`Attaching to existing OpenCode (PID: ${existingPid})`);
+      } else {
+        opencodePid = await startOpenCodeServer(directory, opencodePort, hostname);
+        writeOpencodePidfile(opencodePort, opencodePid);
+      }
+    } else {
+      opencodePid = await startOpenCodeServer(directory, opencodePort, hostname);
+    }
     const webPid = await startWebServer(port, hostname);
 
     const instance: PortalInstance = {
@@ -327,6 +401,7 @@ async function cmdDefault(
       opencodePid,
       webPid,
       startedAt: new Date().toISOString(),
+      attachedOpencode,
     };
 
     mutateConfig((config) => {
@@ -339,7 +414,7 @@ async function cmdDefault(
     const displayHost = hostname === "0.0.0.0" ? "localhost" : hostname;
 
     console.log(`\n✅ OpenPortal started!`);
-    console.log(`   OpenCode PID: ${opencodePid}`);
+    console.log(`   OpenCode PID: ${opencodePid}${attachedOpencode ? " (attached)" : ""}`);
     console.log(`   Web UI PID: ${webPid}`);
     console.log(`\n📱 Access OpenPortal at http://${displayHost}:${port}`);
     console.log(`🔧 OpenCode API at http://${displayHost}:${opencodePort}`);
@@ -373,18 +448,31 @@ async function cmdRun(options: Record<string, string | boolean | undefined>) {
     return;
   }
 
+  const decouple = readDecoupleOpencodeFlag();
+
   console.log(`Starting OpenCode server...`);
   console.log(`  Name: ${name}`);
   console.log(`  Directory: ${directory}`);
   console.log(`  OpenCode Port: ${opencodePort}`);
   console.log(`  Hostname: ${hostname}`);
+  if (decouple) console.log(`  Lifecycle: decoupled`);
 
   try {
-    const opencodePid = await startOpenCodeServer(
-      directory,
-      opencodePort,
-      hostname,
-    );
+    let opencodePid: number;
+    let attachedOpencode = false;
+    if (decouple) {
+      const existingPid = readLiveOpencodePidfile(opencodePort);
+      if (existingPid !== null) {
+        opencodePid = existingPid;
+        attachedOpencode = true;
+        console.log(`Attaching to existing OpenCode (PID: ${existingPid})`);
+      } else {
+        opencodePid = await startOpenCodeServer(directory, opencodePort, hostname);
+        writeOpencodePidfile(opencodePort, opencodePid);
+      }
+    } else {
+      opencodePid = await startOpenCodeServer(directory, opencodePort, hostname);
+    }
 
     const instance: PortalInstance = {
       id: generateId(),
@@ -396,6 +484,7 @@ async function cmdRun(options: Record<string, string | boolean | undefined>) {
       opencodePid,
       webPid: null,
       startedAt: new Date().toISOString(),
+      attachedOpencode,
     };
 
     mutateConfig((config) => {
@@ -439,11 +528,17 @@ async function cmdStop(options: Record<string, string | boolean | undefined>) {
   }
 
   if (removed.opencodePid !== null) {
-    try {
-      process.kill(removed.opencodePid, "SIGTERM");
-      console.log(`Stopped OpenCode (PID: ${removed.opencodePid})`);
-    } catch {
-      console.log("OpenCode was already stopped.");
+    if (removed.attachedOpencode) {
+      console.log(
+        `Leaving OpenCode running (decoupled, PID: ${removed.opencodePid})`,
+      );
+    } else {
+      try {
+        process.kill(removed.opencodePid, "SIGTERM");
+        console.log(`Stopped OpenCode (PID: ${removed.opencodePid})`);
+      } catch {
+        console.log("OpenCode was already stopped.");
+      }
     }
   }
 
