@@ -4,6 +4,7 @@ import {
   FireIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
+import { FireIcon as FireIconSolid } from "@heroicons/react/24/solid";
 import { Menu, MenuContent, MenuItem } from "@/components/ui/menu";
 import { Button } from "@/components/ui/button";
 import { useProviders } from "@/hooks/use-opencode";
@@ -15,15 +16,16 @@ interface ThinkingSelectProps {
   sessionId: string | null;
 }
 
-const KNOWN_ORDER = ["low", "medium", "high", "max"] as const;
+const KNOWN_ORDER = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export function variantIcon(variant: string, size = "size-4") {
   if (!variant) return <BoltSlashIcon className={`${size} text-muted-fg/60`} />;
   const v = variant.toLowerCase();
   if (v === "low") return <BoltIcon className={`${size} text-fg/60`} />;
   if (v === "medium") return <BoltIcon className={`${size} text-fg`} />;
-  if (v === "high") return <FireIcon className={`${size} text-amber-500`} />;
-  if (v === "max") return <FireIcon className={`${size} text-red-500`} />;
+  if (v === "high") return <FireIcon className={`${size} text-fg`} />;
+  if (v === "max" || v === "xhigh")
+    return <FireIconSolid className={`${size} text-fg`} />;
   return <SparklesIcon className={`${size} text-fg`} />;
 }
 
