@@ -1105,6 +1105,38 @@ function MarkdownWithTime({
   );
 }
 
+function ErrorAcknowledgeControl({
+  sessionId,
+  messageId,
+}: {
+  sessionId: string;
+  messageId: string;
+}) {
+  const acknowledgedId = useSessionErrorStore(
+    (s) => s.acknowledged[sessionId],
+  );
+  if (acknowledgedId === messageId) {
+    return (
+      <span className="shrink-0 inline-flex items-center gap-1 rounded-md border border-border bg-bg/40 px-2 py-0.5 text-[11px] font-medium text-muted-fg">
+        <CheckIcon className="size-3" />
+        Acknowledged
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        useSessionErrorStore.getState().acknowledge(sessionId, messageId)
+      }
+      className="shrink-0 rounded-md border border-border bg-bg/40 px-2 py-0.5 text-[11px] font-medium text-fg hover:bg-bg/80"
+      title="Mark this error as seen and clear the red indicator"
+    >
+      Acknowledge
+    </button>
+  );
+}
+
 const MessageItem = memo(function MessageItem({
   message,
   port,
@@ -1115,6 +1147,7 @@ const MessageItem = memo(function MessageItem({
   onAbort,
   pendingDelete,
   onRevertRequest,
+  isLastError,
 }: {
   message: MessageWithParts;
   port: number;
@@ -1125,6 +1158,7 @@ const MessageItem = memo(function MessageItem({
   onAbort: () => void;
   pendingDelete: boolean;
   onRevertRequest: (message: MessageWithParts, text: string) => void;
+  isLastError: boolean;
 }) {
   const textContent = getMessageContent(message.parts);
   const isAssistant = message.info.role === "assistant";
@@ -1254,18 +1288,12 @@ const MessageItem = memo(function MessageItem({
         >
           <div className="flex items-start justify-between gap-2">
             <div className="font-semibold">{errorDescription.title}</div>
-            <button
-              type="button"
-              onClick={() =>
-                useSessionErrorStore
-                  .getState()
-                  .acknowledge(sessionId, message.info.id)
-              }
-              className="shrink-0 rounded-md border border-border bg-bg/40 px-2 py-0.5 text-[11px] font-medium text-fg hover:bg-bg/80"
-              title="Mark this error as seen and clear the red indicator"
-            >
-              Acknowledge
-            </button>
+            {isLastError && (
+              <ErrorAcknowledgeControl
+                sessionId={sessionId}
+                messageId={message.info.id}
+              />
+            )}
           </div>
           {errorDescription.detail && (
             <div className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug">
@@ -2207,6 +2235,14 @@ function SessionPage() {
     const targetIndex = revertTarget
       ? visible.findIndex((m) => m.info.id === revertTarget.messageId)
       : -1;
+    let lastErrorMessageId: string | undefined;
+    for (let i = visible.length - 1; i >= 0; i--) {
+      const m = visible[i];
+      if (m.info.role === "assistant" && m.info.error != null) {
+        lastErrorMessageId = m.info.id;
+        break;
+      }
+    }
     return visible.map((message, idx) => {
       let pendingDelete = false;
       if (revertTarget && targetIndex >= 0) {
@@ -2257,6 +2293,7 @@ function SessionPage() {
           onAbort={handleAbort}
           pendingDelete={pendingDelete}
           onRevertRequest={handleRevertRequest}
+          isLastError={message.info.id === lastErrorMessageId}
         />
       );
     });
