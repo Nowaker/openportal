@@ -292,6 +292,32 @@ function ProjectGroup({
   const headerStyle = depth > 0 ? { paddingLeft: `${0.5 + depth * 0.75}rem` } : undefined;
   const sessionRowStyle = depth > 0 ? { paddingLeft: `${0.75 + depth * 0.75}rem` } : undefined;
 
+  // Cascade per-session indicators up to the project header so the user can
+  // see at-a-glance whether ANY session in this project needs attention,
+  // even when collapsed. Mirrors the same aggregation that intermediate
+  // category rows use (aggregateNodeStatus) - just inlined since
+  // ProjectGroup already has the relevant per-session props.
+  let aggBusy = false;
+  let aggRetry = false;
+  let aggNewContent = false;
+  let aggDraft = false;
+  let aggQuestion = false;
+  let aggError = false;
+  for (const s of sessions) {
+    const t = statusMap?.[s.id]?.type;
+    if (t === "busy") aggBusy = true;
+    else if (t === "retry") aggRetry = true;
+    if (sessionHasNewContent(s, lastViewedMap, currentSessionId)) aggNewContent = true;
+    if (sessionHasDraft(s.id)) aggDraft = true;
+    if (questionSessionIds.has(s.id)) aggQuestion = true;
+    if (errorSessionIds.has(s.id)) aggError = true;
+  }
+  const aggStatus: "busy" | "retry" | undefined = aggBusy
+    ? "busy"
+    : aggRetry
+      ? "retry"
+      : undefined;
+
   return (
     <>
       <div
@@ -309,7 +335,14 @@ function ProjectGroup({
           <ChevronRightIcon
             className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           />
-          <span className="text-[12px] truncate">
+          <DraftIndicator hasDraft={aggDraft} />
+          <SessionStatusDot
+            status={aggStatus}
+            hasNewContent={aggNewContent}
+            hasQuestion={aggQuestion}
+            hasError={aggError}
+          />
+          <span className="text-xs sm:text-sm truncate ml-px">
             {highlightMatch(projectName, searchQuery)}
             {sessions.length > 0 && (
               <span className="ml-1 text-muted-fg">({sessions.length})</span>
@@ -938,7 +971,7 @@ function TreeNodeRow({
             hasQuestion={aggregate.question}
             hasError={aggregate.error}
           />
-          <span className="text-[12px] truncate">
+          <span className="text-xs sm:text-sm truncate ml-px">
             {highlightMatch(node.name, searchQuery)}
             {aggregate.sessionCount > 0 && (
               <span className="ml-1 text-muted-fg">
