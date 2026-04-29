@@ -15,6 +15,7 @@ interface Props {
 }
 
 interface AssistantMessageInfo {
+  id?: string;
   cost?: number;
   modelID?: string;
   providerID?: string;
@@ -40,6 +41,85 @@ interface RawProviderConfig {
     }
   >;
 }
+
+// Mirrors opencode's session-context-breakdown logic. Estimates token
+// attribution from message PART content (chars / 4, rounded up), not from
+// any provider-side telemetry. Returns the visible non-zero buckets in
+// declared order. If the bucket sum exceeds the last-assistant's reported
+// input tokens, scale every bucket proportionally so the bar fits.
+type BucketKey = "system" | "user" | "assistant" | "tool" | "other";
+
+interface PartLike {
+  type?: string;
+  text?: string;
+  source?: {
+    text?: { value?: string };
+    value?: string;
+  };
+  input?: unknown;
+  state?: { output?: unknown; input?: unknown };
+}
+
+interface MessageLike {
+  info: { role: string; system?: string };
+  parts: PartLike[];
+}
+
+function partLen(p: PartLike, role: "user" | "assistant"): {
+  user: number;
+  assistant: number;
+  tool: number;
+} {
+  const z = { user: 0, assistant: 0, tool: 0 };
+  if (!p || typeof p !== "object") return z;
+  const t = p.type;
+  if (role === "user") {
+    if (t === "text" && typeof p.text === "string") {
+      return { ...z, user: p.text.length };
+    }
+    if (t === "file") {
+      const v = p.source?.text?.value;
+      return { ...z, user: typeof v === "string" ? v.length : 0 };
+    }
+    if (t === "agent") {
+      const v = p.source?.value;
+      return { ...z, user: typeof v === "string" ? v.length : 0 };
+    }
+    return z;
+  }
+  if (t === "text" && typeof p.text === "string") {
+    return { ...z, assistant: p.text.length };
+  }
+  if (t === "reasoning" && typeof p.text === "string") {
+    return { ...z, assistant: p.text.length };
+  }
+  if (t === "tool") {
+    const inputLen = p.input ? JSON.stringify(p.input).length : 0;
+    const outputLen = p.state?.output
+      ? typeof p.state.output === "string"
+        ? p.state.output.length
+        : JSON.stringify(p.state.output).length
+      : 0;
+    return { ...z, tool: inputLen + outputLen };
+  }
+  return z;
+}
+
+const BUCKET_LABEL: Record<BucketKey, string> = {
+  system: "System",
+  user: "User",
+  assistant: "Assistant",
+  tool: "Tool Calls",
+  other: "Other",
+};
+
+const BUCKET_COLOR: Record<BucketKey, string> = {
+  system: "bg-blue-500",
+  user: "bg-green-500",
+  assistant: "bg-orange-400",
+  tool: "bg-amber-500",
+  other: "bg-zinc-400",
+};
 
 function fmt(n: number | undefined | null): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return "—";
@@ -98,33 +178,44 @@ function Body({
     let userCount = 0;
     let assistantCount = 0;
     let totalCost = 0;
-    let inputSum = 0;
-    let outputSum = 0;
-    let reasoningSum = 0;
-    let cacheReadSum = 0;
-    let cacheWriteSum = 0;
     let lastAssistant: AssistantMessageInfo | null = null;
-    type AnyMsg = { info: { role: string } & Partial<AssistantMessageInfo> };
-    const list = (messages ?? []) as unknown as AnyMsg[];
+    let systemChars = 0;
+    let userChars = 0;
+    let assistantChars = 0;
+    let toolChars = 0;
+    const list = (messages ?? []) as unknown as MessageLike[];
     for (const m of list) {
       const role = m.info.role;
       if (role === "user") {
         userCount += 1;
+        for (const p of m.parts ?? []) {
+          const c = partLen(p, "user");
+          userChars += c.user;
+        }
       } else if (role === "assistant") {
         assistantCount += 1;
         const a = m.info as AssistantMessageInfo;
         if (typeof a.cost === "number") totalCost += a.cost;
-        if (a.tokens) {
-          inputSum += a.tokens.input ?? 0;
-          outputSum += a.tokens.output ?? 0;
-          reasoningSum += a.tokens.reasoning ?? 0;
-          cacheReadSum += a.tokens.cache?.read ?? 0;
-          cacheWriteSum += a.tokens.cache?.write ?? 0;
+        if (typeof m.info.system === "string") {
+          systemChars += m.info.system.length;
+        }
+        for (const p of m.parts ?? []) {
+          const c = partLen(p, "assistant");
+          assistantChars += c.assistant;
+          toolChars += c.tool;
         }
         lastAssistant = a;
       }
     }
-    const totalTokens = inputSum + outputSum + reasoningSum + cacheReadSum + cacheWriteSum;
+    // Per opencode: token totals come from the LAST assistant message,
+    // not summed across the whole session. cost IS summed across all.
+    const inputSum = lastAssistant?.tokens?.input ?? 0;
+    const outputSum = lastAssistant?.tokens?.output ?? 0;
+    const reasoningSum = lastAssistant?.tokens?.reasoning ?? 0;
+    const cacheReadSum = lastAssistant?.tokens?.cache?.read ?? 0;
+    const cacheWriteSum = lastAssistant?.tokens?.cache?.write ?? 0;
+    const totalTokens =
+      inputSum + outputSum + reasoningSum + cacheReadSum + cacheWriteSum;
     return {
       messages: list.length,
       userCount,
@@ -137,6 +228,12 @@ function Body({
       cacheWriteSum,
       totalTokens,
       lastAssistant,
+      breakdownChars: {
+        system: systemChars,
+        user: userChars,
+        assistant: assistantChars,
+        tool: toolChars,
+      },
     };
   }, [messages]);
 
@@ -156,12 +253,61 @@ function Body({
   }, [providersData, stats.lastAssistant]);
 
   const usagePct = useMemo(() => {
-    const a = stats.lastAssistant;
-    if (!a || !modelInfo?.contextLimit) return null;
-    const used = (a.tokens?.input ?? 0) + (a.tokens?.cache?.read ?? 0);
-    if (!modelInfo.contextLimit) return null;
-    return Math.min(100, Math.round((used / modelInfo.contextLimit) * 100));
-  }, [stats.lastAssistant, modelInfo]);
+    if (!modelInfo?.contextLimit) return null;
+    return Math.min(
+      100,
+      Math.round((stats.totalTokens / modelInfo.contextLimit) * 100),
+    );
+  }, [stats.totalTokens, modelInfo]);
+
+  const breakdown = useMemo<
+    { key: BucketKey; tokens: number; percent: number; width: number }[]
+  >(() => {
+    const input = stats.inputSum;
+    if (input <= 0) return [];
+    const estimateTokens = (chars: number) => Math.ceil(chars / 4);
+    const raw = {
+      system: estimateTokens(stats.breakdownChars.system),
+      user: estimateTokens(stats.breakdownChars.user),
+      assistant: estimateTokens(stats.breakdownChars.assistant),
+      tool: estimateTokens(stats.breakdownChars.tool),
+    };
+    const estimated = raw.system + raw.user + raw.assistant + raw.tool;
+    let scaled = raw;
+    let other: number;
+    if (estimated <= input) {
+      other = input - estimated;
+    } else {
+      const k = input / estimated;
+      scaled = {
+        system: Math.floor(raw.system * k),
+        user: Math.floor(raw.user * k),
+        assistant: Math.floor(raw.assistant * k),
+        tool: Math.floor(raw.tool * k),
+      };
+      const sum =
+        scaled.system + scaled.user + scaled.assistant + scaled.tool;
+      other = Math.max(0, input - sum);
+    }
+    const buckets: { key: BucketKey; tokens: number }[] = [
+      { key: "system", tokens: scaled.system },
+      { key: "user", tokens: scaled.user },
+      { key: "assistant", tokens: scaled.assistant },
+      { key: "tool", tokens: scaled.tool },
+      { key: "other", tokens: other },
+    ];
+    return buckets
+      .filter((b) => b.tokens > 0)
+      .map((b) => {
+        const width = (b.tokens / input) * 100;
+        return {
+          key: b.key,
+          tokens: b.tokens,
+          percent: Math.round(width * 10) / 10,
+          width,
+        };
+      });
+  }, [stats.breakdownChars, stats.inputSum]);
 
   return (
     <>
@@ -176,29 +322,78 @@ function Body({
           <XMarkIcon className="size-4" />
         </button>
       </div>
-      <div className="overflow-y-auto p-4 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-        <Field label="Session" value={session?.title ?? "—"} />
-        <Field label="Messages" value={fmt(stats.messages)} />
-        <Field label="Provider" value={modelInfo?.providerName ?? "—"} />
-        <Field label="Model" value={modelInfo?.modelName ?? "—"} />
-        <Field label="Context Limit" value={fmt(modelInfo?.contextLimit)} />
-        <Field label="Total Tokens" value={fmt(stats.totalTokens)} />
-        <Field
-          label="Usage"
-          value={usagePct === null ? "—" : `${usagePct}%`}
-        />
-        <Field label="Input Tokens" value={fmt(stats.inputSum)} />
-        <Field label="Output Tokens" value={fmt(stats.outputSum)} />
-        <Field label="Reasoning Tokens" value={fmt(stats.reasoningSum)} />
-        <Field
-          label="Cache Tokens (read/write)"
-          value={`${fmt(stats.cacheReadSum)} / ${fmt(stats.cacheWriteSum)}`}
-        />
-        <Field label="User Messages" value={fmt(stats.userCount)} />
-        <Field label="Assistant Messages" value={fmt(stats.assistantCount)} />
-        <Field label="Total Cost" value={fmtMoney(stats.totalCost)} />
-        <Field label="Session Created" value={fmtDate(session?.time?.created)} />
-        <Field label="Last Activity" value={fmtDate(session?.time?.updated)} />
+      <div className="overflow-y-auto p-4 space-y-5">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+          <Field label="Session" value={session?.title ?? "—"} />
+          <Field label="Messages" value={fmt(stats.messages)} />
+          <Field label="Provider" value={modelInfo?.providerName ?? "—"} />
+          <Field label="Model" value={modelInfo?.modelName ?? "—"} />
+          <Field label="Context Limit" value={fmt(modelInfo?.contextLimit)} />
+          <Field label="Total Tokens" value={fmt(stats.totalTokens)} />
+          <Field
+            label="Usage"
+            value={usagePct === null ? "—" : `${usagePct}%`}
+          />
+          <Field label="Input Tokens" value={fmt(stats.inputSum)} />
+          <Field label="Output Tokens" value={fmt(stats.outputSum)} />
+          <Field
+            label="Reasoning Tokens"
+            value={fmt(stats.reasoningSum)}
+          />
+          <Field
+            label="Cache Tokens (read/write)"
+            value={`${fmt(stats.cacheReadSum)} / ${fmt(stats.cacheWriteSum)}`}
+          />
+          <Field label="User Messages" value={fmt(stats.userCount)} />
+          <Field
+            label="Assistant Messages"
+            value={fmt(stats.assistantCount)}
+          />
+          <Field label="Total Cost" value={fmtMoney(stats.totalCost)} />
+          <Field
+            label="Session Created"
+            value={fmtDate(session?.time?.created)}
+          />
+          <Field
+            label="Last Activity"
+            value={fmtDate(session?.time?.updated)}
+          />
+        </div>
+        {breakdown.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs text-muted-fg">Context Breakdown</div>
+            <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+              {breakdown.map((seg) => (
+                <div
+                  key={seg.key}
+                  className={`h-full ${BUCKET_COLOR[seg.key]}`}
+                  style={{ width: `${seg.width}%` }}
+                  title={`${BUCKET_LABEL[seg.key]} ${seg.percent}%`}
+                />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              {breakdown.map((seg) => (
+                <div
+                  key={seg.key}
+                  className="flex items-center gap-1.5"
+                >
+                  <span
+                    className={`inline-block size-2 rounded-full ${BUCKET_COLOR[seg.key]}`}
+                  />
+                  <span>{BUCKET_LABEL[seg.key]}</span>
+                  <span className="text-muted-fg">
+                    {seg.percent.toLocaleString(undefined, {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}
+                    %
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
