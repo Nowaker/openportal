@@ -7,6 +7,10 @@ import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useSelfInstance } from "@/hooks/use-opencode";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import {
+  PullToRefreshIndicator,
+  PullToRefreshWrapper,
+} from "@/components/pull-to-refresh-indicator";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -64,15 +68,18 @@ function AppLayout() {
 
   return (
     <BreadcrumbProvider>
-      <SidebarProvider className="h-dvh overflow-hidden">
-        <AppSidebar collapsible="dock" />
-        <SidebarInset className="overflow-hidden">
-          <AppSidebarNav />
-          <div className="flex-1 overflow-hidden">
-            <Outlet />
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+      <PullToRefreshIndicator />
+      <PullToRefreshWrapper>
+        <SidebarProvider className="h-dvh overflow-hidden">
+          <AppSidebar collapsible="dock" />
+          <SidebarInset className="overflow-hidden">
+            <AppSidebarNav />
+            <div className="flex-1 overflow-hidden">
+              <Outlet />
+            </div>
+          </SidebarInset>
+        </SidebarProvider>
+      </PullToRefreshWrapper>
     </BreadcrumbProvider>
   );
 }
