@@ -1,6 +1,10 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BellAlertIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowPathIcon,
+  BellAlertIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import AppSidebar from "@/components/app-sidebar";
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -8,11 +12,25 @@ import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useSelfInstance } from "@/hooks/use-opencode";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
 import { requestNotificationPermission } from "@/hooks/use-status-notifications";
 import {
   PullToRefreshIndicator,
   PullToRefreshWrapper,
 } from "@/components/pull-to-refresh-indicator";
+
+function ConnectionStatusBanner() {
+  const status = useConnectionMonitor();
+  if (status === "connected") return null;
+  return (
+    <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+      <ArrowPathIcon className="size-4 shrink-0 animate-spin text-warning" />
+      <span className="flex-1 text-fg">
+        Lost connection to OpenPortal. Reconnecting…
+      </span>
+    </div>
+  );
+}
 
 const NOTIF_DISMISS_KEY = "opencode-notif-prompt-dismissed";
 
@@ -156,6 +174,7 @@ function AppLayout() {
         <SidebarProvider className="h-dvh overflow-hidden">
           <AppSidebar collapsible="dock" />
           <SidebarInset className="overflow-hidden">
+            <ConnectionStatusBanner />
             <NotificationPermissionBanner />
             <AppSidebarNav />
             <div className="flex-1 overflow-hidden">
