@@ -16,22 +16,56 @@ import {
 
 const NOTIF_DISMISS_KEY = "opencode-notif-prompt-dismissed";
 
+type BannerMode = "default" | "denied" | "hidden";
+
 function NotificationPermissionBanner() {
-  const [show, setShow] = useState(false);
+  const [mode, setMode] = useState<BannerMode>("hidden");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("Notification" in window)) return;
-    if (Notification.permission !== "default") return;
+    let dismissed = false;
     try {
-      if (localStorage.getItem(NOTIF_DISMISS_KEY) === "1") return;
+      dismissed = localStorage.getItem(NOTIF_DISMISS_KEY) === "1";
     } catch {
-      // private mode / quota - fall through and show the banner
+      // private mode / quota - treat as not dismissed (better to nag than hide)
     }
-    setShow(true);
+    if (dismissed) return;
+    if (Notification.permission === "default") setMode("default");
+    else if (Notification.permission === "denied") setMode("denied");
   }, []);
 
-  if (!show) return null;
+  if (mode === "hidden") return null;
+
+  const dismiss = () => {
+    try {
+      localStorage.setItem(NOTIF_DISMISS_KEY, "1");
+    } catch {
+      // ignore quota / private-mode errors
+    }
+    setMode("hidden");
+  };
+
+  if (mode === "denied") {
+    return (
+      <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+        <BellAlertIcon className="size-4 shrink-0 text-warning" />
+        <span className="flex-1 text-fg">
+          Notifications are blocked at the browser level. Click the lock /
+          tune icon in the address bar → Site settings → Notifications →
+          Allow, then reload.
+        </span>
+        <button
+          type="button"
+          onClick={dismiss}
+          className="rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+          aria-label="Dismiss"
+        >
+          <XMarkIcon className="size-4" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2 border-b border-border bg-bg/95 px-3 py-2 text-sm">
@@ -43,7 +77,7 @@ function NotificationPermissionBanner() {
         type="button"
         onClick={async () => {
           await requestNotificationPermission();
-          setShow(false);
+          setMode("hidden");
         }}
         className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium hover:bg-muted"
       >
@@ -51,14 +85,7 @@ function NotificationPermissionBanner() {
       </button>
       <button
         type="button"
-        onClick={() => {
-          try {
-            localStorage.setItem(NOTIF_DISMISS_KEY, "1");
-          } catch {
-            // ignore quota / private-mode errors
-          }
-          setShow(false);
-        }}
+        onClick={dismiss}
         className="rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
         aria-label="Dismiss"
       >
