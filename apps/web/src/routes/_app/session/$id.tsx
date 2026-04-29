@@ -46,6 +46,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
+import { useMarkViewed } from "@/hooks/use-last-viewed";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
@@ -1401,18 +1402,12 @@ function SessionPage() {
     [messages],
   );
 
+  const markViewed = useMarkViewed();
   useEffect(() => {
     if (loading) return;
     if (!sessionId) return;
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        `opencode-last-viewed:${sessionId}`,
-        String(Date.now()),
-      );
-    } catch {
-    }
-  }, [sessionId, loading, messages.length]);
+    void markViewed(sessionId, Date.now());
+  }, [sessionId, loading, messages.length, markViewed]);
 
   const setSessionError = useSessionErrorStore((s) => s.setError);
   useEffect(() => {
@@ -2210,7 +2205,7 @@ function SessionPage() {
 
         <div
           ref={messagesListRef}
-          className="divide-y divide-dashed divide-border overflow-x-hidden"
+          className="divide-y divide-dashed divide-border overflow-x-hidden [&>*:last-child]:border-t-0"
         >
           {!loading && !error && (
             <>
@@ -2397,7 +2392,7 @@ function SessionPage() {
           style={{ maxHeight: `${composerMaxHeight}px` }}
         >
           <>
-            <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 bg-muted/30 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
+            <div className="flex items-center gap-1 px-2 py-1 bg-muted/30 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
               <div className="flex min-w-0 flex-1 items-center gap-1">
                 <div className="min-w-0 flex-1 max-w-40">
                   <AgentSelect sessionId={sessionId} />

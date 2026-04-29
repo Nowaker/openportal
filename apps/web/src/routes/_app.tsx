@@ -6,6 +6,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useSelfInstance } from "@/hooks/use-opencode";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -16,6 +17,7 @@ function AppLayout() {
   const setInstance = useInstanceStore((s) => s.setInstance);
   const { data: selfData, isLoading, error } = useSelfInstance();
   const [hydrated, setHydrated] = useState(false);
+  usePullToRefresh();
 
   useEffect(() => {
     if (!selfData) return;

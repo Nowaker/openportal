@@ -53,6 +53,7 @@ import {
   type SessionStatusMap,
 } from "@/hooks/use-opencode";
 import { useSessionErrorStore } from "@/stores/session-error-store";
+import { useLastViewed } from "@/hooks/use-last-viewed";
 import {
   resolveProjectPath,
   buildProjectTree,
@@ -61,7 +62,6 @@ import {
 } from "@/lib/project-path";
 
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
-const LAST_VIEWED_KEY_PREFIX = "opencode-last-viewed:";
 
 function sessionHasDraft(sessionId: string): boolean {
   if (typeof window === "undefined") return false;
@@ -73,23 +73,20 @@ function sessionHasDraft(sessionId: string): boolean {
   }
 }
 
-function getLastViewed(sessionId: string): number {
-  if (typeof window === "undefined") return 0;
-  try {
-    const raw = window.localStorage.getItem(
-      LAST_VIEWED_KEY_PREFIX + sessionId,
-    );
-    return raw ? parseInt(raw, 10) || 0 : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function sessionHasNewContent(session: Session, currentSessionId?: string): boolean {
+// Last-viewed source-of-truth is the server (~/.openportal-state.json), not
+// localStorage - drafts of which device/tab last viewed a session need to
+// sync across devices so the green "review needed" dot clears everywhere
+// once the user actually reviews on any one of them.
+function sessionHasNewContent(
+  session: Session,
+  lastViewedMap: Record<string, number> | undefined,
+  currentSessionId?: string,
+): boolean {
   if (session.id === currentSessionId) return false;
   const updated = session.time?.updated ?? 0;
   if (!updated) return false;
-  return updated > getLastViewed(session.id);
+  const lastViewed = lastViewedMap?.[session.id] ?? 0;
+  return updated > lastViewed;
 }
 import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
@@ -146,10 +143,13 @@ interface ProjectGroupProps {
   searchQuery: string;
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
+  lastViewedMap: Record<string, number>;
   displayName?: string;
   depth?: number;
 }
 
+// Always-rendered fixed-width slots so absent indicators don't desync
+// horizontal alignment of session titles between rows.
 function SessionStatusDot({
   status,
   hasNewContent,
@@ -201,11 +201,13 @@ function SessionStatusDot({
       />
     );
   }
-  return null;
+  return <span className="size-2 shrink-0" aria-hidden />;
 }
 
 function DraftIndicator({ hasDraft }: { hasDraft: boolean }) {
-  if (!hasDraft) return null;
+  if (!hasDraft) {
+    return <span className="size-3 shrink-0" aria-hidden />;
+  }
   return (
     <PencilSquareIcon
       className="size-3 shrink-0 text-sky-500"
@@ -230,6 +232,7 @@ function ProjectGroup({
   searchQuery,
   questionSessionIds,
   errorSessionIds,
+  lastViewedMap,
   displayName,
   depth = 0,
 }: ProjectGroupProps) {
@@ -252,6 +255,9 @@ function ProjectGroup({
   // changes, so navigating away "unpins" the session.
   const visibleAndCount = useMemo(() => {
     if (!isExpanded) return { rows: [] as typeof sessions, count: 0 };
+    if (searchQuery) {
+      return { rows: sessions, count: sessions.length };
+    }
     const head = sessions.slice(0, limit);
     if (
       currentSessionId &&
@@ -265,12 +271,17 @@ function ProjectGroup({
       return { rows: [pinned, ...rest], count: limit };
     }
     return { rows: head, count: head.length };
-  }, [isExpanded, sessions, limit, currentSessionId]);
+  }, [isExpanded, sessions, limit, currentSessionId, searchQuery]);
   const visible = visibleAndCount.rows;
   const remaining = sessions.length - visibleAndCount.count;
-  const archivedVisible = archivedExpanded
-    ? archivedSessions.slice(0, archivedLimit)
-    : [];
+  // When searching, auto-reveal all matching archived sessions even if
+  // the archived section was collapsed - search must surface every match
+  // regardless of the gate that would normally hide it.
+  const archivedVisible = searchQuery
+    ? archivedSessions
+    : archivedExpanded
+      ? archivedSessions.slice(0, archivedLimit)
+      : [];
   const archivedRemaining = archivedSessions.length - archivedVisible.length;
   const projectName = displayName ?? projectBasename(directory);
   const containsCurrent =
@@ -319,7 +330,11 @@ function ProjectGroup({
       {visible.map((session) => {
         const status = statusMap?.[session.id]?.type;
         const hasDraft = sessionHasDraft(session.id);
-        const hasNewContent = sessionHasNewContent(session, currentSessionId);
+        const hasNewContent = sessionHasNewContent(
+          session,
+          lastViewedMap,
+          currentSessionId,
+        );
         const hasQuestion = questionSessionIds.has(session.id);
         const hasError = errorSessionIds.has(session.id);
         const isCurrent = session.id === currentSessionId;
@@ -428,6 +443,7 @@ interface ProjectsListProps {
   emptyProjectPaths: string[];
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
+  lastViewedMap: Record<string, number>;
 }
 
 interface ProjectBin {
@@ -455,6 +471,7 @@ function ProjectsList({
   emptyProjectPaths,
   questionSessionIds,
   errorSessionIds,
+  lastViewedMap,
 }: ProjectsListProps) {
   const groups = useMemo<ProjectBin[]>(() => {
     const byDir = new Map<string, ProjectBin>();
@@ -551,8 +568,21 @@ function ProjectsList({
 
   const tempExpanded = useMemo(() => {
     if (!searchQuery) return new Set<string>();
-    return new Set(filteredGroups.map((g) => g.dir));
-  }, [filteredGroups, searchQuery]);
+    // Force-expand every match's path AND all its ancestor path segments,
+    // so a session under ~/projekty/cat/proj surfaces even when the parent
+    // category was collapsed when search began.
+    const out = new Set<string>();
+    for (const g of filteredGroups) {
+      out.add(g.dir);
+      let cursor = g.dir;
+      while (cursor.lastIndexOf("/") > 0) {
+        cursor = cursor.slice(0, cursor.lastIndexOf("/"));
+        out.add(cursor);
+        if (baseDirs.some((b) => b.path === cursor)) break;
+      }
+    }
+    return out;
+  }, [filteredGroups, searchQuery, baseDirs]);
 
   useEffect(() => {
     if (!currentSessionId) return;
@@ -640,6 +670,7 @@ function ProjectsList({
       searchQuery={searchQuery}
       questionSessionIds={questionSessionIds}
       errorSessionIds={errorSessionIds}
+      lastViewedMap={lastViewedMap}
     />
   );
 }
@@ -659,6 +690,7 @@ function aggregateNodeStatus(
   currentSessionId: string | undefined,
   questionSessionIds: Set<string>,
   errorSessionIds: Set<string>,
+  lastViewedMap: Record<string, number>,
 ): AggregateStatus {
   const acc: AggregateStatus = {
     status: undefined,
@@ -675,7 +707,7 @@ function aggregateNodeStatus(
         const t = statusMap?.[s.id]?.type;
         if (t === "busy") acc.status = "busy";
         else if (t === "retry" && acc.status !== "busy") acc.status = "retry";
-        if (sessionHasNewContent(s, currentSessionId)) acc.newContent = true;
+        if (sessionHasNewContent(s, lastViewedMap, currentSessionId)) acc.newContent = true;
         if (sessionHasDraft(s.id)) acc.draft = true;
         if (questionSessionIds.has(s.id)) acc.question = true;
         if (errorSessionIds.has(s.id)) acc.error = true;
@@ -710,6 +742,7 @@ interface TreeChildrenProps {
   searchQuery: string;
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
+  lastViewedMap: Record<string, number>;
 }
 
 // Splits a node's children into "has-sessions" (rendered always) vs "empty"
@@ -731,7 +764,8 @@ function TreeChildren({ nodes, ...rest }: TreeChildrenProps) {
     return { withSessions: ws, empty: em };
   }, [nodes]);
 
-  const visibleEmpty = empty.slice(0, emptyLimit);
+  const effectiveLimit = rest.searchQuery ? empty.length : emptyLimit;
+  const visibleEmpty = empty.slice(0, effectiveLimit);
   const remainingEmpty = empty.length - visibleEmpty.length;
 
   return (
@@ -772,6 +806,7 @@ interface TreeNodeRowProps {
   searchQuery: string;
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
+  lastViewedMap: Record<string, number>;
 }
 
 function TreeNodeRow({
@@ -789,6 +824,7 @@ function TreeNodeRow({
   searchQuery,
   questionSessionIds,
   errorSessionIds,
+  lastViewedMap,
 }: TreeNodeRowProps) {
   const isExpanded =
     expandedSet.has(node.path) || tempExpanded.has(node.path);
@@ -812,6 +848,7 @@ function TreeNodeRow({
         searchQuery={searchQuery}
         questionSessionIds={questionSessionIds}
         errorSessionIds={errorSessionIds}
+        lastViewedMap={lastViewedMap}
       />
     );
   }
@@ -822,6 +859,7 @@ function TreeNodeRow({
     currentSessionId,
     questionSessionIds,
     errorSessionIds,
+    lastViewedMap,
   );
 
   return (
@@ -872,6 +910,7 @@ function TreeNodeRow({
           searchQuery={searchQuery}
           questionSessionIds={questionSessionIds}
           errorSessionIds={errorSessionIds}
+          lastViewedMap={lastViewedMap}
         />
       )}
     </>
@@ -904,6 +943,8 @@ export default function AppSidebar(
     () => new Set(errorSessionIdsArr),
     [errorSessionIdsArr],
   );
+  const { data: lastViewedData } = useLastViewed();
+  const lastViewedMap = lastViewedData ?? {};
   const { data: portalConfig } = usePortalConfig();
   const baseDirs = portalConfig?.baseDirs ?? [];
   const { data: projectPathsResp } = useProjectPaths();
@@ -1010,7 +1051,16 @@ export default function AppSidebar(
             <input
               type="search"
               value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSearchInput(v);
+                // Clearing the input via the X button (type=search native
+                // clear) or backspace-to-empty does not fire keydown=Enter,
+                // so the previously-applied filter would otherwise persist.
+                // Auto-submit the empty query whenever the field becomes
+                // empty so the filter resets in lock-step with the box.
+                if (v.length === 0) setSearchQuery("");
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -1036,6 +1086,7 @@ export default function AppSidebar(
               emptyProjectPaths={emptyProjectPaths}
               questionSessionIds={questionSessionIds}
               errorSessionIds={errorSessionIds}
+              lastViewedMap={lastViewedMap}
               onSessionClick={() => setIsOpenOnMobile(false)}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}

@@ -128,7 +128,7 @@ function TodoBody({ todos }: { todos: TodoItem[] }) {
           <span
             className={
               todo.status === "completed"
-                ? "line-through text-muted-fg"
+                ? "text-muted-fg"
                 : todo.status === "cancelled"
                   ? "text-muted-fg italic"
                   : "text-fg"
