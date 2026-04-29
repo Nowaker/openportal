@@ -2454,6 +2454,7 @@ function SessionPage() {
                 />
               </div>
               <ThinkingSelect sessionId={sessionId} />
+              <div className="hidden sm:block sm:flex-1" />
               <TodoStrip snapshot={todoSnapshot} />
               <button
                 type="button"
