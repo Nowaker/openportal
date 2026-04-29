@@ -1,16 +1,16 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
+import { DiagnosticsPanel } from "@/components/diagnostics-panel";
 import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   ArrowLeftIcon,
   SwatchIcon,
-  KeyIcon,
+  InformationCircleIcon,
   PencilSquareIcon,
 } from "@heroicons/react/24/outline";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -461,7 +461,7 @@ function SettingsPage() {
   const [settingsTab, setSettingsTabState] = React.useState<string>(() => {
     if (typeof window === "undefined") return "appearance";
     const hash = window.location.hash.replace(/^#/, "");
-    return ["appearance", "prompt", "api"].includes(hash) ? hash : "appearance";
+    return ["appearance", "prompt", "diagnostics"].includes(hash) ? hash : "appearance";
   });
 
   React.useEffect(() => {
@@ -469,7 +469,7 @@ function SettingsPage() {
     const onHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       setSettingsTabState(
-        ["appearance", "prompt", "api"].includes(hash) ? hash : "appearance",
+        ["appearance", "prompt", "diagnostics"].includes(hash) ? hash : "appearance",
       );
     };
     window.addEventListener("hashchange", onHash);
@@ -523,9 +523,9 @@ function SettingsPage() {
             <PencilSquareIcon className="size-4" data-slot="icon" />
             Prompt
           </Tab>
-          <Tab id="api">
-            <KeyIcon className="size-4" data-slot="icon" />
-            API
+          <Tab id="diagnostics">
+            <InformationCircleIcon className="size-4" data-slot="icon" />
+            Diagnostics
           </Tab>
         </TabList>
 
@@ -695,42 +695,8 @@ function SettingsPage() {
           </div>
         </TabPanel>
 
-        <TabPanel id="api" className="pt-6">
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold">API Connections</h2>
-              <p className="text-sm text-muted-fg">
-                Manage your connection settings and API keys.
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">OpenCode Endpoint</p>
-                <p className="text-xs text-muted-fg">
-                  The URL of your OpenCode server instance.
-                </p>
-                <Input
-                  defaultValue="http://localhost:4000"
-                  readOnly
-                  className="w-fit font-mono text-sm text-muted-fg bg-muted/5"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">API Key</p>
-                <p className="text-xs text-muted-fg">
-                  Your API key is stored locally and never sent to our servers.
-                </p>
-                <Input
-                  type="password"
-                  value="sk-................................"
-                  readOnly
-                  className="w-fit font-mono text-sm text-muted-fg bg-muted/5"
-                />
-              </div>
-            </div>
-          </div>
+        <TabPanel id="diagnostics" className="pt-6">
+          <DiagnosticsPanel />
         </TabPanel>
       </Tabs>
       </div>
