@@ -92,6 +92,8 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
+import { CreateProjectModal } from "@/components/create-project-modal";
+import { mutate as swrMutate } from "swr";
 import { useVirtualSessionStore } from "@/stores/virtual-session-store";
 import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
 import {
@@ -293,7 +295,7 @@ function ProjectGroup({
   return (
     <>
       <div
-        className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-2" : "px-2"} py-1 rounded hover:bg-muted/20 transition-colors`}
+        className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-3" : "px-3"} py-1 rounded hover:bg-muted/20 transition-colors`}
         style={headerStyle}
         data-current-project={containsCurrent || undefined}
         data-project-dir={directory}
@@ -322,9 +324,9 @@ function ProjectGroup({
           }}
           title={`New session in ${directory}`}
           aria-label={`New session in ${projectName}`}
-          className="shrink-0 inline-flex items-center justify-center size-5 rounded border border-border text-muted-fg hover:text-fg hover:border-fg/40 hover:bg-muted/40"
+          className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
         >
-          <PlusIcon className="size-3" />
+          <PlusIcon className="size-3.5" />
         </button>
       </div>
       {visible.map((session) => {
@@ -341,7 +343,7 @@ function ProjectGroup({
         return (
           <div
             key={session.id}
-            className={`col-span-full flex items-center gap-1.5 ${depth > 0 ? "pr-1" : "pl-3 pr-1"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
+            className={`col-span-full flex items-center gap-1.5 ${depth > 0 ? "pr-3" : "pl-3 pr-3"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
             style={depth > 0 ? sessionRowStyle : undefined}
             data-current-session={isCurrent || undefined}
           >
@@ -384,7 +386,7 @@ function ProjectGroup({
         <button
           type="button"
           onClick={() => setArchivedExpanded((v) => !v)}
-          className="col-span-full flex items-center gap-1 pl-3 pr-2 py-0.5 text-[11px] text-muted-fg hover:text-fg text-left"
+          className="col-span-full flex items-center gap-1 pl-3 pr-3 py-0.5 text-[11px] text-muted-fg hover:text-fg text-left"
         >
           <ChevronRightIcon
             className={`size-3 shrink-0 transition-transform ${archivedExpanded ? "rotate-90" : ""}`}
@@ -671,7 +673,7 @@ function ProjectsList({
           {section.basePath && (
             <div
               className="col-span-full pt-2 pb-1 text-[11px] text-muted-fg/80 uppercase tracking-wide"
-              style={{ paddingLeft: "0.5rem" }}
+              style={{ paddingLeft: "0.75rem" }}
               title={section.basePath}
             >
               <CompactPath path={section.basePath} home={home} />
@@ -904,6 +906,7 @@ function TreeNodeRow({
     );
   }
 
+  const [createOpen, setCreateOpen] = useState(false);
   const aggregate = aggregateNodeStatus(
     node,
     statusMap,
@@ -916,8 +919,8 @@ function TreeNodeRow({
   return (
     <>
       <div
-        className="col-span-full flex items-center gap-1 pr-2 py-1 rounded hover:bg-muted/20 transition-colors"
-        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+        className="col-span-full flex items-center gap-1 pr-3 py-1 rounded hover:bg-muted/20 transition-colors"
+        style={{ paddingLeft: `${0.75 + depth * 0.75}rem` }}
       >
         <button
           type="button"
@@ -944,7 +947,28 @@ function TreeNodeRow({
             )}
           </span>
         </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setCreateOpen(true);
+          }}
+          title={`New project in ${node.path}`}
+          aria-label={`New project in ${node.name}`}
+          className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+        >
+          <PlusIcon className="size-3.5" />
+        </button>
       </div>
+      <CreateProjectModal
+        isOpen={createOpen}
+        parentPath={node.path}
+        onOpenChange={setCreateOpen}
+        onCreated={(newPath) => {
+          void swrMutate("/api/fs/projects");
+          onNewSessionInProject(newPath);
+        }}
+      />
       {isExpanded && (
         <TreeChildren
           nodes={node.children}
@@ -1098,7 +1122,7 @@ export default function AppSidebar(
             </SidebarItem>
           </SidebarSection>
 
-          <div className="col-span-full px-2 pb-1">
+          <div className="col-span-full px-3 pb-1">
             <input
               type="search"
               value={searchInput}
@@ -1126,7 +1150,7 @@ export default function AppSidebar(
             />
           </div>
 
-          <SidebarSection label="Projects">
+          <SidebarSection>
             <ProjectsList
               sessions={sessions}
               currentSessionId={currentSessionId}
