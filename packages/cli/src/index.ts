@@ -24,6 +24,7 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_OPENCODE_PORT = 4000;
 
 const WEB_SERVER_PATH = join(__dirname, "..", "web", "server", "index.mjs");
+const WEB_WRAPPER_PATH = join(__dirname, "..", "web-wrapper.mjs");
 
 interface PortalInstance {
   id: string;
@@ -196,8 +197,14 @@ function stripJsoncComments(src: string): string {
 
 interface OpenportalCliConfig {
   decoupleOpencode?: boolean;
-  externalOpencode?: { port?: number };
+  externalOpencode?: {
+    port?: number;
+    exitAfterUnreachableSeconds?: number;
+  };
 }
+
+const DEFAULT_EXTERNAL_OPENCODE_TIMEOUT_SECONDS = 300;
+const EXTERNAL_OPENCODE_PROBE_INTERVAL_MS = 5_000;
 
 // Reads ~/.openportal.json (JSONC). Returns an empty object on read/parse
 // failure so the CLI keeps booting. Three lifecycle modes, mutually
@@ -248,6 +255,77 @@ async function probeOpencode(
     return false;
   } finally {
     clearTimeout(t);
+  }
+}
+
+// External-opencode resilience watchdog. Long-running loop in the CLI
+// process (so it survives spawn-then-return) that probes opencode every
+// EXTERNAL_OPENCODE_PROBE_INTERVAL_MS and tracks the timestamp of the
+// first consecutive failure. When the failure window exceeds the
+// configured timeout, kills the web-server child and exits the CLI with
+// code 2. Special case: timeout of 0 = strict mode, exit on the very
+// first probe miss (no grace period). The web-server child is the only
+// long-running co-tenant of this CLI; killing it via SIGTERM lets it
+// drain in-flight requests and then exit cleanly. If web-server is
+// already dead (PID gone), the kill silently fails and we still exit.
+async function monitorExternalOpencodeForever(
+  hostname: string,
+  port: number,
+  timeoutSeconds: number,
+  webPid: number,
+): Promise<never> {
+  const timeoutMs = timeoutSeconds * 1000;
+  if (timeoutSeconds === 0) {
+    console.log(
+      `  Resilience: STRICT (exit on first probe failure) - probe every ${EXTERNAL_OPENCODE_PROBE_INTERVAL_MS / 1000}s`,
+    );
+  } else {
+    console.log(
+      `  Resilience: tolerant (exit after ${timeoutSeconds}s consecutive unreachability) - probe every ${EXTERNAL_OPENCODE_PROBE_INTERVAL_MS / 1000}s`,
+    );
+  }
+
+  let firstFailureAt: number | null = null;
+  while (true) {
+    await new Promise((r) => setTimeout(r, EXTERNAL_OPENCODE_PROBE_INTERVAL_MS));
+    const ok = await probeOpencode(hostname, port);
+    const now = Date.now();
+    if (ok) {
+      if (firstFailureAt !== null) {
+        console.log(
+          `[resilience] reconnected to opencode at ${hostname}:${port} after ${Math.round((now - firstFailureAt) / 1000)}s`,
+        );
+        firstFailureAt = null;
+      }
+      continue;
+    }
+    if (firstFailureAt === null) {
+      firstFailureAt = now;
+      console.warn(
+        `[resilience] opencode at ${hostname}:${port} unreachable; will keep retrying...`,
+      );
+    }
+    if (timeoutMs === 0) {
+      console.error(`[resilience] strict-mode exit (timeout=0)`);
+      try {
+        process.kill(webPid, "SIGTERM");
+      } catch {
+        /* web server already dead */
+      }
+      process.exit(2);
+    }
+    const elapsed = now - firstFailureAt;
+    if (elapsed > timeoutMs) {
+      console.error(
+        `[resilience] opencode unreachable for ${Math.round(elapsed / 1000)}s, exceeded ${timeoutSeconds}s timeout - exiting`,
+      );
+      try {
+        process.kill(webPid, "SIGTERM");
+      } catch {
+        /* web server already dead */
+      }
+      process.exit(2);
+    }
   }
 }
 
@@ -388,11 +466,12 @@ async function startOpenCodeServer(
 
 async function startWebServer(port: number, hostname: string): Promise<number> {
   console.log(`Starting Web UI server...`);
-  const proc = Bun.spawn(["bun", "run", WEB_SERVER_PATH], {
+  const proc = Bun.spawn(["bun", "run", WEB_WRAPPER_PATH], {
     cwd: dirname(WEB_SERVER_PATH),
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
+      OPENPORTAL_WEB_BUNDLE: WEB_SERVER_PATH,
       PORT: String(port),
       HOST: hostname,
       NITRO_PORT: String(port),
@@ -532,6 +611,22 @@ async function cmdDefault(
     console.log(`   Web UI PID: ${webPid}`);
     console.log(`\n📱 Access OpenPortal at http://${displayHost}:${port}`);
     console.log(`🔧 OpenCode API at http://${displayHost}:${opencodePort}`);
+
+    if (typeof externalPort === "number") {
+      const t =
+        typeof cfg.externalOpencode?.exitAfterUnreachableSeconds === "number"
+          ? Math.max(
+              0,
+              Math.floor(cfg.externalOpencode.exitAfterUnreachableSeconds),
+            )
+          : DEFAULT_EXTERNAL_OPENCODE_TIMEOUT_SECONDS;
+      await monitorExternalOpencodeForever(
+        hostname,
+        externalPort,
+        t,
+        webPid,
+      );
+    }
   } catch (error) {
     if (error instanceof Error) {
       console.error(`\n❌ Failed to start OpenPortal: ${error.message}`);
