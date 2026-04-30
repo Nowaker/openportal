@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import {
+  CheckIcon,
   EllipsisVerticalIcon,
   InformationCircleIcon,
+  PencilSquareIcon,
   StarIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -127,48 +129,159 @@ export function AppSidebarNav() {
   const isBusy = runningToolId !== null;
   const canRun = Boolean(sessionId);
 
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset edit mode whenever the session changes (otherwise the draft
+  // value from session A would be visible in session B's edit field).
+  useEffect(() => {
+    setEditingTitle(false);
+    setDraftTitle("");
+  }, [sessionId]);
+
+  const startEditTitle = () => {
+    setDraftTitle(sessionTitle ?? "");
+    setEditingTitle(true);
+    requestAnimationFrame(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    });
+  };
+
+  const cancelEditTitle = () => {
+    setEditingTitle(false);
+    setDraftTitle("");
+  };
+
+  const submitEditTitle = async () => {
+    const trimmed = draftTitle.trim();
+    if (!sessionId || !port) {
+      cancelEditTitle();
+      return;
+    }
+    if (!trimmed || trimmed === sessionTitle) {
+      cancelEditTitle();
+      return;
+    }
+    setRenameSaving(true);
+    try {
+      const res = await fetch(`/api/opencode/${port}/session/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await mutateSessions();
+      setEditingTitle(false);
+      setDraftTitle("");
+    } catch (e) {
+      toast.error(
+        `Failed to rename: ${e instanceof Error ? e.message : "unknown"}`,
+      );
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
   return (
     <SidebarNav isSticky>
       <span className="flex items-center gap-x-2 min-w-0 flex-1">
         <SidebarTrigger className="-ml-2 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
-          {sessionTitle ? (
-            <>
-              {projectLabel && currentSession?.directory && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const dir = currentSession.directory;
-                    if (!dir) return;
-                    expandKey(dir);
-                    setIsOpenOnMobile(true);
-                    requestAnimationFrame(() => {
-                      const el = document.querySelector(
-                        `[data-project-dir="${CSS.escape(dir)}"]`,
-                      );
-                      el?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                      });
-                    });
-                  }}
-                  className="text-muted-fg hover:text-fg hover:underline underline-offset-2"
-                  title={`Jump to ${projectLabel} in sidebar`}
-                >
-                  {projectLabel}
-                </button>
+        {editingTitle && sessionId ? (
+          <span className="flex min-w-0 flex-1 items-center gap-1">
+            <input
+              ref={titleInputRef}
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void submitEditTitle();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelEditTitle();
+                }
+              }}
+              disabled={renameSaving}
+              className="min-w-0 flex-1 rounded border border-border bg-bg px-2 py-0.5 text-sm font-medium text-fg outline-none focus:border-primary"
+              aria-label="Session title"
+            />
+            <button
+              type="button"
+              onClick={() => void submitEditTitle()}
+              disabled={renameSaving}
+              aria-label="Save title"
+              title="Save (Enter)"
+              className="shrink-0 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg disabled:opacity-40"
+            >
+              <CheckIcon className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={cancelEditTitle}
+              disabled={renameSaving}
+              aria-label="Cancel rename"
+              title="Cancel (Esc)"
+              className="shrink-0 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg disabled:opacity-40"
+            >
+              <XMarkIcon className="size-4" />
+            </button>
+          </span>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
+              {sessionTitle ? (
+                <>
+                  {projectLabel && currentSession?.directory && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const dir = currentSession.directory;
+                        if (!dir) return;
+                        expandKey(dir);
+                        setIsOpenOnMobile(true);
+                        requestAnimationFrame(() => {
+                          const el = document.querySelector(
+                            `[data-project-dir="${CSS.escape(dir)}"]`,
+                          );
+                          el?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center",
+                          });
+                        });
+                      }}
+                      className="text-muted-fg hover:text-fg hover:underline underline-offset-2"
+                      title={`Jump to ${projectLabel} in sidebar`}
+                    >
+                      {projectLabel}
+                    </button>
+                  )}
+                  {projectLabel && currentSession?.directory && (
+                    <span className="text-muted-fg">: </span>
+                  )}
+                  {sessionTitle}
+                </>
+              ) : (
+                <span className="text-muted-fg">
+                  {instance?.name ?? "OpenPortal"}
+                </span>
               )}
-              {projectLabel && currentSession?.directory && (
-                <span className="text-muted-fg">: </span>
-              )}
-              {sessionTitle}
-            </>
-          ) : (
-            <span className="text-muted-fg">
-              {instance?.name ?? "OpenPortal"}
             </span>
-          )}
-        </span>
+            {sessionId && sessionTitle && (
+              <button
+                type="button"
+                onClick={startEditTitle}
+                aria-label="Rename session"
+                title="Rename session"
+                className="shrink-0 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+              >
+                <PencilSquareIcon className="size-4" />
+              </button>
+            )}
+          </>
+        )}
       </span>
       <span className="flex items-center gap-x-2 ml-auto shrink-0">
         {sessionId && <PinTopbarButton sessionId={sessionId} />}
