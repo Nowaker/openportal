@@ -1,5 +1,6 @@
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -12,6 +13,15 @@ const fetcher = async (url: string) => {
 function usePort() {
   const instance = useInstanceStore((s) => s.instance);
   return instance?.port ?? null;
+}
+
+// When streaming is on the SSE event bus is the source of truth for these
+// keys (status / questions / permissions). Returning 0 disables SWR's
+// timer-driven poll - SWR still refetches on focus + after writes via
+// mutate() called from useEventStream.
+function usePollMs(intervalMs: number): number {
+  const enabled = useStreamingStore((s) => s.enabled);
+  return enabled ? 0 : intervalMs;
 }
 
 export function useInstances() {
@@ -87,7 +97,7 @@ export function useSessionStatus() {
   return useSWR<SessionStatusMap>(
     port ? `/api/opencode/${port}/session/status` : null,
     fetcher,
-    { refreshInterval: 3000, revalidateOnFocus: true },
+    { refreshInterval: usePollMs(3000), revalidateOnFocus: true },
   );
 }
 
@@ -228,7 +238,7 @@ export function usePermissions() {
   return useSWR(
     port ? `/api/opencode/${port}/permissions` : null,
     fetcher,
-    { refreshInterval: 2000 },
+    { refreshInterval: usePollMs(2000) },
   );
 }
 
@@ -258,7 +268,7 @@ export function useQuestions() {
   return useSWR<QuestionRequestSummary[]>(
     port ? `/api/opencode/${port}/questions` : null,
     fetcher,
-    { refreshInterval: 2000, revalidateOnFocus: true },
+    { refreshInterval: usePollMs(2000), revalidateOnFocus: true },
   );
 }
 

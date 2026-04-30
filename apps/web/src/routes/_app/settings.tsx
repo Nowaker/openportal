@@ -24,6 +24,7 @@ import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
+import { useStreamingStore } from "@/stores/streaming-store";
 import {
   FONT_SIZE_PRESETS,
   useFontSizeStore,
@@ -371,6 +372,63 @@ const enterKeyOptions: {
   },
 ];
 
+const liveUpdatesOptions: { id: "stream" | "poll"; title: string; description: string }[] = [
+  {
+    id: "poll",
+    title: "Poll (default)",
+    description:
+      "Periodic refresh every few seconds. Lighter on long-running sessions on mobile; UI catches up at the next tick.",
+  },
+  {
+    id: "stream",
+    title: "Stream",
+    description:
+      "Live updates over a persistent SSE connection. UI reflects opencode events the instant they happen. Slightly heavier on mobile battery and bandwidth on a fully-busy session.",
+  },
+];
+
+function LiveUpdatesSetting() {
+  const enabled = useStreamingStore((s) => s.enabled);
+  const setEnabled = useStreamingStore((s) => s.setEnabled);
+  const value: "stream" | "poll" = enabled ? "stream" : "poll";
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Live updates</h2>
+        <p className="text-sm text-muted-fg">
+          How Portal stays in sync with opencode while a session runs. This
+          preference is per-tab/per-device (localStorage), not synced.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Update mode</p>
+        <Select
+          aria-label="Live updates mode"
+          selectedKey={value}
+          onSelectionChange={(key) => {
+            if (!key) return;
+            setEnabled(String(key) === "stream");
+          }}
+        >
+          <SelectTrigger className="max-w-sm" />
+          <SelectContent>
+            {liveUpdatesOptions.map((opt) => (
+              <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+                <SelectLabel>{opt.title}</SelectLabel>
+                <div className="text-xs text-muted-fg max-w-md whitespace-normal">
+                  {opt.description}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 function ComposerSettings() {
   const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
   const setEnterKeyAction = useComposerStore((s) => s.setEnterKeyAction);
@@ -687,6 +745,10 @@ function SettingsPage() {
 
             <section>
               <ComposerSettings />
+            </section>
+
+            <section>
+              <LiveUpdatesSetting />
             </section>
 
             <section>
