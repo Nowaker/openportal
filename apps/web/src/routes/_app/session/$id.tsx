@@ -33,7 +33,13 @@ import {
   CheckIcon,
   ChatBubbleLeftRightIcon,
   UserIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
+import {
+  Modal,
+  ModalOverlay,
+  Dialog as PrimitiveDialog,
+} from "react-aria-components";
 import {
   PlayIcon,
   StopIcon,
@@ -949,6 +955,49 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([decodeURIComponent(payload)], { type: mime });
 }
 
+function ImagePreviewModal({
+  isOpen,
+  onOpenChange,
+  url,
+  alt,
+}: {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  url: string;
+  alt: string;
+}) {
+  return (
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      isDismissable
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm"
+    >
+      <Modal className="outline-none">
+        <PrimitiveDialog className="relative outline-none">
+          {({ close }) => (
+            <>
+              <button
+                type="button"
+                onClick={close}
+                aria-label="Close preview"
+                className="absolute right-2 top-2 z-10 rounded-full border border-border bg-bg/95 p-1.5 text-fg shadow-lg hover:bg-muted"
+              >
+                <XMarkIcon className="size-5" />
+              </button>
+              <img
+                src={url}
+                alt={alt}
+                className="block max-w-[95vw] max-h-[90dvh] rounded shadow-2xl object-contain"
+              />
+            </>
+          )}
+        </PrimitiveDialog>
+      </Modal>
+    </ModalOverlay>
+  );
+}
+
 function AttachmentChip({ part }: { part: FilePart }) {
   const isImage = part.mime?.startsWith("image/");
   const Icon = isImage ? PhotoIcon : PaperClipIcon;
@@ -956,12 +1005,53 @@ function AttachmentChip({ part }: { part: FilePart }) {
   const url = part.url ?? "";
   const thumb = (part as FilePart & { thumb?: string }).thumb;
   const isDataUrl = url.startsWith("data:");
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const chipBody = (
+    <>
+      {isImage && thumb ? (
+        <img
+          src={thumb}
+          alt={label}
+          loading="lazy"
+          className="size-8 shrink-0 rounded object-cover bg-muted"
+        />
+      ) : (
+        <Icon className="size-3 shrink-0 text-muted-fg" />
+      )}
+      <span className="truncate">{label}</span>
+    </>
+  );
+  const chipClass =
+    "inline-flex items-center gap-2 max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-fg/90 hover:border-fg/30 hover:bg-muted transition-colors";
+
+  if (isImage) {
+    return (
+      <>
+        <button
+          type="button"
+          className={chipClass}
+          title={label}
+          onClick={() => setPreviewOpen(true)}
+        >
+          {chipBody}
+        </button>
+        <ImagePreviewModal
+          isOpen={previewOpen}
+          onOpenChange={setPreviewOpen}
+          url={url}
+          alt={label}
+        />
+      </>
+    );
+  }
+
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-fg/90 hover:border-fg/30 hover:bg-muted transition-colors"
+      className={chipClass}
       title={label}
       onClick={
         isDataUrl
@@ -980,17 +1070,7 @@ function AttachmentChip({ part }: { part: FilePart }) {
           : undefined
       }
     >
-      {isImage && thumb ? (
-        <img
-          src={thumb}
-          alt={label}
-          loading="lazy"
-          className="size-8 shrink-0 rounded object-cover bg-muted"
-        />
-      ) : (
-        <Icon className="size-3 shrink-0 text-muted-fg" />
-      )}
-      <span className="truncate">{label}</span>
+      {chipBody}
     </a>
   );
 }
