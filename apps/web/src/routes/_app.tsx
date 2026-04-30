@@ -13,6 +13,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useSelfInstance } from "@/hooks/use-opencode";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
+import { useSettingsSync } from "@/hooks/use-settings-sync";
 import { requestNotificationPermission } from "@/hooks/use-status-notifications";
 import {
   PullToRefreshIndicator,
@@ -123,6 +124,7 @@ function AppLayout() {
   const { data: selfData, isLoading, error } = useSelfInstance();
   const [hydrated, setHydrated] = useState(false);
   usePullToRefresh();
+  useSettingsSync();
 
   useEffect(() => {
     if (!selfData) return;

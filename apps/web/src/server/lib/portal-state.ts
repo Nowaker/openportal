@@ -7,6 +7,7 @@ const STATE_FILE = join(homedir(), ".openportal-state.json");
 interface PortalState {
   lastViewed?: Record<string, number>;
   pinnedSessions?: string[];
+  settings?: Record<string, unknown>;
 }
 
 let cache: PortalState | null = null;
@@ -81,5 +82,21 @@ export function reorderPinnedSessions(order: string[]): string[] {
     if (!next.includes(id)) next.push(id);
   }
   persist({ ...state, pinnedSessions: next });
+  return next;
+}
+
+export function getSettings(): Record<string, unknown> {
+  return load().settings ?? {};
+}
+
+export function setSetting(namespace: string, value: unknown): Record<string, unknown> {
+  const state = load();
+  const next: Record<string, unknown> = { ...(state.settings ?? {}) };
+  if (value === null || value === undefined) {
+    delete next[namespace];
+  } else {
+    next[namespace] = value;
+  }
+  persist({ ...state, settings: next });
   return next;
 }
