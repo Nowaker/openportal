@@ -20,9 +20,29 @@ export default defineHandler(async (event) => {
   });
 
   const stripped = stripDiagnosticFixes(messages.data);
+  stripUserMessageSummary(stripped);
   rewriteImageDataUrls(stripped, id);
   return stripped;
 });
+
+// opencode rebuilds message.info.summary on every user message, summarising
+// the working-tree changes since the previous user prompt: a list of files
+// with status + counts AND the full unified-diff `patch` text per file.
+// The patch text dominates (99pct of each diff entry) and the same big
+// patches re-attach to every subsequent user message until the tree is
+// committed - 380+ user messages in this DB carry summary.diffs adding up
+// to ~310 MB of inline patch noise. The model never reads message.summary
+// (it consumes parts only) and the Portal frontend has zero references to
+// .summary anywhere - confirmed by grep across apps/web/src. Drop it.
+function stripUserMessageSummary(messages: unknown): void {
+  if (!Array.isArray(messages)) return;
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") continue;
+    const m = msg as { info?: { summary?: unknown }; data?: { summary?: unknown } };
+    if (m.info && "summary" in m.info) delete m.info.summary;
+    if (m.data && "summary" in m.data) delete m.data.summary;
+  }
+}
 
 function parseLimit(raw: unknown): number | undefined {
   if (raw === undefined || raw === null || raw === "") {
