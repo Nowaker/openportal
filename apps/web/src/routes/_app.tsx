@@ -12,6 +12,7 @@ import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useSelfInstance } from "@/hooks/use-opencode";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import { useBuildMismatch } from "@/hooks/use-build-mismatch";
 import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
 import { useEventStream } from "@/hooks/use-event-stream";
 import { useSettingsSync } from "@/hooks/use-settings-sync";
@@ -29,6 +30,19 @@ function ConnectionStatusBanner() {
       <ArrowPathIcon className="size-4 shrink-0 animate-spin text-warning" />
       <span className="flex-1 text-fg">
         Lost connection to OpenPortal. Reconnecting…
+      </span>
+    </div>
+  );
+}
+
+function BuildMismatchBanner() {
+  const mismatched = useBuildMismatch();
+  if (!mismatched) return null;
+  return (
+    <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+      <ArrowPathIcon className="size-4 shrink-0 text-warning" />
+      <span className="flex-1 text-fg">
+        OpenPortal was updated. Reload the page to get the latest version.
       </span>
     </div>
   );
@@ -179,6 +193,7 @@ function AppLayout() {
           <AppSidebar collapsible="dock" />
           <SidebarInset className="overflow-hidden">
             <ConnectionStatusBanner />
+            <BuildMismatchBanner />
             <NotificationPermissionBanner />
             <AppSidebarNav />
             <PinnedTabStrip />
