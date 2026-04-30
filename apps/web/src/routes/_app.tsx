@@ -6,7 +6,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import AppSidebar from "@/components/app-sidebar";
-import { AppSidebarNav } from "@/components/app-sidebar-nav";
+import { AppSidebarNav, PinnedTabStrip } from "@/components/app-sidebar-nav";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -177,6 +177,7 @@ function AppLayout() {
             <ConnectionStatusBanner />
             <NotificationPermissionBanner />
             <AppSidebarNav />
+            <PinnedTabStrip />
             <div className="flex-1 overflow-hidden">
               <Outlet />
             </div>

@@ -6,6 +6,7 @@ const STATE_FILE = join(homedir(), ".openportal-state.json");
 
 interface PortalState {
   lastViewed?: Record<string, number>;
+  pinnedSessions?: string[];
 }
 
 let cache: PortalState | null = null;
@@ -44,4 +45,41 @@ export function setLastViewed(sessionId: string, ms: number): void {
   const map = state.lastViewed ?? {};
   map[sessionId] = ms;
   persist({ ...state, lastViewed: map });
+}
+
+export function getPinnedSessions(): string[] {
+  const list = load().pinnedSessions;
+  return Array.isArray(list) ? list : [];
+}
+
+export function pinSession(sessionId: string): string[] {
+  const state = load();
+  const list = Array.isArray(state.pinnedSessions)
+    ? state.pinnedSessions.filter((id) => id !== sessionId)
+    : [];
+  list.push(sessionId);
+  persist({ ...state, pinnedSessions: list });
+  return list;
+}
+
+export function unpinSession(sessionId: string): string[] {
+  const state = load();
+  const list = Array.isArray(state.pinnedSessions)
+    ? state.pinnedSessions.filter((id) => id !== sessionId)
+    : [];
+  persist({ ...state, pinnedSessions: list });
+  return list;
+}
+
+export function reorderPinnedSessions(order: string[]): string[] {
+  const state = load();
+  const known = new Set(
+    Array.isArray(state.pinnedSessions) ? state.pinnedSessions : [],
+  );
+  const next = order.filter((id) => known.has(id));
+  for (const id of known) {
+    if (!next.includes(id)) next.push(id);
+  }
+  persist({ ...state, pinnedSessions: next });
+  return next;
 }

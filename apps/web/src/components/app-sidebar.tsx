@@ -56,6 +56,10 @@ import {
 import { useSessionErrorStore } from "@/stores/session-error-store";
 import { useLastViewed, useMarkManyViewed } from "@/hooks/use-last-viewed";
 import {
+  usePinnedSessions,
+  useTogglePinnedSession,
+} from "@/hooks/use-pinned-sessions";
+import {
   resolveProjectPath,
   buildProjectTree,
   type BaseDirEntry,
@@ -732,6 +736,15 @@ function ProjectsList({
 
   return (
     <>
+      <PinnedSection
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSessionClick={onSessionClick}
+        statusMap={statusMap}
+        questionSessionIds={questionSessionIds}
+        errorSessionIds={errorSessionIds}
+        lastViewedMap={lastViewedMap}
+      />
       {sections.map((section, idx) => (
         <Fragment key={section.basePath || `unset-${idx}`}>
           {section.basePath && (
@@ -767,6 +780,85 @@ function ProjectsList({
         currentSessionId={currentSessionId}
       />
     </>
+  );
+}
+
+function PinnedSection({
+  sessions,
+  currentSessionId,
+  onSessionClick,
+  statusMap,
+  questionSessionIds,
+  errorSessionIds,
+  lastViewedMap,
+}: {
+  sessions: Session[];
+  currentSessionId: string | undefined;
+  onSessionClick: () => void;
+  statusMap: SessionStatusMap | undefined;
+  questionSessionIds: Set<string>;
+  errorSessionIds: Set<string>;
+  lastViewedMap: Record<string, number>;
+}) {
+  const { data } = usePinnedSessions();
+  const togglePin = useTogglePinnedSession();
+  const pinned = data?.sessions ?? [];
+  const rows = pinned
+    .map((id) => sessions.find((s) => s.id === id))
+    .filter((s): s is Session => Boolean(s));
+  if (rows.length === 0) return null;
+  return (
+    <Fragment>
+      <div className="col-span-full pt-2 pb-1 px-3 text-[11px] text-muted-fg">
+        Pinned
+      </div>
+      <div className="col-span-full px-1">
+        {rows.map((session) => {
+          const status = statusMap?.[session.id]?.type;
+          const hasNewContent = sessionHasNewContent(
+            session,
+            lastViewedMap,
+            currentSessionId,
+          );
+          const hasQuestion = questionSessionIds.has(session.id);
+          const hasError = errorSessionIds.has(session.id);
+          const hasDraft = sessionHasDraft(session.id);
+          const isCurrent = session.id === currentSessionId;
+          return (
+            <div
+              key={session.id}
+              className={`group flex items-center gap-1.5 rounded-md px-2 py-1 ${
+                isCurrent ? "bg-primary/15" : "hover:bg-muted/40"
+              }`}
+            >
+              <DraftIndicator hasDraft={hasDraft} />
+              <SessionStatusDot
+                status={status}
+                hasNewContent={hasNewContent}
+                hasQuestion={hasQuestion}
+                hasError={hasError}
+              />
+              <UILink
+                href={`/session/${session.id}`}
+                onClick={onSessionClick}
+                className="flex-1 min-w-0 truncate text-xs sm:text-sm text-sidebar-fg hover:text-fg"
+              >
+                {session.title || "(untitled)"}
+              </UILink>
+              <button
+                type="button"
+                onClick={() => void togglePin(session.id, "unpin")}
+                title="Unpin"
+                aria-label={`Unpin ${session.title || "session"}`}
+                className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+              >
+                <XMarkIcon className="size-3.5" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </Fragment>
   );
 }
 

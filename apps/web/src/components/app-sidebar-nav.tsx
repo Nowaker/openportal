@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMatch } from "@tanstack/react-router";
+import { useMatch, useNavigate } from "@tanstack/react-router";
 import {
   EllipsisVerticalIcon,
   InformationCircleIcon,
+  StarIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import {
   Menu,
@@ -24,6 +27,10 @@ import {
 } from "@/stores/tools-store";
 import { mutateSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions } from "@/hooks/use-opencode";
+import {
+  usePinnedSessions,
+  useTogglePinnedSession,
+} from "@/hooks/use-pinned-sessions";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
 import type { Session } from "@opencode-ai/sdk";
@@ -164,6 +171,7 @@ export function AppSidebarNav() {
         </span>
       </span>
       <span className="flex items-center gap-x-2 ml-auto shrink-0">
+        {sessionId && <PinTopbarButton sessionId={sessionId} />}
         {(sessionId || enabledTools.length > 0) && (
           <Menu>
             <MenuTrigger aria-label="Open menu">
@@ -209,5 +217,95 @@ export function AppSidebarNav() {
         />
       )}
     </SidebarNav>
+  );
+}
+
+function PinTopbarButton({ sessionId }: { sessionId: string }) {
+  const { data } = usePinnedSessions();
+  const togglePin = useTogglePinnedSession();
+  const isPinned = data?.sessions.includes(sessionId) ?? false;
+  return (
+    <button
+      type="button"
+      aria-label={isPinned ? "Unpin session" : "Pin session"}
+      title={isPinned ? "Unpin session" : "Pin session"}
+      onClick={() => {
+        void togglePin(sessionId, isPinned ? "unpin" : "pin");
+      }}
+      className="rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+    >
+      {isPinned ? (
+        <StarSolidIcon className="size-4 text-amber-400" />
+      ) : (
+        <StarIcon className="size-4" />
+      )}
+    </button>
+  );
+}
+
+// Desktop-only horizontal strip below the topbar showing one tab per
+// pinned session for one-click switching. Hidden on mobile (sidebar's
+// "Pinned" section serves that role with no extra vertical chrome).
+// Tabs whose session id is no longer in the live sessions list are
+// silently skipped (the pin survives so a temporarily-disconnected
+// opencode doesn't lose pins). The active session highlights; click
+// navigates; the X button calls unpin without affecting the session
+// itself (don't conflate "remove from quick-access" with "delete").
+export function PinnedTabStrip() {
+  const { data } = usePinnedSessions();
+  const { data: sessionsData } = useSessions();
+  const togglePin = useTogglePinnedSession();
+  const navigate = useNavigate();
+  const sessionMatch = useMatch({
+    from: "/_app/session/$id",
+    shouldThrow: false,
+  });
+  const currentSessionId = sessionMatch?.params?.id ?? null;
+
+  const pinned = data?.sessions ?? [];
+  const sessions: Session[] = sessionsData ?? [];
+  const tabs = pinned
+    .map((id) => ({ id, session: sessions.find((s) => s.id === id) ?? null }))
+    .filter((t): t is { id: string; session: Session } => t.session !== null);
+
+  if (tabs.length === 0) return null;
+
+  return (
+    <div className="hidden sm:flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-border bg-bg/95 px-2 py-1">
+      {tabs.map(({ id, session }) => {
+        const active = id === currentSessionId;
+        const title = session.title ?? "(untitled)";
+        return (
+          <div
+            key={id}
+            className={`group flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+              active
+                ? "border-primary/40 bg-primary/10 text-fg"
+                : "border-border bg-muted/30 text-muted-fg hover:bg-muted hover:text-fg"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                void navigate({ to: "/session/$id", params: { id } })
+              }
+              className="max-w-[16rem] truncate text-left"
+              title={title}
+            >
+              {title}
+            </button>
+            <button
+              type="button"
+              onClick={() => void togglePin(id, "unpin")}
+              aria-label={`Unpin ${title}`}
+              title="Unpin"
+              className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-bg/70"
+            >
+              <XMarkIcon className="size-3" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
