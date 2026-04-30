@@ -2843,6 +2843,16 @@ function SessionPage() {
                         fileMention.handleInputChange(value, cursorPos);
                       }
                     }}
+                    onBlur={(e) => {
+                      if (!sessionId) return;
+                      if (draftSaveTimerRef.current != null) {
+                        window.clearTimeout(draftSaveTimerRef.current);
+                        draftSaveTimerRef.current = null;
+                      }
+                      if (persistShortIfNoPrior(e.target.value)) {
+                        writeDraft(sessionId, e.target.value);
+                      }
+                    }}
                     onSelect={(e) => {
                       if (!fileMention.isOpen) return;
                       const target = e.target as HTMLTextAreaElement;
