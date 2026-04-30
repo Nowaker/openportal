@@ -2031,28 +2031,40 @@ function SessionPage() {
 
   // Persist the draft only after the user has stopped typing for 2 seconds,
   // so we don't thrash localStorage on every keystroke. The unmount /
-  // session-change effect still flushes whatever the textarea currently
-  // holds, so an interrupted typing session loses at most ~2s of typing.
+  // session-change effect flushes whatever the textarea currently holds,
+  // so an interrupted typing session loses at most ~2s of typing.
   //
-  // Cross-tab safety: a typing-path write only happens when the textarea
-  // has at least DRAFT_MIN_BYTES of content. If a user opens a second tab
-  // and clears the textarea there, that empty/short value does NOT
-  // overwrite the stored draft - the original tab's draft survives.
-  // Empty drafts are only written via the acknowledged-submit path
-  // (handleSubmit), which calls writeDraft directly with "" to clear.
+  // Cross-tab safety (DRAFT_MIN_BYTES rule): the concern is a SECOND tab
+  // mounting with an empty/short textarea and clobbering the FIRST tab's
+  // longer draft. So short values are only persisted when there's no
+  // existing prior to clobber. With no prior in localStorage, ANY non-
+  // empty value is safe to write - that's the common case for "I typed
+  // a few chars and navigated away" and the user expects it to come back.
+  // Empty values never write (user clearing the field doesn't mean they
+  // want to drop another tab's stored draft); the acknowledged-submit
+  // path in handleSubmit calls writeDraft("") explicitly to clear.
+  const persistShortIfNoPrior = useCallback(
+    (value: string) => {
+      if (!sessionId) return false;
+      if (value.length === 0) return false;
+      if (value.length >= DRAFT_MIN_BYTES) return true;
+      return readDraft(sessionId).length === 0;
+    },
+    [sessionId],
+  );
   const scheduleDraftSave = useCallback(
     (value: string) => {
       if (!sessionId) return;
       if (draftSaveTimerRef.current != null) {
         window.clearTimeout(draftSaveTimerRef.current);
       }
-      if (value.length < DRAFT_MIN_BYTES) return;
+      if (!persistShortIfNoPrior(value)) return;
       draftSaveTimerRef.current = window.setTimeout(() => {
         writeDraft(sessionId, value);
         draftSaveTimerRef.current = null;
       }, 2000);
     },
-    [sessionId],
+    [sessionId, persistShortIfNoPrior],
   );
 
   useEffect(() => {
@@ -2063,12 +2075,12 @@ function SessionPage() {
       }
       if (sessionId && textareaRef.current) {
         const value = textareaRef.current.value;
-        if (value.length >= DRAFT_MIN_BYTES) {
+        if (persistShortIfNoPrior(value)) {
           writeDraft(sessionId, value);
         }
       }
     };
-  }, [sessionId]);
+  }, [sessionId, persistShortIfNoPrior]);
 
   const handleRevertRequest = useCallback(
     (message: MessageWithParts, text: string) => {
