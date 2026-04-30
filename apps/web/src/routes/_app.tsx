@@ -44,6 +44,13 @@ function BuildMismatchBanner() {
       <span className="flex-1 text-fg">
         OpenPortal was updated. Reload the page to get the latest version.
       </span>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium hover:bg-muted"
+      >
+        Reload
+      </button>
     </div>
   );
 }

@@ -281,7 +281,7 @@ export function PinnedTabStrip() {
         return (
           <div
             key={id}
-            className={`group relative flex items-center gap-1 -mb-px border-b-2 px-3 py-1.5 text-xs transition-colors shrink-0 ${
+            className={`group relative flex items-center gap-0.5 -mb-px border-b-2 pl-2 pr-1 py-0.5 text-xs transition-colors shrink-0 ${
               active
                 ? "border-primary bg-bg text-fg"
                 : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
@@ -302,7 +302,7 @@ export function PinnedTabStrip() {
               onClick={() => void togglePin(id, "unpin")}
               aria-label={`Unpin ${title}`}
               title="Unpin"
-              className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted/40"
+              className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted/40"
             >
               <XMarkIcon className="size-3" />
             </button>
