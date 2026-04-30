@@ -243,14 +243,17 @@ function PinTopbarButton({ sessionId }: { sessionId: string }) {
   );
 }
 
-// Desktop-only horizontal strip below the topbar showing one tab per
-// pinned session for one-click switching. Hidden on mobile (sidebar's
-// "Pinned" section serves that role with no extra vertical chrome).
-// Tabs whose session id is no longer in the live sessions list are
-// silently skipped (the pin survives so a temporarily-disconnected
-// opencode doesn't lose pins). The active session highlights; click
+// Horizontal tab strip showing one tab per pinned session. Tab styling:
+// no rounded boxes - flat strip with a bottom-border on the active tab
+// only, like browser tabs / a tabbed nav. Tabs whose session id isn't in
+// the live sessions list are silently skipped so transient opencode
+// disconnects don't lose pins. The active session highlights; click
 // navigates; the X button calls unpin without affecting the session
 // itself (don't conflate "remove from quick-access" with "delete").
+//
+// Mounted at the very top of the SidebarInset (below only the global
+// banners) so it acts as the app's primary navigation chrome on both
+// desktop AND mobile.
 export function PinnedTabStrip() {
   const { data } = usePinnedSessions();
   const { data: sessionsData } = useSessions();
@@ -271,17 +274,17 @@ export function PinnedTabStrip() {
   if (tabs.length === 0) return null;
 
   return (
-    <div className="hidden sm:flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-border bg-bg/95 px-2 py-1">
+    <div className="flex shrink-0 items-stretch overflow-x-auto border-b border-border bg-bg/95">
       {tabs.map(({ id, session }) => {
         const active = id === currentSessionId;
         const title = session.title ?? "(untitled)";
         return (
           <div
             key={id}
-            className={`group flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+            className={`group relative flex items-center gap-1 -mb-px border-b-2 px-3 py-1.5 text-xs transition-colors shrink-0 ${
               active
-                ? "border-primary/40 bg-primary/10 text-fg"
-                : "border-border bg-muted/30 text-muted-fg hover:bg-muted hover:text-fg"
+                ? "border-primary bg-bg text-fg"
+                : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
             }`}
           >
             <button
@@ -299,7 +302,7 @@ export function PinnedTabStrip() {
               onClick={() => void togglePin(id, "unpin")}
               aria-label={`Unpin ${title}`}
               title="Unpin"
-              className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-bg/70"
+              className="ml-0.5 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted/40"
             >
               <XMarkIcon className="size-3" />
             </button>

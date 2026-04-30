@@ -195,8 +195,8 @@ function AppLayout() {
             <ConnectionStatusBanner />
             <BuildMismatchBanner />
             <NotificationPermissionBanner />
-            <AppSidebarNav />
             <PinnedTabStrip />
+            <AppSidebarNav />
             <div className="flex-1 overflow-hidden">
               <Outlet />
             </div>
