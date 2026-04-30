@@ -281,7 +281,7 @@ export function PinnedTabStrip() {
         return (
           <div
             key={id}
-            className={`group relative flex items-center gap-0.5 -mb-px border-b-2 pl-2 pr-1 py-0.5 text-xs transition-colors shrink-0 ${
+            className={`group relative flex items-center gap-0.5 -mb-px border-b-2 pl-2 pr-0 py-1 text-xs transition-colors shrink-0 ${
               active
                 ? "border-primary bg-bg text-fg"
                 : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
