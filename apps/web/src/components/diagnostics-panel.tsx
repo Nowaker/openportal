@@ -72,22 +72,17 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+// SectionHeader and Row both render flat children of a single outer grid
+// declared on DiagnosticsPanel. That makes the label column (col 1) auto-
+// size to the LONGEST label across every section, not just within one
+// section, so labels in adjacent sections stack on the same x-coordinate.
+// Using one grid + col-span-2 headers is simpler than per-section subgrid
+// and works in every modern browser.
+function SectionHeader({ title }: { title: string }) {
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-fg">
-        {title}
-      </h3>
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm">
-        {children}
-      </dl>
-    </section>
+    <h3 className="col-span-2 pt-4 first:pt-0 text-sm font-semibold uppercase tracking-wide text-muted-fg">
+      {title}
+    </h3>
   );
 }
 
@@ -193,7 +188,7 @@ export function DiagnosticsPanel() {
       : uptimeBase + Math.floor((now - uptimeFetchedAt.current) / 1000);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Diagnostics</h2>
         <p className="text-sm text-muted-fg">
@@ -202,15 +197,14 @@ export function DiagnosticsPanel() {
         </p>
       </div>
 
-      <Section title="This Portal">
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm">
+        <SectionHeader title="This Portal" />
         <Row label="Instance ID">{selfInstance?.id ?? "—"}</Row>
         <Row label="Name">{selfInstance?.name ?? "—"}</Row>
         <Row label="Web port">{selfInstance?.port ?? "—"}</Row>
         <Row label="opencode port">{selfInstance?.port ?? "—"}</Row>
         <Row label="Hostname">
-          {selfInstance?.hostname ??
-            diagnostics.data?.os.hostname ??
-            "—"}
+          {selfInstance?.hostname ?? diagnostics.data?.os.hostname ?? "—"}
         </Row>
         <Row label="Directory">{selfInstance?.directory ?? "—"}</Row>
         <Row label="PID">{diagnostics.data?.process.pid ?? "—"}</Row>
@@ -228,9 +222,8 @@ export function DiagnosticsPanel() {
             ? `(${diagnostics.data.os.type} ${diagnostics.data.os.release})`
             : ""}
         </Row>
-      </Section>
 
-      <Section title="Workspace">
+        <SectionHeader title="Workspace" />
         <Row label="Home">{portalConfig.data?.home ?? "—"}</Row>
         <Row label="Base dirs">
           {baseDirs.length === 0 ? (
@@ -252,9 +245,7 @@ export function DiagnosticsPanel() {
             </ul>
           )}
         </Row>
-        <Row label="Projects discovered">
-          {discoveredProjects.length}
-        </Row>
+        <Row label="Projects discovered">{discoveredProjects.length}</Row>
         {projectErrors.length > 0 && (
           <Row label="Scan errors">
             <ul className="space-y-0.5 text-danger">
@@ -277,9 +268,8 @@ export function DiagnosticsPanel() {
             </ul>
           </Row>
         )}
-      </Section>
 
-      <Section title="opencode">
+        <SectionHeader title="opencode" />
         <Row label="Providers">
           {providers.isLoading ? "loading…" : providerList.length}
         </Row>
@@ -295,19 +285,19 @@ export function DiagnosticsPanel() {
         <Row label="Pending questions">
           {questions.isLoading ? "loading…" : (questions.data?.length ?? 0)}
         </Row>
-      </Section>
 
-      {otherInstances.length > 0 && (
-        <Section title="Other Portals on host">
-          {otherInstances.map((inst) => (
-            <Row key={inst.id} label={inst.name}>
-              {inst.directory} (web:{inst.webPort ?? "—"} oc:{inst.port})
-            </Row>
-          ))}
-        </Section>
-      )}
+        {otherInstances.length > 0 && (
+          <>
+            <SectionHeader title="Other Portals on host" />
+            {otherInstances.map((inst) => (
+              <Row key={inst.id} label={inst.name}>
+                {inst.directory} (web:{inst.webPort ?? "—"} oc:{inst.port})
+              </Row>
+            ))}
+          </>
+        )}
 
-      <Section title="State files">
+        <SectionHeader title="State files" />
         {Object.entries(stateFiles).map(([key, info]) => (
           <Row key={key} label={key}>
             {info.path}{" "}
@@ -316,9 +306,8 @@ export function DiagnosticsPanel() {
             </span>
           </Row>
         ))}
-      </Section>
 
-      <Section title="Client preferences">
+        <SectionHeader title="Client preferences" />
         <Row label="Theme">{theme}</Row>
         <Row label="Accent">{accent}</Row>
         <Row label="Font family">{fontFamily}</Row>
@@ -326,15 +315,14 @@ export function DiagnosticsPanel() {
         <Row label="Date format">{dateFormat}</Row>
         <Row label="Default thinking">{globalThinking || "—"}</Row>
         <Row label="Enter key">{enterKeyAction}</Row>
-      </Section>
 
-      <Section title="Browser">
+        <SectionHeader title="Browser" />
         <Row label="User agent">{userAgent}</Row>
         <Row label="Language">{language}</Row>
         <Row label="Viewport">{viewport}</Row>
         <Row label="DPR">{dpr}</Row>
         <Row label="Network">{onlineState}</Row>
-      </Section>
+      </dl>
     </div>
   );
 }
