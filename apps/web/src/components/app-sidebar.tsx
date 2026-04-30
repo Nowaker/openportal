@@ -306,25 +306,30 @@ function ProjectGroup({
     ? { paddingLeft: headerPaddingLeft }
     : undefined;
 
-  // Cascade per-session indicators up to the project header so the user can
-  // see at-a-glance whether ANY session in this project needs attention,
-  // even when collapsed. Mirrors the same aggregation that intermediate
-  // category rows use (aggregateNodeStatus) - just inlined since
-  // ProjectGroup already has the relevant per-session props.
+  // Indicator cascade rule (per user spec): show the aggregated indicator
+  // on the project header only when the project is COLLAPSED, i.e. the
+  // user can't see any sessions inside. When expanded, each visible
+  // session row carries its own indicator; cascading would just duplicate
+  // the signal. The empty-slot placeholders inside DraftIndicator /
+  // SessionStatusDot keep the title's x-coordinate stable across
+  // expanded/collapsed transitions.
   let aggBusy = false;
   let aggRetry = false;
   let aggNewContent = false;
   let aggDraft = false;
   let aggQuestion = false;
   let aggError = false;
-  for (const s of sessions) {
-    const t = statusMap?.[s.id]?.type;
-    if (t === "busy") aggBusy = true;
-    else if (t === "retry") aggRetry = true;
-    if (sessionHasNewContent(s, lastViewedMap, currentSessionId)) aggNewContent = true;
-    if (sessionHasDraft(s.id)) aggDraft = true;
-    if (questionSessionIds.has(s.id)) aggQuestion = true;
-    if (errorSessionIds.has(s.id)) aggError = true;
+  if (!isExpanded) {
+    for (const s of sessions) {
+      const t = statusMap?.[s.id]?.type;
+      if (t === "busy") aggBusy = true;
+      else if (t === "retry") aggRetry = true;
+      if (sessionHasNewContent(s, lastViewedMap, currentSessionId))
+        aggNewContent = true;
+      if (sessionHasDraft(s.id)) aggDraft = true;
+      if (questionSessionIds.has(s.id)) aggQuestion = true;
+      if (errorSessionIds.has(s.id)) aggError = true;
+    }
   }
   const aggStatus: "busy" | "retry" | undefined = aggBusy
     ? "busy"
@@ -1102,7 +1107,7 @@ function TreeNodeRow({
   }
 
   const [createOpen, setCreateOpen] = useState(false);
-  const aggregate = aggregateNodeStatus(
+  const fullAggregate = aggregateNodeStatus(
     node,
     statusMap,
     currentSessionId,
@@ -1110,6 +1115,16 @@ function TreeNodeRow({
     errorSessionIds,
     lastViewedMap,
   );
+  const aggregate = isExpanded
+    ? {
+        ...fullAggregate,
+        status: undefined,
+        newContent: false,
+        draft: false,
+        question: false,
+        error: false,
+      }
+    : fullAggregate;
 
   return (
     <>
