@@ -2029,20 +2029,20 @@ function SessionPage() {
     };
   }, [sessionId]);
 
-  // Persist the draft only after the user has stopped typing for 2 seconds,
-  // so we don't thrash localStorage on every keystroke. The unmount /
-  // session-change effect flushes whatever the textarea currently holds,
-  // so an interrupted typing session loses at most ~2s of typing.
+  // Persist on every keystroke. localStorage writes are microsecond-level
+  // so debouncing is over-optimization that introduced data loss on fast
+  // navigation: a 2s debounce plus React's effect-cleanup ordering gave
+  // narrow windows where a short draft never made it to disk. Direct
+  // write per keystroke is simpler and provably can't lose data.
   //
   // Cross-tab safety (DRAFT_MIN_BYTES rule): the concern is a SECOND tab
   // mounting with an empty/short textarea and clobbering the FIRST tab's
   // longer draft. So short values are only persisted when there's no
   // existing prior to clobber. With no prior in localStorage, ANY non-
-  // empty value is safe to write - that's the common case for "I typed
-  // a few chars and navigated away" and the user expects it to come back.
-  // Empty values never write (user clearing the field doesn't mean they
-  // want to drop another tab's stored draft); the acknowledged-submit
-  // path in handleSubmit calls writeDraft("") explicitly to clear.
+  // empty value is safe to write. Empty values never write (user clearing
+  // the field doesn't mean they want to drop another tab's stored draft);
+  // the acknowledged-submit path in handleSubmit calls writeDraft("")
+  // explicitly to clear.
   const persistShortIfNoPrior = useCallback(
     (value: string) => {
       if (!sessionId) return false;
@@ -2055,24 +2055,14 @@ function SessionPage() {
   const scheduleDraftSave = useCallback(
     (value: string) => {
       if (!sessionId) return;
-      if (draftSaveTimerRef.current != null) {
-        window.clearTimeout(draftSaveTimerRef.current);
-      }
       if (!persistShortIfNoPrior(value)) return;
-      draftSaveTimerRef.current = window.setTimeout(() => {
-        writeDraft(sessionId, value);
-        draftSaveTimerRef.current = null;
-      }, 2000);
+      writeDraft(sessionId, value);
     },
     [sessionId, persistShortIfNoPrior],
   );
 
   useEffect(() => {
     return () => {
-      if (draftSaveTimerRef.current != null) {
-        window.clearTimeout(draftSaveTimerRef.current);
-        draftSaveTimerRef.current = null;
-      }
       if (sessionId && textareaRef.current) {
         const value = textareaRef.current.value;
         if (persistShortIfNoPrior(value)) {
