@@ -2029,11 +2029,19 @@ function SessionPage() {
     };
   }, [sessionId]);
 
-  // Persist on every keystroke. localStorage writes are microsecond-level
-  // so debouncing is over-optimization that introduced data loss on fast
-  // navigation: a 2s debounce plus React's effect-cleanup ordering gave
-  // narrow windows where a short draft never made it to disk. Direct
-  // write per keystroke is simpler and provably can't lose data.
+  // Per-device persistence cadence.
+  //
+  // Desktop: write on every keystroke. localStorage on a desktop browser
+  // is microsecond-level; debouncing is over-optimization and previously
+  // introduced data loss on fast navigation (2s window where a short
+  // draft never made it to disk).
+  //
+  // Mobile: 5s debounce. Keystroke-rate writes can hitch the IME on
+  // older Android devices and burn battery on a long compose. The
+  // unmount/session-change cleanup below + the composer-collapse handler
+  // both flush synchronously regardless of device, so a typing-then-
+  // navigating mobile user never loses data even with the debounce
+  // pending.
   //
   // Cross-tab safety (DRAFT_MIN_BYTES rule): the concern is a SECOND tab
   // mounting with an empty/short textarea and clobbering the FIRST tab's
@@ -2043,6 +2051,7 @@ function SessionPage() {
   // the field doesn't mean they want to drop another tab's stored draft);
   // the acknowledged-submit path in handleSubmit calls writeDraft("")
   // explicitly to clear.
+  const MOBILE_DRAFT_DEBOUNCE_MS = 5000;
   const persistShortIfNoPrior = useCallback(
     (value: string) => {
       if (!sessionId) return false;
@@ -2056,13 +2065,27 @@ function SessionPage() {
     (value: string) => {
       if (!sessionId) return;
       if (!persistShortIfNoPrior(value)) return;
-      writeDraft(sessionId, value);
+      if (!isMobile) {
+        writeDraft(sessionId, value);
+        return;
+      }
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+      }
+      draftSaveTimerRef.current = window.setTimeout(() => {
+        writeDraft(sessionId, value);
+        draftSaveTimerRef.current = null;
+      }, MOBILE_DRAFT_DEBOUNCE_MS);
     },
-    [sessionId, persistShortIfNoPrior],
+    [sessionId, persistShortIfNoPrior, isMobile],
   );
 
   useEffect(() => {
     return () => {
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
       if (sessionId && textareaRef.current) {
         const value = textareaRef.current.value;
         if (persistShortIfNoPrior(value)) {
