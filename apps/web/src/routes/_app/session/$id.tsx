@@ -971,7 +971,7 @@ function ImagePreviewModal({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       isDismissable
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/30"
     >
       <Modal className="outline-none">
         <PrimitiveDialog className="relative outline-none">
@@ -988,7 +988,7 @@ function ImagePreviewModal({
               <img
                 src={url}
                 alt={alt}
-                className="block max-w-[95vw] max-h-[90dvh] rounded shadow-2xl object-contain"
+                className="block max-w-[80vw] max-h-[80dvh] rounded shadow-2xl object-contain"
               />
             </>
           )}
