@@ -21,9 +21,108 @@ export default defineHandler(async (event) => {
 
   const stripped = stripDiagnosticFixes(messages.data);
   stripUserMessageSummary(stripped);
+  stripPartBloat(stripped);
   rewriteImageDataUrls(stripped, id);
   return stripped;
 });
+
+// Aggressive per-part field stripping for opencode's persisted-but-unused
+// metadata. Each entry is a path INSIDE a part object (under either `part`
+// or `part.data` for the newer/older opencode shapes); the field is
+// deleted from every matching part. Confirmed unused by grep across
+// apps/web/src - the chat renderer reads only icon + label + details
+// computed from state.input.* (see formatToolCall in routes/_app/session/$id.tsx)
+// plus state.metadata.todos for todowrite (see lib/todos.ts).
+//
+// Drops by category:
+//
+//   reasoning parts: metadata.anthropic.signature - the Anthropic
+//   extended-thinking signature opencode keeps for retry replays. Portal
+//   never feeds messages back into opencode (opencode reads its own
+//   SQLite for retries), so the signature is dead weight on the wire.
+//   Dominant cost on most sessions: ~3 KB per reasoning part, 30+ parts
+//   per session => 100+ KB just from this.
+//
+//   every tool: state.output - the model's view of the tool result. The
+//   frontend ToolCallItem only renders header (icon/label/details from
+//   state.input). webfetch/websearch outputs are 5-16 KB each.
+//
+//   bash tool: three duplicated mirrors of input.command/description -
+//   state.title, state.metadata.description, state.metadata.output. All
+//   verified identical in user-AI corpus analysis.
+//
+//   edit tool: state.metadata.diff and state.metadata.filediff (whose
+//   .patch is identical to .diff). The patch text is verified-unused.
+//
+//   write tool: state.metadata.filepath - dup of state.input.filePath.
+//
+//   read tool: state.metadata.preview - file-content snippet, unused.
+//
+//   step parts: data.snapshot - git working-tree snapshot, unused.
+//
+// Note: state.metadata is not dropped wholesale because todowrite stores
+// its parsed todo array there and lib/todos.ts reads it.
+function stripPartBloat(messages: unknown): void {
+  if (!Array.isArray(messages)) return;
+  for (const msg of messages) {
+    const parts = (msg as { parts?: unknown }).parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      stripOnePartBloat(part);
+    }
+  }
+}
+
+function stripOnePartBloat(part: unknown): void {
+  if (!part || typeof part !== "object") return;
+  const p = part as Record<string, unknown> & {
+    type?: string;
+    state?: Record<string, unknown> & { metadata?: Record<string, unknown> };
+    data?: { state?: Record<string, unknown> & { metadata?: Record<string, unknown> }; snapshot?: unknown };
+    metadata?: { anthropic?: { signature?: unknown } };
+    snapshot?: unknown;
+  };
+
+  if (p.type === "reasoning") {
+    if (p.metadata?.anthropic && "signature" in p.metadata.anthropic) {
+      delete p.metadata.anthropic.signature;
+    }
+    const inner = (p.data as { metadata?: { anthropic?: { signature?: unknown } } } | undefined)
+      ?.metadata?.anthropic;
+    if (inner && "signature" in inner) delete inner.signature;
+  }
+
+  if (p.type === "step-start" || p.type === "step-finish") {
+    if ("snapshot" in p) delete p.snapshot;
+    if (p.data && "snapshot" in p.data) delete p.data.snapshot;
+  }
+
+  for (const state of partStates(p)) {
+    if (!state || typeof state !== "object") continue;
+    if ("output" in state) delete state.output;
+    if ("title" in state) delete state.title;
+    const meta = state.metadata as Record<string, unknown> | undefined;
+    if (meta && typeof meta === "object") {
+      for (const k of [
+        "output",
+        "description",
+        "diff",
+        "filediff",
+        "filepath",
+        "preview",
+      ]) {
+        if (k in meta) delete meta[k];
+      }
+    }
+  }
+}
+
+function partStates(p: {
+  state?: Record<string, unknown>;
+  data?: { state?: Record<string, unknown> };
+}): Array<Record<string, unknown> | undefined> {
+  return [p.state, p.data?.state];
+}
 
 // opencode rebuilds message.info.summary on every user message, summarising
 // the working-tree changes since the previous user prompt: a list of files
