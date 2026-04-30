@@ -10,6 +10,9 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+const THUMB_MAX_DIM = 512;
+const THUMB_QUALITY = 80;
+
 // Portal-side blob cache for user-uploaded image attachments. opencode's
 // SQLite stores `file` parts with `url: "data:image/...;base64,..."` -
 // great for shipping bytes to Claude verbatim, awful for `messages?limit=N`
@@ -34,6 +37,7 @@ export interface StashedBlob {
   ext: string;
   contentType: string;
   bytes: number;
+  hasThumb: boolean;
 }
 
 export function stashDataUrl(
@@ -69,7 +73,60 @@ export function stashDataUrl(
       return null;
     }
   }
-  return { hash, ext, contentType, bytes: buf.length };
+  const hasThumb = ensureThumb(dir, hash, contentType, path);
+  return { hash, ext, contentType, bytes: buf.length, hasThumb };
+}
+
+// Best-effort thumbnail generation via ImageMagick (`magick` first,
+// `convert` as IMv6 fallback). Output is a webp at THUMB_MAX_DIM
+// longest-edge, quality THUMB_QUALITY. Idempotent: if the thumb file
+// already exists, returns true immediately. Returns false on any failure
+// (missing magick binary, unsupported format, decode error) so the caller
+// knows not to advertise a thumb url. SVG is skipped (already small +
+// scalable). The `>` qualifier on -resize prevents upscaling small images.
+function ensureThumb(
+  dir: string,
+  hash: string,
+  contentType: string,
+  sourcePath: string,
+): boolean {
+  if (contentType === "image/svg+xml") return false;
+  const thumbPath = join(dir, `${hash}.thumb.webp`);
+  if (existsSync(thumbPath)) return true;
+  const cmds: string[][] = [
+    [
+      "magick",
+      sourcePath,
+      "-auto-orient",
+      "-resize",
+      `${THUMB_MAX_DIM}x${THUMB_MAX_DIM}>`,
+      "-quality",
+      String(THUMB_QUALITY),
+      thumbPath,
+    ],
+    [
+      "convert",
+      sourcePath,
+      "-auto-orient",
+      "-resize",
+      `${THUMB_MAX_DIM}x${THUMB_MAX_DIM}>`,
+      "-quality",
+      String(THUMB_QUALITY),
+      thumbPath,
+    ],
+  ];
+  for (const cmd of cmds) {
+    try {
+      const proc = Bun.spawnSync({
+        cmd,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      if (proc.exitCode === 0 && existsSync(thumbPath)) return true;
+    } catch {
+      // binary missing - try next, or fall through
+    }
+  }
+  return false;
 }
 
 export function readBlob(
@@ -87,6 +144,11 @@ export function readBlob(
   }
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
   return { buf, contentType: contentTypeFromExt(ext) };
+}
+
+export function hasCachedThumb(sessionId: string, hash: string): boolean {
+  if (!isSafeSegment(sessionId) || !isSafeSegment(hash)) return false;
+  return existsSync(join(BLOB_DIR, sessionId, `${hash}.thumb.webp`));
 }
 
 function extFromContentType(ct: string): string {

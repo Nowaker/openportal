@@ -1,7 +1,7 @@
 import { defineHandler, getQuery } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
-import { stashDataUrl } from "../../../../lib/blob-cache";
+import { stashDataUrl, hasCachedThumb } from "../../../../lib/blob-cache";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -95,13 +95,23 @@ function rewriteImageDataUrls(messages: unknown, sessionId: string): void {
         type?: string;
         url?: string;
         mime?: string;
+        thumb?: string;
       };
       if (p.type !== "file") continue;
       if (typeof p.url !== "string") continue;
-      if (!p.url.startsWith("data:")) continue;
-      const stashed = stashDataUrl(sessionId, p.url, p.mime);
-      if (!stashed) continue;
-      p.url = `/api/blob/${sessionId}/${stashed.hash}.${stashed.ext}`;
+      if (p.url.startsWith("data:")) {
+        const stashed = stashDataUrl(sessionId, p.url, p.mime);
+        if (!stashed) continue;
+        p.url = `/api/blob/${sessionId}/${stashed.hash}.${stashed.ext}`;
+        if (stashed.hasThumb) {
+          p.thumb = `/api/blob/${sessionId}/${stashed.hash}.thumb.webp`;
+        }
+        continue;
+      }
+      const m = /^\/api\/blob\/[^/]+\/([0-9a-f]{16})\.[a-z0-9]+$/i.exec(p.url);
+      if (m && hasCachedThumb(sessionId, m[1])) {
+        p.thumb = `/api/blob/${sessionId}/${m[1]}.thumb.webp`;
+      }
     }
   }
 }

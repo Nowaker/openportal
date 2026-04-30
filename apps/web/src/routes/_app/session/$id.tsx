@@ -954,13 +954,14 @@ function AttachmentChip({ part }: { part: FilePart }) {
   const Icon = isImage ? PhotoIcon : PaperClipIcon;
   const label = part.filename || (isImage ? "image" : part.mime || "attachment");
   const url = part.url ?? "";
+  const thumb = (part as FilePart & { thumb?: string }).thumb;
   const isDataUrl = url.startsWith("data:");
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-fg/90 hover:border-fg/30 hover:bg-muted transition-colors"
+      className="inline-flex items-center gap-2 max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-fg/90 hover:border-fg/30 hover:bg-muted transition-colors"
       title={label}
       onClick={
         isDataUrl
@@ -979,7 +980,16 @@ function AttachmentChip({ part }: { part: FilePart }) {
           : undefined
       }
     >
-      <Icon className="size-3 shrink-0 text-muted-fg" />
+      {isImage && thumb ? (
+        <img
+          src={thumb}
+          alt={label}
+          loading="lazy"
+          className="size-8 shrink-0 rounded object-cover bg-muted"
+        />
+      ) : (
+        <Icon className="size-3 shrink-0 text-muted-fg" />
+      )}
       <span className="truncate">{label}</span>
     </a>
   );
