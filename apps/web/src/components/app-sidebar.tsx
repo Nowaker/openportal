@@ -5,7 +5,6 @@ import {
   ArchiveBoxArrowDownIcon,
   ArrowUturnLeftIcon,
   BellAlertIcon,
-  PencilSquareIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -49,6 +48,7 @@ import {
   useHostname,
   useSessionStatus,
   useQuestions,
+  usePermissions,
   usePortalConfig,
   useProjectPaths,
   type SessionStatusMap,
@@ -62,37 +62,17 @@ import {
 import {
   resolveProjectPath,
   buildProjectTree,
+  groupSessionsByParent,
   type BaseDirEntry,
   type ProjectTreeNode,
 } from "@/lib/project-path";
 
-const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
-
-function sessionHasDraft(sessionId: string): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const v = window.localStorage.getItem(DRAFT_KEY_PREFIX + sessionId);
-    return Boolean(v && v.length > 0);
-  } catch {
-    return false;
-  }
-}
-
-// Last-viewed source-of-truth is the server (~/.openportal-state.json), not
-// localStorage - drafts of which device/tab last viewed a session need to
-// sync across devices so the green "review needed" dot clears everywhere
-// once the user actually reviews on any one of them.
-function sessionHasNewContent(
-  session: Session,
-  lastViewedMap: Record<string, number> | undefined,
-  currentSessionId?: string,
-): boolean {
-  if (session.id === currentSessionId) return false;
-  const updated = session.time?.updated ?? 0;
-  if (!updated) return false;
-  const lastViewed = lastViewedMap?.[session.id] ?? 0;
-  return updated > lastViewed;
-}
+import {
+  sessionHasDraft,
+  sessionHasNewContent,
+  SessionStatusDot,
+  DraftIndicator,
+} from "@/lib/session-indicators";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
@@ -151,77 +131,9 @@ interface ProjectGroupProps {
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
   lastViewedMap: Record<string, number>;
+  childrenByParent: Map<string, Session[]>;
   displayName?: string;
   depth?: number;
-}
-
-// Always-rendered fixed-width slots so absent indicators don't desync
-// horizontal alignment of session titles between rows.
-function SessionStatusDot({
-  status,
-  hasNewContent,
-  hasQuestion,
-  hasError,
-}: {
-  status: "busy" | "retry" | "idle" | undefined;
-  hasNewContent: boolean;
-  hasQuestion?: boolean;
-  hasError?: boolean;
-}) {
-  if (hasQuestion || hasError) {
-    const label = hasQuestion ? "AI is waiting on your answer" : "Session has error";
-    return (
-      <span
-        className="size-2 shrink-0 rounded-full bg-red-500"
-        aria-label={label}
-        title={label}
-      />
-    );
-  }
-  if (status === "busy") {
-    return (
-      <span
-        className="relative flex size-2 shrink-0"
-        aria-label="Session is running"
-        title="Session is running"
-      >
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-        <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
-      </span>
-    );
-  }
-  if (status === "retry") {
-    return (
-      <span
-        className="size-2 shrink-0 rounded-full bg-amber-600"
-        aria-label="Session is retrying"
-        title="Session is retrying"
-      />
-    );
-  }
-  if (hasNewContent) {
-    return (
-      <span
-        className="size-2 shrink-0 rounded-full bg-emerald-500"
-        aria-label="Task complete - review needed"
-        title="Task complete - review needed"
-      />
-    );
-  }
-  return <span className="size-2 shrink-0" aria-hidden />;
-}
-
-function DraftIndicator({ hasDraft }: { hasDraft: boolean }) {
-  if (!hasDraft) {
-    return <span className="size-3 shrink-0" aria-hidden />;
-  }
-  return (
-    <PencilSquareIcon
-      className="size-3 shrink-0 text-sky-500"
-      aria-label="Unsent draft"
-      title="Unsent draft"
-    />
-  );
 }
 
 function ProjectGroup({
@@ -240,9 +152,21 @@ function ProjectGroup({
   questionSessionIds,
   errorSessionIds,
   lastViewedMap,
+  childrenByParent,
   displayName,
   depth = 0,
 }: ProjectGroupProps) {
+  const subsExpanded = useSidebarExpandStore((s) => s.expanded);
+  const subsExpandedSet = useMemo(() => new Set(subsExpanded), [subsExpanded]);
+  const subsForceCollapsed = useSidebarExpandStore((s) => s.forceCollapsed);
+  const subsForceCollapsedSet = useMemo(
+    () => new Set(subsForceCollapsed),
+    [subsForceCollapsed],
+  );
+  const setSubsExplicitCollapsed = useSidebarExpandStore(
+    (s) => s.setExplicitCollapsed,
+  );
+  const expandSubs = useSidebarExpandStore((s) => s.expand);
   const { isMobile } = useMediaQuery();
   const sessionStep = isMobile ? 5 : 10;
   const [limit, setLimit] = useState(sessionStep);
@@ -392,38 +316,141 @@ function ProjectGroup({
         const hasQuestion = questionSessionIds.has(session.id);
         const hasError = errorSessionIds.has(session.id);
         const isCurrent = session.id === currentSessionId;
+
+        const children = childrenByParent.get(session.id) || [];
+        const hasChildren = children.length > 0;
+        const childAnyQuestion = hasChildren
+          ? children.some((c) => questionSessionIds.has(c.id))
+          : false;
+        const childAnyError = hasChildren
+          ? children.some((c) => errorSessionIds.has(c.id))
+          : false;
+        const childAnyBusy = hasChildren
+          ? children.some((c) => {
+              const t = statusMap?.[c.id]?.type;
+              return t === "busy" || t === "retry";
+            })
+          : false;
+        const subsKey = `subs:${session.id}`;
+        const explicitlyExpanded = subsExpandedSet.has(subsKey);
+        const explicitlyCollapsed = subsForceCollapsedSet.has(subsKey);
+        const containsCurrent =
+          !!currentSessionId &&
+          children.some((c) => c.id === currentSessionId);
+        const shouldAutoExpand =
+          childAnyBusy || childAnyQuestion || childAnyError || containsCurrent;
+        const isSubsExpanded =
+          hasChildren &&
+          !explicitlyCollapsed &&
+          (explicitlyExpanded || shouldAutoExpand);
+
+        const showHasQuestion =
+          hasQuestion || (hasChildren && !isSubsExpanded && childAnyQuestion);
+        const showHasError =
+          hasError || (hasChildren && !isSubsExpanded && childAnyError);
+        const showHasChildBusy =
+          hasChildren && !isSubsExpanded && childAnyBusy;
+
         return (
-          <div
-            key={session.id}
-            className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-3" : "pl-3 pr-3"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
-            style={depth > 0 ? sessionRowStyle : undefined}
-            data-current-session={isCurrent || undefined}
-          >
-            <span className="size-3 shrink-0" aria-hidden />
-            <DraftIndicator hasDraft={hasDraft} />
-            <SessionStatusDot
-              status={status}
-              hasNewContent={hasNewContent}
-              hasQuestion={hasQuestion}
-              hasError={hasError}
-            />
-            <UILink
-              href={`/session/${session.id}`}
-              onClick={onSessionClick}
-              className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
+          <Fragment key={session.id}>
+            <div
+              className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-3" : "pl-3 pr-3"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
+              style={depth > 0 ? sessionRowStyle : undefined}
+              data-current-session={isCurrent || undefined}
             >
-              {highlightMatch(truncateTitle(session.title), searchQuery)}
-            </UILink>
-            <button
-              type="button"
-              onClick={() => onArchiveSession(session.id)}
-              title="Archive session"
-              aria-label={`Archive ${session.title}`}
-              className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
-            >
-              <ArchiveBoxArrowDownIcon className="size-3.5" />
-            </button>
-          </div>
+              {hasChildren ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSubsExpanded) {
+                      setSubsExplicitCollapsed(subsKey, true);
+                    } else {
+                      setSubsExplicitCollapsed(subsKey, false);
+                      expandSubs(subsKey);
+                    }
+                  }}
+                  aria-label={
+                    isSubsExpanded ? "Collapse subsessions" : "Expand subsessions"
+                  }
+                  title={
+                    isSubsExpanded ? "Collapse subsessions" : "Expand subsessions"
+                  }
+                  className="size-3 shrink-0 inline-flex items-center justify-center text-muted-fg hover:text-fg"
+                >
+                  <ChevronRightIcon
+                    className={`size-3 transition-transform ${isSubsExpanded ? "rotate-90" : ""}`}
+                  />
+                </button>
+              ) : (
+                <span className="size-3 shrink-0" aria-hidden />
+              )}
+              <DraftIndicator hasDraft={hasDraft} />
+              <SessionStatusDot
+                status={status}
+                hasNewContent={hasNewContent}
+                hasQuestion={showHasQuestion}
+                hasError={showHasError}
+                hasChildBusy={showHasChildBusy}
+              />
+              <UILink
+                href={`/session/${session.id}`}
+                onClick={onSessionClick}
+                className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
+              >
+                {highlightMatch(truncateTitle(session.title), searchQuery)}
+              </UILink>
+              <button
+                type="button"
+                onClick={() => onArchiveSession(session.id)}
+                title="Archive session"
+                aria-label={`Archive ${session.title}`}
+                className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+              >
+                <ArchiveBoxArrowDownIcon className="size-3.5" />
+              </button>
+            </div>
+            {isSubsExpanded &&
+              children.map((child) => {
+                const childStatus = statusMap?.[child.id]?.type;
+                const childHasNew = sessionHasNewContent(
+                  child,
+                  lastViewedMap,
+                  currentSessionId,
+                );
+                const childIsCurrent = child.id === currentSessionId;
+                return (
+                  <div
+                    key={child.id}
+                    className={`col-span-full flex items-center gap-1 pr-3 rounded ${
+                      childIsCurrent ? "bg-primary/15" : "hover:bg-muted/20"
+                    }`}
+                    style={{
+                      paddingLeft: depth > 0 ? `calc(${headerPaddingLeft} + 1.25rem)` : "2rem",
+                    }}
+                  >
+                    <span className="size-3 shrink-0" aria-hidden />
+                    <DraftIndicator hasDraft={sessionHasDraft(child.id)} />
+                    <SessionStatusDot
+                      status={childStatus}
+                      hasNewContent={childHasNew}
+                      hasQuestion={questionSessionIds.has(child.id)}
+                      hasError={errorSessionIds.has(child.id)}
+                      subagent
+                    />
+                    <UILink
+                      href={`/session/${child.id}`}
+                      onClick={onSessionClick}
+                      className="flex-1 min-w-0 py-0.5 text-xs text-sidebar-fg hover:text-fg truncate block"
+                    >
+                      {highlightMatch(
+                        truncateTitle(child.title || "(untitled)"),
+                        searchQuery,
+                      )}
+                    </UILink>
+                  </div>
+                );
+              })}
+          </Fragment>
         );
       })}
       {isExpanded && remaining > 0 && (
@@ -530,6 +557,10 @@ function ProjectsList({
   lastViewedMap,
   home,
 }: ProjectsListProps) {
+  const childrenByParent = useMemo(
+    () => groupSessionsByParent(sessions),
+    [sessions],
+  );
   const groups = useMemo<ProjectBin[]>(() => {
     const byDir = new Map<string, ProjectBin>();
 
@@ -776,6 +807,7 @@ function ProjectsList({
             questionSessionIds={questionSessionIds}
             errorSessionIds={errorSessionIds}
             lastViewedMap={lastViewedMap}
+            childrenByParent={childrenByParent}
           />
         </Fragment>
       ))}
@@ -807,6 +839,7 @@ function PinnedSection({
 }) {
   const { data } = usePinnedSessions();
   const togglePin = useTogglePinnedSession();
+  const navigate = useNavigate();
   const pinned = data?.sessions ?? [];
   const rows = pinned
     .map((id) => sessions.find((s) => s.id === id))
@@ -843,13 +876,19 @@ function PinnedSection({
                 hasQuestion={hasQuestion}
                 hasError={hasError}
               />
-              <UILink
-                href={`/session/${session.id}`}
-                onClick={onSessionClick}
-                className="flex-1 min-w-0 truncate text-xs sm:text-sm text-sidebar-fg hover:text-fg"
+              <button
+                type="button"
+                onClick={() => {
+                  onSessionClick();
+                  void navigate({
+                    to: "/session/$id",
+                    params: { id: session.id },
+                  });
+                }}
+                className="flex-1 min-w-0 truncate text-left text-xs sm:text-sm text-sidebar-fg hover:text-fg"
               >
                 {session.title || "(untitled)"}
-              </UILink>
+              </button>
               <button
                 type="button"
                 onClick={() => void togglePin(session.id, "unpin")}
@@ -996,6 +1035,7 @@ interface TreeChildrenProps {
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
   lastViewedMap: Record<string, number>;
+  childrenByParent: Map<string, Session[]>;
 }
 
 // Splits a node's children into "has-sessions" (rendered always) vs "empty"
@@ -1060,6 +1100,7 @@ interface TreeNodeRowProps {
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
   lastViewedMap: Record<string, number>;
+  childrenByParent: Map<string, Session[]>;
 }
 
 function TreeNodeRow({
@@ -1078,6 +1119,7 @@ function TreeNodeRow({
   questionSessionIds,
   errorSessionIds,
   lastViewedMap,
+  childrenByParent,
 }: TreeNodeRowProps) {
   const isExpanded =
     expandedSet.has(node.path) || tempExpanded.has(node.path);
@@ -1102,6 +1144,7 @@ function TreeNodeRow({
         questionSessionIds={questionSessionIds}
         errorSessionIds={errorSessionIds}
         lastViewedMap={lastViewedMap}
+        childrenByParent={childrenByParent}
       />
     );
   }
@@ -1196,6 +1239,7 @@ function TreeNodeRow({
           questionSessionIds={questionSessionIds}
           errorSessionIds={errorSessionIds}
           lastViewedMap={lastViewedMap}
+          childrenByParent={childrenByParent}
         />
       )}
     </>
@@ -1219,10 +1263,18 @@ export default function AppSidebar(
   const unarchiveSession = useUnarchiveSession();
   const { data: statusMap } = useSessionStatus();
   const { data: questions } = useQuestions();
-  const questionSessionIds = useMemo(
-    () => new Set((questions ?? []).map((q) => q.sessionID)),
-    [questions],
-  );
+  const { data: permissions } = usePermissions();
+  // Pending permission requests are conceptually identical to questions for the
+  // sidebar dot: both block the run on user input. Merge sources so a session
+  // waiting on file/bash approval surfaces as red-attention, not amber-busy.
+  const questionSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const q of questions ?? []) ids.add(q.sessionID);
+    for (const p of (permissions ?? []) as Array<{ sessionID?: string }>) {
+      if (p.sessionID) ids.add(p.sessionID);
+    }
+    return ids;
+  }, [questions, permissions]);
   const errorSessionIdsArr = useSessionErrorStore((s) => s.errors);
   const errorSessionIds = useMemo(
     () => new Set(errorSessionIdsArr),
@@ -1464,12 +1516,14 @@ export default function AppSidebar(
       <FolderBrowserDialog
         isOpen={browserOpen}
         onOpenChange={setBrowserOpen}
-        onSelect={(picked) => {
+        onSelect={(picked, autoPrompt) => {
           setIsOpenOnMobile(false);
           setVirtualDirectory(picked);
           navigate({
             to: "/session/new",
-            search: { directory: picked },
+            search: autoPrompt
+              ? { directory: picked, autoPrompt }
+              : { directory: picked },
           });
         }}
       />
