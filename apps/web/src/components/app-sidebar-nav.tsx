@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import {
+  ArrowLeftIcon,
+  BoltIcon,
   CheckIcon,
   EllipsisVerticalIcon,
   InformationCircleIcon,
   PencilSquareIcon,
+  QuestionMarkCircleIcon,
   StarIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -19,22 +22,42 @@ import {
   MenuTrigger,
 } from "@/components/ui/menu";
 import { SessionInfoModal } from "@/components/session-info-modal";
+import { McpInfoModal } from "@/components/mcp-info-modal";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { useModelStore } from "@/stores/model-store";
 import {
   useToolsStore,
   resolveToolsFromState,
 } from "@/stores/tools-store";
 import { mutateSessionMessages } from "@/hooks/use-session-messages";
-import { useSessions } from "@/hooks/use-opencode";
+import {
+  useSessions,
+  useSessionStatus,
+  useQuestions,
+  usePermissions,
+  useConfig,
+} from "@/hooks/use-opencode";
+import { useLastViewed } from "@/hooks/use-last-viewed";
+import { useSessionErrorStore } from "@/stores/session-error-store";
 import {
   usePinnedSessions,
   useTogglePinnedSession,
+  useReorderPinnedSessions,
 } from "@/hooks/use-pinned-sessions";
+import { useMcpStatus, useToggleMcp } from "@/hooks/use-mcp";
+import { useLspStatus } from "@/hooks/use-lsp";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
+import useMediaQuery from "@/hooks/use-media-query";
+import {
+  sessionHasDraft,
+  sessionHasNewContent,
+  SessionStatusDot,
+  DraftIndicator,
+} from "@/lib/session-indicators";
 import type { Session } from "@opencode-ai/sdk";
 
 // Take the deepest path component and use it as a short project label.
@@ -53,6 +76,8 @@ export function AppSidebarNav() {
   const instanceId = instance?.id ?? null;
   const resolveModel = useModelStore((s) => s.resolveModel);
   const { setIsOpenOnMobile } = useSidebar();
+  const { pageTitle } = useBreadcrumb();
+  const navigate = useNavigate();
   const expandKey = useSidebarExpandStore((s) => s.expand);
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   // Subscribe to the raw store slices and derive the resolved list via
@@ -74,6 +99,7 @@ export function AppSidebarNav() {
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
   const [showSessionInfo, setShowSessionInfo] = useState(false);
+  const [mcpInfoName, setMcpInfoName] = useState<string | null>(null);
 
   const sessionMatch = useMatch({
     from: "/_app/session/$id",
@@ -84,6 +110,16 @@ export function AppSidebarNav() {
   const currentSession = sessions.find((s) => s.id === sessionId);
   const sessionTitle = currentSession?.title ?? null;
   const projectLabel = projectLabelFromDirectory(currentSession?.directory);
+  // Subagent sessions: opencode sets parentID on child sessions and appends
+  // a `(@<agent> subagent)` marker to the title. Recover both pieces so the
+  // topbar can render `project: parentTitle: agentName` with parentTitle in
+  // the muted (project-colored) tone, matching the visual hierarchy.
+  const parentSession = currentSession?.parentID
+    ? sessions.find((s) => s.id === currentSession.parentID)
+    : null;
+  const subagentMatch = sessionTitle?.match(/^(.*)\s+\(@([^)\s]+)\s+subagent\)$/);
+  const subagentName = subagentMatch ? subagentMatch[2] : null;
+  const isSubagent = Boolean(currentSession?.parentID && subagentName);
 
   // Browser tab title: 'OP: <sessionTitle>' on a session route, plain
   // 'OpenPortal' elsewhere. Short 'OP:' prefix keeps the title legible in
@@ -128,6 +164,58 @@ export function AppSidebarNav() {
 
   const isBusy = runningToolId !== null;
   const canRun = Boolean(sessionId);
+
+  const { isMobile } = useMediaQuery();
+  const { data: pinnedData } = usePinnedSessions();
+  const togglePinTopbar = useTogglePinnedSession();
+  const isPinnedHere = sessionId
+    ? (pinnedData?.sessions.includes(sessionId) ?? false)
+    : false;
+  const handleTogglePin = () => {
+    if (!sessionId) return;
+    void togglePinTopbar(sessionId, isPinnedHere ? "unpin" : "pin");
+  };
+
+  const { data: mcpStatus } = useMcpStatus();
+  const toggleMcp = useToggleMcp();
+  const mcpEntries = useMemo(
+    () =>
+      Object.entries(mcpStatus ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+    [mcpStatus],
+  );
+  const { data: lspStatus } = useLspStatus();
+  const lspEntries = useMemo(
+    () =>
+      [...(lspStatus ?? [])].sort((a, b) =>
+        (a.id || a.name).localeCompare(b.id || b.name),
+      ),
+    [lspStatus],
+  );
+
+  const { data: opencodeConfig } = useConfig();
+  const pluginEntries = useMemo(() => {
+    const raw = (opencodeConfig as { plugin?: unknown } | undefined)?.plugin;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((s): s is string => typeof s === "string")
+      .map((spec) => {
+        const isFile = spec.startsWith("file://") || spec.startsWith("/");
+        const target = isFile ? spec.replace(/^file:\/\//, "") : spec;
+        const label = isFile
+          ? target.split("/").filter(Boolean).pop() || target
+          : target.replace(/@[^@]*$/, "");
+        const versionMatch = isFile ? null : target.match(/@([^@]*)$/);
+        const version = versionMatch ? versionMatch[1] : undefined;
+        return {
+          spec,
+          label,
+          source: isFile ? ("local" as const) : ("npm" as const),
+          version,
+          target,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [opencodeConfig]);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -185,10 +273,29 @@ export function AppSidebarNav() {
     }
   };
 
+  const showPageTitle = !sessionId && !!pageTitle;
+
   return (
     <SidebarNav isSticky>
-      <span className="flex items-center gap-x-2 min-w-0 flex-1">
-        <SidebarTrigger className="-ml-2 shrink-0" />
+      <span className="flex items-center gap-x-1 min-w-0 flex-1">
+        <SidebarTrigger className="-ml-2 px-0 shrink-0" />
+        {showPageTitle && (
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.history.length > 1) {
+                window.history.back();
+              } else {
+                void navigate({ to: "/" });
+              }
+            }}
+            aria-label="Back"
+            title="Back"
+            className="shrink-0 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+          >
+            <ArrowLeftIcon className="size-4" />
+          </button>
+        )}
         {editingTitle && sessionId ? (
           <span className="flex min-w-0 flex-1 items-center gap-1">
             <input
@@ -261,7 +368,42 @@ export function AppSidebarNav() {
                   {projectLabel && currentSession?.directory && (
                     <span className="text-muted-fg">: </span>
                   )}
-                  {sessionTitle}
+                  {isSubagent ? (
+                    <>
+                      {parentSession?.title ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!parentSession?.id) return;
+                            void navigate({
+                              to: "/session/$id",
+                              params: { id: parentSession.id },
+                            });
+                          }}
+                          className="text-muted-fg hover:text-fg hover:underline underline-offset-2"
+                          title={`Open parent session: ${parentSession.title}`}
+                        >
+                          {parentSession.title}
+                        </button>
+                      ) : (
+                        <span className="text-muted-fg">
+                          (parent session)
+                        </span>
+                      )}
+                      <span className="text-muted-fg">: </span>
+                      {subagentName}
+                    </>
+                  ) : (
+                    sessionTitle
+                  )}
+                </>
+              ) : showPageTitle ? (
+                <>
+                  <span className="text-muted-fg">
+                    {instance?.name ?? "OpenPortal"}
+                  </span>
+                  <span className="text-muted-fg">: </span>
+                  <span>{pageTitle}</span>
                 </>
               ) : (
                 <span className="text-muted-fg">
@@ -269,7 +411,7 @@ export function AppSidebarNav() {
                 </span>
               )}
             </span>
-            {sessionId && sessionTitle && (
+            {!isMobile && sessionId && sessionTitle && (
               <button
                 type="button"
                 onClick={startEditTitle}
@@ -284,8 +426,12 @@ export function AppSidebarNav() {
         )}
       </span>
       <span className="flex items-center gap-x-2 ml-auto shrink-0">
-        {sessionId && <PinTopbarButton sessionId={sessionId} />}
-        {(sessionId || enabledTools.length > 0) && (
+        {!isMobile && sessionId && <PinTopbarButton sessionId={sessionId} />}
+        {(sessionId ||
+          enabledTools.length > 0 ||
+          mcpEntries.length > 0 ||
+          lspEntries.length > 0 ||
+          pluginEntries.length > 0) && (
           <Menu>
             <MenuTrigger aria-label="Open menu">
               <Button intent="outline" size="sq-sm">
@@ -294,7 +440,7 @@ export function AppSidebarNav() {
             </MenuTrigger>
             <MenuContent placement="bottom end" className="min-w-56">
               {sessionId && (
-                <MenuSection label="Native">
+                <MenuSection>
                   <MenuItem onAction={() => setShowSessionInfo(true)}>
                     <InformationCircleIcon
                       className="size-4"
@@ -302,6 +448,28 @@ export function AppSidebarNav() {
                     />
                     Session info
                   </MenuItem>
+                  {isMobile && sessionTitle && (
+                    <MenuItem onAction={startEditTitle}>
+                      <PencilSquareIcon
+                        className="size-4"
+                        data-slot="icon"
+                      />
+                      Rename session
+                    </MenuItem>
+                  )}
+                  {isMobile && (
+                    <MenuItem onAction={handleTogglePin}>
+                      {isPinnedHere ? (
+                        <StarSolidIcon
+                          className="size-4 text-amber-400"
+                          data-slot="icon"
+                        />
+                      ) : (
+                        <StarIcon className="size-4" data-slot="icon" />
+                      )}
+                      {isPinnedHere ? "Unpin session" : "Pin session"}
+                    </MenuItem>
+                  )}
                 </MenuSection>
               )}
               {sessionId && enabledTools.length > 0 && <MenuSeparator />}
@@ -318,6 +486,163 @@ export function AppSidebarNav() {
                   ))}
                 </MenuSection>
               )}
+              {mcpEntries.length > 0 &&
+                (sessionId || enabledTools.length > 0) && <MenuSeparator />}
+              {mcpEntries.length > 0 && (
+                <MenuSection label="MCP servers">
+                  {mcpEntries.map(([name, status]) => {
+                    const kind = status.status;
+                    const isOn = kind !== "disabled";
+                    const tooltip =
+                      kind === "connected"
+                        ? "Connected"
+                        : kind === "disabled"
+                          ? "Disabled"
+                          : kind === "failed"
+                            ? "Failed"
+                            : kind === "needsAuth"
+                              ? "Needs auth"
+                              : kind === "needsClientRegistration"
+                                ? "Needs client registration"
+                                : "Unknown";
+                    const iconColor =
+                      kind === "disabled"
+                        ? "text-muted-fg/40"
+                        : "text-muted-fg";
+                    return (
+                      <MenuItem
+                        key={name}
+                        textValue={name}
+                        // @ts-expect-error react-aria's MenuItem supports
+                        // closeOnSelect at runtime via useMenuItem even though
+                        // the public types omit it. Required so toggling MCPs
+                        // doesn't dismiss the hamburger menu.
+                        closeOnSelect={false}
+                      >
+                        <div
+                          className="flex w-full items-center gap-2 min-w-0"
+                          title={`${name} \u2014 ${tooltip}`}
+                        >
+                          <BoltIcon
+                            className={`size-4 shrink-0 ${iconColor}`}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-left">
+                            {name}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={
+                              isOn ? `Disable ${name}` : `Enable ${name}`
+                            }
+                            title={isOn ? "On (click to disable)" : "Off (click to enable)"}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void toggleMcp(
+                                name,
+                                isOn ? "disconnect" : "connect",
+                              );
+                            }}
+                            className={`shrink-0 inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                              isOn ? "bg-emerald-500" : "bg-muted-fg/30"
+                            }`}
+                          >
+                            <span
+                              aria-hidden
+                              className={`size-3 rounded-full bg-white transition-transform ${
+                                isOn ? "translate-x-3.5" : "translate-x-0.5"
+                              }`}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`MCP info: ${name}`}
+                            title="Show details"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMcpInfoName(name);
+                            }}
+                            className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg"
+                          >
+                            <QuestionMarkCircleIcon className="size-4" />
+                          </button>
+                        </div>
+                      </MenuItem>
+                    );
+                  })}
+                </MenuSection>
+              )}
+              {lspEntries.length > 0 &&
+                (sessionId ||
+                  enabledTools.length > 0 ||
+                  mcpEntries.length > 0) && <MenuSeparator />}
+              {lspEntries.length > 0 && (
+                <MenuSection label="LSP servers">
+                  {lspEntries.map((lsp) => {
+                    const ok = lsp.status === "connected";
+                    const label = lsp.name || lsp.id;
+                    const tooltip = `${label} \u2014 ${lsp.status}\nroot: ${lsp.root}`;
+                    return (
+                      <MenuItem
+                        key={lsp.id || lsp.name}
+                        textValue={label}
+                        // @ts-expect-error closeOnSelect honored at runtime by
+                        // useMenuItem; not in public types.
+                        closeOnSelect={false}
+                      >
+                        <div
+                          className="flex w-full items-center gap-2 min-w-0"
+                          title={tooltip}
+                        >
+                          <BoltIcon
+                            className={`size-4 shrink-0 ${ok ? "text-muted-fg" : "text-muted-fg/40"}`}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-left">
+                            {label}
+                          </span>
+                          <span
+                            aria-hidden
+                            className={`shrink-0 size-2 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-500"}`}
+                          />
+                        </div>
+                      </MenuItem>
+                    );
+                  })}
+                </MenuSection>
+              )}
+              {pluginEntries.length > 0 &&
+                (sessionId ||
+                  enabledTools.length > 0 ||
+                  mcpEntries.length > 0 ||
+                  lspEntries.length > 0) && <MenuSeparator />}
+              {pluginEntries.length > 0 && (
+                <MenuSection label="Plugins">
+                  {pluginEntries.map((p) => (
+                    <MenuItem
+                      key={p.spec}
+                      textValue={p.label}
+                      // @ts-expect-error closeOnSelect honored at runtime by
+                      // useMenuItem; not in public types.
+                      closeOnSelect={false}
+                    >
+                      <div
+                        className="flex w-full items-center gap-2 min-w-0"
+                        title={`${p.label} \u2014 ${p.source}\n${p.target}`}
+                      >
+                        <BoltIcon className="size-4 shrink-0 text-muted-fg" />
+                        <span className="min-w-0 flex-1 truncate text-left">
+                          {p.label}
+                        </span>
+                        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-fg">
+                          {p.source}
+                          {p.version ? ` ${p.version}` : ""}
+                        </span>
+                      </div>
+                    </MenuItem>
+                  ))}
+                </MenuSection>
+              )}
             </MenuContent>
           </Menu>
         )}
@@ -329,6 +654,13 @@ export function AppSidebarNav() {
           onOpenChange={setShowSessionInfo}
         />
       )}
+      <McpInfoModal
+        isOpen={mcpInfoName !== null}
+        mcpName={mcpInfoName}
+        onOpenChange={(open) => {
+          if (!open) setMcpInfoName(null);
+        }}
+      />
     </SidebarNav>
   );
 }
@@ -370,7 +702,13 @@ function PinTopbarButton({ sessionId }: { sessionId: string }) {
 export function PinnedTabStrip() {
   const { data } = usePinnedSessions();
   const { data: sessionsData } = useSessions();
+  const { data: statusMap } = useSessionStatus();
+  const { data: questions } = useQuestions();
+  const { data: permissions } = usePermissions();
+  const { data: lastViewedData } = useLastViewed();
+  const errorSessionIdsArr = useSessionErrorStore((s) => s.errors);
   const togglePin = useTogglePinnedSession();
+  const reorder = useReorderPinnedSessions();
   const navigate = useNavigate();
   const sessionMatch = useMatch({
     from: "/_app/session/$id",
@@ -378,28 +716,112 @@ export function PinnedTabStrip() {
   });
   const currentSessionId = sessionMatch?.params?.id ?? null;
 
+  const questionSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const q of questions ?? []) ids.add(q.sessionID);
+    for (const p of (permissions ?? []) as Array<{ sessionID?: string }>) {
+      if (p.sessionID) ids.add(p.sessionID);
+    }
+    return ids;
+  }, [questions, permissions]);
+  const errorSessionIds = useMemo(
+    () => new Set(errorSessionIdsArr),
+    [errorSessionIdsArr],
+  );
+  const lastViewedMap = lastViewedData ?? {};
+
   const pinned = data?.sessions ?? [];
   const sessions: Session[] = sessionsData ?? [];
   const tabs = pinned
     .map((id) => ({ id, session: sessions.find((s) => s.id === id) ?? null }))
     .filter((t): t is { id: string; session: Session } => t.session !== null);
 
+  const dragSourceIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   if (tabs.length === 0) return null;
 
+  const handleDrop = (targetId: string) => {
+    const sourceId = dragSourceIdRef.current;
+    dragSourceIdRef.current = null;
+    setDragOverId(null);
+    if (!sourceId || sourceId === targetId) return;
+    const order = pinned.slice();
+    const from = order.indexOf(sourceId);
+    const to = order.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+    order.splice(from, 1);
+    const insertAt = from < to ? to : to;
+    order.splice(insertAt, 0, sourceId);
+    void reorder(order);
+  };
+
   return (
-    <div className="flex shrink-0 items-stretch overflow-x-auto border-b border-border bg-bg/95">
+    <div className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border bg-bg/95 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map(({ id, session }) => {
         const active = id === currentSessionId;
         const title = session.title ?? "(untitled)";
+        const hasDraft = sessionHasDraft(id);
+        const hasNewContent = sessionHasNewContent(
+          session,
+          lastViewedMap,
+          currentSessionId,
+        );
+        const hasQuestion = questionSessionIds.has(id);
+        const hasError = errorSessionIds.has(id);
+        const isDragOver = dragOverId === id;
+        const tabStatus = statusMap?.[id]?.type;
+        const hasStatusDot =
+          hasQuestion ||
+          hasError ||
+          tabStatus === "busy" ||
+          tabStatus === "retry" ||
+          hasNewContent;
+        const hasAnyIndicator = hasDraft || hasStatusDot;
         return (
           <div
             key={id}
-            className={`group relative flex items-center gap-0.5 -mb-px border-b-2 pl-2 pr-0 py-1 text-xs transition-colors shrink-0 ${
+            draggable
+            onDragStart={(e) => {
+              dragSourceIdRef.current = id;
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", id);
+            }}
+            onDragOver={(e) => {
+              if (!dragSourceIdRef.current) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dragOverId !== id) setDragOverId(id);
+            }}
+            onDragLeave={() => {
+              if (dragOverId === id) setDragOverId(null);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDrop(id);
+            }}
+            onDragEnd={() => {
+              dragSourceIdRef.current = null;
+              setDragOverId(null);
+            }}
+            className={`group relative flex items-center gap-0 -mb-px border-b-2 pl-0 pr-0 py-1 text-xs transition-colors shrink-0 cursor-grab active:cursor-grabbing ${
               active
                 ? "border-primary bg-bg text-fg"
                 : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
-            }`}
+            } ${isDragOver ? "bg-primary/10" : ""}`}
           >
+            {hasAnyIndicator && (
+              <div className="flex items-center gap-0.5 pl-1 pr-1">
+                <DraftIndicator hasDraft={hasDraft} reserveSpace={false} />
+                <SessionStatusDot
+                  status={tabStatus}
+                  hasNewContent={hasNewContent}
+                  hasQuestion={hasQuestion}
+                  hasError={hasError}
+                  reserveSpace={false}
+                />
+              </div>
+            )}
             <button
               type="button"
               onClick={() =>
@@ -415,7 +837,7 @@ export function PinnedTabStrip() {
               onClick={() => void togglePin(id, "unpin")}
               aria-label={`Unpin ${title}`}
               title="Unpin"
-              className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted/40"
+              className="rounded p-0.5 hover:bg-muted/40"
             >
               <XMarkIcon className="size-3" />
             </button>
