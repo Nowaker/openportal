@@ -50,3 +50,23 @@ export function useTogglePinnedSession() {
     }
   };
 }
+
+export function useReorderPinnedSessions() {
+  const { mutate } = useSWRConfig();
+  return async (order: string[]) => {
+    await mutate(KEY, { sessions: order }, { revalidate: false });
+    try {
+      const res = await fetch(KEY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reorder", order }),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as PinnedResponse;
+        await mutate(KEY, json, { revalidate: false });
+      }
+    } catch {
+      /* network blip - SWR refreshInterval will reconcile */
+    }
+  };
+}
