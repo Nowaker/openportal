@@ -12,6 +12,7 @@ import { mutate as mutateSWR } from "swr";
 
 const searchSchema = z.object({
   directory: z.string().optional(),
+  autoPrompt: z.string().optional(),
 });
 
 export const Route = createFileRoute("/_app/session/new")({
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/_app/session/new")({
 
 function NewSessionPage() {
   const navigate = useNavigate();
-  const { directory: directoryFromUrl } = Route.useSearch();
+  const { directory: directoryFromUrl, autoPrompt } = Route.useSearch();
   const storeDir = useVirtualSessionStore((s) => s.directory);
   const setStoreDir = useVirtualSessionStore((s) => s.setDirectory);
   const clearStore = useVirtualSessionStore((s) => s.clear);
@@ -37,11 +38,12 @@ function NewSessionPage() {
     }
   }, [directoryFromUrl, storeDir, setStoreDir]);
 
-  const [text, setText] = useState("");
+  const [text, setText] = useState(autoPrompt ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submittedRef = useRef(false);
+  const autoSubmittedRef = useRef(false);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -55,13 +57,13 @@ function NewSessionPage() {
     };
   }, [clearStore]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (override?: string) => {
     if (sending) return;
     if (!directory) {
       setError("No directory selected.");
       return;
     }
-    const message = text.trim();
+    const message = (override ?? text).trim();
     if (!message) return;
     if (!port) {
       setError("Portal not bound to opencode.");
@@ -101,6 +103,21 @@ function NewSessionPage() {
       setSending(false);
     }
   };
+
+  // When the create-project flow lands here with a non-empty autoPrompt,
+  // submit it automatically once - the user already confirmed the
+  // templates in the folder browser, so the new-session composer is
+  // skipped entirely. Guarded by ref + port presence so it fires exactly
+  // once after the opencode port is known.
+  useEffect(() => {
+    if (autoSubmittedRef.current) return;
+    if (!autoPrompt) return;
+    if (!directory) return;
+    if (!port) return;
+    autoSubmittedRef.current = true;
+    handleSubmit(autoPrompt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPrompt, directory, port]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
@@ -147,7 +164,7 @@ function NewSessionPage() {
         <div className="flex justify-end">
           <Button
             type="button"
-            onPress={handleSubmit}
+            onPress={() => handleSubmit()}
             isDisabled={sending || !text.trim()}
           >
             <SendIcon />
