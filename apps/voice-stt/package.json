@@ -1,0 +1,21 @@
+{
+  "name": "@openportal/voice-stt",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted Whisper-based STT sidecar for openportal voice mode. Exposes /transcribe over HTTP on the tailnet.",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test tests/unit.test.ts",
+    "test:integration": "bun test tests/integration.test.ts",
+    "download-model": "bun run scripts/download-model.ts"
+  },
+  "dependencies": {
+    "nodejs-whisper": "^0.3.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  }
+}

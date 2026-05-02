@@ -1,1 +1,11 @@
+# Whisper.cpp models — vendored binary blobs, must go through Git LFS to keep
+# normal git operations fast and the pack small.
+*.bin filter=lfs diff=lfs merge=lfs -text
+*.gguf filter=lfs diff=lfs merge=lfs -text
+
+# Audio test fixtures (sample wavs for STT integration tests).
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
 apps/web/public/sounds/*.mp3 !text !filter !merge !diff
