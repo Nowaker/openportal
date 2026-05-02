@@ -29,6 +29,13 @@ interface ToolsPersistedState {
   // Drop the override (resetToDefault) to fall back to the system text.
   systemOverrides: Record<string, { name?: string; prompt?: string }>;
   customTools: CustomTool[];
+  // Tool ids designated as "project-init templates" with explicit ordering.
+  // When the user creates a new project (folder browser triggers the
+  // mkdir+git-init flow), these templates are pre-checked in the
+  // create-project modal and concatenated (in this order) as the new
+  // session's first auto-prompt. Stored as ORDERED array so drag-drop
+  // reordering in Settings is the source of truth for concatenation order.
+  projectInitOrder: string[];
 }
 
 interface ToolsState extends ToolsPersistedState {
@@ -40,6 +47,8 @@ interface ToolsState extends ToolsPersistedState {
   resetSystemOverride: (id: string) => void;
   upsertCustomTool: (tool: CustomTool) => void;
   removeCustomTool: (id: string) => void;
+  toggleProjectInit: (id: string, enabled: boolean) => void;
+  reorderProjectInit: (order: string[]) => void;
 }
 
 // Pure derivation: given the persisted slices, return the resolved tool
@@ -48,7 +57,7 @@ interface ToolsState extends ToolsPersistedState {
 // fresh array identity on every render and triggers React's infinite
 // update loop guard (error #185).
 export function resolveToolsFromState(
-  state: ToolsPersistedState,
+  state: Pick<ToolsPersistedState, "disabledIds" | "systemOverrides" | "customTools">,
 ): ResolvedTool[] {
   const disabled = new Set(state.disabledIds);
   const systemResolved: ResolvedTool[] = SYSTEM_TOOLS.map((tool) => {
@@ -84,6 +93,7 @@ export const useToolsStore = create<ToolsState>()(
       disabledIds: [],
       systemOverrides: {},
       customTools: [],
+      projectInitOrder: [],
 
       setEnabled: (id, enabled) =>
         set((state) => {
@@ -140,6 +150,23 @@ export const useToolsStore = create<ToolsState>()(
           // Strip the disabled flag too so re-adding a tool with the same
           // id later doesn't inherit the previous disabled state.
           disabledIds: state.disabledIds.filter((d) => d !== id),
+          projectInitOrder: state.projectInitOrder.filter((p) => p !== id),
+        })),
+
+      toggleProjectInit: (id, enabled) =>
+        set((state) => ({
+          projectInitOrder: enabled
+            ? state.projectInitOrder.includes(id)
+              ? state.projectInitOrder
+              : [...state.projectInitOrder, id]
+            : state.projectInitOrder.filter((x) => x !== id),
+        })),
+
+      reorderProjectInit: (order) =>
+        set((state) => ({
+          projectInitOrder: order.filter((id) =>
+            state.projectInitOrder.includes(id),
+          ),
         })),
     }),
     {
@@ -148,6 +175,7 @@ export const useToolsStore = create<ToolsState>()(
         disabledIds: state.disabledIds,
         systemOverrides: state.systemOverrides,
         customTools: state.customTools,
+        projectInitOrder: state.projectInitOrder,
       }),
     },
   ),
