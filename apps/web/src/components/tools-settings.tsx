@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bars3Icon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,6 +8,26 @@ import {
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+
+function ProjectInitCheckbox({ toolId }: { toolId: string }) {
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
+  const isInit = projectInitOrder.includes(toolId);
+  return (
+    <label
+      className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-fg cursor-pointer select-none"
+      title="Include this template when creating a new project"
+    >
+      <input
+        type="checkbox"
+        className="size-3.5 cursor-pointer accent-primary"
+        checked={isInit}
+        onChange={(e) => toggleProjectInit(toolId, e.target.checked)}
+      />
+      Init
+    </label>
+  );
+}
 
 // Subscribe to the persisted slices and derive the resolved list via
 // useMemo. Calling resolveTools()/enabledTools() inside a Zustand
@@ -106,6 +127,7 @@ function SystemToolRow({ tool }: ToolRowProps) {
               Reset
             </Button>
           )}
+          <ProjectInitCheckbox toolId={tool.id} />
         </div>
       </div>
       {editing && (
@@ -229,6 +251,7 @@ function CustomToolRow({ tool }: ToolRowProps) {
           >
             Delete
           </Button>
+          <ProjectInitCheckbox toolId={tool.id} />
         </div>
       </div>
       {editing && (
@@ -373,6 +396,93 @@ function AddCustomTool() {
   );
 }
 
+function ProjectInitOrderingSection({ tools }: { tools: ResolvedTool[] }) {
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const reorderProjectInit = useToolsStore((s) => s.reorderProjectInit);
+  const dragSourceIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const orderedInitTools = useMemo(() => {
+    const byId = new Map(tools.map((t) => [t.id, t]));
+    return projectInitOrder
+      .map((id) => byId.get(id))
+      .filter((t): t is ResolvedTool => Boolean(t));
+  }, [projectInitOrder, tools]);
+
+  if (orderedInitTools.length === 0) return null;
+
+  const handleDrop = (targetId: string) => {
+    const sourceId = dragSourceIdRef.current;
+    dragSourceIdRef.current = null;
+    setDragOverId(null);
+    if (!sourceId || sourceId === targetId) return;
+    const order = projectInitOrder.slice();
+    const from = order.indexOf(sourceId);
+    const to = order.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+    order.splice(from, 1);
+    order.splice(to, 0, sourceId);
+    reorderProjectInit(order);
+  };
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-fg">
+        Project init template ordering
+      </h4>
+      <p className="text-xs text-muted-fg">
+        Drag to reorder. When you create a new project, these templates
+        are pre-checked in the create-project modal and concatenated in
+        this order as the new session's first auto-prompt.
+      </p>
+      <div className="space-y-1">
+        {orderedInitTools.map((tool) => {
+          const isDragOver = dragOverId === tool.id;
+          return (
+            <div
+              key={tool.id}
+              draggable
+              onDragStart={(e) => {
+                dragSourceIdRef.current = tool.id;
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", tool.id);
+              }}
+              onDragOver={(e) => {
+                if (!dragSourceIdRef.current) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (dragOverId !== tool.id) setDragOverId(tool.id);
+              }}
+              onDragLeave={() => {
+                if (dragOverId === tool.id) setDragOverId(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                handleDrop(tool.id);
+              }}
+              onDragEnd={() => {
+                dragSourceIdRef.current = null;
+                setDragOverId(null);
+              }}
+              className={`flex items-center gap-2 rounded-md border border-border bg-bg/60 px-2 py-1.5 text-sm cursor-grab active:cursor-grabbing ${
+                isDragOver ? "bg-primary/10 border-primary/40" : ""
+              }`}
+            >
+              <Bars3Icon className="size-4 text-muted-fg shrink-0" />
+              <span className="flex-1 min-w-0 truncate">{tool.name}</span>
+              {!tool.enabled && (
+                <span className="text-[10px] uppercase tracking-wide text-muted-fg">
+                  disabled
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ToolsSettings() {
   const tools = useResolvedTools();
 
@@ -388,9 +498,12 @@ export function ToolsSettings() {
           to see; edit a system tool's prompt to customise it (your edit
           survives future updates and you can hit Reset to restore the
           shipped version). Add your own prompt templates with the button
-          at the bottom.
+          at the bottom. Use the <strong>Init</strong> checkbox on any
+          template to mark it as a project-init template.
         </p>
       </div>
+
+      <ProjectInitOrderingSection tools={tools} />
 
       <div className="space-y-2">
         {systemTools.map((tool) => (
