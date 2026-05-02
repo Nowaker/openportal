@@ -26,10 +26,16 @@ function ConnectionStatusBanner() {
   const status = useConnectionMonitor();
   if (status === "connected") return null;
   return (
-    <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-      <ArrowPathIcon className="size-4 shrink-0 animate-spin text-warning" />
-      <span className="flex-1 text-fg">
-        Lost connection to OpenPortal. Reconnecting…
+    <div className="flex flex-col gap-0.5 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+      <div className="flex items-center gap-2">
+        <ArrowPathIcon className="size-4 shrink-0 animate-spin text-warning" />
+        <span className="flex-1 text-fg">
+          Lost connection to OpenPortal. Reconnecting…
+        </span>
+      </div>
+      <span className="pl-6 text-xs text-muted-fg">
+        Your prompt drafts and pasted images are saved locally — nothing will be
+        lost.
       </span>
     </div>
   );
@@ -41,13 +47,13 @@ function BuildMismatchBanner() {
   return (
     <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
       <ArrowPathIcon className="size-4 shrink-0 text-warning" />
-      <span className="flex-1 text-fg">
+      <span className="text-fg">
         OpenPortal was updated. Reload the page to get the latest version.
       </span>
       <button
         type="button"
         onClick={() => window.location.reload()}
-        className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium hover:bg-muted"
+        className="rounded-md border border-border bg-bg px-2 py-1 text-sm font-medium hover:bg-muted"
       >
         Reload
       </button>
