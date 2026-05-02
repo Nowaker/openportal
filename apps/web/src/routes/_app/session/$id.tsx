@@ -16,6 +16,11 @@ import {
   FileMentionPopover,
   useFileMention,
 } from "@/components/file-mention-popover";
+import {
+  SlashCommandPopover,
+  useSlashCommand,
+  useCommands,
+} from "@/components/slash-command-popover";
 import { TodoStrip, TodoFloat } from "@/components/todo-strip";
 import { extractLatestTodos } from "@/lib/todos";
 import { formatMessageTime } from "@/lib/format-time";
@@ -32,6 +37,7 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   ChatBubbleLeftRightIcon,
+  MicrophoneIcon,
   UserIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -54,7 +60,11 @@ import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
+import { useSttModeStore } from "@/stores/stt-mode-store";
+import { useSttEngine } from "@/hooks/use-stt-engine";
+import { toast } from "@/components/ui/toast";
 import { useMarkViewed } from "@/hooks/use-last-viewed";
+import { usePullState } from "@/hooks/use-pull-to-refresh";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
@@ -168,6 +178,7 @@ const QUESTION_DRAFT_KEY_PREFIX = "opencode-question-draft:";
 interface QuestionDraft {
   selections: Record<number, string[]>;
   freeform: Record<number, string>;
+  submittedAt?: number;
 }
 
 function questionDraftKey(sessionId: string, callID: string): string {
@@ -195,6 +206,8 @@ function readQuestionDraft(
       return {
         selections: parsed.selections as Record<string, string[]>,
         freeform: parsed.freeform as Record<string, string>,
+        submittedAt:
+          typeof parsed.submittedAt === "number" ? parsed.submittedAt : undefined,
       };
     }
     return null;
@@ -212,7 +225,8 @@ function writeQuestionDraft(
   if (!sessionId || !callID) return;
   const isEmpty =
     Object.keys(draft.selections).length === 0 &&
-    Object.values(draft.freeform).every((v) => !v);
+    Object.values(draft.freeform).every((v) => !v) &&
+    !draft.submittedAt;
   try {
     if (isEmpty) {
       window.localStorage.removeItem(questionDraftKey(sessionId, callID));
@@ -222,15 +236,6 @@ function writeQuestionDraft(
         JSON.stringify(draft),
       );
     }
-  } catch {
-  }
-}
-
-function clearQuestionDraft(sessionId: string, callID: string): void {
-  if (typeof window === "undefined") return;
-  if (!sessionId || !callID) return;
-  try {
-    window.localStorage.removeItem(questionDraftKey(sessionId, callID));
   } catch {
   }
 }
@@ -474,13 +479,17 @@ function QuestionAnswerForm({
   );
   const [isPosting, setIsPosting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submittedAt, setSubmittedAt] = useState<number | null>(
+    initialDraft?.submittedAt ?? null,
+  );
 
   useEffect(() => {
     writeQuestionDraft(sessionId, callID, {
       selections,
       freeform: freeformInputs,
+      submittedAt: submittedAt ?? undefined,
     });
-  }, [selections, freeformInputs, sessionId, callID]);
+  }, [selections, freeformInputs, submittedAt, sessionId, callID]);
 
   const toggleOption = (qIdx: number, label: string, isMulti: boolean) => {
     setSelections((prev) => {
@@ -501,10 +510,16 @@ function QuestionAnswerForm({
     setIsPosting(true);
     setSubmitError(null);
 
-    const answers: QuestionAnswer[] = questions.map((_, i) => {
+    const answers: QuestionAnswer[] = questions.map((q, i) => {
       const selected = selections[i] || [];
       const freeform = freeformInputs[i]?.trim() || "";
-      if (selected.length > 0 && freeform) return [...selected, freeform];
+      const isMulti = !!q.multiple;
+      if (selected.length > 0 && freeform) {
+        if (!isMulti) {
+          return [`${selected[0]}\n\n${freeform}`];
+        }
+        return [...selected, freeform];
+      }
       if (selected.length > 0) return selected;
       if (freeform) return [freeform];
       return [];
@@ -531,7 +546,7 @@ function QuestionAnswerForm({
         if (!replyRes.ok) {
           throw new Error(await readErrorMessage(replyRes));
         }
-        clearQuestionDraft(sessionId, callID);
+        setSubmittedAt(Date.now());
         mutateSessionMessages(port, sessionId);
         return;
       }
@@ -548,7 +563,7 @@ function QuestionAnswerForm({
       if (!promptRes.ok) {
         throw new Error(await readErrorMessage(promptRes));
       }
-      clearQuestionDraft(sessionId, callID);
+      setSubmittedAt(Date.now());
       mutateSessionMessages(port, sessionId);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to submit answers");
@@ -565,46 +580,57 @@ function QuestionAnswerForm({
       return selected.length > 0 || freeform.length > 0;
     });
 
+  const isSubmitted = submittedAt !== null;
+
   return (
-    <div className="mt-2 space-y-3 text-fg/90">
+    <div className="mt-2 space-y-4 text-fg/90">
       {questions.map((q, idx) => {
         const selected = selections[idx] || [];
+        const inputName = `${partKey}-q${idx}`;
 
         return (
-          <div key={`${partKey}-q-${idx}`} className="space-y-1.5">
-            {(q.header || q.multiple) && (
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-fg">
-                {q.header && <span>{q.header}</span>}
-                {q.multiple && (
-                  <span className="rounded border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                    Multi-select
-                  </span>
-                )}
+          <div
+            key={`${partKey}-q-${idx}`}
+            className={`space-y-2 ${idx > 0 ? "pt-4 border-t border-dashed border-border" : ""}`}
+          >
+            {q.header && (
+              <div className="text-[11px] uppercase tracking-wide text-muted-fg">
+                {q.header}
               </div>
             )}
-            <p className="text-xs leading-relaxed">{q.question}</p>
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:my-1">
+              <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                {q.question}
+              </Markdown>
+            </div>
 
             {q.options.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 {q.options.map((opt, optIdx) => {
                   const isSelected = selected.includes(opt.label);
+                  const inputId = `${partKey}-q${idx}-opt${optIdx}`;
                   return (
-                    <button
+                    <label
                       key={`opt-${idx}-${optIdx}`}
-                      type="button"
-                      disabled={isPosting}
-                      onClick={() => toggleOption(idx, opt.label, !!q.multiple)}
-                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
-                        isSelected
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-bg hover:border-fg/30 text-fg/80"
-                      } ${isPosting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                      htmlFor={inputId}
+                      className={`flex items-center gap-2 ${isPosting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                     >
-                      <span>{opt.label}</span>
-                      {opt.description && (
-                        <span className="opacity-60"> - {opt.description}</span>
-                      )}
-                    </button>
+                      <input
+                        id={inputId}
+                        name={inputName}
+                        type={q.multiple ? "checkbox" : "radio"}
+                        checked={isSelected}
+                        disabled={isPosting}
+                        onChange={() => toggleOption(idx, opt.label, !!q.multiple)}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">
+                        <span>{opt.label}</span>
+                        {opt.description && (
+                          <span className="opacity-60"> - {opt.description}</span>
+                        )}
+                      </span>
+                    </label>
                   );
                 })}
               </div>
@@ -615,35 +641,54 @@ function QuestionAnswerForm({
                 {q.options.length > 0 && q.custom && (
                   <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-fg">
                     <span aria-hidden className="text-fg/40">+</span>
-                    <span>and/or your own note (submits together)</span>
+                    <span>
+                      {q.multiple
+                        ? "and/or your own note (submits together)"
+                        : "and/or your own note (combined with the selected option)"}
+                    </span>
                   </div>
                 )}
-                <input
-                  type="text"
+                <textarea
+                  rows={1}
                   disabled={isPosting}
                   placeholder={
                     q.options.length > 0 && q.custom
-                      ? "Add a custom note (combines with selection above)..."
+                      ? q.multiple
+                        ? "Add a custom note (combines with selections above)..."
+                        : "Add a custom note (combined with the selected option)..."
                       : "Type your answer..."
                   }
                   value={freeformInputs[idx] || ""}
+                  ref={(el) => {
+                    if (el) {
+                      el.style.height = "auto";
+                      el.style.height = `${el.scrollHeight}px`;
+                    }
+                  }}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = "auto";
+                    el.style.height = `${el.scrollHeight}px`;
+                  }}
                   onChange={(e) =>
                     setFreeformInputs((prev) => ({
                       ...prev,
                       [idx]: e.target.value,
                     }))
                   }
-                  className={`w-full rounded-md border bg-bg px-2 py-1 text-xs text-fg placeholder:text-muted-fg focus:outline-none focus:border-primary ${
-                    q.options.length > 0 && q.custom
-                      ? "border-dashed border-fg/20"
-                      : "border-border"
+                  className={`w-full resize-none overflow-x-hidden whitespace-pre-wrap break-words rounded-md border bg-bg px-3 py-2 text-base text-fg placeholder:text-muted-fg focus:outline-none focus:border-primary ${
+                    freeformInputs[idx] && freeformInputs[idx].length > 0
+                      ? "border-primary"
+                      : q.options.length > 0 && q.custom
+                        ? "border-dashed border-fg/20"
+                        : "border-border"
                   }`}
                 />
               </div>
             )}
 
             {q.multiple && (
-              <div className="text-[11px] text-warning/90">
+              <div className="text-[11px] text-muted-fg">
                 You can select more than one option
               </div>
             )}
@@ -659,24 +704,28 @@ function QuestionAnswerForm({
         <Button
           type="button"
           size="sm"
-          isDisabled={!hasAnswersForAllQuestions || isPosting}
+          isDisabled={isSubmitted || !hasAnswersForAllQuestions || isPosting}
           onPress={handleSubmit}
           className="text-xs"
         >
           <SendIcon size="12px" />
-          {isPosting ? "Sending..." : "Submit Answers"}
+          {isPosting && !isSubmitted
+            ? "Sending..."
+            : isSubmitted
+              ? "Answers submitted"
+              : "Submit Answers"}
         </Button>
-        {isAssistantBusy && !isPosting && (
+        {isSubmitted && (
           <Button
             type="button"
             size="sm"
-            intent="danger"
-            onPress={onAbort}
-            aria-label="Stop the current run"
+            intent="outline"
+            isDisabled={!hasAnswersForAllQuestions || isPosting}
+            onPress={handleSubmit}
             className="text-xs"
           >
-            <StopIcon className="size-3" />
-            Stop
+            <SendIcon size="12px" />
+            {isPosting ? "Resending..." : "Resubmit answers"}
           </Button>
         )}
       </div>
@@ -809,17 +858,6 @@ const ToolCallItem = memo(function ToolCallItem({
           {isPending && <span className="animate-pulse shrink-0">...</span>}
         </div>
 
-        {isCompleted && (
-          <div className="mt-2 space-y-2 text-fg/90">
-            <QuestionDisplay
-              questions={questions}
-              partKey={part.callID || part.id}
-            />
-            <div className="text-[10px] uppercase tracking-wide text-muted-fg/80 pt-1">
-              Resubmit answers
-            </div>
-          </div>
-        )}
         {port ? (
           <QuestionAnswerForm
             questions={questions}
@@ -1106,26 +1144,32 @@ const rehypeMarkLastParagraph = () => (tree: any) => {
   }
 };
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function CopyMarkdownButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handle = async () => {
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }
+    if (await copyTextToClipboard(text)) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard API may be denied; silent failure */
     }
   };
   return (
@@ -1140,6 +1184,46 @@ function CopyMarkdownButton({ text }: { text: string }) {
         <CheckIcon className="size-3 text-emerald-500" />
       ) : (
         <ClipboardDocumentIcon className="size-3" />
+      )}
+    </button>
+  );
+}
+
+interface HastNode {
+  type?: string;
+  value?: string;
+  children?: HastNode[];
+}
+
+function extractTextFromHast(node: HastNode | undefined | null): string {
+  if (!node) return "";
+  if (node.type === "text") return node.value ?? "";
+  if (Array.isArray(node.children)) {
+    return node.children.map(extractTextFromHast).join("");
+  }
+  return "";
+}
+
+function CodeBlockCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handle = async () => {
+    if (await copyTextToClipboard(text)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      title={copied ? "Copied!" : "Copy code"}
+      aria-label="Copy code"
+      className="absolute top-1.5 right-1.5 inline-flex items-center justify-center rounded p-1 bg-bg/70 text-muted-fg hover:bg-bg hover:text-fg transition-colors"
+    >
+      {copied ? (
+        <CheckIcon className="size-3.5 text-emerald-500" />
+      ) : (
+        <ClipboardDocumentIcon className="size-3.5" />
       )}
     </button>
   );
@@ -1178,6 +1262,16 @@ function MarkdownWithTime({
               </span>
             )}
           </p>
+        );
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      pre: ({ node, children, ...props }: any) => {
+        const codeText = extractTextFromHast(node as HastNode);
+        return (
+          <div className="relative group">
+            <pre {...props}>{children}</pre>
+            <CodeBlockCopyButton text={codeText} />
+          </div>
         );
       },
     }),
@@ -1279,7 +1373,7 @@ const MessageItem = memo(function MessageItem({
     : "";
   return (
     <div
-      className={`py-3 px-6 ${decoration}`}
+      className={`py-3 px-3 ${decoration}`}
       // The role + id pair lets the prompt-nav buttons (prev / next user
       // message) find each user message in the DOM and scroll it into view
       // without lifting the message list into a controlled-scroll system.
@@ -1478,12 +1572,56 @@ interface ComposerSyncMessage {
 // freshly-typed content doesn't fight the safety net.
 const PENDING_PROMPT_KEY_PREFIX = "opencode-pending-prompt:";
 
+const ATTACHMENTS_KEY_PREFIX = "opencode-composer-attachments:";
+
 function getDraftKey(sessionId: string) {
   return `${DRAFT_KEY_PREFIX}${sessionId}`;
 }
 
 function getPendingPromptKey(sessionId: string) {
   return `${PENDING_PROMPT_KEY_PREFIX}${sessionId}`;
+}
+
+function getAttachmentsKey(sessionId: string) {
+  return `${ATTACHMENTS_KEY_PREFIX}${sessionId}`;
+}
+
+function readAttachments(sessionId: string): PromptAttachment[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(getAttachmentsKey(sessionId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (x): x is PromptAttachment =>
+        x &&
+        typeof x === "object" &&
+        typeof x.mime === "string" &&
+        typeof x.url === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeAttachments(
+  sessionId: string,
+  list: PromptAttachment[],
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (list.length === 0) {
+      window.localStorage.removeItem(getAttachmentsKey(sessionId));
+      return;
+    }
+    window.localStorage.setItem(
+      getAttachmentsKey(sessionId),
+      JSON.stringify(list),
+    );
+  } catch {
+    return;
+  }
 }
 
 function readDraft(sessionId: string): string {
@@ -1595,6 +1733,21 @@ function SessionPage() {
     () => extractLatestTodos(messages),
     [messages],
   );
+
+  const setRefreshHandler = usePullState((s) => s.setRefreshHandler);
+  useEffect(() => {
+    const canLoadMore = !loadAllMessages && messages.length >= INITIAL_MESSAGE_LIMIT;
+    if (canLoadMore) {
+      setRefreshHandler(() => {
+        setLoadAllMessages(true);
+      });
+    } else {
+      setRefreshHandler(null);
+    }
+    return () => {
+      setRefreshHandler(null);
+    };
+  }, [loadAllMessages, messages.length, setRefreshHandler]);
 
   const markViewed = useMarkViewed();
   useEffect(() => {
@@ -1745,8 +1898,46 @@ function SessionPage() {
   const [fileResults, setFileResults] = useState<string[]>([]);
   const [pendingAttachments, setPendingAttachments] = useState<
     PromptAttachment[]
-  >([]);
+  >(() => (sessionId ? readAttachments(sessionId) : []));
   const [composerCollapsed, setComposerCollapsed] = useState(false);
+  const sttMode = useSttModeStore((s) => s.mode);
+  const sttSubmitOnEndRef = useRef(false);
+  const sttTranscriptArrivedRef = useRef(false);
+  const speechRecognition = useSttEngine({
+    continuous: sttMode === "vad",
+    onTranscript: (transcript) => {
+      sttTranscriptArrivedRef.current = true;
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const current = ta.value;
+      const sep = current && !current.endsWith(" ") && !current.endsWith("\n") ? " " : "";
+      const next = `${current}${sep}${transcript}`;
+      ta.value = next;
+      setHasContent(next.length > 0);
+      scheduleDraftSave(next);
+    },
+    onError: (err) => {
+      toast.error(`Voice input: ${err}`);
+    },
+    onEnd: () => {
+      if (sttSubmitOnEndRef.current) {
+        sttSubmitOnEndRef.current = false;
+        if (sttTranscriptArrivedRef.current) {
+          sttTranscriptArrivedRef.current = false;
+          textareaRef.current?.form?.requestSubmit();
+        }
+      }
+    },
+  });
+  const handleMicToggle = () => {
+    if (speechRecognition.isListening) {
+      if (sttMode === "push-to-talk") sttSubmitOnEndRef.current = true;
+      speechRecognition.stop();
+    } else {
+      sttTranscriptArrivedRef.current = false;
+      speechRecognition.start();
+    }
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesListRef = useRef<HTMLDivElement>(null);
@@ -1755,6 +1946,11 @@ function SessionPage() {
   const isStuckToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const fileMention = useFileMention();
+  const slashCommand = useSlashCommand();
+  const { data: commandsData } = useCommands();
+  const filteredCommands = (commandsData ?? []).filter((c) =>
+    c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
+  );
 
   const error = messagesError?.message || sendError;
 
@@ -1853,6 +2049,51 @@ function SessionPage() {
     observer.observe(list);
     return () => observer.disconnect();
   }, [recomputeStuck, scrollToBottom]);
+
+  // Belt-and-suspenders backup to the ResizeObserver: when messages change
+  // (new message arrives, streaming text appended, optimistic message added
+  // on submit) OR when sibling chrome (Thinking indicator, stall banner)
+  // toggles, force a scroll to bottom on the next paint if stuck. The
+  // ResizeObserver alone misses sibling chrome because it observes
+  // messagesListRef only - the Thinking indicator and stall banner render
+  // OUTSIDE that subtree but inside chatContainerRef. requestAnimationFrame
+  // waits for layout to settle before measuring + scrolling.
+  useEffect(() => {
+    if (!isStuckToBottomRef.current) return;
+    const id = requestAnimationFrame(() => {
+      if (isStuckToBottomRef.current) scrollToBottom();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [
+    messages,
+    isAssistantBusy,
+    isServerBusy,
+    showStallBanner,
+    scrollToBottom,
+  ]);
+
+  // Final safety net for follow-mode: any DOM mutation inside the scroll
+  // container (sibling chrome appearing/disappearing, streaming text
+  // appending character-by-character, asynchronous renders the React
+  // dependency array can't predict) re-scrolls to the bottom while stuck.
+  // characterData:true catches streaming text where the enclosing element
+  // identity is stable but its text node grows.
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container || typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(() => {
+      if (!isStuckToBottomRef.current) return;
+      requestAnimationFrame(() => {
+        if (isStuckToBottomRef.current) scrollToBottom();
+      });
+    });
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
 
   useEffect(() => {
     if (!hasScrolledInitially && !loading && messages.length > 0) {
@@ -2094,6 +2335,11 @@ function SessionPage() {
       }
     };
   }, [sessionId, persistShortIfNoPrior]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    writeAttachments(sessionId, pendingAttachments);
+  }, [sessionId, pendingAttachments]);
 
   const handleRevertRequest = useCallback(
     (message: MessageWithParts, text: string) => {
@@ -2500,7 +2746,7 @@ function SessionPage() {
           {!loading && !error && (
             <>
               {!loadAllMessages && messages.length >= messageLimit && (
-                <div className="px-6 py-3 flex items-center justify-center gap-2">
+                <div className="px-3 py-3 flex items-center justify-center gap-2">
                   <button
                     type="button"
                     onClick={() => setMessageLimit((n) => n + 100)}
@@ -2519,7 +2765,7 @@ function SessionPage() {
                 </div>
               )}
               {todoSnapshot && (
-                <div className="px-6">
+                <div className="px-3">
                   <TodoFloat snapshot={todoSnapshot} />
                 </div>
               )}
@@ -2527,7 +2773,7 @@ function SessionPage() {
           )}
           {messageNodes}
           {unlinkedPermissions.length > 0 && (
-            <div className="px-6 py-4 space-y-2 border-t border-dashed border-border">
+            <div className="px-3 py-4 space-y-2 border-t border-dashed border-border">
               {unlinkedPermissions.map((permission) => (
                 <PermissionRequestForm
                   key={permission.id}
@@ -2542,7 +2788,7 @@ function SessionPage() {
         </div>
 
         {isAssistantBusy && isServerBusy && (
-          <div className="py-3 px-6">
+          <div className="py-3 px-3">
             <div className="flex items-center gap-2">
               <Ripples size="30" speed="2" color="var(--color-primary)" />
               <span className="text-sm text-muted-fg">Thinking...</span>
@@ -2559,7 +2805,7 @@ function SessionPage() {
             and offer a one-click retry that re-submits the last user
             message. */}
         {showStallBanner && (
-          <div className="py-3 px-6">
+          <div className="py-3 px-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm text-warning-subtle-fg">
                 Server is idle - the prompt was received but the AI never
@@ -2682,7 +2928,7 @@ function SessionPage() {
           style={{ maxHeight: `${composerMaxHeight}px` }}
         >
           <>
-            <div className="flex items-center gap-1 px-2 py-1 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
+            <div className="flex items-center gap-1 px-1 py-1 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
               <div className="min-w-0 flex-1 sm:max-w-40">
                 <AgentSelect sessionId={sessionId} />
               </div>
@@ -2741,6 +2987,29 @@ function SessionPage() {
                 if (textareaRef.current) {
                   textareaRef.current.value = newValue;
                   setHasContent(newValue.length > 0);
+                }
+              }}
+            />
+            <SlashCommandPopover
+              isOpen={slashCommand.isOpen}
+              searchQuery={slashCommand.searchQuery}
+              textareaRef={textareaRef}
+              slashStart={slashCommand.slashStart}
+              selectedIndex={slashCommand.selectedIndex}
+              onSelectedIndexChange={slashCommand.setSelectedIndex}
+              onClose={slashCommand.close}
+              onSelect={(commandName) => {
+                const current = textareaRef.current?.value ?? "";
+                const newValue = slashCommand.handleSelect(
+                  commandName,
+                  current,
+                );
+                if (textareaRef.current) {
+                  textareaRef.current.value = newValue;
+                  setHasContent(newValue.length > 0);
+                  textareaRef.current.focus();
+                  const cursorPos = newValue.length;
+                  textareaRef.current.setSelectionRange(cursorPos, cursorPos);
                 }
               }}
             />
@@ -2837,10 +3106,13 @@ function SessionPage() {
                       const ne = value.length > 0;
                       if (ne !== hasContent) setHasContent(ne);
                       scheduleDraftSave(value);
+                      const cursorPos =
+                        e.target.selectionStart ?? value.length;
                       if (fileMention.isOpen || value.includes("@")) {
-                        const cursorPos =
-                          e.target.selectionStart ?? value.length;
                         fileMention.handleInputChange(value, cursorPos);
+                      }
+                      if (slashCommand.isOpen || value.startsWith("/")) {
+                        slashCommand.handleInputChange(value, cursorPos);
                       }
                     }}
                     onBlur={(e) => {
@@ -2861,6 +3133,37 @@ function SessionPage() {
                       fileMention.handleInputChange(value, cursorPos);
                     }}
                     onKeyDown={(e) => {
+                      const slashHandled = slashCommand.handleKeyDown(
+                        e,
+                        filteredCommands.length,
+                      );
+                      if (slashHandled) {
+                        if (
+                          (e.key === "Enter" || e.key === "Tab") &&
+                          filteredCommands.length > 0
+                        ) {
+                          const selectedCmd =
+                            filteredCommands[slashCommand.selectedIndex];
+                          if (selectedCmd) {
+                            const current =
+                              textareaRef.current?.value ?? "";
+                            const newValue = slashCommand.handleSelect(
+                              selectedCmd.name,
+                              current,
+                            );
+                            if (textareaRef.current) {
+                              textareaRef.current.value = newValue;
+                              setHasContent(newValue.length > 0);
+                              const cursorPos = newValue.length;
+                              textareaRef.current.setSelectionRange(
+                                cursorPos,
+                                cursorPos,
+                              );
+                            }
+                          }
+                        }
+                        return;
+                      }
                       const handled = fileMention.handleKeyDown(
                         e,
                         fileResults.length,
@@ -2919,17 +3222,48 @@ function SessionPage() {
                   />
                 </div>
                 <div className="flex flex-col justify-end gap-1.5 shrink-0">
-                  {isAssistantBusy && (
-                    <Button
-                      type="button"
-                      onPress={handleAbort}
-                      intent="danger"
-                      className="size-9 !p-0"
-                      aria-label="Stop the current run"
-                    >
-                      <StopIcon className="size-4" />
-                    </Button>
-                  )}
+                  {(sttMode !== "off" && speechRecognition.isSupported) ||
+                  isAssistantBusy ? (
+                    <div className="flex w-12 gap-0 justify-end">
+                      {sttMode !== "off" && speechRecognition.isSupported && (
+                        <button
+                          type="button"
+                          onClick={handleMicToggle}
+                          className={`size-6 rounded-md inline-flex items-center justify-center transition-colors ${
+                            speechRecognition.isListening
+                              ? "bg-red-500 text-white animate-pulse"
+                              : "bg-muted hover:bg-muted/80 text-muted-fg"
+                          }`}
+                          aria-label={
+                            speechRecognition.isListening
+                              ? "Stop voice input"
+                              : "Start voice input"
+                          }
+                          title={
+                            sttMode === "push-to-talk"
+                              ? speechRecognition.isListening
+                                ? "Tap to stop and submit"
+                                : "Tap to start; tap again to stop and submit"
+                              : speechRecognition.isListening
+                                ? "Tap to stop listening"
+                                : "Tap to start continuous listening"
+                          }
+                        >
+                          <MicrophoneIcon className="size-3" />
+                        </button>
+                      )}
+                      {isAssistantBusy && (
+                        <button
+                          type="button"
+                          onClick={() => void handleAbort()}
+                          className="size-6 rounded-md inline-flex items-center justify-center bg-red-500 hover:bg-red-600 text-white transition-colors"
+                          aria-label="Stop the current run"
+                        >
+                          <StopIcon className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
                   <Button
                     type="submit"
                     isDisabled={
