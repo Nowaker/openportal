@@ -4,6 +4,19 @@ export interface BaseDirEntry {
   level1: string[];
 }
 
+export function groupSessionsByParent<T extends { id: string; parentID?: string }>(
+  sessions: T[],
+): Map<string, T[]> {
+  const byParent = new Map<string, T[]>();
+  for (const s of sessions) {
+    if (!s.parentID) continue;
+    const arr = byParent.get(s.parentID) || [];
+    arr.push(s);
+    byParent.set(s.parentID, arr);
+  }
+  return byParent;
+}
+
 function resolvePath(p: string): string {
   return p.replace(/\/+$/g, "");
 }
