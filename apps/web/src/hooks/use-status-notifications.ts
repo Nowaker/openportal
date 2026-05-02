@@ -63,13 +63,29 @@ export function useStatusNotifications({
     if (!("Notification" in window)) return;
     if (!statusMap) return;
 
+    // opencode's GET /session/status only returns sessions that are
+    // currently busy or retrying; an idle session DROPS OUT of the map
+    // entirely. So the natural signal for "this session just finished"
+    // is: it had an entry last poll, it does NOT have one now.
+    // Iterating over Object.entries(statusMap) alone misses that
+    // transition entirely - the busy session disappears and we never
+    // see it again. We have to walk the union of previous+current keys.
     const next: Record<string, string> = {};
     for (const [id, s] of Object.entries(statusMap)) {
       if (!s) continue;
       next[id] = s.type;
-      const wasBusy = prevStatusRef.current[id] === "busy";
-      const nowIdle = s.type === "idle";
-      if (!wasBusy || !nowIdle) continue;
+    }
+
+    const allIds = new Set<string>([
+      ...Object.keys(prevStatusRef.current),
+      ...Object.keys(next),
+    ]);
+    for (const id of allIds) {
+      const prevType = prevStatusRef.current[id];
+      const nextType = next[id];
+      const wasActive = prevType === "busy" || prevType === "retry";
+      const nowIdle = nextType === undefined || nextType === "idle";
+      if (!wasActive || !nowIdle) continue;
       const session = sessions.find((x) => x.id === id);
       spawnNotification(
         id,
