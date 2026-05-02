@@ -6,7 +6,6 @@ import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
-  ArrowLeftIcon,
   SwatchIcon,
   InformationCircleIcon,
   PencilSquareIcon,
@@ -25,6 +24,12 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
 import { useStreamingStore } from "@/stores/streaming-store";
+import {
+  useSttModeStore,
+  type SttMode,
+  type SttBackend,
+} from "@/stores/stt-mode-store";
+import { Input } from "@/components/ui/input";
 import {
   FONT_SIZE_PRESETS,
   useFontSizeStore,
@@ -387,6 +392,142 @@ const liveUpdatesOptions: { id: "stream" | "poll"; title: string; description: s
   },
 ];
 
+const sttModeOptions: { id: SttMode; title: string; description: string }[] = [
+  {
+    id: "off",
+    title: "Off",
+    description: "No microphone button. Type prompts only.",
+  },
+  {
+    id: "push-to-talk",
+    title: "Push-to-talk",
+    description:
+      "Mic button visible. Tap to start recording, tap again to stop \u2014 the transcript is appended to the composer and the message is auto-submitted.",
+  },
+  {
+    id: "vad",
+    title: "Hands-free (VAD)",
+    description:
+      "Mic button visible. Tap to toggle continuous listening; the browser detects speech segments and transcribes each one to the composer.",
+  },
+];
+
+const sttBackendOptions: {
+  id: SttBackend;
+  title: string;
+  description: string;
+}[] = [
+  {
+    id: "web-speech",
+    title: "Browser (Web Speech API)",
+    description:
+      "Uses the browser's built-in SpeechRecognition. Free, instant, works on Android Chrome. Some browsers route audio through cloud services; check your platform's privacy policy.",
+  },
+  {
+    id: "whisper-sidecar",
+    title: "Whisper sidecar (self-hosted)",
+    description:
+      "POSTs audio to the @openportal/voice-stt sidecar, which runs whisper.cpp on your own machine. Fully self-hosted; no audio leaves your network.",
+  },
+];
+
+function VoiceInputSetting() {
+  const mode = useSttModeStore((s) => s.mode);
+  const setMode = useSttModeStore((s) => s.setMode);
+  const backend = useSttModeStore((s) => s.backend);
+  const setBackend = useSttModeStore((s) => s.setBackend);
+  const sidecarUrl = useSttModeStore((s) => s.sidecarUrl);
+  const setSidecarUrl = useSttModeStore((s) => s.setSidecarUrl);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Voice input</h2>
+        <p className="text-sm text-muted-fg">
+          Speech-to-text for prompts. This preference is per-tab/per-device
+          (localStorage), not synced.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Mode</p>
+        <Select
+          aria-label="Voice input mode"
+          selectedKey={mode}
+          onSelectionChange={(key) => {
+            if (!key) return;
+            setMode(String(key) as SttMode);
+          }}
+        >
+          <SelectTrigger className="max-w-sm" />
+          <SelectContent>
+            {sttModeOptions.map((opt) => (
+              <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+                <SelectLabel>{opt.title}</SelectLabel>
+                <div
+                  slot="description"
+                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                >
+                  {opt.description}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {mode !== "off" && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Backend</p>
+          <Select
+            aria-label="Voice input backend"
+            selectedKey={backend}
+            onSelectionChange={(key) => {
+              if (!key) return;
+              setBackend(String(key) as SttBackend);
+            }}
+          >
+            <SelectTrigger className="max-w-sm" />
+            <SelectContent>
+              {sttBackendOptions.map((opt) => (
+                <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+                  <SelectLabel>{opt.title}</SelectLabel>
+                  <div
+                    slot="description"
+                    className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                  >
+                    {opt.description}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {mode !== "off" && backend === "whisper-sidecar" && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Sidecar URL</p>
+          <Input
+            value={sidecarUrl}
+            onChange={(e) => setSidecarUrl(e.target.value)}
+            placeholder="http://127.0.0.1:4150"
+            className="max-w-sm"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-fg">
+            Where the @openportal/voice-stt service is listening. POST audio is
+            sent to <code>{`${sidecarUrl.replace(/\/+$/, "")}/transcribe`}</code>.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LiveUpdatesSetting() {
   const enabled = useStreamingStore((s) => s.enabled);
   const setEnabled = useStreamingStore((s) => s.setEnabled);
@@ -417,7 +558,10 @@ function LiveUpdatesSetting() {
             {liveUpdatesOptions.map((opt) => (
               <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
                 <SelectLabel>{opt.title}</SelectLabel>
-                <div className="text-xs text-muted-fg max-w-md whitespace-normal">
+                <div
+                  slot="description"
+                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                >
                   {opt.description}
                 </div>
               </SelectItem>
@@ -547,25 +691,6 @@ function SettingsPage() {
   return (
     <div className="h-full overflow-y-auto overscroll-contain">
       <div className="container mx-auto space-y-8 px-4 py-6">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (window.history.length > 1) {
-                window.history.back();
-              } else {
-                window.location.href = "/";
-              }
-            }}
-            className="inline-flex items-center justify-center size-8 rounded text-muted-fg hover:text-fg hover:bg-muted/50 transition-colors"
-            aria-label="Back"
-            title="Back"
-          >
-            <ArrowLeftIcon className="size-5" />
-          </button>
-          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        </div>
-
       <Tabs
         aria-label="Settings"
         className="overflow-x-hidden"
@@ -749,6 +874,10 @@ function SettingsPage() {
 
             <section>
               <LiveUpdatesSetting />
+            </section>
+
+            <section>
+              <VoiceInputSetting />
             </section>
 
             <section>
