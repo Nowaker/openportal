@@ -8,17 +8,21 @@ const MAX_VERTICAL_RATIO = 1.6;
 interface PullState {
   pullDistance: number;
   releasing: boolean;
+  refreshHandler: (() => void) | null;
   setPullDistance: (px: number) => void;
   startReleasing: () => void;
   reset: () => void;
+  setRefreshHandler: (h: (() => void) | null) => void;
 }
 
 export const usePullState = create<PullState>((set) => ({
   pullDistance: 0,
   releasing: false,
+  refreshHandler: null,
   setPullDistance: (px) => set({ pullDistance: px, releasing: false }),
   startReleasing: () => set({ releasing: true }),
   reset: () => set({ pullDistance: 0, releasing: false }),
+  setRefreshHandler: (h) => set({ refreshHandler: h }),
 }));
 
 export const PULL_THRESHOLD_PX = THRESHOLD_PX;
@@ -111,7 +115,13 @@ export function usePullToRefresh() {
       if (pulled >= THRESHOLD_PX) {
         startReleasing();
         window.setTimeout(() => {
-          window.location.reload();
+          const handler = usePullState.getState().refreshHandler;
+          if (handler) {
+            handler();
+            reset();
+          } else {
+            window.location.reload();
+          }
         }, 200);
       } else {
         reset();
