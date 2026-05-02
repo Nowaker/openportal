@@ -1,0 +1,162 @@
+import * as React from "react";
+import type { Session } from "@opencode-ai/sdk";
+import { PencilSquareIcon } from "@heroicons/react/24/outline";
+
+const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
+
+export function sessionHasDraft(sessionId: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const v = window.localStorage.getItem(DRAFT_KEY_PREFIX + sessionId);
+    return Boolean(v && v.length > 0);
+  } catch {
+    return false;
+  }
+}
+
+// Last-viewed source-of-truth is the server (~/.openportal-state.json), not
+// localStorage - drafts of which device/tab last viewed a session need to
+// sync across devices so the green "review needed" dot clears everywhere
+// once the user actually reviews on any one of them.
+export function sessionHasNewContent(
+  session: Session,
+  lastViewedMap: Record<string, number> | undefined,
+  currentSessionId?: string | null,
+): boolean {
+  if (session.id === currentSessionId) return false;
+  const updated = session.time?.updated ?? 0;
+  if (!updated) return false;
+  const lastViewed = lastViewedMap?.[session.id] ?? 0;
+  return updated > lastViewed;
+}
+
+// In sidebar contexts, absent indicators STILL render a fixed-width
+// placeholder so titles align across tree rows (reserveSpace=true). In
+// pinned-tab contexts where each tab is independent and width-fluid,
+// reserveSpace=false collapses absent indicators to render nothing.
+//
+// Priority chain (top to bottom):
+//   1. hasQuestion || hasError -> red (own attention OR bubbled-up child attention)
+//   2. status busy/retry        -> amber for top-level sessions, violet-pulse
+//      for subagents (subagent=true). Subagents share the same color as the
+//      parent's "child running" indicator so the running state is visually
+//      one continuous signal across the parent and its children.
+//   3. hasChildBusy             -> violet-pulse ("subsession in progress" - any
+//      child session of this one is busy/retry, but this session itself is idle)
+//   4. hasNewContent            -> violet steady (review-me) for TOP-LEVEL ONLY.
+//      Suppressed for subagents: their finished state = no indicator at all.
+export function SessionStatusDot({
+  status,
+  hasNewContent,
+  hasQuestion,
+  hasError,
+  hasChildBusy,
+  reserveSpace = true,
+  subagent = false,
+}: {
+  status: "busy" | "retry" | "idle" | undefined;
+  hasNewContent: boolean;
+  hasQuestion?: boolean;
+  hasError?: boolean;
+  hasChildBusy?: boolean;
+  reserveSpace?: boolean;
+  subagent?: boolean;
+}) {
+  if (hasQuestion || hasError) {
+    const label = hasQuestion
+      ? "AI is waiting on your answer"
+      : "Session has error";
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-red-500"
+        aria-label={label}
+        title={label}
+      />
+    );
+  }
+  if (status === "busy") {
+    if (subagent) {
+      return (
+        <span
+          className="relative flex size-2 shrink-0"
+          aria-label="Subagent running"
+          title="Subagent running"
+        >
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
+          <span className="relative inline-flex size-2 rounded-full bg-violet-500" />
+        </span>
+      );
+    }
+    return (
+      <span
+        className="relative flex size-2 shrink-0"
+        aria-label="Session is running"
+        title="Session is running"
+      >
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+        <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+      </span>
+    );
+  }
+  if (status === "retry") {
+    if (subagent) {
+      return (
+        <span
+          className="size-2 shrink-0 rounded-full bg-violet-600"
+          aria-label="Subagent retrying"
+          title="Subagent retrying"
+        />
+      );
+    }
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-amber-600"
+        aria-label="Session is retrying"
+        title="Session is retrying"
+      />
+    );
+  }
+  if (hasChildBusy) {
+    return (
+      <span
+        className="relative flex size-2 shrink-0"
+        aria-label="Subsession in progress"
+        title="Subsession in progress"
+      >
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
+        <span className="relative inline-flex size-2 rounded-full bg-violet-500" />
+      </span>
+    );
+  }
+  if (hasNewContent && !subagent) {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-violet-500"
+        aria-label="Task complete - review needed"
+        title="Task complete - review needed"
+      />
+    );
+  }
+  if (!reserveSpace) return null;
+  return <span className="size-2 shrink-0" aria-hidden />;
+}
+
+export function DraftIndicator({
+  hasDraft,
+  reserveSpace = true,
+}: {
+  hasDraft: boolean;
+  reserveSpace?: boolean;
+}) {
+  if (!hasDraft) {
+    if (!reserveSpace) return null;
+    return <span className="size-3 shrink-0" aria-hidden />;
+  }
+  return (
+    <PencilSquareIcon
+      className="size-3 shrink-0 text-sky-500"
+      aria-label="Unsent draft"
+      title="Unsent draft"
+    />
+  );
+}
