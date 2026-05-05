@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS as DndCSS } from "@dnd-kit/utilities";
+import {
   ArrowLeftIcon,
   BoltIcon,
   CheckIcon,
@@ -736,114 +751,160 @@ export function PinnedTabStrip() {
     .map((id) => ({ id, session: sessions.find((s) => s.id === id) ?? null }))
     .filter((t): t is { id: string; session: Session } => t.session !== null);
 
-  const dragSourceIdRef = useRef<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  // PointerSensor with distance:8 covers desktop mouse AND modern mobile
+  // pointer events; the activation constraint means a tap or click won't
+  // start a drag (won't move 8px), so the inner navigate-button + unpin-X
+  // button keep their click semantics. TouchSensor is a fallback for older
+  // mobile browsers that emit touch events without pointer-event coalescing
+  // - delay:150ms + tolerance:5 prevents accidental drags during scroll.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    }),
+  );
 
   if (tabs.length === 0) return null;
 
-  const handleDrop = (targetId: string) => {
-    const sourceId = dragSourceIdRef.current;
-    dragSourceIdRef.current = null;
-    setDragOverId(null);
-    if (!sourceId || sourceId === targetId) return;
-    const order = pinned.slice();
-    const from = order.indexOf(sourceId);
-    const to = order.indexOf(targetId);
-    if (from === -1 || to === -1) return;
-    order.splice(from, 1);
-    const insertAt = from < to ? to : to;
-    order.splice(insertAt, 0, sourceId);
-    void reorder(order);
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = pinned.indexOf(active.id as string);
+    const to = pinned.indexOf(over.id as string);
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(pinned, from, to);
+    void reorder(next);
   };
 
   return (
-    <div className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border bg-bg/95 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {tabs.map(({ id, session }) => {
-        const active = id === currentSessionId;
-        const title = session.title ?? "(untitled)";
-        const hasDraft = sessionHasDraft(id);
-        const hasNewContent = sessionHasNewContent(
-          session,
-          lastViewedMap,
-          currentSessionId,
-        );
-        const hasQuestion = questionSessionIds.has(id);
-        const hasError = errorSessionIds.has(id);
-        const isDragOver = dragOverId === id;
-        const tabStatus = statusMap?.[id]?.type;
-        const hasStatusDot =
-          hasQuestion ||
-          hasError ||
-          tabStatus === "busy" ||
-          tabStatus === "retry" ||
-          hasNewContent;
-        const hasAnyIndicator = hasDraft || hasStatusDot;
-        return (
-          <div
-            key={id}
-            draggable
-            onDragStart={(e) => {
-              dragSourceIdRef.current = id;
-              e.dataTransfer.effectAllowed = "move";
-              e.dataTransfer.setData("text/plain", id);
-            }}
-            onDragOver={(e) => {
-              if (!dragSourceIdRef.current) return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              if (dragOverId !== id) setDragOverId(id);
-            }}
-            onDragLeave={() => {
-              if (dragOverId === id) setDragOverId(null);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              handleDrop(id);
-            }}
-            onDragEnd={() => {
-              dragSourceIdRef.current = null;
-              setDragOverId(null);
-            }}
-            className={`group relative flex items-center gap-0 -mb-px border-b-2 pl-0 pr-0 py-1 text-xs transition-colors shrink-0 cursor-grab active:cursor-grabbing ${
-              active
-                ? "border-primary bg-bg text-fg"
-                : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
-            } ${isDragOver ? "bg-primary/10" : ""}`}
-          >
-            {hasAnyIndicator && (
-              <div className="flex items-center gap-0.5 pl-1 pr-1">
-                <DraftIndicator hasDraft={hasDraft} reserveSpace={false} />
-                <SessionStatusDot
-                  status={tabStatus}
-                  hasNewContent={hasNewContent}
-                  hasQuestion={hasQuestion}
-                  hasError={hasError}
-                  reserveSpace={false}
-                />
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() =>
-                void navigate({ to: "/session/$id", params: { id } })
-              }
-              className="max-w-[16rem] truncate text-left"
-              title={title}
-            >
-              {title}
-            </button>
-            <button
-              type="button"
-              onClick={() => void togglePin(id, "unpin")}
-              aria-label={`Unpin ${title}`}
-              title="Unpin"
-              className="rounded p-0.5 hover:bg-muted/40"
-            >
-              <XMarkIcon className="size-3" />
-            </button>
-          </div>
-        );
-      })}
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <SortableContext
+        items={tabs.map((t) => t.id)}
+        strategy={horizontalListSortingStrategy}
+      >
+        <div className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border bg-bg/95 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {tabs.map(({ id, session }) => {
+            const active = id === currentSessionId;
+            const title = session.title ?? "(untitled)";
+            const hasDraft = sessionHasDraft(id);
+            const hasNewContent = sessionHasNewContent(
+              session,
+              lastViewedMap,
+              currentSessionId,
+            );
+            const hasQuestion = questionSessionIds.has(id);
+            const hasError = errorSessionIds.has(id);
+            const tabStatus = statusMap?.[id]?.type;
+            const hasStatusDot =
+              hasQuestion ||
+              hasError ||
+              tabStatus === "busy" ||
+              tabStatus === "retry" ||
+              hasNewContent;
+            const hasAnyIndicator = hasDraft || hasStatusDot;
+            return (
+              <SortablePinnedTab
+                key={id}
+                id={id}
+                active={active}
+                title={title}
+                hasAnyIndicator={hasAnyIndicator}
+                hasDraft={hasDraft}
+                tabStatus={tabStatus}
+                hasNewContent={hasNewContent}
+                hasQuestion={hasQuestion}
+                hasError={hasError}
+                onNavigate={() =>
+                  void navigate({ to: "/session/$id", params: { id } })
+                }
+                onUnpin={() => void togglePin(id, "unpin")}
+              />
+            );
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+interface SortablePinnedTabProps {
+  id: string;
+  active: boolean;
+  title: string;
+  hasAnyIndicator: boolean;
+  hasDraft: boolean;
+  tabStatus: "busy" | "retry" | "idle" | undefined;
+  hasNewContent: boolean;
+  hasQuestion: boolean;
+  hasError: boolean;
+  onNavigate: () => void;
+  onUnpin: () => void;
+}
+
+function SortablePinnedTab({
+  id,
+  active,
+  title,
+  hasAnyIndicator,
+  hasDraft,
+  tabStatus,
+  hasNewContent,
+  hasQuestion,
+  hasError,
+  onNavigate,
+  onUnpin,
+}: SortablePinnedTabProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const style = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`group relative flex items-center gap-0 -mb-px border-b-2 pl-0 pr-0 py-1 text-xs transition-colors shrink-0 cursor-grab active:cursor-grabbing touch-none ${
+        active
+          ? "border-primary bg-bg text-fg"
+          : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
+      }`}
+    >
+      {hasAnyIndicator && (
+        <div className="flex items-center gap-0.5 pl-1 pr-1">
+          <DraftIndicator hasDraft={hasDraft} reserveSpace={false} />
+          <SessionStatusDot
+            status={tabStatus}
+            hasNewContent={hasNewContent}
+            hasQuestion={hasQuestion}
+            hasError={hasError}
+            reserveSpace={false}
+          />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onNavigate}
+        className="max-w-[16rem] truncate text-left"
+        title={title}
+      >
+        {title}
+      </button>
+      <button
+        type="button"
+        onClick={onUnpin}
+        onPointerDown={(e) => e.stopPropagation()}
+        aria-label={`Unpin ${title}`}
+        title="Unpin"
+        className="rounded p-0.5 hover:bg-muted/40"
+      >
+        <XMarkIcon className="size-3" />
+      </button>
     </div>
   );
 }
