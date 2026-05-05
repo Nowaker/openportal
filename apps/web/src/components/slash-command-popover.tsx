@@ -112,10 +112,27 @@ function getCaretCoordinates(
   return { top, left };
 }
 
+// SlashCommandPopover supports three modes:
+// - command: /<query>      - default, fetches from /api/.../command
+// - agent:   /agent <q>    - caller passes agents via customItems
+// - model:   /model <q>    - caller passes models via customItems
+// Mode detection happens in useSlashCommand. Caller renders the popover
+// conditional on slashCommand.isOpen and supplies customItems when
+// mode != "command" (commands are fetched internally because they're a
+// stable concept; agents/models depend on session state and live in
+// hooks the caller already has).
+export interface SlashItem {
+  name: string;
+  description?: string;
+  source?: "command" | "mcp" | "skill" | "agent" | "model";
+}
+
 interface SlashCommandPopoverProps {
   isOpen: boolean;
   searchQuery: string;
-  onSelect: (commandName: string) => void;
+  mode: SlashMode;
+  customItems?: SlashItem[];
+  onSelect: (itemName: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   slashStart: number | null;
   selectedIndex: number;
@@ -123,9 +140,13 @@ interface SlashCommandPopoverProps {
   onClose: () => void;
 }
 
+export type SlashMode = "command" | "agent" | "model";
+
 export function SlashCommandPopover({
   isOpen,
   searchQuery,
+  mode,
+  customItems,
   onSelect,
   textareaRef,
   slashStart,
@@ -134,6 +155,8 @@ export function SlashCommandPopover({
   onClose,
 }: SlashCommandPopoverProps) {
   const { data: commands } = useCommands();
+  const items: SlashItem[] =
+    mode === "command" ? (commands ?? []) : (customItems ?? []);
   const [position, setPosition] = useState<CaretPosition | null>(null);
   const [, forceTick] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -154,7 +177,7 @@ export function SlashCommandPopover({
     };
   }, [isOpen]);
 
-  const filtered = (commands ?? []).filter((c) =>
+  const filtered = items.filter((c) =>
     c.name.toLowerCase().startsWith(searchQuery.toLowerCase()),
   );
 
@@ -214,19 +237,25 @@ export function SlashCommandPopover({
   if (!isOpen) return null;
   if (!isMobile && !position) return null;
 
-  const renderItem = (cmd: OpencodeCommand, index: number) => {
+  const renderItem = (cmd: SlashItem, index: number) => {
     const sourceLabel =
       cmd.source === "skill"
         ? "(skill)"
         : cmd.source === "mcp"
           ? "(mcp)"
-          : "(builtin)";
+          : cmd.source === "agent"
+            ? "(agent)"
+            : cmd.source === "model"
+              ? "(model)"
+              : "(builtin)";
     let cleanedDescription = (cmd.description ?? "").trimStart();
     if (
       cleanedDescription.toLowerCase().startsWith(sourceLabel.toLowerCase())
     ) {
       cleanedDescription = cleanedDescription.slice(sourceLabel.length).trimStart();
     }
+    const displayPrefix =
+      mode === "command" ? `/${cmd.name}` : cmd.name;
     return (
       <button
         type="button"
@@ -245,7 +274,7 @@ export function SlashCommandPopover({
           }`}
         />
         <div className="flex flex-col min-w-0 flex-1">
-          <span className="font-medium leading-tight">/{cmd.name}</span>
+          <span className="font-medium leading-tight">{displayPrefix}</span>
           {cleanedDescription && (
             <span className="mt-0.5 text-xs leading-snug text-muted-fg break-words whitespace-normal">
               <span className="opacity-70">{sourceLabel}</span>{" "}
@@ -271,9 +300,15 @@ export function SlashCommandPopover({
     </div>
   );
 
+  const headerLabel =
+    mode === "agent"
+      ? "Select Agent"
+      : mode === "model"
+        ? "Select Model"
+        : "Select Command";
   const header = (
     <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-fg/80 border-b border-border/40 bg-muted/20 rounded-t-xl">
-      Select Command
+      {headerLabel}
     </div>
   );
 
@@ -353,11 +388,12 @@ export function SlashCommandPopover({
 interface UseSlashCommandResult {
   isOpen: boolean;
   searchQuery: string;
+  mode: SlashMode;
   selectedIndex: number;
   slashStart: number | null;
   handleInputChange: (value: string, cursorPosition: number) => void;
   handleKeyDown: (e: React.KeyboardEvent, count: number) => boolean;
-  handleSelect: (commandName: string, currentValue: string) => string;
+  handleSelect: (itemName: string, currentValue: string) => string;
   close: () => void;
   setSelectedIndex: (index: number) => void;
 }
@@ -365,28 +401,47 @@ interface UseSlashCommandResult {
 export function useSlashCommand(): UseSlashCommandResult {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mode, setMode] = useState<SlashMode>("command");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [slashStart, setSlashStart] = useState<number | null>(null);
 
   const close = () => {
     setIsOpen(false);
     setSearchQuery("");
+    setMode("command");
     setSlashStart(null);
     setSelectedIndex(0);
   };
 
   const handleInputChange = (value: string, _cursorPosition: number) => {
-    if (value.startsWith("/")) {
-      const afterSlash = value.slice(1);
-      const firstSpace = afterSlash.search(/[\s]/);
-      const query = firstSpace === -1 ? afterSlash : afterSlash.slice(0, firstSpace);
-      if (firstSpace === -1) {
-        setSearchQuery(query);
-        setSlashStart(0);
-        setSelectedIndex(0);
-        setIsOpen(true);
-        return;
-      }
+    if (!value.startsWith("/")) {
+      close();
+      return;
+    }
+    // Sub-picker detection: /agent <q> and /model <q> stay open after the
+    // first space and switch into a different item list. Regex captures
+    // the rest-after-space as the query.
+    const subMatch = value.match(/^\/(agent|model)\s+(\S*)$/);
+    if (subMatch) {
+      const sub = subMatch[1] as "agent" | "model";
+      const query = subMatch[2] ?? "";
+      setMode(sub);
+      setSearchQuery(query);
+      setSlashStart(0);
+      setSelectedIndex(0);
+      setIsOpen(true);
+      return;
+    }
+    const afterSlash = value.slice(1);
+    const firstSpace = afterSlash.search(/[\s]/);
+    const query = firstSpace === -1 ? afterSlash : afterSlash.slice(0, firstSpace);
+    if (firstSpace === -1) {
+      setMode("command");
+      setSearchQuery(query);
+      setSlashStart(0);
+      setSelectedIndex(0);
+      setIsOpen(true);
+      return;
     }
     close();
   };
@@ -420,13 +475,20 @@ export function useSlashCommand(): UseSlashCommandResult {
     }
   };
 
-  const handleSelect = (commandName: string, currentValue: string): string => {
+  const handleSelect = (itemName: string, currentValue: string): string => {
     if (slashStart === null) return currentValue;
-    const afterSlash = currentValue.slice(slashStart + 1);
-    const firstSpace = afterSlash.search(/[\s]/);
     const beforeSlash = currentValue.slice(0, slashStart);
-    const tail = firstSpace === -1 ? "" : afterSlash.slice(firstSpace);
-    const newValue = `${beforeSlash}/${commandName} ${tail.replace(/^\s+/, "")}`;
+    let newValue: string;
+    if (mode === "agent") {
+      newValue = `${beforeSlash}/agent ${itemName}`;
+    } else if (mode === "model") {
+      newValue = `${beforeSlash}/model ${itemName}`;
+    } else {
+      const afterSlash = currentValue.slice(slashStart + 1);
+      const firstSpace = afterSlash.search(/[\s]/);
+      const tail = firstSpace === -1 ? "" : afterSlash.slice(firstSpace);
+      newValue = `${beforeSlash}/${itemName} ${tail.replace(/^\s+/, "")}`;
+    }
     close();
     return newValue;
   };
@@ -434,6 +496,7 @@ export function useSlashCommand(): UseSlashCommandResult {
   return {
     isOpen,
     searchQuery,
+    mode,
     selectedIndex,
     slashStart,
     handleInputChange,

@@ -79,7 +79,12 @@ import {
   type QuestionInfo,
   type QuestionRequest,
 } from "@/hooks/use-session-messages";
-import { useSessions, useSessionStatus } from "@/hooks/use-opencode";
+import {
+  useSessions,
+  useSessionStatus,
+  useAgents,
+  useProviders,
+} from "@/hooks/use-opencode";
 import useMediaQuery from "@/hooks/use-media-query";
 import type { Session } from "@opencode-ai/sdk";
 
@@ -1948,9 +1953,66 @@ function SessionPage() {
   const fileMention = useFileMention();
   const slashCommand = useSlashCommand();
   const { data: commandsData } = useCommands();
-  const filteredCommands = (commandsData ?? []).filter((c) =>
-    c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
-  );
+  const { data: agentsData } = useAgents();
+  const { data: providersData } = useProviders();
+  // Slash sub-picker items: when in agent/model mode, the popover renders
+  // these instead of commandsData. Built once per render from the same SWR
+  // caches feeding the AgentSelect/ModelSelect dropdowns in the composer
+  // toolbar so the source of truth stays single.
+  const slashItems = useMemo(() => {
+    if (slashCommand.mode === "agent") {
+      const agents = (agentsData as Array<{
+        name: string;
+        description?: string;
+      }>) ?? [];
+      return agents
+        .filter((a) =>
+          a.name
+            .toLowerCase()
+            .startsWith(slashCommand.searchQuery.toLowerCase()),
+        )
+        .map((a) => ({
+          name: a.name,
+          description: a.description,
+          source: "agent" as const,
+        }));
+    }
+    if (slashCommand.mode === "model") {
+      type Provider = {
+        id: string;
+        name?: string;
+        models?: Record<string, { name?: string }>;
+      };
+      const providers = (providersData as { providers?: Provider[] })
+        ?.providers ?? [];
+      const models: { name: string; description?: string }[] = [];
+      for (const p of providers) {
+        const ms = p.models ?? {};
+        for (const [modelID, model] of Object.entries(ms)) {
+          const flat = `${p.id}/${modelID}`;
+          models.push({ name: flat, description: model.name ?? modelID });
+        }
+      }
+      return models
+        .filter((m) =>
+          m.name
+            .toLowerCase()
+            .includes(slashCommand.searchQuery.toLowerCase()),
+        )
+        .slice(0, 50)
+        .map((m) => ({ ...m, source: "model" as const }));
+    }
+    return (commandsData ?? []).filter((c) =>
+      c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
+    );
+  }, [
+    slashCommand.mode,
+    slashCommand.searchQuery,
+    commandsData,
+    agentsData,
+    providersData,
+  ]);
+  const filteredCommands = slashItems;
 
   const error = messagesError?.message || sendError;
 
@@ -3028,6 +3090,10 @@ function SessionPage() {
             <SlashCommandPopover
               isOpen={slashCommand.isOpen}
               searchQuery={slashCommand.searchQuery}
+              mode={slashCommand.mode}
+              customItems={
+                slashCommand.mode === "command" ? undefined : slashItems
+              }
               textareaRef={textareaRef}
               slashStart={slashCommand.slashStart}
               selectedIndex={slashCommand.selectedIndex}
