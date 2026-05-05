@@ -2434,6 +2434,27 @@ function SessionPage() {
     const messageText = rawValue.trim();
     if (!messageText && pendingAttachments.length === 0) return;
 
+    // Slash-command detection. If the leading token matches a command we
+    // know about (from the SWR-cached commands list driving the popover),
+    // dispatch through opencode's /command endpoint rather than /prompt.
+    // /command engages the full command machinery (template loading,
+    // frontmatter agent/model overrides, command.executed events);
+    // /prompt would just send the literal "/foo bar" string as chat text.
+    // Unknown commands fall through to /prompt so a stray typo "/whoops"
+    // is still treated as a chat message.
+    let slashDispatch: { command: string; arguments: string } | null = null;
+    if (messageText.startsWith("/")) {
+      const m = messageText.match(/^\/(\S+)\s*([\s\S]*)$/);
+      if (m) {
+        const name = m[1];
+        const argsTail = m[2];
+        const known = (commandsData ?? []).some((c) => c.name === name);
+        if (known) {
+          slashDispatch = { command: name, arguments: argsTail };
+        }
+      }
+    }
+
     const attachmentsForMessage = pendingAttachments;
     const messageId = `temp-${Date.now()}`;
     setPendingAttachments([]);
@@ -2526,22 +2547,36 @@ function SessionPage() {
         }
         setRevertTarget(null);
       }
-      const response = await fetch(
-        `/api/opencode/${port}/session/${sessionId}/prompt`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: messageText,
-            attachments: attachmentsForMessage.length
-              ? attachmentsForMessage
-              : undefined,
-            model: isOverridingDefault() ? selectedModel : undefined,
-            agent: selectedAgent,
-            variant: thinkingEffort || undefined,
-          }),
-        },
-      );
+      const response = slashDispatch
+        ? await fetch(
+            `/api/opencode/${port}/session/${sessionId}/command`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                command: slashDispatch.command,
+                arguments: slashDispatch.arguments,
+                agent: selectedAgent,
+                variant: thinkingEffort || undefined,
+              }),
+            },
+          )
+        : await fetch(
+            `/api/opencode/${port}/session/${sessionId}/prompt`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: messageText,
+                attachments: attachmentsForMessage.length
+                  ? attachmentsForMessage
+                  : undefined,
+                model: isOverridingDefault() ? selectedModel : undefined,
+                agent: selectedAgent,
+                variant: thinkingEffort || undefined,
+              }),
+            },
+          );
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
