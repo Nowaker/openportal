@@ -1,0 +1,138 @@
+name: voice-stt
+
+on:
+  push:
+    branches: [main-nowaker]
+    paths:
+      - "apps/voice-stt/**"
+      - ".github/workflows/voice-stt.yml"
+  pull_request:
+    paths:
+      - "apps/voice-stt/**"
+      - ".github/workflows/voice-stt.yml"
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: "Run integration tests (downloads model + audio fixture)"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install build deps for whisper.cpp
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake git curl ffmpeg
+
+      - name: Install voice-stt dependencies
+        working-directory: apps/voice-stt
+        run: bun install
+
+      - name: Type-check
+        working-directory: apps/voice-stt
+        run: bunx tsc --noEmit
+
+      - name: Run unit tests
+        working-directory: apps/voice-stt
+        run: bun test tests/unit.test.ts
+
+  integration:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_integration }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install build deps for whisper.cpp
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake git curl ffmpeg
+
+      - name: Install voice-stt dependencies
+        working-directory: apps/voice-stt
+        run: bun install
+
+      - name: Download whisper model (base.en)
+        working-directory: apps/voice-stt
+        run: bun run download-model
+
+      - name: Generate hello-world audio fixture
+        working-directory: apps/voice-stt
+        run: |
+          mkdir -p tests/fixtures/audio
+          if [ ! -f tests/fixtures/audio/hello-world.wav ]; then
+            ffmpeg -nostdin -y -f lavfi -i 'sine=frequency=440:duration=1' \
+              -ar 16000 -ac 1 tests/fixtures/audio/hello-world.wav
+          fi
+
+      - name: Run integration tests
+        working-directory: apps/voice-stt
+        env:
+          VOICE_STT_MODEL_PATH: ${{ github.workspace }}/apps/voice-stt/models/ggml-base.en.bin
+        run: bun test tests/integration.test.ts
+
+  e2e-with-opencode:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_integration }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install opencode binary
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+
+      - name: Verify opencode installed
+        run: opencode --version
+
+      - name: Spawn opencode against example fixture project
+        working-directory: apps/voice-stt
+        run: |
+          opencode serve \
+            --port 4496 \
+            --hostname 127.0.0.1 \
+            --directory tests/fixtures/example-project &
+          echo "OPENCODE_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for opencode ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsSL http://127.0.0.1:4496/config/providers >/dev/null 2>&1; then
+              echo "opencode ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run example project's own bun test
+        working-directory: apps/voice-stt/tests/fixtures/example-project
+        run: bun test
+
+      - name: Tear down opencode
+        if: always()
+        run: |
+          if [ -n "$OPENCODE_PID" ]; then kill "$OPENCODE_PID" || true; fi

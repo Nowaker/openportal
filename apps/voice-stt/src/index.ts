@@ -136,7 +136,7 @@ export function buildServer(config: Config) {
     async fetch(req) {
       const url = new URL(req.url);
       if (req.method === "OPTIONS") return corsPreflight();
-      if (url.pathname === "/health") {
+      if (url.pathname === "/health" && req.method === "GET") {
         return jsonResponse({
           ok: true,
           model: config.model,

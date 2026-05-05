@@ -1,0 +1,10 @@
+{
+  "name": "@openportal/voice-stt-example",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Example workspace used by voice-stt + opencode end-to-end tests.",
+  "scripts": {
+    "test": "bun test"
+  }
+}
