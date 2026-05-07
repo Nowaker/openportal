@@ -23,7 +23,6 @@ import {
   ModalOverlay,
   OverlayTriggerStateContext,
   SearchField,
-  useFilter,
 } from "react-aria-components";
 import { twJoin, twMerge } from "tailwind-merge";
 import { cx } from "@/lib/primitive";
@@ -80,6 +79,27 @@ interface CommandMenuProps
   size?: keyof typeof sizes;
 }
 
+// Fuzzy match: every char of `query` must appear in `target` in order, with
+// optional gaps between them. "wpn" matches "Webapps Portal Notifications"
+// (W, P, N in order). Case-insensitive. Empty query = match everything.
+// Non-contiguous so users can type partial-word abbreviations the way fzf
+// works; no scoring/ranking layer here because react-aria's Autocomplete
+// renders children in their original DOM order regardless of the filter
+// predicate.
+function fuzzyMatch(target: string, query: string): boolean {
+  if (query.length === 0) return true;
+  const t = target.toLowerCase();
+  const q = query.toLowerCase();
+  let ti = 0;
+  for (let qi = 0; qi < q.length; qi++) {
+    const c = q.charCodeAt(qi);
+    while (ti < t.length && t.charCodeAt(ti) !== c) ti++;
+    if (ti >= t.length) return false;
+    ti++;
+  }
+  return true;
+}
+
 const CommandMenu = ({
   onOpenChange,
   className,
@@ -91,9 +111,8 @@ const CommandMenu = ({
   shortcut,
   ...props
 }: CommandMenuProps) => {
-  const { contains } = useFilter({ sensitivity: "base" });
   const filter = (textValue: string, inputValue: string) =>
-    contains(textValue, inputValue);
+    fuzzyMatch(textValue, inputValue);
   useEffect(() => {
     if (!shortcut) return;
 

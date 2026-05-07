@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod/v4";
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
@@ -88,8 +89,13 @@ import {
 import useMediaQuery from "@/hooks/use-media-query";
 import type { Session } from "@opencode-ai/sdk";
 
+const sessionSearchSchema = z.object({
+  focus: z.literal("composer").optional(),
+});
+
 export const Route = createFileRoute("/_app/session/$id")({
   component: SessionRouteWrapper,
+  validateSearch: sessionSearchSchema,
 });
 
 function SessionRouteWrapper() {
@@ -1947,6 +1953,38 @@ function SessionPage() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ?focus=composer search param: focus the textarea on arrival, then strip
+  // the param so a subsequent reload doesn't re-fire (mobile soft-keyboard
+  // would pop up on every reload otherwise). Used by the Cmd palette
+  // (Cmd/Ctrl+K) and any other "navigate-and-prepare-to-type" entry point.
+  // Sidebar clicks intentionally don't set this so reading-only navigation
+  // doesn't unsolicit the keyboard.
+  const focusSearchParam = Route.useSearch({
+    select: (s) => s.focus,
+  });
+  const focusNavigate = useNavigate({ from: "/session/$id" });
+  useEffect(() => {
+    if (focusSearchParam !== "composer") return;
+    let cancelled = false;
+    const tryFocus = () => {
+      const el = textareaRef.current;
+      if (!el || cancelled) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    };
+    requestAnimationFrame(tryFocus);
+    void focusNavigate({
+      to: "/session/$id",
+      params: { id: sessionId },
+      search: {},
+      replace: true,
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [focusSearchParam, focusNavigate, sessionId]);
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
   const isStuckToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);

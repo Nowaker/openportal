@@ -138,7 +138,11 @@ export default function Cmd() {
 
   function handleSessionSelect(sessionId: string) {
     setIsOpen(false);
-    navigate({ to: "/session/$id", params: { id: sessionId } });
+    navigate({
+      to: "/session/$id",
+      params: { id: sessionId },
+      search: { focus: "composer" },
+    });
   }
 
   function handleThemeChange(theme: "light" | "dark" | "system") {
