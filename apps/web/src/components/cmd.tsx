@@ -169,6 +169,7 @@ export default function Cmd() {
       isOpen={isOpen}
       onOpenChange={setIsOpen}
       shortcut="k"
+      size="wide"
       isBlurred
     >
       <CommandMenuSearch placeholder="Jump to session, action, or theme..." />

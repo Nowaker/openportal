@@ -67,6 +67,7 @@ const sizes = {
   xl: "sm:max-w-xl",
   "2xl": "sm:max-w-2xl",
   "3xl": "sm:max-w-3xl",
+  wide: "sm:w-[50vw] sm:min-w-[36rem] sm:max-w-[80rem]",
 };
 
 interface CommandMenuProps
