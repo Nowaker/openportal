@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "@tanstack/react-router";
 import {
   CommandMenu,
@@ -13,8 +13,10 @@ import {
   useCreateSession,
   useDeleteSession,
   useInstances,
+  usePortalConfig,
 } from "@/hooks/use-opencode";
 import { useInstanceStore } from "@/stores/instance-store";
+import { resolveProjectPath } from "@/lib/project-path";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import IconBox from "@/components/icons/box-icon";
 import { IconThemeDark } from "@/components/icons/theme-dark-icon";
@@ -57,6 +59,7 @@ export default function Cmd() {
   const params = useParams({ strict: false });
   const { data: sessionsData, mutate } = useSessions();
   const { data: instancesData } = useInstances();
+  const { data: portalConfig } = usePortalConfig();
   const createSession = useCreateSession();
   const deleteSession = useDeleteSession();
   const { setTheme } = useTheme();
@@ -68,7 +71,35 @@ export default function Cmd() {
   const isOnSessionPage =
     location.pathname.startsWith("/session/") && currentSessionId;
 
-  const recentSessions = sessions.slice(0, 5);
+  // All sessions, sorted by last activity desc (the API already returns
+  // them in this order; defensive re-sort in case the order ever changes).
+  // Cap at 300 to keep DOM size sane on huge histories - users with more
+  // than 300 sessions can still find any of them via the search filter
+  // since react-aria's Autocomplete + useFilter does case-insensitive
+  // contains-match against textValue across ALL rendered children.
+  const allSessions = useMemo(() => {
+    const sorted = [...sessions].sort((a, b) => {
+      const ta = (a.time as { updated?: number })?.updated ?? 0;
+      const tb = (b.time as { updated?: number })?.updated ?? 0;
+      return tb - ta;
+    });
+    return sorted.slice(0, 300);
+  }, [sessions]);
+
+  const baseDirs = portalConfig?.baseDirs ?? [];
+  const homeDir = portalConfig?.home ?? "";
+  const projectLabelForSession = (session: Session): string => {
+    const sessionDir = (session as { directory?: string }).directory;
+    if (!sessionDir || baseDirs.length === 0) return "";
+    const projectPath = resolveProjectPath(sessionDir, baseDirs);
+    const display = homeDir && projectPath.startsWith(homeDir + "/")
+      ? "~" + projectPath.slice(homeDir.length)
+      : projectPath;
+    const segments = display.split("/").filter(Boolean);
+    return segments.length > 2
+      ? segments.slice(-2).join("/")
+      : display.replace(/^\//, "");
+  };
 
   useEffect(() => {
     setIsOpen(false);
@@ -140,8 +171,49 @@ export default function Cmd() {
       shortcut="k"
       isBlurred
     >
-      <CommandMenuSearch placeholder="Search commands..." />
+      <CommandMenuSearch placeholder="Jump to session, action, or theme..." />
       <CommandMenuList>
+        {allSessions.length > 0 && (
+          <CommandMenuSection label="Sessions">
+            {allSessions.map((session) => {
+              const title =
+                session.title || `Session ${session.id.slice(0, 8)}`;
+              const projectLabel = projectLabelForSession(session);
+              const textValue = projectLabel
+                ? `${title} ${projectLabel}`
+                : title;
+              const isCurrent = session.id === currentSessionId;
+              return (
+                <CommandMenuItem
+                  key={session.id}
+                  textValue={textValue}
+                  onAction={() => handleSessionSelect(session.id)}
+                  isDisabled={isCurrent}
+                >
+                  <ChatBubbleLeftIcon className="size-4" />
+                  <CommandMenuLabel>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="truncate">
+                        {truncateTitle(title)}
+                      </span>
+                      {projectLabel && (
+                        <span className="text-xs text-muted-fg/70 shrink-0 font-mono">
+                          {projectLabel}
+                        </span>
+                      )}
+                      {isCurrent && (
+                        <span className="text-[10px] uppercase tracking-wide text-primary shrink-0">
+                          current
+                        </span>
+                      )}
+                    </div>
+                  </CommandMenuLabel>
+                </CommandMenuItem>
+              );
+            })}
+          </CommandMenuSection>
+        )}
+
         {isOnSessionPage && (
           <CommandMenuSection label="Session Actions">
             <CommandMenuItem
@@ -224,25 +296,6 @@ export default function Cmd() {
             <CommandMenuLabel>System</CommandMenuLabel>
           </CommandMenuItem>
         </CommandMenuSection>
-
-        {recentSessions.length > 0 && (
-          <CommandMenuSection label="Recent Sessions">
-            {recentSessions.map((session) => (
-              <CommandMenuItem
-                key={session.id}
-                textValue={session.title || `Session ${session.id.slice(0, 8)}`}
-                onAction={() => handleSessionSelect(session.id)}
-              >
-                <ChatBubbleLeftIcon className="size-4" />
-                <CommandMenuLabel>
-                  {truncateTitle(
-                    session.title || `Session ${session.id.slice(0, 8)}`,
-                  )}
-                </CommandMenuLabel>
-              </CommandMenuItem>
-            ))}
-          </CommandMenuSection>
-        )}
       </CommandMenuList>
     </CommandMenu>
   );

@@ -98,6 +98,9 @@ const CommandMenu = ({
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === shortcut && (e.metaKey || e.ctrlKey)) {
+        // preventDefault so the browser's Cmd/Ctrl+K (focus URL bar /
+        // open Find in some browsers) doesn't fire alongside the palette.
+        e.preventDefault();
         onOpenChange?.(true);
       }
     };
