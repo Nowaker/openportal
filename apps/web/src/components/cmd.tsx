@@ -11,7 +11,6 @@ import {
 import {
   useSessions,
   useCreateSession,
-  useDeleteSession,
   useInstances,
   usePortalConfig,
 } from "@/hooks/use-opencode";
@@ -26,7 +25,6 @@ import { IconThemeLight } from "@/components/icons/theme-light-icon";
 import { IconThemeSystem } from "@/components/icons/theme-system-icon";
 import { IconManageInstances } from "@/components/icons/manage-instances-icon";
 import {
-  TrashIcon,
   ChatBubbleLeftIcon,
   ServerIcon,
 } from "@heroicons/react/24/solid";
@@ -64,15 +62,12 @@ export default function Cmd() {
   const { data: portalConfig } = usePortalConfig();
   const { data: pinnedData } = usePinnedSessions();
   const createSession = useCreateSession();
-  const deleteSession = useDeleteSession();
   const { setTheme } = useTheme();
   const currentInstance = useInstanceStore((s) => s.instance);
 
   const sessions: Session[] = sessionsData ?? [];
   const instances: InstanceData[] = instancesData?.instances ?? [];
   const currentSessionId = params.id as string | undefined;
-  const isOnSessionPage =
-    location.pathname.startsWith("/session/") && currentSessionId;
 
   // Split into a Pinned section (rendered first, in user-defined pin order
   // from drag-reorder in the topbar/sidebar) and a Recent section (the
@@ -184,21 +179,6 @@ export default function Cmd() {
     }
   }
 
-  async function handleDeleteSession() {
-    if (!currentSessionId) return;
-
-    setIsOpen(false);
-    try {
-      await deleteSession(currentSessionId);
-      await mutate();
-      toast.success("Session deleted");
-      navigate({ to: "/" });
-    } catch (err) {
-      console.error("Failed to delete session:", err);
-      toast.error("Failed to delete session");
-    }
-  }
-
   function handleSessionSelect(sessionId: string) {
     setIsOpen(false);
     navigate({
@@ -254,19 +234,6 @@ export default function Cmd() {
             {recentSessions.map((session) =>
               renderSessionItem(session, false),
             )}
-          </CommandMenuSection>
-        )}
-
-        {isOnSessionPage && (
-          <CommandMenuSection label="Session Actions">
-            <CommandMenuItem
-              textValue="Delete current session"
-              intent="danger"
-              onAction={handleDeleteSession}
-            >
-              <TrashIcon className="size-4" />
-              <CommandMenuLabel>Delete Current Session</CommandMenuLabel>
-            </CommandMenuItem>
           </CommandMenuSection>
         )}
 

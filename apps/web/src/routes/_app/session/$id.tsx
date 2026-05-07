@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod/v4";
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import Markdown from "react-markdown";
@@ -1960,31 +1960,34 @@ function SessionPage() {
   // (Cmd/Ctrl+K) and any other "navigate-and-prepare-to-type" entry point.
   // Sidebar clicks intentionally don't set this so reading-only navigation
   // doesn't unsolicit the keyboard.
+  //
+  // Strip via window.history.replaceState (NOT tanstack-router navigate):
+  // a router navigate would re-render, fire this effect's cleanup, and the
+  // cleanup would race the rAF so the focus call never lands. replaceState
+  // mutates the URL bar in place without notifying the router, so the
+  // search-param strip is invisible to React.
   const focusSearchParam = Route.useSearch({
     select: (s) => s.focus,
   });
-  const focusNavigate = useNavigate({ from: "/session/$id" });
+  const focusFiredRef = useRef(false);
   useEffect(() => {
     if (focusSearchParam !== "composer") return;
-    let cancelled = false;
-    const tryFocus = () => {
+    if (focusFiredRef.current) return;
+    focusFiredRef.current = true;
+    requestAnimationFrame(() => {
       const el = textareaRef.current;
-      if (!el || cancelled) return;
-      el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
-    };
-    requestAnimationFrame(tryFocus);
-    void focusNavigate({
-      to: "/session/$id",
-      params: { id: sessionId },
-      search: {},
-      replace: true,
+      if (el) {
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      }
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("focus");
+        window.history.replaceState(null, "", url.toString());
+      }
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [focusSearchParam, focusNavigate, sessionId]);
+  }, [focusSearchParam]);
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
   const isStuckToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
