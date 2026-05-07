@@ -15,8 +15,10 @@ import {
   useInstances,
   usePortalConfig,
 } from "@/hooks/use-opencode";
+import { usePinnedSessions } from "@/hooks/use-pinned-sessions";
 import { useInstanceStore } from "@/stores/instance-store";
 import { resolveProjectPath } from "@/lib/project-path";
+import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import IconBox from "@/components/icons/box-icon";
 import { IconThemeDark } from "@/components/icons/theme-dark-icon";
@@ -60,6 +62,7 @@ export default function Cmd() {
   const { data: sessionsData, mutate } = useSessions();
   const { data: instancesData } = useInstances();
   const { data: portalConfig } = usePortalConfig();
+  const { data: pinnedData } = usePinnedSessions();
   const createSession = useCreateSession();
   const deleteSession = useDeleteSession();
   const { setTheme } = useTheme();
@@ -71,20 +74,44 @@ export default function Cmd() {
   const isOnSessionPage =
     location.pathname.startsWith("/session/") && currentSessionId;
 
-  // All sessions, sorted by last activity desc (the API already returns
-  // them in this order; defensive re-sort in case the order ever changes).
-  // Cap at 300 to keep DOM size sane on huge histories - users with more
-  // than 300 sessions can still find any of them via the search filter
-  // since react-aria's Autocomplete + useFilter does case-insensitive
-  // contains-match against textValue across ALL rendered children.
-  const allSessions = useMemo(() => {
-    const sorted = [...sessions].sort((a, b) => {
-      const ta = (a.time as { updated?: number })?.updated ?? 0;
-      const tb = (b.time as { updated?: number })?.updated ?? 0;
-      return tb - ta;
-    });
-    return sorted.slice(0, 300);
+  // Split into a Pinned section (rendered first, in user-defined pin order
+  // from drag-reorder in the topbar/sidebar) and a Recent section (the
+  // rest, sorted by last-activity desc). When the search query is empty,
+  // pinned sessions surface at the top - matching the user's mental
+  // 'these are the ones I care about' grouping. When the user types,
+  // react-aria's fuzzy filter narrows BOTH sections (pinned items get
+  // hidden from Pinned if they don't match, same for Recent).
+  // Combined cap of ~300 so the DOM stays manageable on huge histories;
+  // pinned never gets capped because it's bounded by user behaviour
+  // (you don't typically pin 100 sessions).
+  const pinnedIds = useMemo(
+    () => new Set(pinnedData?.sessions ?? []),
+    [pinnedData?.sessions],
+  );
+  const sessionsById = useMemo(() => {
+    const map = new Map<string, Session>();
+    for (const s of sessions) map.set(s.id, s);
+    return map;
   }, [sessions]);
+  const pinnedSessions = useMemo(() => {
+    const order = pinnedData?.sessions ?? [];
+    const arr: Session[] = [];
+    for (const id of order) {
+      const s = sessionsById.get(id);
+      if (s) arr.push(s);
+    }
+    return arr;
+  }, [pinnedData?.sessions, sessionsById]);
+  const recentSessions = useMemo(() => {
+    const sorted = [...sessions]
+      .filter((s) => !pinnedIds.has(s.id))
+      .sort((a, b) => {
+        const ta = (a.time as { updated?: number })?.updated ?? 0;
+        const tb = (b.time as { updated?: number })?.updated ?? 0;
+        return tb - ta;
+      });
+    return sorted.slice(0, 300);
+  }, [sessions, pinnedIds]);
 
   const baseDirs = portalConfig?.baseDirs ?? [];
   const homeDir = portalConfig?.home ?? "";
@@ -99,6 +126,42 @@ export default function Cmd() {
     return segments.length > 2
       ? segments.slice(-2).join("/")
       : display.replace(/^\//, "");
+  };
+
+  const renderSessionItem = (session: Session, isPinned: boolean) => {
+    const title = session.title || `Session ${session.id.slice(0, 8)}`;
+    const projectLabel = projectLabelForSession(session);
+    const textValue = projectLabel ? `${title} ${projectLabel}` : title;
+    const isCurrent = session.id === currentSessionId;
+    return (
+      <CommandMenuItem
+        key={session.id}
+        textValue={textValue}
+        onAction={() => handleSessionSelect(session.id)}
+        isDisabled={isCurrent}
+      >
+        {isPinned ? (
+          <StarSolidIcon className="size-4 text-amber-400" />
+        ) : (
+          <ChatBubbleLeftIcon className="size-4" />
+        )}
+        <CommandMenuLabel>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate">{truncateTitle(title)}</span>
+            {projectLabel && (
+              <span className="text-xs text-muted-fg/70 shrink-0 font-mono">
+                {projectLabel}
+              </span>
+            )}
+            {isCurrent && (
+              <span className="text-[10px] uppercase tracking-wide text-primary shrink-0">
+                current
+              </span>
+            )}
+          </div>
+        </CommandMenuLabel>
+      </CommandMenuItem>
+    );
   };
 
   useEffect(() => {
@@ -178,44 +241,19 @@ export default function Cmd() {
     >
       <CommandMenuSearch placeholder="Jump to session, action, or theme..." />
       <CommandMenuList>
-        {allSessions.length > 0 && (
-          <CommandMenuSection label="Sessions">
-            {allSessions.map((session) => {
-              const title =
-                session.title || `Session ${session.id.slice(0, 8)}`;
-              const projectLabel = projectLabelForSession(session);
-              const textValue = projectLabel
-                ? `${title} ${projectLabel}`
-                : title;
-              const isCurrent = session.id === currentSessionId;
-              return (
-                <CommandMenuItem
-                  key={session.id}
-                  textValue={textValue}
-                  onAction={() => handleSessionSelect(session.id)}
-                  isDisabled={isCurrent}
-                >
-                  <ChatBubbleLeftIcon className="size-4" />
-                  <CommandMenuLabel>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="truncate">
-                        {truncateTitle(title)}
-                      </span>
-                      {projectLabel && (
-                        <span className="text-xs text-muted-fg/70 shrink-0 font-mono">
-                          {projectLabel}
-                        </span>
-                      )}
-                      {isCurrent && (
-                        <span className="text-[10px] uppercase tracking-wide text-primary shrink-0">
-                          current
-                        </span>
-                      )}
-                    </div>
-                  </CommandMenuLabel>
-                </CommandMenuItem>
-              );
-            })}
+        {pinnedSessions.length > 0 && (
+          <CommandMenuSection label="Pinned">
+            {pinnedSessions.map((session) =>
+              renderSessionItem(session, true),
+            )}
+          </CommandMenuSection>
+        )}
+
+        {recentSessions.length > 0 && (
+          <CommandMenuSection label={pinnedSessions.length > 0 ? "Recent" : "Sessions"}>
+            {recentSessions.map((session) =>
+              renderSessionItem(session, false),
+            )}
           </CommandMenuSection>
         )}
 
