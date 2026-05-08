@@ -43,6 +43,7 @@ function ConnectionStatusBanner() {
 
 function BuildMismatchBanner() {
   const mismatched = useBuildMismatch();
+  const [reloading, setReloading] = useState(false);
   if (!mismatched) return null;
   return (
     <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
@@ -52,10 +53,17 @@ function BuildMismatchBanner() {
       </span>
       <button
         type="button"
-        onClick={() => window.location.reload()}
-        className="rounded-md border border-border bg-bg px-2 py-1 text-sm font-medium hover:bg-muted"
+        disabled={reloading}
+        onClick={() => {
+          setReloading(true);
+          window.location.reload();
+        }}
+        className="rounded-md border border-border bg-bg px-2 py-1 text-sm font-medium hover:bg-muted disabled:opacity-70 inline-flex items-center gap-1.5"
       >
-        Reload
+        <ArrowPathIcon
+          className={`size-3.5 shrink-0 ${reloading ? "animate-spin" : ""}`}
+        />
+        {reloading ? "Reloading…" : "Reload"}
       </button>
     </div>
   );
