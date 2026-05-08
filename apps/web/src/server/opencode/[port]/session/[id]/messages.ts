@@ -2,29 +2,73 @@ import { defineHandler, getQuery } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
 import { stashDataUrl, hasCachedThumb } from "../../../../lib/blob-cache";
+import {
+  getCachedMessages,
+  setCachedMessages,
+  messagesAfter,
+} from "../../../../lib/messages-cache";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
 
+// Cache + since-aware messages handler. Three request modes:
+//
+//   ?since=<msgId>   - return only messages strictly newer than msgId
+//                      (incremental polling). If msgId not in cached
+//                      list, force a fresh full fetch and try again; if
+//                      still not found, treat as stale-since and return
+//                      everything (client should reconcile).
+//   ?limit=N         - return last N messages, default 50, "all"/"0"
+//                      means no limit
+//   no params        - same as ?limit=50
+//
+// Cache hit: serve from memory (TTL 2s). Miss: fetch full list from
+// opencode (no limit), strip + cache, then slice for the request shape.
+// Storing the full list under one cache key lets every variant of
+// limit/since share the same memory entry.
 export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
   const query = getQuery(event);
 
   const limit = parseLimit(query.limit);
+  const since =
+    typeof query.since === "string" && query.since.length > 0
+      ? query.since
+      : null;
 
+  let full = getCachedMessages(id);
+  if (full === null) {
+    full = await fetchAndCache(port, id);
+  }
+
+  if (since) {
+    let after = messagesAfter(full, since);
+    if (after === null) {
+      full = await fetchAndCache(port, id);
+      after = messagesAfter(full, since);
+    }
+    return after ?? full;
+  }
+
+  if (limit === undefined) return full;
+  return full.slice(-limit);
+});
+
+async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
   const client = getOpencodeClient(port);
   const messages = await client.session.messages({
     path: { id },
-    query: limit !== undefined ? { limit } : undefined,
   });
 
   const stripped = stripDiagnosticFixes(messages.data);
   stripUserMessageSummary(stripped);
   stripPartBloat(stripped);
   rewriteImageDataUrls(stripped, id);
-  return stripped;
-});
+  const arr = Array.isArray(stripped) ? stripped : [];
+  setCachedMessages(id, arr);
+  return arr;
+}
 
 // Aggressive per-part field stripping for opencode's persisted-but-unused
 // metadata. Each entry is a path INSIDE a part object (under either `part`

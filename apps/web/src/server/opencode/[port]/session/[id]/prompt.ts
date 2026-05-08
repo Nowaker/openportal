@@ -9,6 +9,7 @@ import {
   parseRouteParam,
   parseBody,
 } from "../../../../lib/validation";
+import { invalidateMessagesCache } from "../../../../lib/messages-cache";
 
 const attachmentSchema = z.object({
   mime: z.string().min(1),
@@ -263,6 +264,7 @@ export default defineHandler(async (event) => {
       path: { id },
       body: promptBody,
     });
+    invalidateMessagesCache(id);
     return { accepted: true, cleanup };
   } catch (error) {
     throw new HTTPError(

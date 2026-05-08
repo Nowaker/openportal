@@ -6,6 +6,7 @@ import {
   parseRouteParam,
   parseBody,
 } from "../../../../lib/validation";
+import { invalidateMessagesCache } from "../../../../lib/messages-cache";
 
 const commandBodySchema = z.object({
   command: z.string().min(1),
@@ -41,6 +42,7 @@ export default defineHandler(async (event) => {
       model: body.model,
       variant: body.variant,
     });
+    invalidateMessagesCache(sessionID);
     return { accepted: true, info: result.data?.info, parts: result.data?.parts };
   } catch (error) {
     throw new HTTPError(
