@@ -17,6 +17,35 @@ export function groupSessionsByParent<T extends { id: string; parentID?: string 
   return byParent;
 }
 
+// Given a set of ids that need an attention indicator (questions /
+// permissions / errors on subagent sessions), expand it to include every
+// ancestor of those ids. Used so a question landing on a subagent
+// cascades the red dot all the way up to the main session that's
+// rendered in the pinned-tab strip / sidebar Pinned section.
+//
+// The 32-depth guard caps pathological deep chains; the
+// !result.has(cur) short-circuit handles cycles AND skips re-walking
+// ancestors already marked from a previous seed.
+export function cascadeIdsToAncestors<
+  T extends { id: string; parentID?: string },
+>(initialIds: Set<string>, sessions: T[]): Set<string> {
+  const parentById = new Map<string, string>();
+  for (const s of sessions) {
+    if (s.parentID) parentById.set(s.id, s.parentID);
+  }
+  const result = new Set(initialIds);
+  for (const seedId of initialIds) {
+    let cur = parentById.get(seedId);
+    let guard = 0;
+    while (cur && !result.has(cur) && guard < 32) {
+      result.add(cur);
+      cur = parentById.get(cur);
+      guard++;
+    }
+  }
+  return result;
+}
+
 function resolvePath(p: string): string {
   return p.replace(/\/+$/g, "");
 }

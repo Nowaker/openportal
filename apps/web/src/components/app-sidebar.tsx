@@ -63,6 +63,7 @@ import {
   resolveProjectPath,
   buildProjectTree,
   groupSessionsByParent,
+  cascadeIdsToAncestors,
   type BaseDirEntry,
   type ProjectTreeNode,
 } from "@/lib/project-path";
@@ -1267,18 +1268,25 @@ export default function AppSidebar(
   // Pending permission requests are conceptually identical to questions for the
   // sidebar dot: both block the run on user input. Merge sources so a session
   // waiting on file/bash approval surfaces as red-attention, not amber-busy.
+  // Then cascade the ids up the parentID chain so a question/permission on
+  // a subagent surfaces on the parent main session too (which is what's
+  // visible at the top level when the subagent group is collapsed).
   const questionSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const q of questions ?? []) ids.add(q.sessionID);
+    const seed = new Set<string>();
+    for (const q of questions ?? []) seed.add(q.sessionID);
     for (const p of (permissions ?? []) as Array<{ sessionID?: string }>) {
-      if (p.sessionID) ids.add(p.sessionID);
+      if (p.sessionID) seed.add(p.sessionID);
     }
-    return ids;
-  }, [questions, permissions]);
+    return cascadeIdsToAncestors(seed, sessionsData ?? []);
+  }, [questions, permissions, sessionsData]);
   const errorSessionIdsArr = useSessionErrorStore((s) => s.errors);
   const errorSessionIds = useMemo(
-    () => new Set(errorSessionIdsArr),
-    [errorSessionIdsArr],
+    () =>
+      cascadeIdsToAncestors(
+        new Set(errorSessionIdsArr),
+        sessionsData ?? [],
+      ),
+    [errorSessionIdsArr, sessionsData],
   );
   const { data: lastViewedData } = useLastViewed();
   const lastViewedMap = lastViewedData ?? {};

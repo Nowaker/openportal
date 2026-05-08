@@ -73,6 +73,7 @@ import {
   SessionStatusDot,
   DraftIndicator,
 } from "@/lib/session-indicators";
+import { cascadeIdsToAncestors } from "@/lib/project-path";
 import type { Session } from "@opencode-ai/sdk";
 
 // Take the deepest path component and use it as a short project label.
@@ -731,22 +732,28 @@ export function PinnedTabStrip() {
   });
   const currentSessionId = sessionMatch?.params?.id ?? null;
 
-  const questionSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const q of questions ?? []) ids.add(q.sessionID);
-    for (const p of (permissions ?? []) as Array<{ sessionID?: string }>) {
-      if (p.sessionID) ids.add(p.sessionID);
-    }
-    return ids;
-  }, [questions, permissions]);
-  const errorSessionIds = useMemo(
-    () => new Set(errorSessionIdsArr),
-    [errorSessionIdsArr],
-  );
-  const lastViewedMap = lastViewedData ?? {};
-
   const pinned = data?.sessions ?? [];
   const sessions: Session[] = sessionsData ?? [];
+  // Subagent attention cascades up to the parent main session: if a
+  // question / permission / error lands on a subsession, the parent
+  // (which is what's actually pinned) needs the red indicator too,
+  // otherwise the user sees no signal and has to drill into the sidebar
+  // tree to discover the blocking subagent. cascadeIdsToAncestors walks
+  // parentID up the chain.
+  const questionSessionIds = useMemo(() => {
+    const seed = new Set<string>();
+    for (const q of questions ?? []) seed.add(q.sessionID);
+    for (const p of (permissions ?? []) as Array<{ sessionID?: string }>) {
+      if (p.sessionID) seed.add(p.sessionID);
+    }
+    return cascadeIdsToAncestors(seed, sessions);
+  }, [questions, permissions, sessions]);
+  const errorSessionIds = useMemo(
+    () =>
+      cascadeIdsToAncestors(new Set(errorSessionIdsArr), sessions),
+    [errorSessionIdsArr, sessions],
+  );
+  const lastViewedMap = lastViewedData ?? {};
   const tabs = pinned
     .map((id) => ({ id, session: sessions.find((s) => s.id === id) ?? null }))
     .filter((t): t is { id: string; session: Session } => t.session !== null);
