@@ -1,7 +1,4 @@
 import { useState } from "react";
-import Markdown from "react-markdown";
-import remarkBreaks from "remark-breaks";
-import remarkGfm from "remark-gfm";
 import {
   Modal,
   ModalOverlay,
@@ -19,6 +16,8 @@ import {
 } from "@/hooks/use-plugin-info";
 import { useInstanceStore } from "@/stores/instance-store";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
+import { MarkdownRenderer } from "@/lib/markdown-renderer";
+import { useMarkdownModeStore } from "@/stores/markdown-mode-store";
 
 interface Props {
   isOpen: boolean;
@@ -82,6 +81,7 @@ function sourceStyle(source: PluginInfo["source"]): string {
 function Body({ spec, onClose }: { spec: string; onClose: () => void }) {
   const port = useInstanceStore((s) => s.instance?.port ?? null);
   const { data, error, mutate } = usePluginInfo(spec);
+  const pluginReadmeMode = useMarkdownModeStore((s) => s.pluginReadme);
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const [readmeOpen, setReadmeOpen] = useState(true);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -205,10 +205,13 @@ function Body({ spec, onClose }: { spec: string; onClose: () => void }) {
                   README
                 </button>
                 {readmeOpen && (
-                  <div className="mt-2 max-h-[50vh] overflow-y-auto rounded border border-border/50 bg-muted/10 p-3 prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_pre]:bg-bg/60 [&_code]:text-[12px]">
-                    <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                      {info.readme}
-                    </Markdown>
+                  <div className="mt-2 max-h-[50vh] overflow-y-auto rounded border border-border/50 bg-muted/10 p-3">
+                    <MarkdownRenderer
+                      source={info.readme}
+                      mode={pluginReadmeMode}
+                      repositoryUrl={info.repositoryUrl}
+                      className="prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_pre]:bg-bg/60 [&_code]:text-[12px] [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded [&_.markdown-alert]:my-2 [&_.markdown-alert]:border-l-4 [&_.markdown-alert]:pl-3 [&_.markdown-alert]:py-1 [&_.markdown-alert-note]:border-sky-500/60 [&_.markdown-alert-tip]:border-emerald-500/60 [&_.markdown-alert-important]:border-violet-500/60 [&_.markdown-alert-warning]:border-amber-500/60 [&_.markdown-alert-caution]:border-danger/60 [&_.markdown-alert-title]:font-semibold [&_.markdown-alert-title]:flex [&_.markdown-alert-title]:items-center [&_.markdown-alert-title]:gap-1.5 [&_.markdown-alert-title]:uppercase [&_.markdown-alert-title]:text-xs [&_.markdown-alert-title]:tracking-wide [&_.markdown-alert-title]:my-0"
+                    />
                   </div>
                 )}
               </div>

@@ -29,6 +29,7 @@ import {
   type SttMode,
   type SttBackend,
 } from "@/stores/stt-mode-store";
+import { useMarkdownModeStore } from "@/stores/markdown-mode-store";
 import { Input } from "@/components/ui/input";
 import {
   FONT_SIZE_PRESETS,
@@ -430,6 +431,93 @@ const sttBackendOptions: {
       "POSTs audio to the @openportal/voice-stt sidecar, which runs whisper.cpp on your own machine. Fully self-hosted; no audio leaves your network.",
   },
 ];
+
+function MarkdownSetting() {
+  const chat = useMarkdownModeStore((s) => s.chat);
+  const setChat = useMarkdownModeStore((s) => s.setChat);
+  const pluginReadme = useMarkdownModeStore((s) => s.pluginReadme);
+  const setPluginReadme = useMarkdownModeStore((s) => s.setPluginReadme);
+  const options = [
+    {
+      id: "default",
+      title: "Default",
+      description:
+        "GitHub-flavored markdown only. HTML in source is escaped. Safer for arbitrary text.",
+    },
+    {
+      id: "extended",
+      title: "Extended",
+      description:
+        "Adds HTML pass-through, GitHub > [!TIP]/[!NOTE]/[!WARNING] callouts, and rewrites relative image/link URLs against the source repository.",
+    },
+  ];
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Markdown rendering</h2>
+        <p className="text-sm text-muted-fg">
+          Two surfaces, two preferences. Extended renders raw HTML from the
+          markdown source - safe for plugin READMEs (you ran their code
+          already), riskier for AI chat output.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Plugin README</p>
+        <Select
+          aria-label="Plugin README markdown mode"
+          selectedKey={pluginReadme}
+          onSelectionChange={(key) => {
+            if (!key) return;
+            setPluginReadme(String(key) as "default" | "extended");
+          }}
+        >
+          <SelectTrigger className="max-w-sm" />
+          <SelectContent>
+            {options.map((opt) => (
+              <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+                <SelectLabel>{opt.title}</SelectLabel>
+                <div
+                  slot="description"
+                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                >
+                  {opt.description}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium">AI chat</p>
+        <Select
+          aria-label="AI chat markdown mode"
+          selectedKey={chat}
+          onSelectionChange={(key) => {
+            if (!key) return;
+            setChat(String(key) as "default" | "extended");
+          }}
+        >
+          <SelectTrigger className="max-w-sm" />
+          <SelectContent>
+            {options.map((opt) => (
+              <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+                <SelectLabel>{opt.title}</SelectLabel>
+                <div
+                  slot="description"
+                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                >
+                  {opt.description}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
 
 function VoiceInputSetting() {
   const mode = useSttModeStore((s) => s.mode);
@@ -878,6 +966,10 @@ function SettingsPage() {
 
             <section>
               <VoiceInputSetting />
+            </section>
+
+            <section>
+              <MarkdownSetting />
             </section>
 
             <section>
