@@ -681,6 +681,17 @@ function QuestionAnswerForm({
                     el.style.height = "auto";
                     el.style.height = `${el.scrollHeight}px`;
                   }}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      (e.metaKey || e.ctrlKey) &&
+                      !isPosting
+                    ) {
+                      e.preventDefault();
+                      void handleSubmit();
+                    }
+                  }}
                   onChange={(e) =>
                     setFreeformInputs((prev) => ({
                       ...prev,
@@ -850,6 +861,12 @@ const ToolCallItem = memo(function ToolCallItem({
   const isError = part.state.status === "error";
   const isPending =
     part.state.status === "pending" || part.state.status === "running";
+  const dateFormat = useDateFormatStore((s) => s.format);
+  const toolStart = (part as { time?: { start?: number } }).time?.start;
+  const toolTimestamp = toolStart ? formatMessageTime(toolStart, dateFormat) : "";
+  const toolTitleAt = toolStart
+    ? new Date(toolStart).toLocaleString()
+    : undefined;
 
   if (hasQuestions) {
     return (
@@ -907,6 +924,14 @@ const ToolCallItem = memo(function ToolCallItem({
       <span className="truncate">{label}</span>
       {details && <span className="opacity-60 shrink-0">{details}</span>}
       {isPending && <span className="animate-pulse shrink-0">...</span>}
+      {toolTimestamp && (
+        <span
+          className="hidden sm:inline ml-auto pl-2 shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums"
+          title={toolTitleAt}
+        >
+          {toolTimestamp}
+        </span>
+      )}
     </div>
   );
 });
@@ -2887,10 +2912,10 @@ function SessionPage() {
                 <div className="px-3 py-3 flex items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setMessageLimit((n) => n + 100)}
+                    onClick={() => setMessageLimit((n) => n + INITIAL_MESSAGE_LIMIT)}
                     className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
                   >
-                    Load 100 more
+                    Load {INITIAL_MESSAGE_LIMIT} more
                   </button>
                   <button
                     type="button"
