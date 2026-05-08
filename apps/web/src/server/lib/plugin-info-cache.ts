@@ -91,17 +91,22 @@ export async function refreshPluginInfo(
   return p;
 }
 
+// On cold cache: block the response until the fetch completes so the
+// first GET already carries full data (modal hydrates on first paint
+// instead of through a 1.5s SWR poll-while-loading dance). Plugin-info
+// reads are filesystem-only - no network - so the wait is sub-100ms in
+// practice. On warm-but-stale cache: serve stale data immediately and
+// kick off a background refresh (SWR-style); the next poll picks up
+// the fresh data without making the user wait.
 export async function getPluginInfoCached(
   port: number,
   spec: string,
 ): Promise<{ info: PluginInfo | null; refreshing: boolean }> {
   const entry = cache.get(spec);
   if (!entry) {
-    void refreshPluginInfo(port, spec).catch(() => null);
-    return { info: null, refreshing: true };
+    const info = await refreshPluginInfo(port, spec).catch(() => null);
+    return { info, refreshing: false };
   }
-  // Touch-on-read: re-insert at the tail so the LRU evict doesn't drop hot
-  // entries.
   cache.delete(spec);
   cache.set(spec, entry);
   if (Date.now() - entry.fetchedAt > TTL_MS) {
