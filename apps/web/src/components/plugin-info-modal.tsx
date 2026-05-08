@@ -34,7 +34,7 @@ export function PluginInfoModal({ isOpen, spec, onOpenChange }: Props) {
       isDismissable
       className={MODAL_OVERLAY_CLASSES}
     >
-      <Modal className="w-full max-w-xl max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
+      <Modal className="w-full max-w-xl sm:w-[50vw] sm:min-w-[36rem] sm:max-w-[80rem] max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
         <PrimitiveDialog className="flex flex-col flex-1 min-h-0 outline-none">
           {({ close }) =>
             spec ? <Body spec={spec} onClose={close} /> : null
@@ -83,7 +83,7 @@ function Body({ spec, onClose }: { spec: string; onClose: () => void }) {
   const port = useInstanceStore((s) => s.instance?.port ?? null);
   const { data, error, mutate } = usePluginInfo(spec);
   const [manualRefreshing, setManualRefreshing] = useState(false);
-  const [readmeOpen, setReadmeOpen] = useState(false);
+  const [readmeOpen, setReadmeOpen] = useState(true);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const info = data?.info;
   const refreshing = data?.refreshing ?? false;
@@ -169,19 +169,6 @@ function Body({ spec, onClose }: { spec: string; onClose: () => void }) {
 
             <PillRow info={info} kind={kind} />
 
-            {info.id && (
-              <div className="text-xs">
-                <span className="text-muted-fg">Plugin id: </span>
-                <span className="font-mono">{info.id}</span>
-              </div>
-            )}
-
-            {info.entryPoint && (
-              <div className="text-xs">
-                <span className="text-muted-fg">Entry: </span>
-                <span className="font-mono break-all">{info.entryPoint}</span>
-              </div>
-            )}
 
             <div className="border-t border-border pt-3">
               <h3 className="text-xs font-bold uppercase tracking-widest text-muted-fg mb-2">
@@ -307,12 +294,24 @@ function PillRow({
       ),
     });
   }
+  if (info.id) {
+    items.push({
+      label: "Plugin id",
+      value: <span className="font-mono">{info.id}</span>,
+    });
+  }
+  if (info.entryPoint) {
+    items.push({
+      label: "Entry",
+      value: <span className="font-mono break-all">{info.entryPoint}</span>,
+    });
+  }
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-xs">
       {items.map((it) => (
         <div key={it.label} className="contents">
           <dt className="text-muted-fg">{it.label}</dt>
-          <dd>{it.value}</dd>
+          <dd className="min-w-0">{it.value}</dd>
         </div>
       ))}
     </dl>
