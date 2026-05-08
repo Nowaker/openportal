@@ -13,14 +13,18 @@ function ProjectInitCheckbox({ toolId }: { toolId: string }) {
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
   const isInit = projectInitOrder.includes(toolId);
+  // Fixed-width slot so the Init column aligns vertically across rows
+  // regardless of which action buttons (Edit/Reset/Delete) follow on each
+  // row. w-20 fits the longest variant ("Init" label + checkbox + breathing
+  // room) without crowding the action buttons on its right.
   return (
     <label
-      className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-fg cursor-pointer select-none"
+      className="inline-flex w-20 items-center gap-2 text-[11px] uppercase tracking-wide text-muted-fg cursor-pointer select-none px-2"
       title="Include this template when creating a new project"
     >
       <input
         type="checkbox"
-        className="size-3.5 cursor-pointer accent-primary"
+        className="size-4 cursor-pointer accent-primary"
         checked={isInit}
         onChange={(e) => toggleProjectInit(toolId, e.target.checked)}
       />
@@ -108,6 +112,7 @@ function SystemToolRow({ tool }: ToolRowProps) {
           <p className="text-xs text-muted-fg mt-0.5">{tool.description}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          <ProjectInitCheckbox toolId={tool.id} />
           <Button
             size="xs"
             intent="outline"
@@ -127,7 +132,6 @@ function SystemToolRow({ tool }: ToolRowProps) {
               Reset
             </Button>
           )}
-          <ProjectInitCheckbox toolId={tool.id} />
         </div>
       </div>
       {editing && (
@@ -229,6 +233,7 @@ function CustomToolRow({ tool }: ToolRowProps) {
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          <ProjectInitCheckbox toolId={tool.id} />
           <Button
             size="xs"
             intent="outline"
@@ -251,7 +256,6 @@ function CustomToolRow({ tool }: ToolRowProps) {
           >
             Delete
           </Button>
-          <ProjectInitCheckbox toolId={tool.id} />
         </div>
       </div>
       {editing && (
