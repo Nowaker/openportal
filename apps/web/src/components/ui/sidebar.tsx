@@ -36,10 +36,75 @@ import { Button } from "./button";
 import { Link } from "./link";
 import { Tooltip, TooltipContent } from "./tooltip";
 
-const SIDEBAR_WIDTH = "22rem";
+const SIDEBAR_WIDTH_DEFAULT_PX = 352;
+const SIDEBAR_WIDTH_MIN_PX = 240;
+const SIDEBAR_WIDTH_MAX_PX = 480;
+const SIDEBAR_RAIL_THRESHOLD_PX = 40;
+const SIDEBAR_FULL_THRESHOLD_PX = 200;
 const SIDEBAR_WIDTH_DOCK = "3.25rem";
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_LAYOUT_KEY = "openportal-sidebar-layout-v1";
+const SIDEBAR_DRAG_CLICK_THRESHOLD_PX = 5;
+
+type DesktopSidebarMode = "full" | "rail" | "hidden";
+
+interface PersistedLayout {
+  desktopMode: DesktopSidebarMode;
+  desktopWidth: number;
+}
+
+function clampSidebarWidth(px: number): number {
+  if (!Number.isFinite(px)) return SIDEBAR_WIDTH_DEFAULT_PX;
+  return Math.max(
+    SIDEBAR_WIDTH_MIN_PX,
+    Math.min(SIDEBAR_WIDTH_MAX_PX, Math.round(px)),
+  );
+}
+
+function readPersistedLayout(): PersistedLayout {
+  if (typeof window === "undefined") {
+    return {
+      desktopMode: "full",
+      desktopWidth: SIDEBAR_WIDTH_DEFAULT_PX,
+    };
+  }
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_LAYOUT_KEY);
+    if (!raw) {
+      return {
+        desktopMode: "full",
+        desktopWidth: SIDEBAR_WIDTH_DEFAULT_PX,
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<PersistedLayout>;
+    const mode: DesktopSidebarMode =
+      parsed.desktopMode === "rail" ||
+      parsed.desktopMode === "hidden" ||
+      parsed.desktopMode === "full"
+        ? parsed.desktopMode
+        : "full";
+    const width =
+      typeof parsed.desktopWidth === "number"
+        ? clampSidebarWidth(parsed.desktopWidth)
+        : SIDEBAR_WIDTH_DEFAULT_PX;
+    return { desktopMode: mode, desktopWidth: width };
+  } catch {
+    return {
+      desktopMode: "full",
+      desktopWidth: SIDEBAR_WIDTH_DEFAULT_PX,
+    };
+  }
+}
+
+function writePersistedLayout(layout: PersistedLayout): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SIDEBAR_LAYOUT_KEY, JSON.stringify(layout));
+  } catch {
+    /* private mode / quota - tolerated */
+  }
+}
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
@@ -49,6 +114,10 @@ type SidebarContextProps = {
   setIsOpenOnMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
+  desktopMode: DesktopSidebarMode;
+  desktopWidth: number;
+  setDesktopMode: (mode: DesktopSidebarMode) => void;
+  setDesktopWidth: (px: number) => void;
 };
 
 const SidebarContext = createContext<SidebarContextProps | null>(null);
@@ -82,8 +151,40 @@ const SidebarProvider = ({
 }: SidebarProviderProps) => {
   const [openMobile, setOpenMobile] = useState(false);
 
-  const [internalOpenState, setInternalOpenState] = useState(defaultOpen);
-  const open = openProp ?? internalOpenState;
+  const [persistedLayout, setPersistedLayout] = useState<PersistedLayout>(
+    () => ({
+      desktopMode: defaultOpen ? "full" : "hidden",
+      desktopWidth: SIDEBAR_WIDTH_DEFAULT_PX,
+    }),
+  );
+
+  // localStorage is only readable post-mount (SSR safety + Vite hydration);
+  // we hydrate the layout once on first client render and intentionally
+  // ignore the dependency on `defaultOpen` after mount so user preference
+  // wins over the prop.
+  useEffect(() => {
+    setPersistedLayout(readPersistedLayout());
+  }, []);
+
+  const setDesktopMode = useCallback((mode: DesktopSidebarMode) => {
+    setPersistedLayout((prev) => {
+      const next = { ...prev, desktopMode: mode };
+      writePersistedLayout(next);
+      return next;
+    });
+  }, []);
+
+  const setDesktopWidth = useCallback((px: number) => {
+    setPersistedLayout((prev) => {
+      const next = { ...prev, desktopWidth: clampSidebarWidth(px) };
+      writePersistedLayout(next);
+      return next;
+    });
+  }, []);
+
+  const desktopOpen = persistedLayout.desktopMode === "full";
+
+  const open = openProp ?? desktopOpen;
   const setOpen = useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value;
@@ -91,19 +192,25 @@ const SidebarProvider = ({
       if (setOpenProp) {
         setOpenProp(openState);
       } else {
-        setInternalOpenState(openState);
+        setDesktopMode(openState ? "full" : "hidden");
       }
 
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
     },
-    [setOpenProp, open],
+    [setOpenProp, open, setDesktopMode],
   );
 
   const { isMobile, device } = useMediaQuery();
 
   const toggleSidebar = useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
-  }, [isMobile, setOpen]);
+    if (isMobile) {
+      setOpenMobile((prev) => !prev);
+      return;
+    }
+    setDesktopMode(
+      persistedLayout.desktopMode === "full" ? "hidden" : "full",
+    );
+  }, [isMobile, persistedLayout.desktopMode, setDesktopMode]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -159,7 +266,13 @@ const SidebarProvider = ({
     return () => window.removeEventListener("popstate", handlePopstate);
   }, []);
 
-  const state = open ? "expanded" : "collapsed";
+  const desktopState =
+    persistedLayout.desktopMode === "full" ? "expanded" : "collapsed";
+  const state = isMobile
+    ? openMobile
+      ? "expanded"
+      : "collapsed"
+    : desktopState;
 
   const contextValue = useMemo<SidebarContextProps>(
     () => ({
@@ -170,8 +283,23 @@ const SidebarProvider = ({
       isOpenOnMobile: openMobile,
       setIsOpenOnMobile: setOpenMobile,
       toggleSidebar,
+      desktopMode: persistedLayout.desktopMode,
+      desktopWidth: persistedLayout.desktopWidth,
+      setDesktopMode,
+      setDesktopWidth,
     }),
-    [state, open, setOpen, isMobile, openMobile, toggleSidebar],
+    [
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      toggleSidebar,
+      persistedLayout.desktopMode,
+      persistedLayout.desktopWidth,
+      setDesktopMode,
+      setDesktopWidth,
+    ],
   );
 
   if (device === null) {
@@ -181,9 +309,11 @@ const SidebarProvider = ({
   return (
     <SidebarContext value={contextValue}>
       <div
+        data-sidebar-root=""
+        data-desktop-mode={persistedLayout.desktopMode}
         style={
           {
-            "--sidebar-width": SIDEBAR_WIDTH,
+            "--sidebar-width": `${persistedLayout.desktopWidth}px`,
             "--sidebar-width-dock": SIDEBAR_WIDTH_DOCK,
             ...style,
           } as React.CSSProperties
@@ -219,7 +349,8 @@ const Sidebar = ({
   className,
   ...props
 }: SidebarProps) => {
-  const { isMobile, state, isOpenOnMobile, setIsOpenOnMobile } = useSidebar();
+  const { isMobile, state, isOpenOnMobile, setIsOpenOnMobile, desktopMode } =
+    useSidebar();
   if (collapsible === "none") {
     return (
       <div
@@ -257,10 +388,21 @@ const Sidebar = ({
     );
   }
 
+  // Desktop data-collapsible is driven by desktopMode from context, not the
+  // legacy `collapsible` prop. The prop still gates the high-level
+  // collapsing behaviour ("none" short-circuits above), but the actual
+  // mode (rail/hidden/full) is now a tri-state owned by the provider.
+  const desktopCollapsible =
+    desktopMode === "rail"
+      ? "dock"
+      : desktopMode === "hidden"
+        ? "hidden"
+        : "";
+
   return (
     <div
       data-state={state}
-      data-collapsible={state === "collapsed" ? collapsible : ""}
+      data-collapsible={desktopCollapsible}
       data-intent={intent}
       data-side={side}
       data-slot="sidebar"
@@ -746,25 +888,192 @@ const SidebarTrigger = ({
   );
 };
 
+interface DragState {
+  startX: number;
+  startWidth: number;
+  moved: boolean;
+  rootEl: HTMLElement | null;
+  sidebarEl: HTMLElement | null;
+  prevModeAtStart: DesktopSidebarMode;
+}
+
 const SidebarRail = ({
   className,
   ref,
   ...props
 }: React.ComponentProps<"button">) => {
-  const { toggleSidebar } = useSidebar();
+  const {
+    toggleSidebar,
+    isMobile,
+    desktopMode,
+    desktopWidth,
+    setDesktopMode,
+    setDesktopWidth,
+  } = useSidebar();
+  const dragRef = useRef<DragState | null>(null);
+
+  // The rail is BOTH a click-to-toggle target (full <-> hidden) AND a
+  // drag-to-resize handle. Detection: pointerup with movement < 5px
+  // counts as a click; everything else snaps to mode by final width.
+  // Live preview during drag is done via direct DOM manipulation
+  // (CSS var + data attrs) so we don't trigger React rerenders on every
+  // pointermove.
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (isMobile) return;
+      if (event.button !== 0) return;
+      const button = event.currentTarget;
+      const rootEl = button.closest<HTMLElement>("[data-sidebar-root]");
+      const sidebarEl = button.closest<HTMLElement>("[data-slot='sidebar']");
+      const containerEl = sidebarEl?.querySelector<HTMLElement>(
+        "[data-slot='sidebar-container']",
+      );
+      const measuredWidth = containerEl?.getBoundingClientRect().width ?? 0;
+      const startWidth =
+        desktopMode === "full" ? Math.max(desktopWidth, measuredWidth) : measuredWidth;
+      try {
+        button.setPointerCapture(event.pointerId);
+      } catch {
+        /* setPointerCapture unsupported on some legacy browsers */
+      }
+      dragRef.current = {
+        startX: event.clientX,
+        startWidth,
+        moved: false,
+        rootEl,
+        sidebarEl,
+        prevModeAtStart: desktopMode,
+      };
+      document.body.style.cursor = "ew-resize";
+    },
+    [isMobile, desktopMode, desktopWidth],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dx = event.clientX - drag.startX;
+      if (Math.abs(dx) > SIDEBAR_DRAG_CLICK_THRESHOLD_PX) drag.moved = true;
+      const raw = drag.startWidth + dx;
+      const previewWidth = Math.max(0, Math.min(SIDEBAR_WIDTH_MAX_PX, raw));
+      const root = drag.rootEl;
+      const sidebar = drag.sidebarEl;
+      if (sidebar) {
+        if (previewWidth < SIDEBAR_RAIL_THRESHOLD_PX) {
+          sidebar.dataset.state = "collapsed";
+          sidebar.dataset.collapsible = "hidden";
+        } else if (previewWidth < SIDEBAR_FULL_THRESHOLD_PX) {
+          sidebar.dataset.state = "collapsed";
+          sidebar.dataset.collapsible = "dock";
+        } else {
+          sidebar.dataset.state = "expanded";
+          sidebar.dataset.collapsible = "";
+        }
+      }
+      if (root && previewWidth >= SIDEBAR_FULL_THRESHOLD_PX) {
+        const clamped = clampSidebarWidth(previewWidth);
+        root.style.setProperty("--sidebar-width", `${clamped}px`);
+      }
+    },
+    [],
+  );
+
+  const finishDrag = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        /* releasePointerCapture noop on legacy browsers */
+      }
+      document.body.style.cursor = "";
+      dragRef.current = null;
+      if (!drag.moved) {
+        toggleSidebar();
+        return;
+      }
+      const dx = event.clientX - drag.startX;
+      const final = Math.max(
+        0,
+        Math.min(SIDEBAR_WIDTH_MAX_PX, drag.startWidth + dx),
+      );
+      let nextMode: DesktopSidebarMode;
+      if (final < SIDEBAR_RAIL_THRESHOLD_PX) nextMode = "hidden";
+      else if (final < SIDEBAR_FULL_THRESHOLD_PX) nextMode = "rail";
+      else nextMode = "full";
+      // Drag-time pointermove writes `--sidebar-width` directly on the
+      // root via setProperty. After commit, React re-renders with the
+      // controlled style prop, but its reconciler skips DOM updates when
+      // the prop value didn't change (e.g. committing rail keeps
+      // desktopWidth unchanged). The stale inline override would then
+      // shadow the canonical value forever. Push the resolved target
+      // width back into the inline style now so the post-render DOM
+      // matches React state regardless of whether React decided to
+      // rewrite the style attribute.
+      if (drag.rootEl) {
+        const targetWidth = clampSidebarWidth(
+          nextMode === "full" ? final : desktopWidth,
+        );
+        drag.rootEl.style.setProperty(
+          "--sidebar-width",
+          `${targetWidth}px`,
+        );
+      }
+      if (nextMode === "full") {
+        setDesktopWidth(final);
+      }
+      setDesktopMode(nextMode);
+    },
+    [toggleSidebar, setDesktopMode, setDesktopWidth, desktopWidth],
+  );
+
+  const handlePointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        /* releasePointerCapture noop on legacy browsers */
+      }
+      document.body.style.cursor = "";
+      dragRef.current = null;
+      const sidebar = drag.sidebarEl;
+      const root = drag.rootEl;
+      if (sidebar) {
+        const restored =
+          drag.prevModeAtStart === "rail"
+            ? "dock"
+            : drag.prevModeAtStart === "hidden"
+              ? "hidden"
+              : "";
+        sidebar.dataset.state =
+          drag.prevModeAtStart === "full" ? "expanded" : "collapsed";
+        sidebar.dataset.collapsible = restored;
+      }
+      if (root) {
+        root.style.setProperty("--sidebar-width", `${desktopWidth}px`);
+      }
+    },
+    [desktopWidth],
+  );
 
   return !props.children ? (
     <button
       ref={ref}
       data-slot="sidebar-rail"
-      aria-label="Toggle Sidebar"
-      title="Toggle Sidebar"
+      aria-label="Resize Sidebar"
+      title="Drag to resize, click to toggle"
       tabIndex={-1}
-      onClick={toggleSidebar}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={handlePointerCancel}
       className={twMerge(
-        "-translate-x-1/2 group-data-[side=left]:-right-4 absolute inset-y-0 z-20 hidden w-4 outline-hidden transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-transparent group-data-[side=right]:left-0 sm:flex",
-        "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
-        "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
+        "-translate-x-1/2 group-data-[side=left]:-right-4 absolute inset-y-0 z-20 hidden w-4 outline-hidden transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=right]:left-0 sm:flex",
+        "cursor-ew-resize touch-none select-none",
         "group-data-[collapsible=hidden]:translate-x-0 group-data-[collapsible=hidden]:hover:bg-sidebar-accent group-data-[collapsible=hidden]:after:left-full",
         "[[data-side=left][data-collapsible=hidden]_&]:-right-2 [[data-side=right][data-collapsible=hidden]_&]:-left-2",
         className,

@@ -22,6 +22,7 @@
     "diff": "^8.0.2",
     "dockerode": "^4.0.9",
     "ldrs": "^1.1.9",
+    "minidenticons": "^4.2.1",
     "react": "^19.2.1",
     "react-aria-components": "^1.14.0",
     "react-dom": "^19.2.1",

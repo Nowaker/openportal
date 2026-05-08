@@ -79,6 +79,7 @@ import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
 import { CreateProjectModal } from "@/components/create-project-modal";
+import { SidebarRailLayout } from "@/components/sidebar-rail-layout";
 import { mutate as swrMutate } from "swr";
 import { useVirtualSessionStore } from "@/stores/virtual-session-store";
 import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
@@ -1252,7 +1253,7 @@ export default function AppSidebar(
 ) {
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
-  const { setIsOpenOnMobile } = useSidebar();
+  const { setIsOpenOnMobile, desktopMode, isMobile: sidebarIsMobile } = useSidebar();
   const instance = useInstanceStore((s) => s.instance);
   const virtualDirectory = useVirtualSessionStore((s) => s.directory);
   const setVirtualDirectory = useVirtualSessionStore((s) => s.setDirectory);
@@ -1295,6 +1296,8 @@ export default function AppSidebar(
   const { data: projectPathsResp } = useProjectPaths();
   const emptyProjectPaths = projectPathsResp?.paths ?? [];
   const sessions: Session[] = sessionsData ?? [];
+  const { data: pinnedData } = usePinnedSessions();
+  const pinnedSessionIds = pinnedData?.sessions ?? [];
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [notifPermission, setNotifPermission] =
@@ -1381,87 +1384,104 @@ export default function AppSidebar(
         </UILink>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarSectionGroup>
-          <SidebarSection>
-            <SidebarItem
-              tooltip="Open directory"
-              onPress={() => setBrowserOpen(true)}
-              className="cursor-pointer gap-x-2"
-            >
-              <FolderOpenIcon className="size-4 shrink-0" data-slot="icon" />
-              <SidebarLabel className="text-xs sm:text-sm">
-                Open directory
-              </SidebarLabel>
-            </SidebarItem>
-          </SidebarSection>
-
-          <div className="col-span-full px-3 pb-1 relative">
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSearchInput(v);
-                // Auto-submit empty query whenever the field becomes empty
-                // (backspace-to-zero or our X button below) so the filter
-                // resets in lock-step with the input.
-                if (v.length === 0) setSearchQuery("");
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  setSearchQuery(searchInput.trim());
-                } else if (e.key === "Escape") {
-                  setSearchInput("");
-                  setSearchQuery("");
-                }
-              }}
-              placeholder="Search sessions..."
-              className="w-full rounded border border-border bg-bg px-2 py-1 pr-7 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-            />
-            {searchInput.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchInput("");
-                  setSearchQuery("");
-                }}
-                aria-label="Clear search"
-                title="Clear search"
-                className="absolute top-1/2 right-4 -translate-y-1/2 inline-flex size-5 items-center justify-center rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+        {!sidebarIsMobile && desktopMode === "rail" ? (
+          <SidebarRailLayout
+            sessions={sessions}
+            baseDirs={baseDirs}
+            pinnedSessionIds={pinnedSessionIds}
+            statusMap={statusMap}
+            questionSessionIds={questionSessionIds}
+            errorSessionIds={errorSessionIds}
+            lastViewedMap={lastViewedMap}
+            currentSessionId={currentSessionId}
+            onOpenDirectory={() => setBrowserOpen(true)}
+            onSelectSession={(id) =>
+              navigate({ to: "/session/$id", params: { id } })
+            }
+          />
+        ) : (
+          <SidebarSectionGroup>
+            <SidebarSection>
+              <SidebarItem
+                tooltip="Open directory"
+                onPress={() => setBrowserOpen(true)}
+                className="cursor-pointer gap-x-2"
               >
-                <XMarkIcon className="size-3.5" />
-              </button>
-            )}
-          </div>
+                <FolderOpenIcon className="size-4 shrink-0" data-slot="icon" />
+                <SidebarLabel className="text-xs sm:text-sm">
+                  Open directory
+                </SidebarLabel>
+              </SidebarItem>
+            </SidebarSection>
 
-          <SidebarSection>
-            <ProjectsList
-              sessions={sessions}
-              currentSessionId={currentSessionId}
-              virtualDirectory={virtualDirectory ?? null}
-              statusMap={statusMap}
-              searchQuery={searchQuery}
-              baseDirs={baseDirs}
-              emptyProjectPaths={emptyProjectPaths}
-              questionSessionIds={questionSessionIds}
-              errorSessionIds={errorSessionIds}
-              lastViewedMap={lastViewedMap}
-              home={portalConfig?.home ?? ""}
-              onSessionClick={() => setIsOpenOnMobile(false)}
-              onArchiveSession={handleArchiveSession}
-              onUnarchiveSession={handleUnarchiveSession}
-              onNewSessionInProject={(dir) => {
-                setIsOpenOnMobile(false);
-                setVirtualDirectory(dir);
-                navigate({
-                  to: "/session/new",
-                  search: { directory: dir },
-                });
-              }}
-            />
-          </SidebarSection>
-        </SidebarSectionGroup>
+            <div className="col-span-full px-3 pb-1 relative">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSearchInput(v);
+                  // Auto-submit empty query whenever the field becomes empty
+                  // (backspace-to-zero or our X button below) so the filter
+                  // resets in lock-step with the input.
+                  if (v.length === 0) setSearchQuery("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setSearchQuery(searchInput.trim());
+                  } else if (e.key === "Escape") {
+                    setSearchInput("");
+                    setSearchQuery("");
+                  }
+                }}
+                placeholder="Search sessions..."
+                className="w-full rounded border border-border bg-bg px-2 py-1 pr-7 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              />
+              {searchInput.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchInput("");
+                    setSearchQuery("");
+                  }}
+                  aria-label="Clear search"
+                  title="Clear search"
+                  className="absolute top-1/2 right-4 -translate-y-1/2 inline-flex size-5 items-center justify-center rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+                >
+                  <XMarkIcon className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            <SidebarSection>
+              <ProjectsList
+                sessions={sessions}
+                currentSessionId={currentSessionId}
+                virtualDirectory={virtualDirectory ?? null}
+                statusMap={statusMap}
+                searchQuery={searchQuery}
+                baseDirs={baseDirs}
+                emptyProjectPaths={emptyProjectPaths}
+                questionSessionIds={questionSessionIds}
+                errorSessionIds={errorSessionIds}
+                lastViewedMap={lastViewedMap}
+                home={portalConfig?.home ?? ""}
+                onSessionClick={() => setIsOpenOnMobile(false)}
+                onArchiveSession={handleArchiveSession}
+                onUnarchiveSession={handleUnarchiveSession}
+                onNewSessionInProject={(dir) => {
+                  setIsOpenOnMobile(false);
+                  setVirtualDirectory(dir);
+                  navigate({
+                    to: "/session/new",
+                    search: { directory: dir },
+                  });
+                }}
+              />
+            </SidebarSection>
+          </SidebarSectionGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="flex flex-row justify-between gap-4 group-data-[state=collapsed]:flex-col">
