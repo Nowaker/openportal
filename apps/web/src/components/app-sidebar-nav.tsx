@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/menu";
 import { SessionInfoModal } from "@/components/session-info-modal";
 import { McpInfoModal } from "@/components/mcp-info-modal";
+import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -116,6 +117,7 @@ export function AppSidebarNav() {
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
   const [showSessionInfo, setShowSessionInfo] = useState(false);
   const [mcpInfoName, setMcpInfoName] = useState<string | null>(null);
+  const [pluginInfoSpec, setPluginInfoSpec] = useState<string | null>(null);
 
   const sessionMatch = useMatch({
     from: "/_app/session/$id",
@@ -638,6 +640,7 @@ export function AppSidebarNav() {
                     <MenuItem
                       key={p.spec}
                       textValue={p.label}
+                      onAction={() => setPluginInfoSpec(p.spec)}
                       // @ts-expect-error closeOnSelect honored at runtime by
                       // useMenuItem; not in public types.
                       closeOnSelect={false}
@@ -654,6 +657,19 @@ export function AppSidebarNav() {
                           {p.source}
                           {p.version ? ` ${p.version}` : ""}
                         </span>
+                        <button
+                          type="button"
+                          aria-label={`Plugin info: ${p.label}`}
+                          title="Show plugin details"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPluginInfoSpec(p.spec);
+                          }}
+                          className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg"
+                        >
+                          <QuestionMarkCircleIcon className="size-4" />
+                        </button>
                       </div>
                     </MenuItem>
                   ))}
@@ -675,6 +691,13 @@ export function AppSidebarNav() {
         mcpName={mcpInfoName}
         onOpenChange={(open) => {
           if (!open) setMcpInfoName(null);
+        }}
+      />
+      <PluginInfoModal
+        isOpen={pluginInfoSpec !== null}
+        spec={pluginInfoSpec}
+        onOpenChange={(open) => {
+          if (!open) setPluginInfoSpec(null);
         }}
       />
     </SidebarNav>
