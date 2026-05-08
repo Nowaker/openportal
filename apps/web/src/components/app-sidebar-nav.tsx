@@ -129,15 +129,21 @@ export function AppSidebarNav() {
   const sessionTitle = currentSession?.title ?? null;
   const projectLabel = projectLabelFromDirectory(currentSession?.directory);
   // Subagent sessions: opencode sets parentID on child sessions and appends
-  // a `(@<agent> subagent)` marker to the title. Recover both pieces so the
-  // topbar can render `project: parentTitle: agentName` with parentTitle in
-  // the muted (project-colored) tone, matching the visual hierarchy.
+  // a `(@<agent> subagent)` marker to the title. The marker carries the
+  // AGENT TYPE (e.g. "general"); the meaningful per-session label is the
+  // text BEFORE that marker (the actual subtask description). Show the
+  // task description in the topbar; the agent type is identical across
+  // all subsessions of a project and provides no per-session signal.
   const parentSession = currentSession?.parentID
     ? sessions.find((s) => s.id === currentSession.parentID)
     : null;
   const subagentMatch = sessionTitle?.match(/^(.*)\s+\(@([^)\s]+)\s+subagent\)$/);
-  const subagentName = subagentMatch ? subagentMatch[2] : null;
-  const isSubagent = Boolean(currentSession?.parentID && subagentName);
+  const subagentTaskTitle = subagentMatch
+    ? subagentMatch[1].trim()
+    : null;
+  const isSubagent = Boolean(
+    currentSession?.parentID && (subagentTaskTitle || sessionTitle),
+  );
 
   // Browser tab title: 'OP: <sessionTitle>' on a session route, plain
   // 'OpenPortal' elsewhere. Short 'OP:' prefix keeps the title legible in
@@ -409,7 +415,7 @@ export function AppSidebarNav() {
                         </span>
                       )}
                       <span className="text-muted-fg">: </span>
-                      {subagentName}
+                      {subagentTaskTitle ?? sessionTitle}
                     </>
                   ) : (
                     sessionTitle
