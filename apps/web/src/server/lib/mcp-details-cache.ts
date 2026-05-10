@@ -58,7 +58,7 @@ async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise
 }
 
 async function introspectMcp(port: number, name: string): Promise<McpDetails> {
-  const opencode = getOpencodeClientV2(port);
+  const opencode = await getOpencodeClientV2(port);
   const cfgResp = await opencode.config.get();
   const cfg =
     (cfgResp.data as { mcp?: Record<string, McpConfigEntry> } | undefined)?.mcp?.[name] ?? null;
@@ -213,7 +213,7 @@ export async function prefetchAllMcpDetails(port: number): Promise<void> {
   if (prefetchedForPort === port) return;
   prefetchedForPort = port;
   try {
-    const opencode = getOpencodeClientV2(port);
+    const opencode = await getOpencodeClientV2(port);
     const cfgResp = await opencode.config.get();
     const mcp =
       (cfgResp.data as { mcp?: Record<string, unknown> } | undefined)?.mcp ?? {};

@@ -1,8 +1,9 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowPathIcon,
   BellAlertIcon,
+  ServerStackIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import AppSidebar from "@/components/app-sidebar";
@@ -25,17 +26,28 @@ import {
 function ConnectionStatusBanner() {
   const status = useConnectionMonitor();
   if (status === "connected") return null;
+  const isUpstream = status === "upstream-down";
   return (
     <div className="flex flex-col gap-0.5 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
       <div className="flex items-center gap-2">
         <ArrowPathIcon className="size-4 shrink-0 animate-spin text-warning" />
         <span className="flex-1 text-fg">
-          Lost connection to OpenPortal. Reconnecting…
+          {isUpstream
+            ? "Lost connection to the opencode server. Reconnecting\u2026"
+            : "Lost connection to OpenPortal. Reconnecting\u2026"}
         </span>
+        <Link
+          to="/servers"
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
+        >
+          <ServerStackIcon className="size-3.5" />
+          Server list
+        </Link>
       </div>
       <span className="pl-6 text-xs text-muted-fg">
-        Your prompt drafts and pasted images are saved locally — nothing will be
-        lost.
+        {isUpstream
+          ? "Your prompt drafts and pasted images are saved locally. Reconnect via the Server list if needed."
+          : "Your prompt drafts and pasted images are saved locally \u2014 nothing will be lost."}
       </span>
     </div>
   );
@@ -157,6 +169,7 @@ export const Route = createFileRoute("/_app")({
 function AppLayout() {
   const instance = useInstanceStore((s) => s.instance);
   const setInstance = useInstanceStore((s) => s.setInstance);
+  const navigate = useNavigate();
   const { data: selfData, isLoading, error } = useSelfInstance();
   const [hydrated, setHydrated] = useState(false);
   usePullToRefresh();
@@ -178,6 +191,17 @@ function AppLayout() {
     setHydrated(true);
   }, [selfData, instance, setInstance]);
 
+  // Configless / first-run / removed-active-server: bounce to /servers
+  // so the user can pick or add an opencode to bind to. We do this in
+  // an effect (not at render time) so the redirect uses the router and
+  // history is clean.
+  useEffect(() => {
+    if (isLoading || !hydrated) return;
+    if (!selfData?.instance) {
+      void navigate({ to: "/servers", replace: true });
+    }
+  }, [isLoading, hydrated, selfData, navigate]);
+
   if (isLoading || !hydrated) {
     return (
       <div className="flex h-dvh items-center justify-center text-muted-fg">
@@ -187,19 +211,12 @@ function AppLayout() {
   }
 
   if (error || !selfData?.instance) {
+    // Render-time fallback for the brief window before the redirect
+    // effect fires; keeps the screen from flashing the "Portal not
+    // registered" copy on every cold load.
     return (
-      <div className="flex h-dvh items-center justify-center p-6">
-        <div className="max-w-md text-center space-y-2">
-          <h1 className="text-lg font-medium">Portal not registered</h1>
-          <p className="text-sm text-muted-fg">
-            {selfData?.error ||
-              (error instanceof Error ? error.message : "Unknown error")}
-          </p>
-          <p className="text-xs text-muted-fg">
-            This Portal UI's web port is not in <code>~/.portal.json</code>.
-            Restart it via the launcher.
-          </p>
-        </div>
+      <div className="flex h-dvh items-center justify-center text-muted-fg">
+        Redirecting to server list…
       </div>
     );
   }

@@ -13,7 +13,7 @@ export default defineHandler(async (event) => {
   const port = parsePort(event);
   const body = await parseBody(event, createSessionSchema);
 
-  const client = getOpencodeClient(port);
+  const client = await getOpencodeClient(port);
   const session = await client.session.create({
     body: { title: body.title, parentID: body.parentID },
     query: body.directory ? { directory: body.directory } : undefined,

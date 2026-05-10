@@ -1,6 +1,6 @@
 import { HTTPError, defineHandler } from "nitro/h3";
 import {
-  getOpencodeBaseUrl,
+  fetchOpencode,
 } from "../../../../../../lib/opencode-client";
 import { parsePort, parseRouteParam } from "../../../../../../lib/validation";
 import { invalidateMessagesCache } from "../../../../../../lib/messages-cache";
@@ -28,11 +28,11 @@ export default defineHandler(async (event) => {
   const id = parseRouteParam(event, "id");
   const messageID = parseRouteParam(event, "messageID");
 
-  const url = `${getOpencodeBaseUrl(port)}/session/${encodeURIComponent(
+  const path = `/session/${encodeURIComponent(
     id,
   )}/message/${encodeURIComponent(messageID)}`;
 
-  const response = await fetch(url, { method: "DELETE" });
+  const response = await fetchOpencode(port, path, { method: "DELETE" });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new HTTPError(

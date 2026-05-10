@@ -9,7 +9,7 @@ const execAsync = promisify(exec);
 
 export default defineHandler(async (event) => {
   const port = parsePort(event);
-  const client = getOpencodeClient(port);
+  const client = await getOpencodeClient(port);
   const project = await client.project.current();
 
   if (!project.data?.worktree) {

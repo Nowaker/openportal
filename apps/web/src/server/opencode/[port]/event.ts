@@ -1,5 +1,6 @@
 import { defineHandler } from "nitro/h3";
-import { getOpencodeBaseUrl } from "../../lib/opencode-client";
+import { resolveLiveTarget } from "../../lib/opencode-client";
+import { basicAuthHeader } from "../../lib/server-discovery";
 import { parsePort } from "../../lib/validation";
 
 // SSE pass-through proxy: opencode emits text/event-stream at /event;
@@ -13,9 +14,13 @@ import { parsePort } from "../../lib/validation";
 // connection down on opencode's side.
 export default defineHandler(async (event) => {
   const port = parsePort(event);
-  const upstreamUrl = `${getOpencodeBaseUrl(port)}/event`;
+  const target = await resolveLiveTarget(port);
+  const upstreamUrl = `http://${target.host}:${target.port}/event`;
   const upstream = await fetch(upstreamUrl, {
-    headers: { Accept: "text/event-stream" },
+    headers: {
+      Accept: "text/event-stream",
+      ...basicAuthHeader(target.auth),
+    },
   });
   if (!upstream.ok || !upstream.body) {
     return new Response(`opencode SSE upstream failed: ${upstream.status}`, {

@@ -10,7 +10,7 @@ export default defineHandler(async (event) => {
     return [];
   }
 
-  const client = getOpencodeClient(port);
+  const client = await getOpencodeClient(port);
   const files = await client.find.files({
     query: { query: q },
   });

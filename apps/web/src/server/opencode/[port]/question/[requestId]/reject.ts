@@ -6,7 +6,7 @@ export default defineHandler(async (event) => {
   const port = parsePort(event);
   const requestId = parseRouteParam(event, "requestId");
 
-  const client = getOpencodeClientV2(port);
+  const client = await getOpencodeClientV2(port);
   const result = await client.question.reject({
     requestID: requestId,
   });

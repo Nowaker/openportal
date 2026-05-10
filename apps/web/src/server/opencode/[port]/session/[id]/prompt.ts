@@ -2,7 +2,7 @@ import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
 import {
   getOpencodeClient,
-  getOpencodeBaseUrl,
+  fetchOpencode,
 } from "../../../../lib/opencode-client";
 import {
   parsePort,
@@ -122,7 +122,7 @@ async function cleanupStuckSession(
     deletedZombies: [],
     aborted: false,
   };
-  const client = getOpencodeClient(port);
+  const client = await getOpencodeClient(port);
 
   let statusType: string | undefined;
   try {
@@ -201,13 +201,12 @@ async function cleanupStuckSession(
     }
   }
 
-  const baseUrl = getOpencodeBaseUrl(port);
   for (const messageID of zombieIds) {
-    const url = `${baseUrl}/session/${encodeURIComponent(
+    const path = `/session/${encodeURIComponent(
       id,
     )}/message/${encodeURIComponent(messageID)}`;
     try {
-      const resp = await fetch(url, { method: "DELETE" });
+      const resp = await fetchOpencode(port, path, { method: "DELETE" });
       if (resp.ok) {
         report.deletedZombies.push(messageID);
       }
@@ -279,7 +278,8 @@ export default defineHandler(async (event) => {
   const cleanup = await cleanupStuckSession(port, id);
 
   try {
-    await getOpencodeClient(port).session.promptAsync({
+    const client = await getOpencodeClient(port);
+    await client.session.promptAsync({
       path: { id },
       body: promptBody,
     });

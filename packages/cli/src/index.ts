@@ -18,7 +18,17 @@ const __dirname = dirname(__filename);
 
 const CONFIG_PATH = join(homedir(), ".portal.json");
 const CONFIG_LOCK_PATH = `${CONFIG_PATH}.lock`;
-const OPENPORTAL_CONFIG_PATH = join(homedir(), ".openportal.json");
+// New canonical config path: ~/.openportal/openportal.json. The web
+// layer's portal-paths.ts does the migration from the legacy
+// ~/.openportal.json on boot. The CLI checks the new location first
+// and falls back to the legacy file for installs that haven't booted
+// the web layer yet.
+const OPENPORTAL_CONFIG_PATH = join(
+  homedir(),
+  ".openportal",
+  "openportal.json",
+);
+const OPENPORTAL_CONFIG_PATH_LEGACY = join(homedir(), ".openportal.json");
 const DEFAULT_HOSTNAME = "0.0.0.0";
 const DEFAULT_PORT = 3000;
 const DEFAULT_OPENCODE_PORT = 4000;
@@ -201,33 +211,61 @@ interface OpenportalCliConfig {
     port?: number;
     exitAfterUnreachableSeconds?: number;
   };
+  // New multi-server registry. When present (even if empty), the CLI
+  // treats this as a configless launch: do NOT spawn opencode, just
+  // start the web UI and let the user pick / add a server via the
+  // /servers screen. The web UI's server-resolver handles discovery,
+  // attach, ephemeral re-discovery, etc.
+  servers?: unknown[];
+  activeServerId?: string | null;
+  // Web UI bind config. Env > flag > config > default. So setting
+  // `web.port` here makes `openportal` (and `bun .output/server/
+  // index.mjs` via the bootstrap shim) bind there by default; passing
+  // --port or PORT=... still wins.
+  web?: {
+    port?: number;
+    hostname?: string;
+  };
 }
 
 const DEFAULT_EXTERNAL_OPENCODE_TIMEOUT_SECONDS = 300;
 const EXTERNAL_OPENCODE_PROBE_INTERVAL_MS = 5_000;
 
 // Reads ~/.openportal.json (JSONC). Returns an empty object on read/parse
-// failure so the CLI keeps booting. Three lifecycle modes, mutually
-// exclusive, evaluated in priority order in cmdDefault/cmdRun:
+// failure so the CLI keeps booting. Lifecycle modes, mutually exclusive,
+// evaluated in priority order in cmdDefault/cmdRun:
 //
-//   1. externalOpencode.port set      -> connect-only. NEVER spawn opencode.
+//   1. servers[] present (any value)  -> configless. NEVER spawn opencode;
+//      just start the web UI. The user picks/adds a server via the /servers
+//      screen, and the web UI's server-resolver handles discovery, attach,
+//      and ephemeral re-discovery (e.g. opencode-desktop). cmdRun fails
+//      in this mode because there's nothing to spawn.
+//   2. externalOpencode.port set      -> connect-only. NEVER spawn opencode.
 //      The pidfile mechanism is bypassed (we don't own the process). The
 //      configured port wins over --opencode-port. cmdStop won't kill it.
-//   2. decoupleOpencode === true      -> pidfile-driven attach. First start
+//   3. decoupleOpencode === true      -> pidfile-driven attach. First start
 //      spawns + writes ~/.openportal-opencode-<port>.pid; subsequent starts
 //      attach if the pidfile points at a live opencode. cmdStop won't kill
 //      attached instances.
-//   3. neither set                    -> legacy managed-child behaviour.
+//   4. none of the above              -> legacy managed-child behaviour.
 //      openportal spawns and (via cmdStop) kills opencode. Children still
 //      orphan when openportal exits without going through cmdStop.
 function readOpenportalConfig(): OpenportalCliConfig {
+  // Prefer the new path; fall back to the legacy single-file location
+  // for installs that haven't yet booted the web layer (which is what
+  // performs the migration).
+  const path = existsSync(OPENPORTAL_CONFIG_PATH)
+    ? OPENPORTAL_CONFIG_PATH
+    : existsSync(OPENPORTAL_CONFIG_PATH_LEGACY)
+      ? OPENPORTAL_CONFIG_PATH_LEGACY
+      : null;
+  if (!path) return {};
   try {
-    if (!existsSync(OPENPORTAL_CONFIG_PATH)) return {};
-    const raw = readFileSync(OPENPORTAL_CONFIG_PATH, "utf-8");
+    const raw = readFileSync(path, "utf-8");
     return JSON.parse(stripJsoncComments(raw)) as OpenportalCliConfig;
   } catch (error) {
     console.warn(
-      `[openportal-config] Failed to read ${OPENPORTAL_CONFIG_PATH}:`,
+      `[openportal-config] Failed to read ${path}:`,
       error instanceof Error ? error.message : error,
     );
     return {};
@@ -389,6 +427,9 @@ Options:
   --opencode-port <port>  OpenCode server port (default: 4000)
   --hostname <host>       Hostname to bind (default: 0.0.0.0)
   --name <name>           Instance name
+  --configless            Don't spawn opencode; pick a server in the
+                          web UI at /servers (also auto-enabled when
+                          ~/.openportal.json has a 'servers' array)
 
 Examples:
   openportal                               Start OpenCode + Web UI
@@ -484,23 +525,66 @@ async function startWebServer(port: number, hostname: string): Promise<number> {
 async function cmdDefault(
   options: Record<string, string | boolean | undefined>,
 ) {
-  const hostname = (options.hostname as string) || DEFAULT_HOSTNAME;
+  // Need to read config BEFORE resolving hostname/port so the config
+  // values can act as defaults beneath the CLI flag overrides.
+  const cfg = readOpenportalConfig();
+
+  // Hostname precedence: PORTAL_HOSTNAME env > --hostname flag >
+  // cfg.web.hostname > DEFAULT_HOSTNAME. Mirrors how PORT/HOST work
+  // for the underlying Bun process: env-on-launch wins so a one-off
+  // override doesn't require editing the config file.
+  const hostname =
+    process.env.PORTAL_HOSTNAME ||
+    (options.hostname as string) ||
+    cfg.web?.hostname ||
+    DEFAULT_HOSTNAME;
+
   const directory = resolve(
     (options.directory as string) || (options.d as string) || process.cwd(),
   );
   const name =
     (options.name as string) || directory.split("/").pop() || "opencode";
-  const port =
+
+  // Port precedence (most specific wins): PORTAL_PORT env > --port
+  // flag > cfg.web.port > getPort(DEFAULT_PORT). `getPort` only kicks
+  // in when nothing is configured, so a fixed `cfg.web.port` is honoured
+  // even if the chosen port is busy (we let bind fail loudly instead of
+  // silently picking a different port).
+  const envPort = process.env.PORTAL_PORT
+    ? parseInt(process.env.PORTAL_PORT, 10)
+    : NaN;
+  const flagPort =
     options.port || options.p
       ? parseInt((options.port as string) || (options.p as string), 10)
-      : await getPort({ host: hostname, port: DEFAULT_PORT });
+      : NaN;
+  const configPort = typeof cfg.web?.port === "number" ? cfg.web.port : NaN;
+  const port = Number.isFinite(envPort)
+    ? envPort
+    : Number.isFinite(flagPort)
+      ? flagPort
+      : Number.isFinite(configPort)
+        ? configPort
+        : await getPort({ host: hostname, port: DEFAULT_PORT });
 
-  const cfg = readOpenportalConfig();
   const externalPort = cfg.externalOpencode?.port;
   const decouple = cfg.decoupleOpencode === true;
+  // Configless: ~/.openportal.json contains a `servers` array (the new
+  // multi-server registry). The CLI must not spawn opencode; the web UI
+  // owns server discovery + selection. Also engaged by --configless on
+  // the command line for ad-hoc use.
+  const configless = Array.isArray(cfg.servers) || options.configless === true;
 
   let opencodePort: number;
-  if (typeof externalPort === "number") {
+  if (configless) {
+    // Pick a port to record on the instance row, but it won't be used
+    // because no one is listening on it. Pin to DEFAULT_OPENCODE_PORT
+    // so /api/instance/self has *something* deterministic; the web UI
+    // will overwrite it anyway as soon as the user picks an active
+    // server (its port becomes the routing handle).
+    opencodePort = options["opencode-port"]
+      ? parseInt(options["opencode-port"] as string, 10)
+      : DEFAULT_OPENCODE_PORT;
+  } else if (typeof externalPort === "number") {
     opencodePort = externalPort;
     if (options["opencode-port"]) {
       const cliPort = parseInt(options["opencode-port"] as string, 10);
@@ -543,9 +627,15 @@ async function cmdDefault(
   console.log(`  Name: ${name}`);
   console.log(`  Directory: ${directory}`);
   console.log(`  Web UI Port: ${port}`);
-  console.log(`  OpenCode Port: ${opencodePort}`);
+  if (configless) {
+    console.log(`  Lifecycle: configless (multi-server registry; no opencode spawned)`);
+  } else {
+    console.log(`  OpenCode Port: ${opencodePort}`);
+  }
   console.log(`  Hostname: ${hostname}`);
-  if (typeof externalPort === "number") {
+  if (configless) {
+    // already logged above
+  } else if (typeof externalPort === "number") {
     console.log(`  Lifecycle: external (no spawn; connecting to existing opencode)`);
   } else if (decouple) {
     console.log(`  Lifecycle: decoupled (opencode survives openportal restarts)`);
@@ -554,7 +644,10 @@ async function cmdDefault(
   try {
     let opencodePid: number | null;
     let attachedOpencode = false;
-    if (typeof externalPort === "number") {
+    if (configless) {
+      opencodePid = null;
+      attachedOpencode = true;
+    } else if (typeof externalPort === "number") {
       const reachable = await probeOpencode(hostname, externalPort);
       if (!reachable) {
         console.warn(
@@ -605,14 +698,18 @@ async function cmdDefault(
     console.log(`\n✅ OpenPortal started!`);
     if (opencodePid !== null) {
       console.log(`   OpenCode PID: ${opencodePid}${attachedOpencode ? " (attached)" : ""}`);
+    } else if (configless) {
+      console.log(`   OpenCode: chosen via /servers screen at runtime`);
     } else {
       console.log(`   OpenCode: external (not managed by openportal)`);
     }
     console.log(`   Web UI PID: ${webPid}`);
     console.log(`\n📱 Access OpenPortal at http://${displayHost}:${port}`);
-    console.log(`🔧 OpenCode API at http://${displayHost}:${opencodePort}`);
+    if (!configless) {
+      console.log(`🔧 OpenCode API at http://${displayHost}:${opencodePort}`);
+    }
 
-    if (typeof externalPort === "number") {
+    if (typeof externalPort === "number" && !configless) {
       const t =
         typeof cfg.externalOpencode?.exitAfterUnreachableSeconds === "number"
           ? Math.max(
@@ -661,6 +758,12 @@ async function cmdRun(options: Record<string, string | boolean | undefined>) {
   if (typeof cfg.externalOpencode?.port === "number") {
     console.error(
       `❌ 'openportal run' is incompatible with externalOpencode mode (no opencode to spawn). Remove externalOpencode from ~/.openportal.json or use 'openportal' (default) which only starts the web UI.`,
+    );
+    process.exit(1);
+  }
+  if (Array.isArray(cfg.servers)) {
+    console.error(
+      `❌ 'openportal run' is incompatible with configless / multi-server mode (no opencode to spawn). Servers are picked from the /servers screen at runtime. Remove the 'servers' key from ~/.openportal.json to go back to legacy managed-child mode.`,
     );
     process.exit(1);
   }

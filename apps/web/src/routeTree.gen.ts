@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ServersRouteImport } from './routes/servers'
 import { Route as InstancesRouteImport } from './routes/instances'
 import { Route as FilesRouteImport } from './routes/files'
 import { Route as AboutRouteImport } from './routes/about'
@@ -20,6 +21,11 @@ import { Route as AppDiffRouteImport } from './routes/_app/diff'
 import { Route as AppSessionNewRouteImport } from './routes/_app/session/new'
 import { Route as AppSessionIdRouteImport } from './routes/_app/session/$id'
 
+const ServersRoute = ServersRouteImport.update({
+  id: '/servers',
+  path: '/servers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InstancesRoute = InstancesRouteImport.update({
   id: '/instances',
   path: '/instances',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/files': typeof FilesRoute
   '/instances': typeof InstancesRoute
+  '/servers': typeof ServersRoute
   '/diff': typeof AppDiffRoute
   '/prompts': typeof AppPromptsRoute
   '/settings': typeof AppSettingsRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/files': typeof FilesRoute
   '/instances': typeof InstancesRoute
+  '/servers': typeof ServersRoute
   '/diff': typeof AppDiffRoute
   '/prompts': typeof AppPromptsRoute
   '/settings': typeof AppSettingsRoute
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/files': typeof FilesRoute
   '/instances': typeof InstancesRoute
+  '/servers': typeof ServersRoute
   '/_app/diff': typeof AppDiffRoute
   '/_app/prompts': typeof AppPromptsRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/files'
     | '/instances'
+    | '/servers'
     | '/diff'
     | '/prompts'
     | '/settings'
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/files'
     | '/instances'
+    | '/servers'
     | '/diff'
     | '/prompts'
     | '/settings'
@@ -134,6 +145,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/files'
     | '/instances'
+    | '/servers'
     | '/_app/diff'
     | '/_app/prompts'
     | '/_app/settings'
@@ -147,10 +159,18 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   FilesRoute: typeof FilesRoute
   InstancesRoute: typeof InstancesRoute
+  ServersRoute: typeof ServersRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/servers': {
+      id: '/servers'
+      path: '/servers'
+      fullPath: '/servers'
+      preLoaderRoute: typeof ServersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/instances': {
       id: '/instances'
       path: '/instances'
@@ -249,6 +269,7 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   FilesRoute: FilesRoute,
   InstancesRoute: InstancesRoute,
+  ServersRoute: ServersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

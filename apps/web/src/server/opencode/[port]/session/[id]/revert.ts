@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
-import { getOpencodeBaseUrl } from "../../../../lib/opencode-client";
+import { fetchOpencode } from "../../../../lib/opencode-client";
 import {
   parsePort,
   parseRouteParam,
@@ -28,16 +28,15 @@ export default defineHandler(async (event) => {
   const id = parseRouteParam(event, "id");
   const { messageIDs } = await parseBody(event, revertBodySchema);
 
-  const baseUrl = getOpencodeBaseUrl(port);
   const ordered = [...messageIDs].reverse();
   const failures: Array<{ messageID: string; status: number }> = [];
 
   for (const messageID of ordered) {
-    const url = `${baseUrl}/session/${encodeURIComponent(
+    const path = `/session/${encodeURIComponent(
       id,
     )}/message/${encodeURIComponent(messageID)}`;
     try {
-      const response = await fetch(url, { method: "DELETE" });
+      const response = await fetchOpencode(port, path, { method: "DELETE" });
       if (!response.ok) {
         failures.push({ messageID, status: response.status });
       }

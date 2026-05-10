@@ -72,7 +72,7 @@ async function getSessionMeta(
   const cached = sessionMetaCache.get(sessionId);
   if (cached) return cached;
   try {
-    const client = getOpencodeClient(port);
+    const client = await getOpencodeClient(port);
     const resp = await client.session.get({ path: { id: sessionId } });
     const data = resp.data as
       | { directory?: string; parentID?: string | null }

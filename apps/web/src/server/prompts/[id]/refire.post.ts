@@ -24,7 +24,7 @@ export default defineHandler(async (event) => {
   // could be used to replay a literal secret.
   const text = row.raw_text;
 
-  const client = getOpencodeClient(body.targetPort);
+  const client = await getOpencodeClient(body.targetPort);
   try {
     await client.session.promptAsync({
       path: { id: body.targetSessionId },
@@ -34,7 +34,6 @@ export default defineHandler(async (event) => {
           ? { providerID: row.model_provider, modelID: row.model_id }
           : undefined,
         agent: row.agent ?? undefined,
-        variant: row.variant ?? undefined,
       },
     });
     invalidateMessagesCache(body.targetSessionId);

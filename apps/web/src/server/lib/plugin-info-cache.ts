@@ -136,7 +136,7 @@ export async function prefetchAllPluginInfoFromConfig(
 ): Promise<void> {
   if (prefetchedForPort.has(port)) return;
   try {
-    const opencode = getOpencodeClientV2(port);
+    const opencode = await getOpencodeClientV2(port);
     const cfg = await opencode.config.get();
     const raw = (cfg.data as { plugin?: unknown } | undefined)?.plugin;
     if (!Array.isArray(raw)) return;

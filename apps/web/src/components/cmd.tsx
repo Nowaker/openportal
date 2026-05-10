@@ -258,6 +258,16 @@ export default function Cmd() {
             <IconManageInstances className="size-4 mr-2" />
             <CommandMenuLabel>Other Portals</CommandMenuLabel>
           </CommandMenuItem>
+          <CommandMenuItem
+            textValue="Servers"
+            onAction={() => {
+              setIsOpen(false);
+              navigate({ to: "/servers" });
+            }}
+          >
+            <ServerIcon className="size-4 mr-2" />
+            <CommandMenuLabel>Servers</CommandMenuLabel>
+          </CommandMenuItem>
         </CommandMenuSection>
 
         {instances.length > 0 && (

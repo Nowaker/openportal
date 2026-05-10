@@ -4,7 +4,10 @@ export default defineConfig({
   serverDir: ".",
   preset: "bun",
   apiDir: "./src/server",
-  plugins: ["./src/server/plugins/build-id-header.ts"],
+  plugins: [
+    "./src/server/plugins/portal-layout-init.ts",
+    "./src/server/plugins/build-id-header.ts",
+  ],
   errorHandler: "./src/server/error.ts",
   routeRules: {
     // SPA fallback HTML must never be cached: every navigation to

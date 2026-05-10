@@ -1,22 +1,118 @@
 import { defineHandler } from "nitro/h3";
+import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { readFileSync, existsSync } from "fs";
+import { getActiveServer } from "../lib/server-registry";
+import { resolveLiveEndpoint } from "../lib/server-resolver";
+import { probeOpencode } from "../lib/server-discovery";
 
-const CONFIG_PATH = join(homedir(), ".portal.json");
+const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 
-export default defineHandler(() => {
+// /api/instance/self — tell the browser which server this Portal UI is
+// bound to. Resolution order:
+//
+//   1. New registry: an explicit `activeServerId` in ~/.openportal.json.
+//      This is the configless / multi-server path. The Portal UI was
+//      either started without a managed opencode at all, or the user
+//      pointed it at a different server via the /servers screen.
+//   2. Legacy ~/.portal.json: the openportal-CLI-spawned-its-own-opencode
+//      flow. Match by web-UI port (the env var PORT this process was
+//      started with). Same behavior as before the multi-server refactor.
+//   3. No instance. Frontend redirects to /servers so the user can pick
+//      or add one.
+//
+// Critical behavior for ephemeral servers: this handler triggers
+// resolveLiveEndpoint() on every call, which (for ephemeral entries)
+// re-runs process-scan discovery and persists the new live port back
+// into the registry. This is how opencode-desktop port shifts propagate
+// to the frontend: connection monitor pings /api/instance/self, sees the
+// changed port, the instance-store is reseated, all SWR keys
+// (which include port in their URL) refetch against the new endpoint.
+
+export default defineHandler(async () => {
+  const active = getActiveServer();
+  if (active) {
+    // Force a fresh resolve so ephemeral entries pick up port shifts.
+    // Side effect: resolver's updateEphemeralEndpoint() persists the
+    // new port to ~/.openportal.json. Re-read after to surface the
+    // updated value, since the in-memory `active` is now stale.
+    const live = await resolveLiveEndpoint(active);
+    if (!live) {
+      // Ephemeral entry whose process is no longer running (e.g.
+      // opencode-desktop quit), or a configured entry whose stored
+      // host:port can no longer be resolved. The frontend treats
+      // `instance: null` as "redirect to /servers"; we surface a
+      // `reason` so the UI can show a more specific banner if it
+      // wants, plus enough context (label, host, port, ephemeral) to
+      // render a "your last server was X — pick it again or choose
+      // another" hint.
+      return {
+        instance: null,
+        error: "active-server-unreachable",
+        reason: active.ephemeral
+          ? "Active opencode is no longer running (ephemeral) and could not be re-discovered."
+          : "Active opencode is no longer reachable at its configured endpoint.",
+        lastKnown: {
+          id: active.id,
+          label: active.label,
+          host: active.host,
+          port: active.port,
+          ephemeral: active.ephemeral,
+        },
+      };
+    }
+    // For non-ephemeral active servers, also do a real HTTP probe so
+    // that "process listening on the registry's port but it's a
+    // different service" gets caught. Cheap: one /config/providers
+    // call per /api/instance/self poll (every 10s via the connection
+    // monitor) is negligible.
+    const fresh = getActiveServer() ?? active;
+    if (!fresh.ephemeral) {
+      const ok = await probeOpencode(live.host, live.port, live.auth);
+      if (!ok) {
+        return {
+          instance: null,
+          error: "active-server-unreachable",
+          reason:
+            "Active opencode did not respond (server stopped, credentials rejected, or port in use by something else).",
+          lastKnown: {
+            id: fresh.id,
+            label: fresh.label,
+            host: fresh.host,
+            port: fresh.port,
+            ephemeral: fresh.ephemeral,
+          },
+        };
+      }
+    }
+    return {
+      instance: {
+        id: fresh.id,
+        name: fresh.label,
+        directory: undefined,
+        // The browser uses `port` as a routing handle into our
+        // /api/opencode/[port]/... proxy layer. For ephemeral configured
+        // servers that handle is the *stored* port from the registry —
+        // which the resolver just updated to the live one above. The
+        // backend resolver also translates it to the live (possibly
+        // re-discovered) endpoint at request time as a second line of
+        // defense.
+        port: fresh.port,
+        hostname: fresh.host,
+        ephemeral: fresh.ephemeral,
+      },
+    };
+  }
+
   const myPort = parseInt(process.env.PORT || "", 10);
   if (!myPort || Number.isNaN(myPort)) {
     return { instance: null, error: "PORT env not set" };
   }
-
-  if (!existsSync(CONFIG_PATH)) {
-    return { instance: null, error: "no config file" };
+  if (!existsSync(LEGACY_CONFIG_PATH)) {
+    return { instance: null, error: "no active server, no legacy config" };
   }
-
   try {
-    const config = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+    const config = JSON.parse(readFileSync(LEGACY_CONFIG_PATH, "utf-8"));
     const me = (config.instances || []).find(
       (i: { port: number | null }) => i.port === myPort,
     );
@@ -30,6 +126,7 @@ export default defineHandler(() => {
         directory: me.directory,
         port: me.opencodePort,
         hostname: me.hostname,
+        ephemeral: false,
       },
     };
   } catch (e) {

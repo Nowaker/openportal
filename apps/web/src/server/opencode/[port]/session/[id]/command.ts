@@ -54,7 +54,7 @@ export default defineHandler(async (event) => {
     console.error("[prompt-archive] async failure:", err);
   });
 
-  const client = getOpencodeClientV2(port);
+  const client = await getOpencodeClientV2(port);
   try {
     const result = await client.session.command({
       sessionID,

@@ -14,7 +14,7 @@ interface McpToggleBody {
 
 export default defineHandler(async (event) => {
   const port = parsePort(event);
-  const client = getOpencodeClientV2(port);
+  const client = await getOpencodeClientV2(port);
   const method = getMethod(event);
   if (method === "GET") {
     const result = await client.mcp.status();

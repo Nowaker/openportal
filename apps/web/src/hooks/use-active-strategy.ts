@@ -4,10 +4,8 @@ import {
   type UpdateStrategy,
 } from "@/stores/update-strategy-store";
 
-const MOBILE_QUERY = "(max-width: 767px)";
-
 export function useActiveStrategy(): UpdateStrategy {
-  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const { isMobile } = useMediaQuery();
   const desktop = useUpdateStrategyStore((s) => s.desktop);
   const mobile = useUpdateStrategyStore((s) => s.mobile);
   return isMobile ? mobile : desktop;

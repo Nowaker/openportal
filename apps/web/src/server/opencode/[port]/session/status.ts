@@ -1,5 +1,5 @@
 import { defineHandler } from "nitro/h3";
-import { getOpencodeBaseUrl } from "../../../lib/opencode-client";
+import { fetchOpencode } from "../../../lib/opencode-client";
 import { parsePort } from "../../../lib/validation";
 
 // opencode exposes GET /session/status -> a map keyed by sessionID with
@@ -11,8 +11,7 @@ import { parsePort } from "../../../lib/validation";
 // 'AI is generating' and 'AI never received the dispatch'.
 export default defineHandler(async (event) => {
   const port = parsePort(event);
-  const url = `${getOpencodeBaseUrl(port)}/session/status`;
-  const response = await fetch(url);
+  const response = await fetchOpencode(port, "/session/status");
   if (!response.ok) {
     return {};
   }

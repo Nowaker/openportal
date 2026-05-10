@@ -13,7 +13,7 @@ export default defineHandler(async (event) => {
   const requestId = parseRouteParam(event, "requestId");
   const body = await parseBody(event, permissionReplySchema);
 
-  const client = getOpencodeClientV2(port);
+  const client = await getOpencodeClientV2(port);
   const result = await client.permission.reply({
     requestID: requestId,
     reply: body.reply,

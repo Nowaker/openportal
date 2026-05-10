@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join, resolve } from "path";
+import { configFilePath } from "./portal-paths";
 
-const NEW_CONFIG_PATH = join(homedir(), ".openportal.json");
 const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 
 // JSONC stripper. String-aware so `//` inside `"http://..."` is preserved.
@@ -150,16 +150,17 @@ let warnedAboutDrops = false;
 export function readPortalConfig(): OpenPortalConfig {
   if (cached) return cached;
 
+  const path = configFilePath();
   let rawEntries: Array<string | RawConfigEntryObject> = [];
-  if (existsSync(NEW_CONFIG_PATH)) {
+  if (existsSync(path)) {
     try {
       const raw = JSON.parse(
-        stripJsoncComments(readFileSync(NEW_CONFIG_PATH, "utf-8")),
+        stripJsoncComments(readFileSync(path, "utf-8")),
       ) as RawConfig;
       rawEntries = raw.directories ?? [];
     } catch (e) {
       console.warn(
-        `[openportal-config] Failed to parse ${NEW_CONFIG_PATH}:`,
+        `[openportal-config] Failed to parse ${path}:`,
         e instanceof Error ? e.message : e,
       );
     }
@@ -170,12 +171,12 @@ export function readPortalConfig(): OpenPortalConfig {
       const seeded = legacy;
       try {
         writeFileSync(
-          NEW_CONFIG_PATH,
+          path,
           JSON.stringify({ directories: seeded }, null, 2) + "\n",
           "utf-8",
         );
         console.log(
-          `[openportal-config] Seeded ${NEW_CONFIG_PATH} from legacy ${LEGACY_CONFIG_PATH}`,
+          `[openportal-config] Seeded ${path} from legacy ${LEGACY_CONFIG_PATH}`,
         );
       } catch (e) {
         console.warn(

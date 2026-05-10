@@ -56,7 +56,7 @@ export default defineHandler(async (event) => {
 });
 
 async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
-  const client = getOpencodeClient(port);
+  const client = await getOpencodeClient(port);
   const messages = await client.session.messages({
     path: { id },
   });

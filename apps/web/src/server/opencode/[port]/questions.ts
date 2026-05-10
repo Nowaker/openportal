@@ -17,8 +17,8 @@ import { parsePort } from "../../lib/validation";
 // created before B.
 export default defineHandler(async (event) => {
   const port = parsePort(event);
-  const v2 = getOpencodeClientV2(port);
-  const v1 = getOpencodeClient(port);
+  const v2 = await getOpencodeClientV2(port);
+  const v1 = await getOpencodeClient(port);
   const result = await v2.question.list();
   const questions = (result.data ?? []) as Array<{
     id: string;

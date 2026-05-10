@@ -4,7 +4,7 @@ import { parsePort } from "../../lib/validation";
 
 export default defineHandler(async (event) => {
   const port = parsePort(event);
-  const client = getOpencodeClientV2(port);
+  const client = await getOpencodeClientV2(port);
   const query = getQuery(event);
   const directory =
     typeof query.directory === "string" ? query.directory : undefined;

@@ -5,7 +5,15 @@ const PROBE_INTERVAL_MS = 10_000;
 const PROBE_TIMEOUT_MS = 5_000;
 const PROBE_URL = "/api/instance/self";
 
-export type ConnectionStatus = "connected" | "disconnected";
+// Three states:
+//   - connected       Portal reachable AND its bound opencode is up.
+//   - upstream-down   Portal reachable but the bound opencode isn't.
+//                     (Portal itself answers /api/instance/self with
+//                     `{ instance: null, error: 'active-server-
+//                     unreachable' }`.)
+//   - disconnected    Portal itself is unreachable (likely got
+//                     restarted to ship code, transient network blip).
+export type ConnectionStatus = "connected" | "upstream-down" | "disconnected";
 
 // Periodically pings a cheap server endpoint to detect openportal-side
 // outages (most common: openportal got restarted to ship code, all open
@@ -21,33 +29,51 @@ export function useConnectionMonitor(): ConnectionStatus {
 
   useEffect(() => {
     let cancelled = false;
-    let prevOk = true;
+    let prev: ConnectionStatus = "connected";
 
     const probe = async () => {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
-      let ok = false;
+      let next: ConnectionStatus = "disconnected";
       try {
         const res = await fetch(PROBE_URL, {
           signal: ctrl.signal,
           cache: "no-store",
         });
-        ok = res.ok;
+        if (res.ok) {
+          try {
+            const body = (await res.json()) as {
+              instance?: unknown;
+              error?: string;
+            };
+            if (body?.instance) {
+              next = "connected";
+            } else if (body?.error === "active-server-unreachable") {
+              next = "upstream-down";
+            } else {
+              // /api/instance/self returned a benign null (no active
+              // server selected). The frontend bounce-to-/servers
+              // handles this; treat the portal itself as connected.
+              next = "connected";
+            }
+          } catch {
+            next = "connected";
+          }
+        }
       } catch {
-        ok = false;
+        next = "disconnected";
       } finally {
         clearTimeout(timer);
       }
       if (cancelled) return;
-      if (ok) {
-        if (!prevOk) {
-          prevOk = true;
-          setStatus("connected");
+      if (next !== prev) {
+        // On any transition INTO connected from a degraded state,
+        // globally invalidate SWR caches so every poller refetches.
+        if (next === "connected" && prev !== "connected") {
           void mutate(() => true);
         }
-      } else if (prevOk) {
-        prevOk = false;
-        setStatus("disconnected");
+        prev = next;
+        setStatus(next);
       }
     };
 
