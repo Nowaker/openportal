@@ -1,6 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod/v4";
-import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  memo,
+} from "react";
 import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -24,7 +32,11 @@ import {
 } from "@/components/slash-command-popover";
 import { TodoStrip, TodoFloat } from "@/components/todo-strip";
 import { extractLatestTodos } from "@/lib/todos";
-import { formatMessageTime } from "@/lib/format-time";
+import {
+  formatMessageTime,
+  formatAbsoluteAndRelative,
+} from "@/lib/format-time";
+import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import IconBadgeSparkle from "@/components/icons/badge-sparkle-icon";
 import IconUser from "@/components/icons/user-icon";
 import IconMagnifier from "@/components/icons/magnifier-icon";
@@ -41,6 +53,7 @@ import {
   MicrophoneIcon,
   UserIcon,
   XMarkIcon,
+  ArrowsPointingOutIcon,
 } from "@heroicons/react/24/outline";
 import {
   Modal,
@@ -840,18 +853,75 @@ function PermissionRequestForm({
   );
 }
 
+function ToolInputModal({
+  toolName,
+  input,
+  onClose,
+}: {
+  toolName: string;
+  input: Record<string, unknown>;
+  onClose: () => void;
+}) {
+  const pretty = useMemo(() => {
+    try {
+      return JSON.stringify(input, null, 2);
+    } catch {
+      return String(input);
+    }
+  }, [input]);
+  return (
+    <ModalOverlay
+      isOpen
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      isDismissable
+      className={MODAL_OVERLAY_CLASSES}
+    >
+      <Modal className="w-full max-w-xl sm:w-[50vw] sm:min-w-[36rem] sm:max-w-[80rem] max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
+        <PrimitiveDialog className="flex flex-col flex-1 min-h-0 outline-none">
+          {({ close }) => (
+            <>
+              <header className="shrink-0 flex items-center gap-2 border-b border-border px-4 py-3">
+                <h2 className="flex-1 min-w-0 truncate text-sm font-semibold font-mono">
+                  {toolName}
+                </h2>
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label="Close"
+                  className="shrink-0 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+                >
+                  <XMarkIcon className="size-4" />
+                </button>
+              </header>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 rounded p-3">
+                  {pretty}
+                </pre>
+              </div>
+            </>
+          )}
+        </PrimitiveDialog>
+      </Modal>
+    </ModalOverlay>
+  );
+}
+
 const ToolCallItem = memo(function ToolCallItem({
   part,
   port,
   sessionId,
   isAssistantBusy,
   onAbort,
+  messageTime,
 }: {
   part: ToolPart;
   port: number;
   sessionId: string;
   isAssistantBusy: boolean;
   onAbort: () => void;
+  messageTime?: number;
 }) {
   const { icon, label, details } = formatToolCall(part);
   const isQuestionTool = (part.tool || "").toLowerCase() === "question";
@@ -861,12 +931,24 @@ const ToolCallItem = memo(function ToolCallItem({
   const isError = part.state.status === "error";
   const isPending =
     part.state.status === "pending" || part.state.status === "running";
+  const isEditTool = (part.tool || "").toLowerCase() === "edit";
   const dateFormat = useDateFormatStore((s) => s.format);
-  const toolStart = (part as { time?: { start?: number } }).time?.start;
+  // Timestamp resilience: opencode sometimes puts time on `part.time`,
+  // sometimes leaves it undefined for tool parts (the wrapping message
+  // owns the canonical timestamp anyway). Walk the candidate paths and
+  // fall back to the parent message's created time so EVERY row shows a
+  // timestamp - matches the user's spec ("desktop - all messages,
+  // including tool calls etc").
+  const toolStart =
+    (part as { time?: { start?: number; end?: number } }).time?.start ??
+    (part as { time?: { start?: number; end?: number } }).time?.end ??
+    messageTime;
   const toolTimestamp = toolStart ? formatMessageTime(toolStart, dateFormat) : "";
-  const toolTitleAt = toolStart
-    ? new Date(toolStart).toLocaleString()
-    : undefined;
+  const toolTitleAt = formatAbsoluteAndRelative(toolStart);
+  const [showInputModal, setShowInputModal] = useState(false);
+  const toolInput = (part.state?.input ?? null) as Record<string, unknown> | null;
+  const canExpand =
+    !isEditTool && !hasQuestions && toolInput !== null && Object.keys(toolInput).length > 0;
 
   if (hasQuestions) {
     return (
@@ -884,6 +966,14 @@ const ToolCallItem = memo(function ToolCallItem({
           <span className="truncate">{label}</span>
           {details && <span className="opacity-60 shrink-0">{details}</span>}
           {isPending && <span className="animate-pulse shrink-0">...</span>}
+          {toolTimestamp && (
+            <span
+              className="hidden sm:inline ml-auto pl-2 shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums"
+              title={toolTitleAt}
+            >
+              {toolTimestamp}
+            </span>
+          )}
         </div>
 
         {port ? (
@@ -924,13 +1014,33 @@ const ToolCallItem = memo(function ToolCallItem({
       <span className="truncate">{label}</span>
       {details && <span className="opacity-60 shrink-0">{details}</span>}
       {isPending && <span className="animate-pulse shrink-0">...</span>}
+      {canExpand && (
+        <button
+          type="button"
+          onClick={() => setShowInputModal(true)}
+          aria-label="Show full tool input"
+          title="Show full tool input"
+          className="ml-auto shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
+        >
+          <ArrowsPointingOutIcon className="size-3" />
+        </button>
+      )}
       {toolTimestamp && (
         <span
-          className="hidden sm:inline ml-auto pl-2 shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums"
+          className={`hidden sm:inline shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums ${
+            canExpand ? "pl-1.5" : "ml-auto pl-2"
+          }`}
           title={toolTitleAt}
         >
           {toolTimestamp}
         </span>
+      )}
+      {canExpand && showInputModal && toolInput && (
+        <ToolInputModal
+          toolName={part.tool || "tool"}
+          input={toolInput}
+          onClose={() => setShowInputModal(false)}
+        />
       )}
     </div>
   );
@@ -1396,9 +1506,7 @@ const MessageItem = memo(function MessageItem({
   const messageTimestamp = message.info.time?.created
     ? formatMessageTime(message.info.time.created, dateFormat)
     : "";
-  const messageTitleAt = message.info.time?.created
-    ? new Date(message.info.time.created).toLocaleString()
-    : undefined;
+  const messageTitleAt = formatAbsoluteAndRelative(message.info.time?.created);
 
   const hasHeaderRow = textContent || fileParts.length > 0;
   // Visual decoration when a revert is staged: gray tone + strike-through.
@@ -1486,6 +1594,7 @@ const MessageItem = memo(function MessageItem({
               sessionId={sessionId}
               isAssistantBusy={isAssistantBusy}
               onAbort={onAbort}
+              messageTime={message.info.time?.created}
             />
           ))}
         </div>
@@ -1755,6 +1864,15 @@ function SessionPage() {
 
   const [loadAllMessages, setLoadAllMessages] = useState(false);
   const [messageLimit, setMessageLimit] = useState<number>(INITIAL_MESSAGE_LIMIT);
+  // Captured BEFORE the "Load N more" click bumps messageLimit. Used by a
+  // useLayoutEffect to restore relative scroll position after the new
+  // (older) messages prepend at the top - otherwise the user gets jumped
+  // back to where their scroll line USED to be relative to the document
+  // top, which after a prepend is a very different visible position.
+  const loadMoreScrollAnchorRef = useRef<{
+    scrollTop: number;
+    scrollHeight: number;
+  } | null>(null);
   const [onlyUserMessages, setOnlyUserMessages] = useState(false);
   const {
     messages,
@@ -1791,6 +1909,26 @@ function SessionPage() {
     if (!sessionId) return;
     void markViewed(sessionId, Date.now());
   }, [sessionId, loading, messages.length, markViewed]);
+
+  // Scroll-anchor restore after a "Load N more" prepends older messages.
+  // Without this the scroll position drifts because the document height
+  // grew above the user's previous viewport. We capture (scrollTop,
+  // scrollHeight) at click time and add the height delta to scrollTop,
+  // keeping the EXACT visible content stable. Runs at layout phase so
+  // the restore happens before the browser paints the new frame -
+  // useEffect would let the user see a flash at the new (wrong)
+  // position first.
+  useLayoutEffect(() => {
+    const anchor = loadMoreScrollAnchorRef.current;
+    if (!anchor) return;
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const delta = container.scrollHeight - anchor.scrollHeight;
+    if (delta > 0) {
+      container.scrollTop = anchor.scrollTop + delta;
+      loadMoreScrollAnchorRef.current = null;
+    }
+  }, [messages.length]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -2912,7 +3050,16 @@ function SessionPage() {
                 <div className="px-3 py-3 flex items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setMessageLimit((n) => n + INITIAL_MESSAGE_LIMIT)}
+                    onClick={() => {
+                      const container = chatContainerRef.current;
+                      if (container) {
+                        loadMoreScrollAnchorRef.current = {
+                          scrollTop: container.scrollTop,
+                          scrollHeight: container.scrollHeight,
+                        };
+                      }
+                      setMessageLimit((n) => n + INITIAL_MESSAGE_LIMIT);
+                    }}
                     className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
                   >
                     Load {INITIAL_MESSAGE_LIMIT} more
