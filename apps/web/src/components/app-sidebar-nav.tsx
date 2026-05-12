@@ -552,11 +552,7 @@ export function AppSidebarNav() {
                       <MenuItem
                         key={name}
                         textValue={name}
-                        // @ts-expect-error react-aria's MenuItem supports
-                        // closeOnSelect at runtime via useMenuItem even though
-                        // the public types omit it. Required so toggling MCPs
-                        // doesn't dismiss the hamburger menu.
-                        closeOnSelect={false}
+                        onAction={() => setMcpInfoName(name)}
                       >
                         <div
                           className="flex w-full items-center gap-2 min-w-0"
@@ -597,12 +593,7 @@ export function AppSidebarNav() {
                             type="button"
                             aria-label={`MCP info: ${name}`}
                             title="Show details"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMcpInfoName(name);
-                            }}
-                            className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg"
+                            className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg pointer-events-none"
                           >
                             <QuestionMarkCircleIcon className="size-4" />
                           </button>
@@ -679,12 +670,7 @@ export function AppSidebarNav() {
                           type="button"
                           aria-label={`Plugin info: ${p.label}`}
                           title="Show plugin details"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPluginInfoSpec(p.spec);
-                          }}
-                          className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg"
+                          className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg pointer-events-none"
                         >
                           <QuestionMarkCircleIcon className="size-4" />
                         </button>

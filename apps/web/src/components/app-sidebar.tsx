@@ -1541,6 +1541,15 @@ export default function AppSidebar(
             <MenuItem
               onAction={() => {
                 setIsOpenOnMobile(false);
+                navigate({ to: "/prompts" });
+              }}
+            >
+              <ArchiveBoxIcon />
+              Prompt history
+            </MenuItem>
+            <MenuItem
+              onAction={() => {
+                setIsOpenOnMobile(false);
                 navigate({ to: "/settings" });
               }}
             >
