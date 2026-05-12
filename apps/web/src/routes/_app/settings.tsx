@@ -23,7 +23,10 @@ import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
-import { useStreamingStore } from "@/stores/streaming-store";
+import {
+  useUpdateStrategyStore,
+  type UpdateStrategy,
+} from "@/stores/update-strategy-store";
 import {
   useSttModeStore,
   type SttMode,
@@ -378,18 +381,34 @@ const enterKeyOptions: {
   },
 ];
 
-const liveUpdatesOptions: { id: "stream" | "poll"; title: string; description: string }[] = [
+const updateStrategyOptions: {
+  id: UpdateStrategy;
+  title: string;
+  description: string;
+}[] = [
   {
-    id: "poll",
-    title: "Poll (default)",
+    id: "polling",
+    title: "Polling",
     description:
-      "Periodic refresh every few seconds. Lighter on long-running sessions on mobile; UI catches up at the next tick.",
+      "Timer refresh every 3 seconds. No live event bus. Lightest possible network and battery footprint; UI catches up at the next tick.",
   },
   {
-    id: "stream",
-    title: "Stream",
+    id: "snapshot",
+    title: "Streaming - snapshot",
     description:
-      "Live updates over a persistent SSE connection. UI reflects opencode events the instant they happen. Slightly heavier on mobile battery and bandwidth on a fully-busy session.",
+      "Persistent SSE event bus, but message rerenders only when opencode emits a full snapshot (message create + finalize). Activity indicators (status, questions, permissions) still update instantly.",
+  },
+  {
+    id: "chunked",
+    title: "Streaming - chunked (mobile default)",
+    description:
+      "Same as snapshot, plus per-token chunks throttled to 250ms windows per session. Smooth growing text without redrawing the prose hundreds of times per second.",
+  },
+  {
+    id: "asap",
+    title: "Streaming - ASAP (desktop default)",
+    description:
+      "Every event invalidates the cache immediately. Lowest possible latency between opencode emitting a token and the UI showing it. Resource intensive; not recommended on mobile.",
   },
 ];
 
@@ -617,46 +636,72 @@ function VoiceInputSetting() {
 }
 
 function LiveUpdatesSetting() {
-  const enabled = useStreamingStore((s) => s.enabled);
-  const setEnabled = useStreamingStore((s) => s.setEnabled);
-  const value: "stream" | "poll" = enabled ? "stream" : "poll";
+  const desktop = useUpdateStrategyStore((s) => s.desktop);
+  const mobile = useUpdateStrategyStore((s) => s.mobile);
+  const setDesktop = useUpdateStrategyStore((s) => s.setDesktop);
+  const setMobile = useUpdateStrategyStore((s) => s.setMobile);
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Live updates</h2>
         <p className="text-sm text-muted-fg">
-          How Portal stays in sync with opencode while a session runs. This
-          preference is per-tab/per-device (localStorage), not synced.
+          How openportal stays in sync with opencode while a session runs. Each
+          platform has its own strategy because mobile devices benefit from
+          throttling whereas desktops generally don't. Preferences are per-
+          device (localStorage), not synced across machines.
         </p>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Update mode</p>
-        <Select
-          aria-label="Live updates mode"
-          selectedKey={value}
-          onSelectionChange={(key) => {
-            if (!key) return;
-            setEnabled(String(key) === "stream");
-          }}
-        >
-          <SelectTrigger className="max-w-sm" />
-          <SelectContent>
-            {liveUpdatesOptions.map((opt) => (
-              <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
-                <SelectLabel>{opt.title}</SelectLabel>
-                <div
-                  slot="description"
-                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
-                >
-                  {opt.description}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <UpdateStrategyPicker
+        label="On desktop"
+        value={desktop}
+        onChange={setDesktop}
+      />
+      <UpdateStrategyPicker
+        label="On mobile"
+        value={mobile}
+        onChange={setMobile}
+      />
+    </div>
+  );
+}
+
+function UpdateStrategyPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: UpdateStrategy;
+  onChange: (s: UpdateStrategy) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{label}</p>
+      <Select
+        aria-label={`Update strategy ${label}`}
+        selectedKey={value}
+        onSelectionChange={(key) => {
+          if (!key) return;
+          onChange(String(key) as UpdateStrategy);
+        }}
+      >
+        <SelectTrigger className="max-w-sm" />
+        <SelectContent>
+          {updateStrategyOptions.map((opt) => (
+            <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+              <SelectLabel>{opt.title}</SelectLabel>
+              <div
+                slot="description"
+                className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+              >
+                {opt.description}
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

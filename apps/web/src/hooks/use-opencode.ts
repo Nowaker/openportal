@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
-import { useStreamingStore } from "@/stores/streaming-store";
+import { useActiveStrategy } from "@/hooks/use-active-strategy";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -15,13 +15,13 @@ function usePort() {
   return instance?.port ?? null;
 }
 
-// When streaming is on the SSE event bus is the source of truth for these
-// keys (status / questions / permissions). Returning 0 disables SWR's
-// timer-driven poll - SWR still refetches on focus + after writes via
-// mutate() called from useEventStream.
-function usePollMs(intervalMs: number): number {
-  const enabled = useStreamingStore((s) => s.enabled);
-  return enabled ? 0 : intervalMs;
+// Any non-polling strategy puts the SSE event bus in charge of these
+// SWR keys (status / questions / permissions / messages). Returning 0
+// disables SWR's timer-driven poll. SWR still refetches on focus + on
+// mutate() calls from useEventStream.
+export function usePollMs(intervalMs: number): number {
+  const strategy = useActiveStrategy();
+  return strategy === "polling" ? intervalMs : 0;
 }
 
 export function useInstances() {

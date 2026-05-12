@@ -15,6 +15,7 @@ import type {
   QuestionRequest,
 } from "@opencode-ai/sdk/v2";
 import { useInstanceStore } from "@/stores/instance-store";
+import { usePollMs } from "@/hooks/use-opencode";
 
 export type {
   FilePart,
@@ -65,13 +66,14 @@ export function useSessionMessages(
       ? getMessagesKey(port, sessionId, options.loadAll, options.limit)
       : null;
 
+  const pollMs = usePollMs(3000);
   const {
     data,
     error,
     isLoading,
     mutate: boundMutate,
   } = useSWR<MessageWithParts[]>(key, fetcher, {
-    refreshInterval: 3000,
+    refreshInterval: pollMs,
     keepPreviousData: true,
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
