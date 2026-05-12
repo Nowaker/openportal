@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InstancesRouteImport } from './routes/instances'
+import { Route as FilesRouteImport } from './routes/files'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
@@ -22,6 +23,11 @@ import { Route as AppSessionIdRouteImport } from './routes/_app/session/$id'
 const InstancesRoute = InstancesRouteImport.update({
   id: '/instances',
   path: '/instances',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FilesRoute = FilesRouteImport.update({
+  id: '/files',
+  path: '/files',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -66,6 +72,7 @@ const AppSessionIdRoute = AppSessionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
+  '/files': typeof FilesRoute
   '/instances': typeof InstancesRoute
   '/diff': typeof AppDiffRoute
   '/prompts': typeof AppPromptsRoute
@@ -76,6 +83,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/about': typeof AboutRoute
+  '/files': typeof FilesRoute
   '/instances': typeof InstancesRoute
   '/diff': typeof AppDiffRoute
   '/prompts': typeof AppPromptsRoute
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/about': typeof AboutRoute
+  '/files': typeof FilesRoute
   '/instances': typeof InstancesRoute
   '/_app/diff': typeof AppDiffRoute
   '/_app/prompts': typeof AppPromptsRoute
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/about'
+    | '/files'
     | '/instances'
     | '/diff'
     | '/prompts'
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/about'
+    | '/files'
     | '/instances'
     | '/diff'
     | '/prompts'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/about'
+    | '/files'
     | '/instances'
     | '/_app/diff'
     | '/_app/prompts'
@@ -133,6 +145,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AboutRoute: typeof AboutRoute
+  FilesRoute: typeof FilesRoute
   InstancesRoute: typeof InstancesRoute
 }
 
@@ -143,6 +156,13 @@ declare module '@tanstack/react-router' {
       path: '/instances'
       fullPath: '/instances'
       preLoaderRoute: typeof InstancesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/files': {
+      id: '/files'
+      path: '/files'
+      fullPath: '/files'
+      preLoaderRoute: typeof FilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -227,6 +247,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AboutRoute: AboutRoute,
+  FilesRoute: FilesRoute,
   InstancesRoute: InstancesRoute,
 }
 export const routeTree = rootRouteImport

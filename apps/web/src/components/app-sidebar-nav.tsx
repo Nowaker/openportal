@@ -21,6 +21,7 @@ import {
   BoltIcon,
   CheckIcon,
   EllipsisVerticalIcon,
+  FolderOpenIcon,
   InformationCircleIcon,
   PencilSquareIcon,
   QuestionMarkCircleIcon,
@@ -467,6 +468,13 @@ export function AppSidebarNav() {
               >
                 <ArchiveBoxIcon className="size-4" data-slot="icon" />
                 Prompt history
+              </MenuItem>
+              <MenuItem
+                href="/files"
+                target="_blank"
+              >
+                <FolderOpenIcon className="size-4" data-slot="icon" />
+                File browser
               </MenuItem>
             </MenuSection>
             {sessionId && <MenuSeparator />}
