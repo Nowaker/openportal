@@ -45,6 +45,7 @@ import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
 import {
+  DocumentIcon,
   PaperClipIcon,
   PhotoIcon,
   ClipboardDocumentIcon,
@@ -2256,6 +2257,7 @@ function SessionPage() {
     });
   }, [focusSearchParam]);
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
+  const anyFileAttachInputRef = useRef<HTMLInputElement>(null);
   const isStuckToBottomRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const fileMention = useFileMention();
@@ -3079,15 +3081,25 @@ function SessionPage() {
     onlyUserMessages,
   ]);
 
+  // Size cap is conservative because the prompt body is sent inline as a
+  // data URL (base64-encoded, ~33% inflation). A 10 MB file becomes a
+  // ~13.3 MB JSON request body, which is fine for opencode but stresses
+  // the assistant's token budget on multimodal models that re-encode
+  // attachments back to base64 internally. For typical attachments
+  // (config files, screenshots, short PDFs) this is plenty.
+  const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
   const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files);
     if (list.length === 0) return;
 
+    const oversized: string[] = [];
     const reads = await Promise.all(
       list.map(
         (file) =>
           new Promise<PromptAttachment | null>((resolve) => {
-            if (!file.type.startsWith("image/")) {
+            if (file.size > ATTACHMENT_MAX_BYTES) {
+              oversized.push(file.name);
               resolve(null);
               return;
             }
@@ -3099,7 +3111,10 @@ function SessionPage() {
                 return;
               }
               resolve({
-                mime: file.type,
+                // Fall back to application/octet-stream when the browser
+                // can't infer a MIME (e.g., extensionless files). Empty
+                // string would fail the prompt-body Zod schema.
+                mime: file.type || "application/octet-stream",
                 filename: file.name,
                 url: result,
               });
@@ -3109,6 +3124,12 @@ function SessionPage() {
           }),
       ),
     );
+
+    if (oversized.length > 0) {
+      toast.error(
+        `Skipped ${oversized.length} file(s) over 10 MB: ${oversized.join(", ")}`,
+      );
+    }
 
     const valid = reads.filter(
       (a): a is PromptAttachment => a !== null,
@@ -3393,8 +3414,17 @@ function SessionPage() {
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}
                 className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
-                title="Attach image"
-                aria-label="Attach image"
+                title="Attach photo"
+                aria-label="Attach photo"
+              >
+                <PhotoIcon className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => anyFileAttachInputRef.current?.click()}
+                className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                title="Attach any file"
+                aria-label="Attach any file"
               >
                 <PaperClipIcon className="size-4" />
               </button>
@@ -3478,57 +3508,81 @@ function SessionPage() {
                   e.target.value = "";
                 }}
               />
+              <input
+                ref={anyFileAttachInputRef}
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    handleAttachFiles(e.target.files);
+                  }
+                  e.target.value = "";
+                }}
+              />
               {pendingAttachments.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2">
-                  {pendingAttachments.map((a, i) => (
-                    <div
-                      key={`${a.filename ?? "image"}-${i}`}
-                      className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = a.url ?? "";
-                          if (!url.startsWith("data:")) return;
-                          try {
-                            const blob = dataUrlToBlob(url);
-                            const objUrl = URL.createObjectURL(blob);
-                            window.open(
-                              objUrl,
-                              "_blank",
-                              "noopener,noreferrer",
-                            );
-                            window.setTimeout(
-                              () => URL.revokeObjectURL(objUrl),
-                              60_000,
-                            );
-                          } catch {
-                            /* ignore - clicking the chip is a polish
-                               feature, drag/drop preview already proves
-                               the attachment is staged */
-                          }
-                        }}
-                        title="Preview attachment"
-                        aria-label="Preview attachment"
-                        className="block h-full w-full"
+                  {pendingAttachments.map((a, i) => {
+                    const isImage = (a.mime ?? "").startsWith("image/");
+                    return (
+                      <div
+                        key={`${a.filename ?? "attachment"}-${i}`}
+                        className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted"
                       >
-                        <img
-                          src={a.url}
-                          alt={a.filename ?? `Attachment ${i + 1}`}
-                          className="h-full w-full object-cover"
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(i)}
-                        className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 px-1 text-[10px] leading-tight text-fg shadow hover:bg-bg"
-                        aria-label={`Remove ${a.filename ?? "attachment"}`}
-                        title="Remove"
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = a.url ?? "";
+                            if (!url.startsWith("data:")) return;
+                            try {
+                              const blob = dataUrlToBlob(url);
+                              const objUrl = URL.createObjectURL(blob);
+                              window.open(
+                                objUrl,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                              window.setTimeout(
+                                () => URL.revokeObjectURL(objUrl),
+                                60_000,
+                              );
+                            } catch {
+                              /* ignore - clicking the chip is a polish
+                                 feature, drag/drop preview already proves
+                                 the attachment is staged */
+                            }
+                          }}
+                          title={a.filename ?? "Preview attachment"}
+                          aria-label={a.filename ?? "Preview attachment"}
+                          className="block h-full w-full"
+                        >
+                          {isImage ? (
+                            <img
+                              src={a.url}
+                              alt={a.filename ?? `Attachment ${i + 1}`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 text-muted-fg">
+                              <DocumentIcon className="size-5 shrink-0" />
+                              <span className="w-full truncate text-[9px] leading-tight">
+                                {a.filename ?? "file"}
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(i)}
+                          className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 px-1 text-[10px] leading-tight text-fg shadow hover:bg-bg"
+                          aria-label={`Remove ${a.filename ?? "attachment"}`}
+                          title="Remove"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div className="flex items-stretch gap-2 flex-1 min-h-0">
