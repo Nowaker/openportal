@@ -5,6 +5,7 @@ import {
   ArchiveBoxArrowDownIcon,
   ArrowUturnLeftIcon,
   BellAlertIcon,
+  CodeBracketIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -294,6 +295,15 @@ function ProjectGroup({
             )}
           </span>
         </button>
+        <a
+          href={`vscode://file${encodeURI(directory.replace(/\/+$/, ""))}/`}
+          onClick={(e) => e.stopPropagation()}
+          title={`Open ${directory} in VS Code`}
+          aria-label={`Open ${projectName} in VS Code`}
+          className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+        >
+          <CodeBracketIcon className="size-3.5" />
+        </a>
         <button
           type="button"
           onClick={(e) => {
