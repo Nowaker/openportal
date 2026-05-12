@@ -36,14 +36,20 @@ export function sessionHasNewContent(
 // reserveSpace=false collapses absent indicators to render nothing.
 //
 // Priority chain (top to bottom):
-//   1. hasQuestion || hasError -> red (own attention OR bubbled-up child attention)
-//   2. status busy/retry        -> amber for top-level sessions, violet-pulse
+//   1. hasError                 -> red (own attention OR bubbled-up child
+//      error). Error wins over question because errors require user
+//      intervention beyond just answering.
+//   2. hasQuestion              -> sky-blue PULSING. AI is waiting on your
+//      answer - this is high-priority but distinct from errors. Pulse
+//      because it's actively blocking the session, distinct from busy
+//      (amber pulse) and error (red, no pulse).
+//   3. status busy/retry        -> amber for top-level sessions, violet-pulse
 //      for subagents (subagent=true). Subagents share the same color as the
 //      parent's "child running" indicator so the running state is visually
 //      one continuous signal across the parent and its children.
-//   3. hasChildBusy             -> violet-pulse ("subsession in progress" - any
+//   4. hasChildBusy             -> violet-pulse ("subsession in progress" - any
 //      child session of this one is busy/retry, but this session itself is idle)
-//   4. hasNewContent            -> violet steady (review-me) for TOP-LEVEL ONLY.
+//   5. hasNewContent            -> violet steady (review-me) for TOP-LEVEL ONLY.
 //      Suppressed for subagents: their finished state = no indicator at all.
 export function SessionStatusDot({
   status,
@@ -62,16 +68,25 @@ export function SessionStatusDot({
   reserveSpace?: boolean;
   subagent?: boolean;
 }) {
-  if (hasQuestion || hasError) {
-    const label = hasQuestion
-      ? "AI is waiting on your answer"
-      : "Session has error";
+  if (hasError) {
     return (
       <span
         className="size-2 shrink-0 rounded-full bg-red-500"
-        aria-label={label}
-        title={label}
+        aria-label="Session has error"
+        title="Session has error"
       />
+    );
+  }
+  if (hasQuestion) {
+    return (
+      <span
+        className="relative flex size-2 shrink-0"
+        aria-label="AI is waiting on your answer"
+        title="AI is waiting on your answer"
+      >
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+        <span className="relative inline-flex size-2 rounded-full bg-sky-500" />
+      </span>
     );
   }
   if (status === "busy") {

@@ -1474,6 +1474,7 @@ const MessageItem = memo(function MessageItem({
   pendingPermissions,
   onPermissionResolved,
   isAssistantBusy,
+  isQuestionBlocked,
   onAbort,
   pendingDelete,
   onRevertRequest,
@@ -1485,6 +1486,7 @@ const MessageItem = memo(function MessageItem({
   pendingPermissions: PermissionRequest[];
   onPermissionResolved: (requestId: string) => void;
   isAssistantBusy: boolean;
+  isQuestionBlocked: boolean;
   onAbort: () => void;
   pendingDelete: boolean;
   onRevertRequest: (message: MessageWithParts, text: string) => void;
@@ -1499,9 +1501,23 @@ const MessageItem = memo(function MessageItem({
   );
   const messageError =
     message.info.role === "assistant" ? message.info.error : null;
-  const errorDescription = messageError
+  let errorDescription = messageError
     ? describeMessageError(messageError)
     : null;
+
+  // Finish-based failures (content-filter, length cutoff, error, other,
+  // anything other than the success-shaped "stop"/"tool-calls") are treated
+  // exactly like model errors: red banner, Acknowledge control, and the
+  // session-level red attention indicator triggered upstream via
+  // `lastErrorMessageId` / `setSessionError`. Yellow was the wrong call -
+  // content-filter is a hard halt that loses real work, not a soft warning.
+  if (!errorDescription && message.info.role === "assistant" && message.info.time?.completed) {
+    const finish = message.info.finish;
+    if (finish && finish !== "stop" && finish !== "tool-calls") {
+      errorDescription = describeFinishReason(finish);
+    }
+  }
+
   const dateFormat = useDateFormatStore((s) => s.format);
   const messageTimestamp = message.info.time?.created
     ? formatMessageTime(message.info.time.created, dateFormat)
@@ -1553,7 +1569,9 @@ const MessageItem = memo(function MessageItem({
           <div className="min-w-0 flex-1">
             {!isAssistant && message.isQueued && (
               <Badge intent="warning" className="mb-1">
-                Queued
+                {isQuestionBlocked
+                  ? "Queued - blocked on question above"
+                  : "Queued"}
               </Badge>
             )}
             {textContent && (
@@ -1642,9 +1660,60 @@ function hasVisibleContent(message: MessageWithParts): boolean {
   // An assistant turn that fails before producing any text or tool call still
   // carries info.error and must remain visible, otherwise a failed prompt
   // looks indistinguishable from the assistant being idle.
-  const hasError =
-    message.info.role === "assistant" && message.info.error != null;
-  return !!(textContent || hasToolCalls || hasFiles || hasError);
+  const isFailed =
+    message.info.role === "assistant" && isFailedAssistant(message.info);
+  return !!(textContent || hasToolCalls || hasFiles || isFailed);
+}
+
+// Single source of truth for "this assistant turn failed and deserves the
+// red banner + red attention indicator". Used by MessageItem (banner +
+// Acknowledge control), the lastErrorMessageId scan (which message gets
+// the live Acknowledge button), and the setSessionError effect (which
+// drives the sidebar red dot). All three MUST agree or you get desync
+// bugs like a red banner with no red dot.
+//
+// Caller must already have verified info.role === "assistant"; the cast
+// inside is only to read the assistant-shaped fields without re-narrowing
+// the union at every call site.
+type AssistantInfo = Extract<MessageWithParts["info"], { role: "assistant" }>;
+function isFailedAssistant(info: AssistantInfo): boolean {
+  if (info.error != null) return true;
+  if (info.time?.completed == null) return false;
+  const finish = info.finish;
+  if (finish == null) return false;
+  return finish !== "stop" && finish !== "tool-calls";
+}
+
+function describeFinishReason(finish: string): { title: string; detail?: string } {
+  switch (finish) {
+    case "content-filter":
+      return {
+        title: "Blocked by content filter",
+        detail:
+          "Provider's safety classifier rejected this response. The conversation contains content the model refuses to engage with — try editing the last user message or starting a fresh session.",
+      };
+    case "length":
+      return {
+        title: "Response cut off",
+        detail: "Model hit its max output tokens before finishing.",
+      };
+    case "error":
+      return {
+        title: "Model error",
+        detail: "Model stopped due to an error.",
+      };
+    case "other":
+      return {
+        title: "Stopped (other)",
+        detail: "Model stopped for an unspecified reason.",
+      };
+    default:
+      return {
+        title: `Stopped (${finish})`,
+        detail:
+          "Unexpected finish reason — open the model's response in raw view to inspect.",
+      };
+  }
 }
 
 function describeMessageError(
@@ -1948,7 +2017,7 @@ function SessionPage() {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (m.info.role === "assistant") {
-        hasError = m.info.error != null;
+        hasError = isFailedAssistant(m.info);
         if (hasError) errorMessageId = m.info.id;
         break;
       }
@@ -2008,6 +2077,41 @@ function SessionPage() {
       ?.completed;
     return !completed;
   }, [messages]);
+
+  // Question-blocked: the latest in-flight assistant message's last part
+  // is a question tool with state.status='running' (per opencode's
+  // ToolState lifecycle - 'pending' is the transient pre-input state and
+  // does NOT carry a question payload yet, so only 'running' is the real
+  // blocked-on-user-answer state). When true:
+  //   - The "Thinking..." indicator must be suppressed (opencode isn't
+  //     thinking, it's waiting on user input)
+  //   - A banner above the composer makes the wait explicit
+  //   - Follow-up user messages are labeled "Queued - blocked on question
+  //     above" so the user understands their typing is being parked
+  //     until they answer the question, not silently dropped
+  // The blockingQuestionMessageId enables a scroll-to-question anchor in
+  // the banner.
+  const blockingQuestionMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m) continue;
+      if (m.info.role !== "assistant") continue;
+      const completed = (m.info as { time?: { completed?: number } }).time
+        ?.completed;
+      if (completed) return null;
+      const parts = m.parts ?? [];
+      if (parts.length === 0) return null;
+      const last = parts[parts.length - 1];
+      if (!last || last.type !== "tool") return null;
+      const toolPart = last as ToolPart;
+      if ((toolPart.tool || "").toLowerCase() !== "question") return null;
+      const status = (toolPart.state as { status?: string })?.status;
+      if (status !== "running") return null;
+      return m.info.id;
+    }
+    return null;
+  }, [messages]);
+  const isQuestionBlocked = blockingQuestionMessageId !== null;
 
   // Race-window grace period for the busy/idle disagreement banner: between
   // the moment a prompt is appended (local-busy=true) and opencode flipping
@@ -2900,7 +3004,7 @@ function SessionPage() {
     let lastErrorMessageId: string | undefined;
     for (let i = visible.length - 1; i >= 0; i--) {
       const m = visible[i];
-      if (m.info.role === "assistant" && m.info.error != null) {
+      if (m.info.role === "assistant" && isFailedAssistant(m.info)) {
         lastErrorMessageId = m.info.id;
         break;
       }
@@ -2952,6 +3056,7 @@ function SessionPage() {
           pendingPermissions={pendingPermissions}
           onPermissionResolved={handlePermissionResolved}
           isAssistantBusy={isAssistantBusy}
+          isQuestionBlocked={isQuestionBlocked}
           onAbort={handleAbort}
           pendingDelete={pendingDelete}
           onRevertRequest={handleRevertRequest}
@@ -2966,6 +3071,7 @@ function SessionPage() {
     pendingPermissions,
     handlePermissionResolved,
     isAssistantBusy,
+    isQuestionBlocked,
     isServerBusy,
     handleAbort,
     revertTarget,
@@ -3097,12 +3203,43 @@ function SessionPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {isAssistantBusy && isServerBusy && (
+        {isAssistantBusy && isServerBusy && !isQuestionBlocked && (
           <div className="py-3 px-3">
             <div className="flex items-center gap-2">
               <Ripples size="30" speed="2" color="var(--color-primary)" />
               <span className="text-sm text-muted-fg">Thinking...</span>
               <ThinkingStaleness messages={messages} />
+            </div>
+          </div>
+        )}
+        {isQuestionBlocked && (
+          <div className="border-t border-sky-500/30 bg-sky-500/10 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="relative flex size-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-sky-500" />
+              </span>
+              <span className="text-fg">
+                OpenCode is waiting for your answer to the question above.
+              </span>
+              {blockingQuestionMessageId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.querySelector(
+                      `[data-message-id="${CSS.escape(blockingQuestionMessageId)}"]`,
+                    );
+                    if (el)
+                      el.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                  }}
+                  className="text-xs underline underline-offset-2 text-fg hover:text-sky-500"
+                >
+                  Scroll to question ↑
+                </button>
+              )}
             </div>
           </div>
         )}
