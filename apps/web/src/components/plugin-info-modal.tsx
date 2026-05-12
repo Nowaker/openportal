@@ -33,7 +33,7 @@ export function PluginInfoModal({ isOpen, spec, onOpenChange }: Props) {
       isDismissable
       className={MODAL_OVERLAY_CLASSES}
     >
-      <Modal className="w-full max-w-xl sm:w-[50vw] sm:min-w-[36rem] sm:max-w-[80rem] max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
+      <Modal className="w-full max-w-xl sm:w-[50vw] sm:min-w-[36rem] sm:max-w-[80rem] max-h-[97dvh] sm:max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
         <PrimitiveDialog className="flex flex-col flex-1 min-h-0 outline-none">
           {({ close }) =>
             spec ? <Body spec={spec} onClose={close} /> : null
@@ -323,12 +323,9 @@ function PillRow({
 
 function Skeleton() {
   return (
-    <div className="space-y-3 animate-pulse">
-      <div className="h-4 rounded bg-muted/40 w-2/3" />
-      <div className="h-3 rounded bg-muted/40 w-full" />
-      <div className="h-3 rounded bg-muted/40 w-5/6" />
-      <div className="h-3 rounded bg-muted/40 w-1/2 mt-4" />
-      <div className="h-3 rounded bg-muted/40 w-2/3" />
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-fg">
+      <ArrowPathIcon className="size-5 animate-spin" aria-hidden />
+      <p className="text-xs">Reading plugin metadata from disk…</p>
     </div>
   );
 }

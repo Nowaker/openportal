@@ -662,9 +662,6 @@ export function AppSidebarNav() {
                       key={p.spec}
                       textValue={p.label}
                       onAction={() => setPluginInfoSpec(p.spec)}
-                      // @ts-expect-error closeOnSelect honored at runtime by
-                      // useMenuItem; not in public types.
-                      closeOnSelect={false}
                     >
                       <div
                         className="flex w-full items-center gap-2 min-w-0"
