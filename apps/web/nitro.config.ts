@@ -5,6 +5,16 @@ export default defineConfig({
   preset: "bun",
   apiDir: "./src/server",
   plugins: ["./src/server/plugins/build-id-header.ts"],
+  errorHandler: "./src/server/error.ts",
+  routeRules: {
+    // SPA fallback HTML must never be cached: every navigation to
+    // the app needs the freshest index.html so the browser uses
+    // the current build's hashed asset references. Hashed
+    // /assets/* files are immutable (handled by another route
+    // rule baked into the Nitro static handler) and stay
+    // cacheable for the full year.
+    "/": { headers: { "cache-control": "no-store, must-revalidate" } },
+  },
   // Co-located *.test.ts files live next to their modules under
   // src/server/. Without this exclusion Nitro registers them as
   // routes (they don't export defineHandler, so they're silent
