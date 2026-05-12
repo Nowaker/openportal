@@ -10,6 +10,7 @@ import {
   parseBody,
 } from "../../../../lib/validation";
 import { invalidateMessagesCache } from "../../../../lib/messages-cache";
+import { archivePrompt } from "../../../../lib/prompt-archive";
 
 const attachmentSchema = z.object({
   mime: z.string().min(1),
@@ -242,6 +243,24 @@ export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
   const body = await parseBody(event, promptBodySchema);
+
+  // Sidecar archive runs concurrently with the cleanup + submission below.
+  // Fire-and-forget: a failed archive write must never block the user's
+  // prompt from reaching opencode; missing rows are recoverable, blocked
+  // submissions are not.
+  void archivePrompt({
+    port,
+    sessionId: id,
+    rawText: body.text,
+    modelProvider: body.model?.providerID,
+    modelId: body.model?.modelID,
+    agent: body.agent,
+    variant: body.variant,
+    source: "prompt",
+    attachmentsCount: body.attachments?.length ?? 0,
+  }).catch((err) => {
+    console.error("[prompt-archive] async failure:", err);
+  });
 
   const fileParts: AttachmentPart[] = (body.attachments ?? []).map((a) => ({
     type: "file",

@@ -7,6 +7,7 @@ import {
   parseBody,
 } from "../../../../lib/validation";
 import { invalidateMessagesCache } from "../../../../lib/messages-cache";
+import { archivePrompt } from "../../../../lib/prompt-archive";
 
 const commandBodySchema = z.object({
   command: z.string().min(1),
@@ -31,6 +32,27 @@ export default defineHandler(async (event) => {
   const port = parsePort(event);
   const sessionID = parseRouteParam(event, "id");
   const body = await parseBody(event, commandBodySchema);
+
+  // Reconstruct what the user typed for the archive. Slash commands
+  // arrive as {command, arguments}; the original keystroke was
+  // `/<command> <arguments>`. Fire-and-forget; archive failure must
+  // not block dispatch.
+  const reconstructedText = body.arguments
+    ? `/${body.command} ${body.arguments}`
+    : `/${body.command}`;
+  void archivePrompt({
+    port,
+    sessionId: sessionID,
+    rawText: reconstructedText,
+    modelProvider: undefined,
+    modelId: body.model,
+    agent: body.agent,
+    variant: body.variant,
+    source: "command",
+    attachmentsCount: 0,
+  }).catch((err) => {
+    console.error("[prompt-archive] async failure:", err);
+  });
 
   const client = getOpencodeClientV2(port);
   try {

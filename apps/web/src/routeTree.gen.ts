@@ -14,6 +14,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppPromptsRouteImport } from './routes/_app/prompts'
 import { Route as AppDiffRouteImport } from './routes/_app/diff'
 import { Route as AppSessionNewRouteImport } from './routes/_app/session/new'
 import { Route as AppSessionIdRouteImport } from './routes/_app/session/$id'
@@ -42,6 +43,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPromptsRoute = AppPromptsRouteImport.update({
+  id: '/prompts',
+  path: '/prompts',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDiffRoute = AppDiffRouteImport.update({
   id: '/diff',
   path: '/diff',
@@ -62,6 +68,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/instances': typeof InstancesRoute
   '/diff': typeof AppDiffRoute
+  '/prompts': typeof AppPromptsRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/session/$id': typeof AppSessionIdRoute
@@ -71,6 +78,7 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/instances': typeof InstancesRoute
   '/diff': typeof AppDiffRoute
+  '/prompts': typeof AppPromptsRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/session/$id': typeof AppSessionIdRoute
@@ -82,6 +90,7 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/instances': typeof InstancesRoute
   '/_app/diff': typeof AppDiffRoute
+  '/_app/prompts': typeof AppPromptsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/session/$id': typeof AppSessionIdRoute
@@ -93,6 +102,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/instances'
     | '/diff'
+    | '/prompts'
     | '/settings'
     | '/'
     | '/session/$id'
@@ -102,6 +112,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/instances'
     | '/diff'
+    | '/prompts'
     | '/settings'
     | '/'
     | '/session/$id'
@@ -112,6 +123,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/instances'
     | '/_app/diff'
+    | '/_app/prompts'
     | '/_app/settings'
     | '/_app/'
     | '/_app/session/$id'
@@ -161,6 +173,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/prompts': {
+      id: '/_app/prompts'
+      path: '/prompts'
+      fullPath: '/prompts'
+      preLoaderRoute: typeof AppPromptsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/diff': {
       id: '/_app/diff'
       path: '/diff'
@@ -187,6 +206,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppDiffRoute: typeof AppDiffRoute
+  AppPromptsRoute: typeof AppPromptsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppSessionIdRoute: typeof AppSessionIdRoute
@@ -195,6 +215,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppDiffRoute: AppDiffRoute,
+  AppPromptsRoute: AppPromptsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppSessionIdRoute: AppSessionIdRoute,
