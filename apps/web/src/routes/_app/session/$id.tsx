@@ -2892,29 +2892,40 @@ function SessionPage() {
         const targetIdx = messages.findIndex(
           (m) => m.info.id === revertTarget.messageId,
         );
-        if (targetIdx >= 0) {
-          const startIdx =
-            revertTarget.mode === "user" ? targetIdx : targetIdx + 1;
-          const idsToDelete: string[] = [];
-          for (let i = startIdx; i < messages.length; i++) {
-            const id = messages[i]?.info.id;
-            if (id && !id.startsWith("temp-")) idsToDelete.push(id);
-          }
-          for (let i = idsToDelete.length - 1; i >= 0; i--) {
-            const messageID = idsToDelete[i]!;
-            const deleteResponse = await fetch(
-              `/api/opencode/${port}/session/${sessionId}/message/${encodeURIComponent(
-                messageID,
+        // Hard-fail when the staged revert target isn't in the loaded
+        // message window. The two realistic causes (Load-N-more pager
+        // hasn't pulled it in yet, or a mid-poll SWR replace dropped it)
+        // both produce the same silent-no-op without this guard: DELETE
+        // loop is skipped, revertTarget cleared, new prompt POSTed,
+        // user's "revert" disappears with no error to point at. Throwing
+        // here aborts the entire submit so the user can act on the toast.
+        if (targetIdx < 0) {
+          throw new Error(
+            `Revert target ${revertTarget.messageId} is not in the loaded message list. ` +
+              `Try clicking "Load more" to bring older messages into view, then retry the revert.`,
+          );
+        }
+        const startIdx =
+          revertTarget.mode === "user" ? targetIdx : targetIdx + 1;
+        const idsToDelete: string[] = [];
+        for (let i = startIdx; i < messages.length; i++) {
+          const id = messages[i]?.info.id;
+          if (id && !id.startsWith("temp-")) idsToDelete.push(id);
+        }
+        for (let i = idsToDelete.length - 1; i >= 0; i--) {
+          const messageID = idsToDelete[i]!;
+          const deleteResponse = await fetch(
+            `/api/opencode/${port}/session/${sessionId}/message/${encodeURIComponent(
+              messageID,
+            )}`,
+            { method: "DELETE" },
+          );
+          if (!deleteResponse.ok) {
+            throw new Error(
+              `Delete failed for ${messageID}: ${await readErrorMessage(
+                deleteResponse,
               )}`,
-              { method: "DELETE" },
             );
-            if (!deleteResponse.ok) {
-              throw new Error(
-                `Delete failed for ${messageID}: ${await readErrorMessage(
-                  deleteResponse,
-                )}`,
-              );
-            }
           }
         }
         setRevertTarget(null);
