@@ -78,6 +78,7 @@ import {
 } from "@/lib/session-indicators";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
+import { VSCodeLink } from "@/components/vscode-link";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
@@ -297,15 +298,13 @@ function ProjectGroup({
             )}
           </span>
         </button>
-        <a
-          href={`vscode://file${encodeURI(directory.replace(/\/+$/, ""))}/`}
-          onClick={(e) => e.stopPropagation()}
-          title={`Open ${directory} in VS Code`}
-          aria-label={`Open ${projectName} in VS Code`}
-          className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
-        >
-          <CodeBracketIcon className="size-3.5" />
-        </a>
+        <span onClick={(e) => e.stopPropagation()}>
+          <VSCodeLink
+            directory={directory}
+            title={`Open ${directory} in VS Code`}
+            className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+          />
+        </span>
         <button
           type="button"
           onClick={(e) => {
