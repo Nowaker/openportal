@@ -25,7 +25,7 @@ export default defineHandler(async (event) => {
   try {
     const res = await fetchOpencode(
       port,
-      "/experimental/session?archived=true",
+      "/experimental/session?archived=true&limit=10000",
     );
     if (res.ok) {
       sessions = (await res.json()) as Session[];
