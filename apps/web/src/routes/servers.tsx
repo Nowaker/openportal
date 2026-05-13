@@ -4,6 +4,8 @@ import useSWR, { useSWRConfig } from "swr";
 import {
   ArrowPathIcon,
   CheckCircleIcon,
+  ClockIcon,
+  FolderOpenIcon,
   KeyIcon,
   PlusIcon,
   ServerStackIcon,
@@ -171,6 +173,9 @@ function ServersPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [authModal, setAuthModal] = useState<AuthModalTarget | null>(null);
+  const [directoriesTarget, setDirectoriesTarget] = useState<
+    { serverId: string; label: string } | null
+  >(null);
   // Tracks an in-flight Rescan so the button can spin + disable.
   // Without this the button does nothing visible during the few hundred
   // ms it takes to re-probe everything and the user has no feedback.
@@ -450,6 +455,9 @@ function ServersPage() {
               })
             }
             onOpen={() => void navigate({ to: "/" })}
+            onConfigureDirs={() =>
+              setDirectoriesTarget({ serverId: s.id, label: s.label })
+            }
           />
         ))}
       </section>
@@ -515,6 +523,11 @@ function ServersPage() {
         }}
       />
 
+      <DirectoriesModal
+        target={directoriesTarget}
+        onClose={() => setDirectoriesTarget(null)}
+      />
+
       <ConfirmDialog
         isOpen={removeTarget !== null}
         title="Remove server?"
@@ -540,6 +553,7 @@ interface ServerCardProps {
   onProbe: () => void;
   onRemove: () => void;
   onSetCreds: () => void;
+  onConfigureDirs: () => void;
   // Navigate into the bound app for THIS server (only meaningful when
   // entry.isActive and entry.status is not offline).
   onOpen: () => void;
@@ -552,6 +566,7 @@ function ServerCard({
   onProbe,
   onRemove,
   onSetCreds,
+  onConfigureDirs,
   onOpen,
 }: ServerCardProps) {
   // Cred-lookup hint shown on the card. Same data the Discovered
@@ -672,6 +687,15 @@ function ServerCard({
             <KeyIcon className="size-4" />
           </Button>
         )}
+        <Button
+          size="sm"
+          intent="secondary"
+          onPress={onConfigureDirs}
+          isDisabled={busy}
+          aria-label="Configure workspace directories"
+        >
+          <FolderOpenIcon className="size-4" />
+        </Button>
         <Button
           size="sm"
           intent="secondary"
@@ -1814,4 +1838,336 @@ function humanState(s: CredLookupState): string {
     default:
       return "";
   }
+}
+
+interface DirEntry {
+  path: string;
+  level?: number;
+  level1?: string[];
+}
+
+interface DirectoriesResponse {
+  id: string;
+  directories: Array<DirEntry | string>;
+  history: Array<{
+    at: number;
+    directories: Array<DirEntry | string>;
+  }>;
+}
+
+function normalizeEntries(
+  entries: Array<DirEntry | string> | undefined,
+): DirEntry[] {
+  return (entries ?? []).map((e) =>
+    typeof e === "string" ? { path: e } : { ...e },
+  );
+}
+
+function entriesToJson(entries: DirEntry[]): string {
+  return JSON.stringify(
+    entries.map((e) => {
+      const compact: DirEntry = { path: e.path };
+      if (typeof e.level === "number") compact.level = e.level;
+      if (e.level1 && e.level1.length > 0) compact.level1 = e.level1;
+      return compact;
+    }),
+    null,
+    2,
+  );
+}
+
+function DirectoriesModal({
+  target,
+  onClose,
+}: {
+  target: { serverId: string; label: string } | null;
+  onClose: () => void;
+}) {
+  const isOpen = target !== null;
+  return (
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      isDismissable
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/50"
+    >
+      <Modal className="outline-none w-full max-w-2xl">
+        <PrimitiveDialog className="relative outline-none rounded-xl bg-bg shadow-2xl border border-border/50 p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+          {target && (
+            <DirectoriesModalBody target={target} onClose={onClose} />
+          )}
+        </PrimitiveDialog>
+      </Modal>
+    </ModalOverlay>
+  );
+}
+
+function DirectoriesModalBody({
+  target,
+  onClose,
+}: {
+  target: { serverId: string; label: string };
+  onClose: () => void;
+}) {
+  const url = `/api/servers/${encodeURIComponent(target.serverId)}/directories`;
+  const { data, mutate, isLoading } = useSWR<DirectoriesResponse>(url, fetcher);
+  const [entries, setEntries] = useState<DirEntry[]>([]);
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [showJson, setShowJson] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const seededRef = useRef(false);
+
+  useEffect(() => {
+    if (seededRef.current || !data) return;
+    const initial = normalizeEntries(data.directories);
+    setEntries(initial);
+    setJsonText(entriesToJson(initial));
+    seededRef.current = true;
+  }, [data]);
+
+  const updatePath = (idx: number, path: string) => {
+    setEntries((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], path };
+      return next;
+    });
+  };
+
+  const removeRow = (idx: number) => {
+    setEntries((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const addRow = () => {
+    setEntries((prev) => [...prev, { path: "" }]);
+  };
+
+  const syncFromList = () => {
+    setJsonText(entriesToJson(entries));
+    setJsonError(null);
+  };
+
+  const applyJson = () => {
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (!Array.isArray(parsed)) {
+        throw new Error("Top-level value must be a JSON array");
+      }
+      const normalized: DirEntry[] = [];
+      for (const item of parsed) {
+        if (typeof item === "string") {
+          if (item.trim()) normalized.push({ path: item.trim() });
+        } else if (item && typeof item === "object") {
+          const obj = item as Record<string, unknown>;
+          const path = typeof obj.path === "string" ? obj.path.trim() : "";
+          if (!path) continue;
+          const entry: DirEntry = { path };
+          if (typeof obj.level === "number" && Number.isInteger(obj.level)) {
+            entry.level = obj.level;
+          }
+          if (Array.isArray(obj.level1)) {
+            const items = (obj.level1 as unknown[]).filter(
+              (s): s is string => typeof s === "string" && s.length > 0,
+            );
+            if (items.length > 0) entry.level1 = items;
+          }
+          normalized.push(entry);
+        }
+      }
+      setEntries(normalized);
+      setJsonError(null);
+    } catch (e) {
+      setJsonError(e instanceof Error ? e.message : "Invalid JSON");
+    }
+  };
+
+  const loadHistorical = (snapshot: Array<DirEntry | string>) => {
+    const normalized = normalizeEntries(snapshot);
+    setEntries(normalized);
+    setJsonText(entriesToJson(normalized));
+    setJsonError(null);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          directories: entries.filter((e) => e.path.trim()),
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`HTTP ${res.status}: ${txt}`);
+      }
+      await mutate();
+      onClose();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const history = data?.history ?? [];
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Workspace directories</h2>
+          <p className="text-xs text-muted-fg">
+            For server <span className="font-mono">{target.label}</span>. Overrides the
+            top-level Portal directories when this server is active.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded p-1 text-muted-fg hover:bg-muted/40 hover:text-fg"
+        >
+          <XMarkIcon className="size-4" />
+        </button>
+      </div>
+
+      {isLoading && <p className="text-sm text-muted-fg">Loading…</p>}
+
+      {!isLoading && (
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-wide text-muted-fg">
+            Paths
+          </label>
+          {entries.length === 0 && (
+            <p className="text-xs text-muted-fg italic">
+              No directories configured. The top-level Portal fallback will apply.
+            </p>
+          )}
+          {entries.map((e, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={e.path}
+                onChange={(ev) => updatePath(idx, ev.target.value)}
+                placeholder="/absolute/path or ~/relative"
+                className="flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm font-mono outline-none focus:border-primary"
+              />
+              {(typeof e.level === "number" || (e.level1 && e.level1.length > 0)) && (
+                <span
+                  className="text-[10px] text-muted-fg"
+                  title={`level=${e.level ?? "?"}${e.level1 ? `, level1=${e.level1.join(",")}` : ""}`}
+                >
+                  adv
+                </span>
+              )}
+              <Button
+                size="sm"
+                intent="secondary"
+                onPress={() => removeRow(idx)}
+                aria-label="Remove path"
+              >
+                <XMarkIcon className="size-3.5" />
+              </Button>
+            </div>
+          ))}
+          <Button size="sm" intent="secondary" onPress={addRow}>
+            <PlusIcon className="size-3.5" />
+            Add path
+          </Button>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => setShowJson((v) => !v)}
+          className="text-xs text-muted-fg hover:text-fg underline underline-offset-2"
+        >
+          {showJson ? "Hide" : "Show"} JSON editor (advanced)
+        </button>
+        {showJson && (
+          <div className="space-y-2">
+            <textarea
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              spellCheck={false}
+              rows={8}
+              className="w-full rounded-md border border-border bg-muted/10 px-2 py-1 text-xs font-mono outline-none focus:border-primary"
+            />
+            {jsonError && (
+              <p className="text-xs text-warning">JSON error: {jsonError}</p>
+            )}
+            <div className="flex gap-2">
+              <Button size="sm" intent="secondary" onPress={syncFromList}>
+                Sync list -&gt; JSON
+              </Button>
+              <Button size="sm" intent="secondary" onPress={applyJson}>
+                Apply JSON -&gt; list
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {history.length > 0 && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex items-center gap-1 text-xs text-muted-fg hover:text-fg underline underline-offset-2"
+          >
+            <ClockIcon className="size-3.5" />
+            {showHistory ? "Hide" : "Show"} history ({history.length})
+          </button>
+          {showHistory && (
+            <ul className="space-y-1 max-h-40 overflow-y-auto rounded-md border border-border/50 bg-muted/5 p-2 text-xs">
+              {history.map((h, i) => (
+                <li key={`${h.at}-${i}`} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => loadHistorical(h.directories)}
+                    className="rounded p-0.5 text-muted-fg hover:bg-muted/40 hover:text-fg"
+                    aria-label="Restore this snapshot"
+                    title="Restore this snapshot"
+                  >
+                    <ArrowPathIcon className="size-3.5" />
+                  </button>
+                  <span className="text-muted-fg whitespace-nowrap">
+                    {new Date(h.at).toLocaleString()}
+                  </span>
+                  <span className="font-mono text-muted-fg/70 truncate">
+                    {normalizeEntries(h.directories)
+                      .map((e) => e.path)
+                      .join(", ") || "(empty)"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {saveError && (
+        <div className="rounded-md bg-danger-subtle p-2 text-xs text-danger-subtle-fg">
+          {saveError}
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        <Button intent="secondary" onPress={onClose} isDisabled={saving}>
+          Cancel
+        </Button>
+        <Button intent="primary" onPress={save} isDisabled={saving || isLoading}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </>
+  );
 }
