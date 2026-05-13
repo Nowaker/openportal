@@ -3849,7 +3849,9 @@ function SessionPage() {
               <div className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
                 <ThinkingSelect sessionId={sessionId} />
               </div>
-              <TodoStrip snapshot={todoSnapshot} />
+              <div className="sm:ml-auto shrink-0">
+                <TodoStrip snapshot={todoSnapshot} />
+              </div>
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}

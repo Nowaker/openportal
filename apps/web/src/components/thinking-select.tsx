@@ -83,10 +83,12 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
         intent="outline"
         aria-label={`Thinking effort: ${variantDisplayLabel(current)}`}
         data-slot="control"
-        className="shrink-0 min-h-0 rounded-lg border border-input gap-x-1 sm:gap-x-2 [&_svg]:!size-4"
+        className="shrink-0 min-h-0 rounded-lg border border-input gap-x-1 sm:gap-x-2 sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)] sm:text-sm/6 [&_svg]:!size-4"
       >
         {variantIcon(current, "")}
-        <span className="hidden sm:inline">{variantDisplayLabel(current)}</span>
+        <span className="hidden sm:inline text-sm/6">
+          {variantDisplayLabel(current)}
+        </span>
         <ChevronUpDownIcon className="hidden sm:inline-block -mr-1 text-muted-fg" />
       </Button>
       <MenuContent placement="bottom end" className="min-w-32">
