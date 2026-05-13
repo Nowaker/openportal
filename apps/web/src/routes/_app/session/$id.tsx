@@ -1340,6 +1340,27 @@ function RevertIcon({ className }: { className?: string }) {
   );
 }
 
+function ForkIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      fill="none"
+      className={className}
+    >
+      <circle cx="5" cy="4.5" r="1.5" stroke="currentColor" />
+      <circle cx="15" cy="4.5" r="1.5" stroke="currentColor" />
+      <circle cx="10" cy="15.5" r="1.5" stroke="currentColor" />
+      <path
+        d="M5 6V8.5C5 10.7 6.8 12.5 9 12.5H11C13.2 12.5 15 10.7 15 8.5V6"
+        stroke="currentColor"
+        fill="none"
+      />
+      <path d="M10 12.5V14" stroke="currentColor" />
+    </svg>
+  );
+}
+
 // Chrome blocks top-level navigation to data: URLs as a phishing mitigation,
 // so a plain <a href="data:..." target="_blank"> opens a blank tab. We convert
 // the data URL to a Blob + object URL on click and open THAT - object URLs
@@ -1675,6 +1696,7 @@ const MessageItem = memo(function MessageItem({
   onAbort,
   pendingDelete,
   onRevertRequest,
+  onForkRequest,
   isLastError,
 }: {
   message: MessageWithParts;
@@ -1687,6 +1709,7 @@ const MessageItem = memo(function MessageItem({
   onAbort: () => void;
   pendingDelete: boolean;
   onRevertRequest: (message: MessageWithParts, text: string) => void;
+  onForkRequest: (message: MessageWithParts) => void;
   isLastError: boolean;
 }) {
   const textContent = getMessageContent(message.parts);
@@ -1788,6 +1811,15 @@ const MessageItem = memo(function MessageItem({
             </div>
           )}
           <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70">
+            <button
+              type="button"
+              onClick={() => onForkRequest(message)}
+              className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+              aria-label="Fork to a new session from this message"
+              title="Fork to a new session from this message"
+            >
+              <ForkIcon className="size-3.5" />
+            </button>
             <button
               type="button"
               onClick={() => onRevertRequest(message, textContent)}
@@ -2963,6 +2995,38 @@ function SessionPage() {
     }
   }, [port, sessionId]);
 
+  const handleForkRequest = useCallback(
+    async (message: MessageWithParts) => {
+      if (!port || !sessionId) return;
+      try {
+        const res = await fetch(
+          `/api/opencode/${port}/session/${sessionId}/fork`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageID: message.info.id }),
+          },
+        );
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${await readErrorMessage(res)}`);
+        }
+        const newSession = (await res.json()) as { id: string };
+        if (!newSession?.id) {
+          throw new Error("Fork response missing session id");
+        }
+        toast.success("Forked to new session");
+        await navigate({
+          to: "/session/$id",
+          params: { id: newSession.id },
+        });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        toast.error(`Fork failed: ${detail}`);
+      }
+    },
+    [port, sessionId, navigate],
+  );
+
   // Recovery for the 'prompt accepted but generation never dispatched'
   // failure mode. Walk the messages backwards to the last user-role
   // message that has no assistant follow-up, take its text, and
@@ -3287,6 +3351,7 @@ function SessionPage() {
           onAbort={handleAbort}
           pendingDelete={pendingDelete}
           onRevertRequest={handleRevertRequest}
+          onForkRequest={handleForkRequest}
           isLastError={message.info.id === lastErrorMessageId}
         />
       );
@@ -3303,6 +3368,7 @@ function SessionPage() {
     handleAbort,
     revertTarget,
     handleRevertRequest,
+    handleForkRequest,
     onlyUserMessages,
   ]);
 
