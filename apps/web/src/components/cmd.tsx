@@ -26,6 +26,7 @@ import { IconThemeLight } from "@/components/icons/theme-light-icon";
 import { IconThemeSystem } from "@/components/icons/theme-system-icon";
 import { IconManageInstances } from "@/components/icons/manage-instances-icon";
 import {
+  ArrowTurnDownRightIcon,
   ChatBubbleLeftIcon,
   ServerIcon,
 } from "@heroicons/react/24/solid";
@@ -171,6 +172,11 @@ export default function Cmd() {
       >
         {isPinned ? (
           <StarSolidIcon className="size-4 text-amber-400" />
+        ) : (session as { parentID?: string }).parentID ? (
+          <ArrowTurnDownRightIcon
+            className="size-4 text-violet-500"
+            aria-label="Subsession (spawned by a parent session)"
+          />
         ) : (
           <ChatBubbleLeftIcon className="size-4" />
         )}
