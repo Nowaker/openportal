@@ -3622,7 +3622,7 @@ function SessionPage() {
               <div className="shrink-0 w-fit [&>*]:!w-auto">
                 <AgentSelect sessionId={sessionId} />
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="shrink min-w-0 w-fit [&>*]:!w-auto">
                 <ModelOverrideControl
                   isOverriding={isOverridingDefault()}
                   sessionId={sessionId}
