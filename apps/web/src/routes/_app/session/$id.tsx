@@ -3098,8 +3098,37 @@ function SessionPage() {
     e.preventDefault();
     if (!sessionId || !port) return;
     const rawValue = textareaRef.current?.value ?? "";
-    const messageText = rawValue.trim();
+    let messageText = rawValue.trim();
     if (!messageText && pendingAttachments.length === 0) return;
+
+    // Phase 5 of slash UX: /agent <name> [prompt] and /model <name> [prompt]
+    // are NOT opencode commands - they are inline overrides for the current
+    // submission. Pop the prefix off the text and route as a normal /prompt
+    // with the override applied. If <prompt> is empty the agent/model is
+    // still applied (treated as "remind me what's active" + keep typing).
+    let inlineAgent: string | undefined;
+    let inlineModel: string | undefined;
+    const overrideMatch = messageText.match(
+      /^\/(agent|model)\s+(\S+)(?:\s+([\s\S]*))?$/,
+    );
+    if (overrideMatch) {
+      const kind = overrideMatch[1];
+      const name = overrideMatch[2];
+      const rest = (overrideMatch[3] ?? "").trim();
+      if (kind === "agent") inlineAgent = name;
+      else inlineModel = name;
+      messageText = rest;
+      if (!messageText && pendingAttachments.length === 0) {
+        toast.success(
+          kind === "agent"
+            ? `Agent set to ${name}. Type your prompt next.`
+            : `Model set to ${name}. Type your prompt next.`,
+        );
+        textareaRef.current!.value = "";
+        setHasContent(false);
+        return;
+      }
+    }
 
     // Slash-command detection. If the leading token matches a command we
     // know about (from the SWR-cached commands list driving the popover),
@@ -3225,6 +3254,26 @@ function SessionPage() {
         }
         setRevertTarget(null);
       }
+      const effectiveAgent = inlineAgent ?? selectedAgent;
+      const effectiveModelFlat = inlineModel
+        ? inlineModel
+        : isOverridingDefault()
+          ? `${selectedModel.providerID}/${selectedModel.modelID}`
+          : undefined;
+      const effectiveModelObject = inlineModel
+        ? (() => {
+            const slash = inlineModel.indexOf("/");
+            return slash > 0
+              ? {
+                  providerID: inlineModel.slice(0, slash),
+                  modelID: inlineModel.slice(slash + 1),
+                }
+              : { providerID: "", modelID: inlineModel };
+          })()
+        : isOverridingDefault()
+          ? selectedModel
+          : undefined;
+
       const response = slashDispatch
         ? await fetch(
             `/api/opencode/${port}/session/${sessionId}/command`,
@@ -3234,7 +3283,8 @@ function SessionPage() {
               body: JSON.stringify({
                 command: slashDispatch.command,
                 arguments: slashDispatch.arguments,
-                agent: selectedAgent,
+                agent: effectiveAgent,
+                model: effectiveModelFlat,
                 variant: thinkingEffort || undefined,
               }),
             },
@@ -3249,8 +3299,8 @@ function SessionPage() {
                 attachments: attachmentsForMessage.length
                   ? attachmentsForMessage
                   : undefined,
-                model: isOverridingDefault() ? selectedModel : undefined,
-                agent: selectedAgent,
+                model: effectiveModelObject,
+                agent: effectiveAgent,
                 variant: thinkingEffort || undefined,
               }),
             },
