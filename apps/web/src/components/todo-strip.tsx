@@ -22,6 +22,9 @@ export function TodoStrip({ snapshot }: Props) {
   const active = snapshot.todos.filter(
     (t) => t.status === "in_progress",
   ).length;
+  const firstActiveContent = snapshot.todos.find(
+    (t) => t.status === "in_progress",
+  )?.content;
 
   return (
     <button
@@ -29,20 +32,28 @@ export function TodoStrip({ snapshot }: Props) {
       onClick={toggle}
       aria-expanded={expanded}
       aria-label={`Plan: ${done} of ${total} done`}
-      title={`Plan: ${done} of ${total} done${active > 0 ? `, ${active} in progress` : ""}`}
-      className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-border px-1.5 py-1 text-xs text-muted-fg hover:text-fg hover:border-fg/40 transition-colors"
+      title={`Plan: ${done} of ${total} done${active > 0 ? `, ${active} in progress` : ""}${firstActiveContent ? `: ${firstActiveContent}` : ""}`}
+      className="min-w-0 inline-flex items-center gap-1.5 rounded-md border border-border px-1.5 py-1 text-xs text-muted-fg hover:text-fg hover:border-fg/40 transition-colors"
     >
-      <ClipboardDocumentListIcon className="hidden sm:inline-block size-3.5" />
-      <span className="tabular-nums">
+      <ClipboardDocumentListIcon className="hidden sm:inline-block size-3.5 shrink-0" />
+      <span className="tabular-nums min-w-0 inline-flex items-baseline gap-0">
         <span className="sm:hidden">{done}/{total}</span>
-        <span className="hidden sm:inline">
+        <span className="hidden sm:inline whitespace-nowrap">
           {done}/{total} done
           {active > 0 ? `, ${active} in progress` : ""}
         </span>
+        {firstActiveContent && (
+          <span className="hidden md:inline-flex items-baseline min-w-0 ml-0">
+            <span className="whitespace-nowrap">:&nbsp;</span>
+            <span className="truncate max-w-[20ch] lg:max-w-[36ch] xl:max-w-[56ch] font-normal text-fg/80">
+              {firstActiveContent}
+            </span>
+          </span>
+        )}
       </span>
       <ProgressBar done={done} total={total} active={active} />
       <ChevronUpIcon
-        className={`hidden sm:inline-block size-3.5 transition-transform ${expanded ? "" : "rotate-180"}`}
+        className={`hidden sm:inline-block size-3.5 shrink-0 transition-transform ${expanded ? "" : "rotate-180"}`}
       />
     </button>
   );
