@@ -31,6 +31,16 @@ export type DiscoveryHint = {
   kind: "opencode-desktop";
 };
 
+// Per-server workspace directories override the top-level `directories`
+// field when present. Same shape as the top-level: either a bare string
+// path or a { path, level, level1 } object specifying how deep to walk
+// from the base when grouping sessions by project. directoriesHistory
+// keeps prior configurations as JSON strings for the user to revert /
+// re-apply from the UI (most recent first, capped at 10 entries).
+export type ServerDirectoryEntry =
+  | string
+  | { path: string; level?: number; level1?: string[] };
+
 export interface ConfiguredServer {
   id: string;
   label: string;
@@ -39,6 +49,8 @@ export interface ConfiguredServer {
   ephemeral: boolean;
   discoveryHint?: DiscoveryHint;
   addedAt: string;
+  directories?: ServerDirectoryEntry[];
+  directoriesHistory?: string[];
 }
 
 export interface RawOpenPortalDoc {
@@ -252,4 +264,36 @@ export function updateEphemeralEndpoint(
   port: number,
 ): ConfiguredServer | null {
   return updateServer(id, { host, port });
+}
+
+const HISTORY_MAX = 10;
+
+export function setServerDirectories(
+  id: string,
+  directories: ServerDirectoryEntry[],
+): ConfiguredServer | null {
+  const doc = readRaw();
+  const servers = Array.isArray(doc.servers)
+    ? doc.servers.filter(isServer)
+    : [];
+  const idx = servers.findIndex((s) => s.id === id);
+  if (idx === -1) return null;
+  const prev = servers[idx];
+  const prevSerialized = JSON.stringify(prev.directories ?? []);
+  const nextSerialized = JSON.stringify(directories);
+  const history = (prev.directoriesHistory ?? []).filter(
+    (h) => h !== nextSerialized,
+  );
+  if (prevSerialized !== "[]" && prevSerialized !== nextSerialized) {
+    history.unshift(prevSerialized);
+  }
+  const trimmedHistory = history.slice(0, HISTORY_MAX);
+  const merged: ConfiguredServer = {
+    ...prev,
+    directories,
+    directoriesHistory: trimmedHistory,
+  };
+  servers[idx] = merged;
+  writeRaw({ ...doc, servers });
+  return merged;
 }

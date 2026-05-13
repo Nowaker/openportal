@@ -67,6 +67,11 @@ interface RawConfigEntryObject {
 
 interface RawConfig {
   directories?: Array<string | RawConfigEntryObject>;
+  activeServerId?: string | null;
+  servers?: Array<{
+    id?: string;
+    directories?: Array<string | RawConfigEntryObject>;
+  }>;
 }
 
 interface LegacyConfig {
@@ -157,7 +162,22 @@ export function readPortalConfig(): OpenPortalConfig {
       const raw = JSON.parse(
         stripJsoncComments(readFileSync(path, "utf-8")),
       ) as RawConfig;
-      rawEntries = raw.directories ?? [];
+      // Active server's directories override the top-level field. The
+      // top-level remains the fallback for installs that haven't yet
+      // configured per-server directories.
+      const activeId = raw.activeServerId;
+      const activeServer = Array.isArray(raw.servers)
+        ? raw.servers.find((s) => s?.id === activeId)
+        : undefined;
+      if (
+        activeServer &&
+        Array.isArray(activeServer.directories) &&
+        activeServer.directories.length > 0
+      ) {
+        rawEntries = activeServer.directories;
+      } else {
+        rawEntries = raw.directories ?? [];
+      }
     } catch (e) {
       console.warn(
         `[openportal-config] Failed to parse ${path}:`,
