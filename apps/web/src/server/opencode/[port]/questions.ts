@@ -1,24 +1,36 @@
-import { defineHandler } from "nitro/h3";
+import { defineHandler, getQuery } from "nitro/h3";
 import {
   getOpencodeClient,
   getOpencodeClientV2,
 } from "../../lib/opencode-client";
 import { parsePort } from "../../lib/validation";
 
-// opencode does not auto-clean question requests when the model gives up on
-// the question and the conversation moves on. Without this filter, a session
-// that asked a question once and then continued for hours would still show
-// up red ("waiting on answer") in the sidebar forever. Drop questions whose
-// tool.messageID is older than the session's latest message - chat moved
-// past it, the answer no longer matters.
+// Two consumer modes, distinguished by ?includeStale=1:
 //
-// Comparison is lexical: opencode message IDs are time-sortable (UTC ms
-// epoch encoded into the prefix), so messageID-A < messageID-B iff A was
+//   default (filtered) - sidebar badge / SWR poll. opencode does not
+//     auto-clean question requests when the model gives up on the
+//     question and the conversation moves on, so a session that asked
+//     once and then continued for hours would show up red ("waiting on
+//     answer") forever. Drop questions whose tool.messageID is older
+//     than the session's latest message - chat moved past it.
+//
+//   includeStale=1 (unfiltered) - reply-form match resolution. The
+//     question form needs to map (callID -> requestID) even when the
+//     user already typed follow-up messages between the question
+//     prompt and clicking Submit. The stale filter was eating the
+//     match in exactly that scenario, forcing the form into its
+//     text-prompt fallback and leaving opencode's question pending
+//     forever (the trigger for the user-reported stuck session).
+//
+// Comparison is lexical: opencode message IDs are time-sortable (UTC
+// ms epoch in the prefix), so messageID-A < messageID-B iff A was
 // created before B.
 export default defineHandler(async (event) => {
   const port = parsePort(event);
+  const q = getQuery(event);
+  const includeStale = q.includeStale === "1" || q.includeStale === "true";
+
   const v2 = await getOpencodeClientV2(port);
-  const v1 = await getOpencodeClient(port);
   const result = await v2.question.list();
   const questions = (result.data ?? []) as Array<{
     id: string;
@@ -27,25 +39,28 @@ export default defineHandler(async (event) => {
     [k: string]: unknown;
   }>;
 
+  if (includeStale) return questions;
+
+  const v1 = await getOpencodeClient(port);
   const fresh: typeof questions = [];
-  for (const q of questions) {
-    const toolMsgId = q.tool?.messageID;
+  for (const qr of questions) {
+    const toolMsgId = qr.tool?.messageID;
     if (!toolMsgId) {
-      fresh.push(q);
+      fresh.push(qr);
       continue;
     }
     try {
       const latest = await v1.session.messages({
-        path: { id: q.sessionID },
+        path: { id: qr.sessionID },
         query: { limit: 1 },
       });
       const list = (latest.data ?? []) as Array<{ info: { id: string } }>;
       const latestId = list[list.length - 1]?.info?.id;
       if (!latestId || latestId <= toolMsgId) {
-        fresh.push(q);
+        fresh.push(qr);
       }
     } catch {
-      fresh.push(q);
+      fresh.push(qr);
     }
   }
   return fresh;

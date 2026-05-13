@@ -587,7 +587,14 @@ function QuestionAnswerForm({
     });
 
     try {
-      const listRes = await fetch(`/api/opencode/${port}/questions`);
+      // Bypass the stale-filter when resolving the reply target: opencode
+      // keeps the question request live even when chat moved past it, but
+      // the sidebar filter would hide it from this lookup and force the
+      // text-prompt fallback, leaving the question pending forever (the
+      // root cause of the user-reported stuck-session bug).
+      const listRes = await fetch(
+        `/api/opencode/${port}/questions?includeStale=1`,
+      );
       if (!listRes.ok) throw new Error("Failed to fetch pending questions");
       const pendingQuestions = (await listRes.json()) as QuestionRequest[];
 
