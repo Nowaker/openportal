@@ -1743,7 +1743,7 @@ const MessageItem = memo(function MessageItem({
       data-message-id={message.info.id}
     >
       {hasHeaderRow && (
-        <>
+        <div className="relative">
           {!isAssistant && message.isQueued && (
             <Badge intent="warning" className="mb-1">
               {isQuestionBlocked
@@ -1815,7 +1815,7 @@ const MessageItem = memo(function MessageItem({
               </span>
             )}
           </div>
-        </>
+        </div>
       )}
       {toolCalls.length > 0 && (
         <div className={`${hasHeaderRow ? "mt-2" : ""} space-y-0.5`}>
