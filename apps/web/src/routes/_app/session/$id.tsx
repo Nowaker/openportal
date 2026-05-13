@@ -1419,41 +1419,15 @@ function CodeBlockCopyButton({ text }: { text: string }) {
   );
 }
 
-function MarkdownWithTime({
+function MessageMarkdown({
   text,
   remarkPlugins,
-  timestamp,
-  titleAt,
 }: {
   text: string;
   remarkPlugins: NonNullable<React.ComponentProps<typeof Markdown>["remarkPlugins"]>;
-  timestamp: string;
-  titleAt: string | undefined;
 }) {
   const components = useMemo(
     () => ({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      p: ({ node, children, ...props }: any) => {
-        const isLast = node?.properties?.dataLastP === "true";
-        return (
-          <p {...props}>
-            {children}
-            {isLast && (
-              <span className="ml-2 inline-flex items-center gap-1 align-middle text-muted-fg/50">
-                {timestamp && (
-                  <span
-                    className="text-[10px] font-mono tabular-nums select-none whitespace-nowrap"
-                    title={titleAt}
-                  >
-                    {timestamp}
-                  </span>
-                )}
-                <CopyMarkdownButton text={text} />
-              </span>
-            )}
-          </p>
-        );
-      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       pre: ({ node, children, ...props }: any) => {
         const codeText = extractTextFromHast(node as HastNode);
@@ -1465,15 +1439,11 @@ function MarkdownWithTime({
         );
       },
     }),
-    [timestamp, titleAt, text],
+    [],
   );
 
   return (
-    <Markdown
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={[rehypeMarkLastParagraph]}
-      components={components}
-    >
+    <Markdown remarkPlugins={remarkPlugins} components={components}>
       {text}
     </Markdown>
   );
@@ -1577,25 +1547,56 @@ const MessageItem = memo(function MessageItem({
     : "";
   return (
     <div
-      className={`py-3 px-3 ${decoration}`}
-      // The role + id pair lets the prompt-nav buttons (prev / next user
-      // message) find each user message in the DOM and scroll it into view
-      // without lifting the message list into a controlled-scroll system.
+      className={`${decoration} ${
+        !isAssistant && hasHeaderRow
+          ? "mx-3 my-1 rounded-lg bg-muted/20 px-3 py-2"
+          : "px-3 py-3"
+      }`}
       data-role={message.info.role}
       data-message-id={message.info.id}
     >
       {hasHeaderRow && (
-        <div className="flex gap-2">
-          <div className="shrink-0 mt-1 flex flex-col items-center gap-1">
-            {isAssistant ? (
-              <IconBadgeSparkle size="16px" />
-            ) : (
-              <IconUser size="16px" />
+        <>
+          {!isAssistant && message.isQueued && (
+            <Badge intent="warning" className="mb-1">
+              {isQuestionBlocked
+                ? "Queued - blocked on question above"
+                : "Queued"}
+            </Badge>
+          )}
+          {textContent && (
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere]">
+              <MessageMarkdown
+                text={textContent}
+                remarkPlugins={
+                  isAssistant ? [remarkGfm] : [remarkGfm, remarkBreaks]
+                }
+              />
+            </div>
+          )}
+          {fileParts.length > 0 && (
+            <div
+              className={`${textContent ? "mt-2" : ""} flex flex-wrap gap-1.5`}
+            >
+              {fileParts.map((part) => (
+                <AttachmentChip key={part.id} part={part} />
+              ))}
+            </div>
+          )}
+          <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-muted-fg/70">
+            {textContent && <CopyMarkdownButton text={textContent} />}
+            {messageTimestamp && (
+              <span
+                className="font-mono tabular-nums whitespace-nowrap"
+                title={messageTitleAt}
+              >
+                {messageTimestamp}
+              </span>
             )}
             <button
               type="button"
               onClick={() => onRevertRequest(message, textContent)}
-              className="text-muted-fg hover:text-fg transition-colors"
+              className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
               aria-label={
                 isAssistant
                   ? "Revert to right after this message"
@@ -1610,44 +1611,10 @@ const MessageItem = memo(function MessageItem({
               <RevertIcon className="size-3.5" />
             </button>
           </div>
-          <div className="min-w-0 flex-1">
-            {!isAssistant && message.isQueued && (
-              <Badge intent="warning" className="mb-1">
-                {isQuestionBlocked
-                  ? "Queued - blocked on question above"
-                  : "Queued"}
-              </Badge>
-            )}
-            {textContent && (
-              <div
-                className={`prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere] ${!isAssistant ? "text-muted-fg" : ""}`}
-              >
-                <MarkdownWithTime
-                  text={textContent}
-                  remarkPlugins={
-                    isAssistant ? [remarkGfm] : [remarkGfm, remarkBreaks]
-                  }
-                  timestamp={messageTimestamp}
-                  titleAt={messageTitleAt}
-                />
-              </div>
-            )}
-            {fileParts.length > 0 && (
-              <div
-                className={`${textContent ? "mt-2" : ""} flex flex-wrap gap-1.5`}
-              >
-                {fileParts.map((part) => (
-                  <AttachmentChip key={part.id} part={part} />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        </>
       )}
       {toolCalls.length > 0 && (
-        <div
-          className={`${hasHeaderRow ? "mt-2 ml-6" : ""} space-y-0.5`}
-        >
+        <div className={`${hasHeaderRow ? "mt-2" : ""} space-y-0.5`}>
           {toolCalls.map((part) => (
             <ToolCallItem
               key={part.callID || part.id}
