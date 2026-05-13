@@ -411,16 +411,16 @@ function QuestionDisplay({
     <>
       {questions.map((q, idx) => (
         <div key={`${partKey}-q-${idx}`} className="space-y-1">
-          {(q.header || q.multiple) && (
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-fg">
-              {q.header && <span>{q.header}</span>}
-              {q.multiple && (
-                <span className="rounded border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                  Multi-select
-                </span>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+            <span>
+              Q{idx + 1}.{q.header ? ` ${q.header}` : ""}
+            </span>
+            {q.multiple && (
+              <span className="rounded border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                Multi-select
+              </span>
+            )}
+          </div>
           <p className="text-xs leading-relaxed">{q.question}</p>
 
           {q.options.length > 0 && (
@@ -618,11 +618,9 @@ function QuestionAnswerForm({
             key={`${partKey}-q-${idx}`}
             className={`space-y-2 ${idx > 0 ? "pt-4 border-t border-dashed border-border" : ""}`}
           >
-            {q.header && (
-              <div className="text-[11px] uppercase tracking-wide text-muted-fg">
-                {q.header}
-              </div>
-            )}
+            <div className="text-sm font-semibold text-fg">
+              Q{idx + 1}.{q.header ? ` ${q.header}` : ""}
+            </div>
             <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:my-1">
               <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                 {q.question}
@@ -658,13 +656,32 @@ function QuestionAnswerForm({
                     </label>
                   );
                 })}
+                {!q.multiple && (
+                  <label
+                    htmlFor={`${partKey}-q${idx}-none`}
+                    className={`flex items-center gap-2 text-muted-fg ${isPosting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                  >
+                    <input
+                      id={`${partKey}-q${idx}-none`}
+                      name={inputName}
+                      type="radio"
+                      checked={selected.length === 0}
+                      disabled={isPosting}
+                      onChange={() =>
+                        setSelections((prev) => ({ ...prev, [idx]: [] }))
+                      }
+                      className="accent-primary"
+                    />
+                    <span className="text-sm italic">None of the above</span>
+                  </label>
+                )}
               </div>
             )}
 
             {(q.options.length === 0 || q.custom) && (
               <div className="space-y-1">
                 {q.options.length > 0 && q.custom && (
-                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-fg">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-fg">
                     <span aria-hidden className="text-fg/40">+</span>
                     <span>
                       {q.multiple
@@ -962,14 +979,14 @@ const ToolCallItem = memo(function ToolCallItem({
               : "border-warning/40 bg-warning/10"
         }`}
       >
-        <div className="font-mono text-xs flex items-center gap-1.5 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 text-sm font-medium text-fg">
           <span className="opacity-60 shrink-0">{icon}</span>
           <span className="truncate">{label}</span>
           {details && <span className="opacity-60 shrink-0">{details}</span>}
           {isPending && <span className="animate-pulse shrink-0">...</span>}
           {toolTimestamp && (
             <span
-              className="hidden sm:inline ml-auto pl-2 shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums"
+              className="hidden sm:inline ml-auto pl-2 shrink-0 text-[10px] text-muted-fg/70 tabular-nums"
               title={toolTitleAt}
             >
               {toolTimestamp}
