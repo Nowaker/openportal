@@ -314,10 +314,14 @@ function formatToolCall(part: ToolPart): {
   switch (toolName) {
     case "edit": {
       const filePath = input.filePath || input.file || "";
-      const oldStr = String(input.oldString || "");
-      const newStr = String(input.newString || "");
-      const additions = newStr.split("\n").length;
-      const deletions = oldStr.split("\n").length;
+      const additions =
+        typeof input._newLines === "number"
+          ? input._newLines
+          : String(input.newString || "").split("\n").length;
+      const deletions =
+        typeof input._oldLines === "number"
+          ? input._oldLines
+          : String(input.oldString || "").split("\n").length;
       return {
         icon: <IconPen size="12px" />,
         label: `edit ${filePath}`,
@@ -333,8 +337,10 @@ function formatToolCall(part: ToolPart): {
     }
     case "write": {
       const filePath = input.filePath || input.file || "";
-      const content = String(input.content || "");
-      const lines = content.split("\n").length;
+      const lines =
+        typeof input._contentLines === "number"
+          ? input._contentLines
+          : String(input.content || "").split("\n").length;
       return {
         icon: <IconSquareFeather size="12px" />,
         label: `write ${filePath}`,

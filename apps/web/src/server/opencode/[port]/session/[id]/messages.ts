@@ -145,6 +145,7 @@ function stripOnePartBloat(part: unknown): void {
     if (!state || typeof state !== "object") continue;
     if ("output" in state) delete state.output;
     if ("title" in state) delete state.title;
+    stripHeavyInputFields(state, p.type);
     const meta = state.metadata as Record<string, unknown> | undefined;
     if (meta && typeof meta === "object") {
       for (const k of [
@@ -157,6 +158,47 @@ function stripOnePartBloat(part: unknown): void {
       ]) {
         if (k in meta) delete meta[k];
       }
+    }
+  }
+}
+
+// Tool-specific heavy input-field stripping. The per-part ajax endpoint
+// (/api/opencode/<port>/session/<id>/part-input) is the one that
+// returns the full input on demand when the user expands a tool call.
+// On the wire to the chat-list renderer, only the small fields that
+// formatToolCall needs to build the row label survive.
+//
+// Edit's line counts are precomputed into the SMALL fields _oldLines /
+// _newLines because formatToolCall renders '(+N-M)' details and would
+// otherwise lose the per-edit signal.
+function stripHeavyInputFields(
+  state: Record<string, unknown>,
+  partType: string | undefined,
+): void {
+  if (partType !== "tool") return;
+  const input = state.input as Record<string, unknown> | undefined;
+  if (!input || typeof input !== "object") return;
+  const tool = String((state.tool ?? state.name ?? "") || "").toLowerCase();
+  if (tool === "edit") {
+    if (typeof input.oldString === "string") {
+      (input as Record<string, unknown>)._oldLines =
+        (input.oldString as string).split("\n").length;
+      delete input.oldString;
+    }
+    if (typeof input.newString === "string") {
+      (input as Record<string, unknown>)._newLines =
+        (input.newString as string).split("\n").length;
+      delete input.newString;
+    }
+  } else if (tool === "write") {
+    if (typeof input.content === "string") {
+      (input as Record<string, unknown>)._contentLines =
+        (input.content as string).split("\n").length;
+      delete input.content;
+    }
+  } else if (tool === "task") {
+    if (typeof input.prompt === "string") {
+      delete input.prompt;
     }
   }
 }
