@@ -3451,23 +3451,24 @@ function SessionPage() {
         >
           <>
             <div className="flex items-center gap-1 px-1 py-1 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
-              <div className="min-w-0 flex-1 sm:max-w-40">
+              <div className="min-w-0 max-w-fit shrink-0">
                 <AgentSelect sessionId={sessionId} />
               </div>
-              <div className="min-w-0 flex-[1.2] sm:max-w-48">
+              <div className="min-w-0 flex-1">
                 <ModelOverrideControl
                   isOverriding={isOverridingDefault()}
                   sessionId={sessionId}
                   instanceId={instanceId}
                 />
               </div>
-              <ThinkingSelect sessionId={sessionId} />
-              <div className="hidden sm:block sm:flex-1" />
+              <div className="min-w-0 max-w-fit shrink-0">
+                <ThinkingSelect sessionId={sessionId} />
+              </div>
               <TodoStrip snapshot={todoSnapshot} />
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}
-                className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                className="md:hidden shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 title="Attach photo"
                 aria-label="Attach photo"
               >

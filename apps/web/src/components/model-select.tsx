@@ -3,8 +3,10 @@ import {
   Autocomplete,
   ListBox,
   Popover,
+  SelectValue,
   useFilter,
 } from "react-aria-components";
+import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import { Dialog } from "@/components/ui/dialog";
 import { SearchField, SearchInput } from "@/components/ui/search-field";
 import {
@@ -14,6 +16,7 @@ import {
   SelectSection,
   SelectTrigger,
 } from "@/components/ui/select";
+import { shortenModelName } from "@/lib/model-name";
 import { useModelStore } from "@/stores/model-store";
 import { useProviders } from "@/hooks/use-opencode";
 import useMediaQuery from "@/hooks/use-media-query";
@@ -163,7 +166,22 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
         }
       }}
     >
-      <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
+      <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm">
+        <SelectValue
+          data-slot="select-value"
+          className="truncate text-start text-sm/6 data-placeholder:text-muted-fg [&_[slot=description]]:hidden"
+        >
+          {({ defaultChildren, selectedText, isPlaceholder }) => {
+            if (isPlaceholder) return defaultChildren;
+            const text = String(selectedText ?? "");
+            return shortenModelName(text) || text;
+          }}
+        </SelectValue>
+        <ChevronUpDownIcon
+          data-slot="chevron"
+          className="-mr-1 ml-auto size-5 text-muted-fg sm:size-4"
+        />
+      </SelectTrigger>
       <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(80vh,32rem)] min-w-(--trigger-width) w-screen max-w-[calc(100vw-1.5rem)] sm:max-w-md entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
         <Dialog aria-label="Model">
           <Autocomplete filter={contains}>
