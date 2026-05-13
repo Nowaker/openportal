@@ -20,7 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
+import { OmoBlockView } from "@/components/omo-block-view";
 import { ThinkingSelect } from "@/components/thinking-select";
+import { parseOmoBlocks } from "@/lib/omo-injection";
 import {
   FileMentionPopover,
   useFileMention,
@@ -1566,12 +1568,29 @@ const MessageItem = memo(function MessageItem({
           )}
           {textContent && (
             <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere]">
-              <MessageMarkdown
-                text={textContent}
-                remarkPlugins={
-                  isAssistant ? [remarkGfm] : [remarkGfm, remarkBreaks]
-                }
-              />
+              {isAssistant ? (
+                <MessageMarkdown
+                  text={textContent}
+                  remarkPlugins={[remarkGfm]}
+                />
+              ) : (
+                parseOmoBlocks(textContent).map((block, i) =>
+                  block.kind === "omo" ? (
+                    <OmoBlockView
+                      key={`omo-${i}`}
+                      header={block.header ?? "OMO block"}
+                      summary={block.summary}
+                      text={block.text}
+                    />
+                  ) : block.text.trim() ? (
+                    <MessageMarkdown
+                      key={`user-${i}`}
+                      text={block.text}
+                      remarkPlugins={[remarkGfm, remarkBreaks]}
+                    />
+                  ) : null,
+                )
+              )}
             </div>
           )}
           {fileParts.length > 0 && (
