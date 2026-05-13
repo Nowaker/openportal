@@ -9,6 +9,7 @@ import {
   useSessions,
   useQuestions,
 } from "@/hooks/use-opencode";
+import { PageTitle, SectionTitle } from "@/components/ui/typography";
 import { useTheme } from "@/providers/theme-provider";
 import { useAccentStore } from "@/stores/accent-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
@@ -80,9 +81,9 @@ function formatBytes(bytes: number | null): string {
 // and works in every modern browser.
 function SectionHeader({ title }: { title: string }) {
   return (
-    <h3 className="col-span-2 pt-4 first:pt-0 text-sm font-semibold uppercase tracking-wide text-muted-fg">
+    <SectionTitle as="h3" className="col-span-2 pt-4 first:pt-0">
       {title}
-    </h3>
+    </SectionTitle>
   );
 }
 
@@ -190,7 +191,7 @@ export function DiagnosticsPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Diagnostics</h2>
+        <PageTitle as="h2">Diagnostics</PageTitle>
         <p className="text-sm text-muted-fg">
           Read-only snapshot of this Portal, its workspace, the connected
           opencode instance, and your client.

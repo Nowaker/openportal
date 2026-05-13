@@ -20,6 +20,7 @@ import useSWR from "swr";
 
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
+import { PageTitle } from "@/components/ui/typography";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { toast } from "@/components/ui/toast";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
@@ -111,7 +112,7 @@ function PromptsPage() {
   return (
     <div className="-m-4 flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <h1 className="text-base font-semibold sm:text-lg">Prompt history</h1>
+        <PageTitle>Prompt history</PageTitle>
         <div className="relative flex flex-1 items-center">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-2 size-4 text-muted-fg" />
           <input

@@ -4,6 +4,7 @@ import { FileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
 import { Loader } from "@/components/ui/loader";
 import { Button } from "@/components/ui/button";
+import { PageTitle } from "@/components/ui/typography";
 import { useGitDiff } from "@/hooks/use-opencode";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
@@ -67,7 +68,7 @@ function DiffPage() {
   return (
     <div className="-m-4 flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h1 className="text-lg font-semibold">Git Diff</h1>
+        <PageTitle>Git Diff</PageTitle>
         <Button intent="secondary" size="sm" onPress={() => mutate()}>
           <ArrowPathIcon className="size-4" />
           Refresh

@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/grid-list";
 import { useInstances, useSelfInstance } from "@/hooks/use-opencode";
 import IconBox from "@/components/icons/box-icon";
+import { PageTitle } from "@/components/ui/typography";
 import { ServerIcon } from "@heroicons/react/24/solid";
 
 export const Route = createFileRoute("/instances")(
@@ -58,10 +59,8 @@ function InstancesPage() {
   return (
     <div className="container mx-auto max-w-4xl space-y-8 px-4 py-10">
       <div className="space-y-2">
-        <h1 className="bg-gradient-to-r from-fg to-muted-fg bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl">
-          Other Portals
-        </h1>
-        <p className="text-lg text-muted-fg">
+        <PageTitle>Other Portals</PageTitle>
+        <p className="text-sm text-muted-fg">
           Each Portal is bound to its own opencode. Click to open another in a
           new tab.
         </p>

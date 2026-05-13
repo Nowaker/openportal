@@ -19,6 +19,7 @@ import {
 } from "react-aria-components";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PageTitle } from "@/components/ui/typography";
 import { useInstanceStore } from "@/stores/instance-store";
 
 // /servers — Server List screen.
@@ -391,10 +392,8 @@ function ServersPage() {
   return (
     <div className="container mx-auto max-w-4xl space-y-8 px-4 py-10">
       <div className="space-y-2">
-        <h1 className="bg-gradient-to-r from-fg to-muted-fg bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl">
-          Servers
-        </h1>
-        <p className="text-lg text-muted-fg">
+        <PageTitle>Servers</PageTitle>
+        <p className="text-sm text-muted-fg">
           Pick an opencode server to bind this Portal UI to. Configured
           servers persist; discovered servers come and go with the
           processes they run in.
