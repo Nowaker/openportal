@@ -372,6 +372,32 @@ function formatToolCall(part: ToolPart): {
         label: count === 1 ? "Asked 1 question" : `Asked ${count} questions`,
       };
     }
+    case "task": {
+      const subagentType = String(input.subagent_type || input.subagentType || "agent");
+      const description = String(input.description || "");
+      const cropped =
+        description.length > 80 ? description.slice(0, 80) + "..." : description;
+      return {
+        icon: "◼︎",
+        label: `task ${subagentType}`,
+        details: cropped ? `- ${cropped}` : undefined,
+      };
+    }
+    case "todowrite": {
+      const todos = Array.isArray(input.todos) ? input.todos : [];
+      const total = todos.length;
+      const completed = todos.filter(
+        (t: unknown) =>
+          typeof t === "object" &&
+          t !== null &&
+          (t as { status?: unknown }).status === "completed",
+      ).length;
+      return {
+        icon: "◼︎",
+        label: "todowrite",
+        details: total > 0 ? `(${completed}/${total} done)` : undefined,
+      };
+    }
     default: {
       // The previous fallback was: `${key}: ${String(value).slice(0,30)}...`,
       // which produced "questions: [object Object],[object Object]..." for any
