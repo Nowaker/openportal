@@ -8,6 +8,7 @@ import {
 } from "@heroicons/react/24/outline";
 import AppSidebar from "@/components/app-sidebar";
 import { AppSidebarNav, PinnedTabStrip } from "@/components/app-sidebar-nav";
+import { FileBrowserPanel } from "@/components/file-browser-panel";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -239,6 +240,7 @@ function AppLayout() {
               <Outlet />
             </div>
           </SidebarInset>
+          <FileBrowserPanel />
         </SidebarProvider>
       </PullToRefreshWrapper>
     </BreadcrumbProvider>

@@ -43,6 +43,7 @@ import { McpInfoModal } from "@/components/mcp-info-modal";
 import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
+import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { useModelStore } from "@/stores/model-store";
@@ -470,8 +471,16 @@ export function AppSidebarNav() {
                 Prompt history
               </MenuItem>
               <MenuItem
-                href="/files"
-                target="_blank"
+                onAction={() => {
+                  if (
+                    typeof window !== "undefined" &&
+                    window.matchMedia("(min-width: 768px)").matches
+                  ) {
+                    useFileBrowserPanelStore.getState().open(null);
+                  } else {
+                    window.open("/files", "_blank", "noopener");
+                  }
+                }}
               >
                 <FolderOpenIcon className="size-4" data-slot="icon" />
                 File browser

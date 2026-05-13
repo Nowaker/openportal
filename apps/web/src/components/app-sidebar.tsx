@@ -77,6 +77,7 @@ import {
   DraftIndicator,
 } from "@/lib/session-indicators";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
@@ -1547,6 +1548,22 @@ export default function AppSidebar(
             >
               <ArchiveBoxIcon />
               Prompt history
+            </MenuItem>
+            <MenuItem
+              onAction={() => {
+                setIsOpenOnMobile(false);
+                if (
+                  typeof window !== "undefined" &&
+                  window.matchMedia("(min-width: 768px)").matches
+                ) {
+                  useFileBrowserPanelStore.getState().open("/");
+                } else {
+                  window.open("/files?path=/", "_blank", "noopener");
+                }
+              }}
+            >
+              <FolderOpenIcon />
+              File browser (root)
             </MenuItem>
             <MenuItem
               onAction={() => {
