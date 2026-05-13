@@ -9,6 +9,7 @@ import {
   EyeSlashIcon,
   FolderIcon,
   HomeIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -54,12 +55,17 @@ interface FileResponse {
 interface FilesSearch {
   path?: string;
   file?: string;
+  panel?: 1;
 }
 
 export const Route = createFileRoute("/files")({
   validateSearch: (search): FilesSearch => ({
     path: typeof search.path === "string" ? search.path : undefined,
     file: typeof search.file === "string" ? search.file : undefined,
+    panel:
+      search.panel === 1 || search.panel === "1" || search.panel === true
+        ? 1
+        : undefined,
   }),
   component: FilesPage,
 });
@@ -99,7 +105,7 @@ function FilesPage() {
   const goTo = (path: string, file?: string) => {
     void navigate({
       to: "/files",
-      search: { path, file },
+      search: { path, file, panel: search.panel },
     });
   };
 
@@ -129,6 +135,7 @@ function FilesPage() {
         }}
         onGoHome={() => browse?.home && goTo(browse.home)}
         onGoUp={() => browse?.parent && goTo(browse.parent)}
+        inPanel={search.panel === 1}
       />
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         <aside className="border-b border-border md:w-72 md:shrink-0 md:overflow-auto md:border-b-0 md:border-r">
@@ -196,6 +203,7 @@ function TopBar({
   onGoBack,
   onGoHome,
   onGoUp,
+  inPanel,
 }: {
   pathInput: string;
   onPathInputChange: (next: string) => void;
@@ -207,8 +215,14 @@ function TopBar({
   onGoBack: () => void;
   onGoHome: () => void;
   onGoUp: () => void;
+  inPanel: boolean;
 }) {
   const pathInputRef = useRef<PathInputHandle>(null);
+  const closePanel = () => {
+    if (typeof window !== "undefined" && window.parent !== window) {
+      window.parent.postMessage({ type: "fb-close" }, "*");
+    }
+  };
   return (
     <header className="flex items-center gap-1.5 border-b border-border bg-bg px-3 py-2">
       <button
@@ -256,6 +270,17 @@ function TopBar({
       >
         <ArrowPathIcon className="size-4" />
       </button>
+      {inPanel && (
+        <button
+          type="button"
+          onClick={closePanel}
+          title="Close file browser"
+          aria-label="Close file browser"
+          className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+        >
+          <XMarkIcon className="size-4" />
+        </button>
+      )}
     </header>
   );
 }
