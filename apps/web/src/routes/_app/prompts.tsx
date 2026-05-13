@@ -120,7 +120,6 @@ function PromptsPage() {
   return (
     <div className="-m-4 flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <PageTitle>Prompt history</PageTitle>
         <div className="relative flex flex-1 items-center">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-2 size-4 text-muted-fg" />
           <input
@@ -200,6 +199,7 @@ function PromptsPage() {
               <TreeView
                 rows={rows}
                 focusSessionId={search.focus}
+                searchActive={q.trim().length > 0}
                 expandedRawIds={expandedRawIds}
                 onToggleRaw={toggleRaw}
                 onRefire={setRefireTargetId}
@@ -286,12 +286,14 @@ function buildTree(rows: PromptRow[]): TreeGroup[] {
 function TreeView({
   rows,
   focusSessionId,
+  searchActive,
   expandedRawIds,
   onToggleRaw,
   onRefire,
 }: {
   rows: PromptRow[];
   focusSessionId: string | undefined;
+  searchActive: boolean;
   expandedRawIds: Set<string>;
   onToggleRaw: (id: string) => void;
   onRefire: (id: string) => void;
@@ -357,7 +359,7 @@ function TreeView({
   return (
     <div className="space-y-2">
       {groups.map((g) => {
-        const projectCollapsed = collapsedProjects.has(g.projectPath);
+        const projectCollapsed = !searchActive && collapsedProjects.has(g.projectPath);
         const totalCount = Array.from(g.bySession.values()).reduce(
           (a, list) => a + list.length,
           0,
@@ -384,7 +386,7 @@ function TreeView({
             {!projectCollapsed && (
               <div className="ml-3 space-y-1 border-l border-border/40 pl-2">
                 {sessionEntries.map(([sessionId, sessionRows]) => {
-                  const sessionCollapsed = collapsedSessions.has(sessionId);
+                  const sessionCollapsed = !searchActive && collapsedSessions.has(sessionId);
                   return (
                     <div key={sessionId}>
                       <button
