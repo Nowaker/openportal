@@ -1427,6 +1427,21 @@ body {
   background-color: var(--muted);
 }
 
+/* Markdown prose blockquote: strip @tailwindcss/typography defaults
+   (curly quote glyphs via ::before/::after, italic, faux-bold). Keep
+   the left border + indent so a quoted paragraph is still visually
+   distinct from surrounding prose. */
+.prose blockquote {
+  font-style: normal;
+  font-weight: 400;
+  quotes: none;
+}
+
+.prose blockquote p:first-of-type::before,
+.prose blockquote p:last-of-type::after {
+  content: none;
+}
+
 @utility touch-target {
   position: relative;
   &::before {
