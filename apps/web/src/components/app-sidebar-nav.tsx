@@ -476,7 +476,7 @@ export function AppSidebarNav() {
                     typeof window !== "undefined" &&
                     window.matchMedia("(min-width: 768px)").matches
                   ) {
-                    useFileBrowserPanelStore.getState().open(null);
+                    useFileBrowserPanelStore.getState().toggle(null);
                   } else {
                     window.open("/files", "_blank", "noopener");
                   }

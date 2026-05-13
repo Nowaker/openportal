@@ -10,7 +10,8 @@
 // keep the full label so the user can still scan by vendor and see
 // the (default) marker.
 
-const VENDOR_PREFIX = /^(Claude|GPT|Gemini|Mistral|Llama|Grok)\s+/i;
+const VENDOR_PREFIX =
+  /^(Claude|GPT|OpenAI|Gemini|Mistral|Llama|Grok|DeepSeek|Qwen|Cohere|Phi|Yi)\s+/i;
 const DEFAULT_SUFFIX = /\s*\(default\)\s*$/i;
 
 export function shortenModelName(full: string): string {

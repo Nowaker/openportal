@@ -1555,7 +1555,7 @@ export default function AppSidebar(
                   typeof window !== "undefined" &&
                   window.matchMedia("(min-width: 768px)").matches
                 ) {
-                  useFileBrowserPanelStore.getState().open("/");
+                  useFileBrowserPanelStore.getState().toggle("/");
                 } else {
                   window.open("/files?path=/", "_blank", "noopener");
                 }

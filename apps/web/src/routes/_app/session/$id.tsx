@@ -12,6 +12,7 @@ import {
 import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import useSWR from "swr";
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
 import { Button } from "@/components/ui/button";
@@ -955,14 +956,33 @@ function FormattedValue({ value }: { value: unknown }): React.ReactElement {
 
 function ToolInputModal({
   toolName,
-  input,
+  port,
+  sessionId,
+  partId,
   onClose,
 }: {
   toolName: string;
-  input: Record<string, unknown>;
+  port: number;
+  sessionId: string;
+  partId: string;
   onClose: () => void;
 }) {
   const [view, setView] = useState<"formatted" | "json">("formatted");
+  const { data, error, isLoading } = useSWR<{
+    id: string | null;
+    callId: string | null;
+    input: unknown;
+    output: unknown;
+  }>(
+    `/api/opencode/${port}/session/${sessionId}/part-input?partId=${encodeURIComponent(partId)}`,
+    async (url: string) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const input = (data?.input ?? null) as unknown;
   const jsonText = useMemo(() => {
     try {
       return JSON.stringify(input, null, 2);
@@ -1021,7 +1041,15 @@ function ToolInputModal({
                 </button>
               </header>
               <div className="flex-1 min-h-0 overflow-y-auto p-4 text-sm">
-                {view === "formatted" ? (
+                {isLoading ? (
+                  <div className="flex h-32 items-center justify-center text-muted-fg">
+                    <Loader className="size-4" />
+                  </div>
+                ) : error ? (
+                  <div className="text-danger-subtle-fg text-xs">
+                    Failed to load tool input.
+                  </div>
+                ) : view === "formatted" ? (
                   <FormattedValue value={input} />
                 ) : (
                   <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 rounded p-3">
@@ -1159,6 +1187,9 @@ const ToolCallItem = memo(function ToolCallItem({
           )}
         </div>
         {isPending && <span className="animate-pulse shrink-0">...</span>}
+        <span className="shrink-0 text-muted-fg/60 hover:text-fg">
+          <CopyMarkdownButton text={bashCommand} />
+        </span>
         <button
           type="button"
           onClick={() => setInlineExpanded(false)}
@@ -1187,12 +1218,17 @@ const ToolCallItem = memo(function ToolCallItem({
       {details && <span className="opacity-60 shrink-0">{details}</span>}
       {isPending && <span className="animate-pulse shrink-0">...</span>}
       {canInlineExpand && (
+        <span className="ml-auto shrink-0 text-muted-fg/60 hover:text-fg">
+          <CopyMarkdownButton text={bashCommand} />
+        </span>
+      )}
+      {canInlineExpand && (
         <button
           type="button"
           onClick={() => setInlineExpanded(true)}
           aria-label="Expand full command"
           title="Expand full command"
-          className="ml-auto shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
+          className="shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
         >
           <ArrowsPointingOutIcon className="size-3" />
         </button>
@@ -1218,10 +1254,12 @@ const ToolCallItem = memo(function ToolCallItem({
           {toolTimestamp}
         </span>
       )}
-      {canExpand && showInputModal && toolInput && (
+      {canExpand && showInputModal && (
         <ToolInputModal
           toolName={part.tool || "tool"}
-          input={toolInput}
+          port={port}
+          sessionId={sessionId}
+          partId={part.id}
           onClose={() => setShowInputModal(false)}
         />
       )}
@@ -1649,6 +1687,10 @@ const MessageItem = memo(function MessageItem({
   const isAssistant = message.info.role === "assistant";
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
+  const omoBlocks = useMemo(
+    () => (isAssistant ? [] : parseOmoBlocks(textContent)),
+    [isAssistant, textContent],
+  );
   const messagePermissions = pendingPermissions.filter(
     (perm) => perm.tool?.messageID === message.info.id,
   );
@@ -1686,10 +1728,10 @@ const MessageItem = memo(function MessageItem({
     : "";
   return (
     <div
-      className={`${decoration} ${
+      className={`${decoration} px-3 py-3 ${
         !isAssistant && hasHeaderRow
-          ? "mx-3 my-1 rounded-lg bg-muted/20 px-3 py-2"
-          : "px-3 py-3"
+          ? "border-t border-b border-primary/50 [[data-role=user]+&]:border-t-0"
+          : ""
       }`}
       data-role={message.info.role}
       data-message-id={message.info.id}
@@ -1711,7 +1753,7 @@ const MessageItem = memo(function MessageItem({
                   remarkPlugins={[remarkGfm]}
                 />
               ) : (
-                parseOmoBlocks(textContent).map((block, i) =>
+                omoBlocks.map((block, i) =>
                   block.kind === "omo" ? (
                     <OmoBlockView
                       key={`omo-${i}`}
@@ -1740,15 +1782,6 @@ const MessageItem = memo(function MessageItem({
             </div>
           )}
           <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-muted-fg/70">
-            {textContent && <CopyMarkdownButton text={textContent} />}
-            {messageTimestamp && (
-              <span
-                className="font-mono tabular-nums whitespace-nowrap"
-                title={messageTitleAt}
-              >
-                {messageTimestamp}
-              </span>
-            )}
             <button
               type="button"
               onClick={() => onRevertRequest(message, textContent)}
@@ -1766,6 +1799,15 @@ const MessageItem = memo(function MessageItem({
             >
               <RevertIcon className="size-3.5" />
             </button>
+            {textContent && <CopyMarkdownButton text={textContent} />}
+            {messageTimestamp && (
+              <span
+                className="font-mono tabular-nums whitespace-nowrap"
+                title={messageTitleAt}
+              >
+                {messageTimestamp}
+              </span>
+            )}
           </div>
         </>
       )}
@@ -3346,7 +3388,7 @@ function SessionPage() {
 
         <div
           ref={messagesListRef}
-          className="divide-y divide-dashed divide-border overflow-x-hidden [&>*:last-child]:border-t-0"
+          className="overflow-x-hidden"
         >
           {!loading && !error && (
             <>
@@ -3574,7 +3616,7 @@ function SessionPage() {
         >
           <>
             <div className="flex items-center gap-1 px-1 py-1 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
-              <div className="min-w-0 max-w-fit shrink-0">
+              <div className="shrink-0 w-fit [&>*]:!w-auto">
                 <AgentSelect sessionId={sessionId} />
               </div>
               <div className="min-w-0 flex-1">
@@ -3584,9 +3626,7 @@ function SessionPage() {
                   instanceId={instanceId}
                 />
               </div>
-              <div className="min-w-0 max-w-fit shrink-0">
-                <ThinkingSelect sessionId={sessionId} />
-              </div>
+              <ThinkingSelect sessionId={sessionId} />
               <TodoStrip snapshot={todoSnapshot} />
               <button
                 type="button"

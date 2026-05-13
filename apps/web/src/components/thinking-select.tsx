@@ -1,6 +1,7 @@
 import {
   BoltIcon,
   BoltSlashIcon,
+  ChevronUpDownIcon,
   FireIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
@@ -42,9 +43,11 @@ interface RawProvider {
   >;
 }
 
-// Uses Menu (not Select) so the trigger is a plain Button without
-// SelectTrigger's `w-full` cascade that was blowing out the picker bar
-// width and crowding the Agent/Model dropdowns to invisibility.
+// Renders as a Menu-backed Button that visually mirrors the
+// SelectTrigger pattern used by AgentSelect and ModelSelect: icon +
+// label + chevron, same border, same hover, same size. Stays under
+// Menu (not Select) so it doesn't pull in SelectTrigger's `w-full`
+// cascade that would blow out the bar width.
 export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
   const { data: providersData } = useProviders();
   const instance = useInstanceStore((s) => s.instance);
@@ -78,12 +81,13 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
     <Menu>
       <Button
         intent="outline"
-        size="xs"
         aria-label={`Thinking effort: ${variantDisplayLabel(current)}`}
         data-slot="control"
-        className="shrink-0 min-h-0 py-[calc(--spacing(1.5)-1px)] text-sm/6 px-2 [&_svg]:!size-4"
+        className="shrink-0 min-h-0 rounded-lg border border-input px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1.5)-1px)] text-sm/6 gap-x-2 [&_svg]:!size-5 sm:[&_svg]:!size-4"
       >
-        {variantIcon(current, "size-4")}
+        {variantIcon(current, "")}
+        <span className="text-sm/6">{variantDisplayLabel(current)}</span>
+        <ChevronUpDownIcon className="-mr-1 text-muted-fg" />
       </Button>
       <MenuContent placement="bottom end" className="min-w-32">
         <MenuItem

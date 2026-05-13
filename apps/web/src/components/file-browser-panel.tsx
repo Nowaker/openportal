@@ -2,12 +2,12 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 
-// Desktop-only right-side drawer. The iframe is rendered ONLY when
-// isOpen is true so the heavy /files bundle isn't paid for until the
-// user actually opens it. Closing returns to null mount, which the
-// browser collapses into a full teardown of the iframe context -
-// effectively the unmount-on-close "release memory" behavior the
-// user spec'd. State machine: store flips isOpen, store flips back.
+// Desktop-only right-side panel. Lives as a flex sibling of
+// SidebarInset (in _app.tsx) so when it's open the main content
+// reflows to share width with it - same layout pattern as the left
+// AppSidebar. The iframe is mounted only while isOpen is true so the
+// heavy /files bundle is paid for only on first open and torn down
+// completely on close (the user-spec'd "release memory" behavior).
 export function FileBrowserPanel() {
   const { isOpen, initialPath, close } = useFileBrowserPanelStore();
   if (!isOpen) return null;
@@ -17,8 +17,8 @@ export function FileBrowserPanel() {
     : "/files";
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-40 hidden w-[min(50vw,820px)] flex-col border-l border-border bg-bg shadow-2xl md:flex">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+    <aside className="hidden md:flex shrink-0 w-[min(50vw,820px)] flex-col border-l border-border bg-bg">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2 shrink-0">
         <span className="text-sm font-semibold">File browser</span>
         <button
           type="button"
