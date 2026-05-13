@@ -1404,17 +1404,17 @@ function ForkIcon({ className }: { className?: string }) {
       aria-hidden="true"
       viewBox="0 0 20 20"
       fill="none"
+      strokeLinecap="square"
       className={className}
     >
-      <circle cx="5" cy="4.5" r="1.5" stroke="currentColor" />
-      <circle cx="15" cy="4.5" r="1.5" stroke="currentColor" />
-      <circle cx="10" cy="15.5" r="1.5" stroke="currentColor" />
+      <circle cx="3.5" cy="3.5" r="2" stroke="currentColor" />
+      <circle cx="16.5" cy="3.5" r="2" stroke="currentColor" />
+      <circle cx="10" cy="16.5" r="2" stroke="currentColor" />
       <path
-        d="M5 6V8.5C5 10.7 6.8 12.5 9 12.5H11C13.2 12.5 15 10.7 15 8.5V6"
+        d="M3.5 5.5V8C3.5 11 5.5 13 8 13H12C14.5 13 16.5 11 16.5 8V5.5"
         stroke="currentColor"
-        fill="none"
       />
-      <path d="M10 12.5V14" stroke="currentColor" />
+      <path d="M10 13V14.5" stroke="currentColor" />
     </svg>
   );
 }
@@ -3835,23 +3835,25 @@ function SessionPage() {
           style={{ maxHeight: `${composerMaxHeight}px` }}
         >
           <>
-            <div className="flex items-center gap-1 px-1 py-1 text-xs sm:text-sm [&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:text-xs sm:[&_button[data-slot=control]]:text-sm">
-              <div className="shrink-0 w-fit [&>*]:!w-auto">
+            <div className="flex items-center gap-0.5 sm:gap-1 px-1 py-1 text-[10px] sm:text-sm [&_button[data-slot=control]]:py-0.5 sm:[&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:px-1.5 sm:[&_button[data-slot=control]]:px-2.5 [&_button[data-slot=control]]:text-[10px] sm:[&_button[data-slot=control]]:text-sm">
+              <div className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
                 <AgentSelect sessionId={sessionId} />
               </div>
-              <div className="shrink min-w-0 w-fit [&>*]:!w-auto">
+              <div className="flex-1 min-w-0 sm:flex-none sm:shrink sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
                 <ModelOverrideControl
                   isOverriding={isOverridingDefault()}
                   sessionId={sessionId}
                   instanceId={instanceId}
                 />
               </div>
-              <ThinkingSelect sessionId={sessionId} />
+              <div className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
+                <ThinkingSelect sessionId={sessionId} />
+              </div>
               <TodoStrip snapshot={todoSnapshot} />
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}
-                className="md:hidden shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                className="md:hidden shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 title="Attach photo"
                 aria-label="Attach photo"
               >
@@ -3860,7 +3862,7 @@ function SessionPage() {
               <button
                 type="button"
                 onClick={() => anyFileAttachInputRef.current?.click()}
-                className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                className="shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 title="Attach any file"
                 aria-label="Attach any file"
               >
@@ -3879,7 +3881,7 @@ function SessionPage() {
                   }
                   setComposerCollapsed(true);
                 }}
-                className="shrink-0 rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+                className="shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 aria-label="Hide composer"
                 title="Hide composer"
               >
