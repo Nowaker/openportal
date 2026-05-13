@@ -2590,6 +2590,16 @@ function SessionPage() {
 
   const error = messagesError?.message || sendError;
 
+  // Locally-tracked set of permission requestIDs the user has already
+  // replied to from THIS browser. Polling may briefly re-include a
+  // freshly-resolved permission (opencode's permission.list is eventually
+  // consistent with /reply success), which previously caused the
+  // permission widget to flicker back and feel "stuck" - clicks on
+  // already-replied permissions either no-op'd or 404'd. By tracking
+  // resolved ids here we filter them out of any future polling result
+  // for the lifetime of the page, even if opencode's list lags.
+  const dismissedPermissionsRef = useRef<Set<string>>(new Set());
+
   const refreshPendingPermissions = useCallback(async () => {
     if (!port || !sessionId) {
       setPendingPermissions([]);
@@ -2599,9 +2609,14 @@ function SessionPage() {
     try {
       const response = await fetch(`/api/opencode/${port}/permissions`);
       if (!response.ok) return;
-      const data = (await response.json()) as PermissionRequest[];
+      const raw = await response.json();
+      const data: PermissionRequest[] = Array.isArray(raw) ? raw : [];
       setPendingPermissions(
-        data.filter((item) => item.sessionID === sessionId),
+        data.filter(
+          (item) =>
+            item.sessionID === sessionId &&
+            !dismissedPermissionsRef.current.has(item.id),
+        ),
       );
     } catch {
       // Keep current UI state on transient permission polling failures.
@@ -2610,6 +2625,7 @@ function SessionPage() {
 
   const handlePermissionResolved = useCallback(
     (requestId: string) => {
+      dismissedPermissionsRef.current.add(requestId);
       setPendingPermissions((prev) => prev.filter((p) => p.id !== requestId));
       if (port && sessionId) {
         mutateSessionMessages(port, sessionId);
