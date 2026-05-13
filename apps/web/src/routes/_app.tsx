@@ -211,13 +211,15 @@ function AppLayout() {
     );
   }
 
+  // No active instance: the effect above is about to navigate to
+  // /servers. Show the same gentle "Loading…" copy instead of a louder
+  // "Redirecting…" - the redirect is part of the normal first-run /
+  // no-active-server flow, not an error state worth alarming the user
+  // about.
   if (error || !selfData?.instance) {
-    // Render-time fallback for the brief window before the redirect
-    // effect fires; keeps the screen from flashing the "Portal not
-    // registered" copy on every cold load.
     return (
       <div className="flex h-dvh items-center justify-center text-muted-fg">
-        Redirecting to server list…
+        Loading…
       </div>
     );
   }

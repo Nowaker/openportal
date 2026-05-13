@@ -519,8 +519,29 @@ export async function probeOpencode(
   host: string,
   port: number,
   auth?: BasicAuthCreds,
-  timeoutMs = 1500,
+  timeoutMs = 5000,
 ): Promise<boolean> {
+  return (await probeOpencodeDetailed(host, port, auth, timeoutMs)).ok;
+}
+
+export type ProbeResult =
+  | { ok: true }
+  | { ok: false; reason: "auth-required"; status: number }
+  | { ok: false; reason: "unreachable" }
+  | { ok: false; reason: "other"; status: number };
+
+// More detailed probe so the caller can distinguish 'server unreachable'
+// from 'server up but 401'. Used by cred-lookup to skip the SSH
+// credential probe when the server is plainly DOWN - SSH-ing in to look
+// for opencode env vars when opencode isn't running is pointless and
+// produces the misleading 'Connected over SSH, but couldn't find
+// opencode credentials' UI state.
+export async function probeOpencodeDetailed(
+  host: string,
+  port: number,
+  auth?: BasicAuthCreds,
+  timeoutMs = 5000,
+): Promise<ProbeResult> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -528,9 +549,13 @@ export async function probeOpencode(
       signal: ctrl.signal,
       headers: basicAuthHeader(auth),
     });
-    return res.ok;
+    if (res.ok) return { ok: true };
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, reason: "auth-required", status: res.status };
+    }
+    return { ok: false, reason: "other", status: res.status };
   } catch {
-    return false;
+    return { ok: false, reason: "unreachable" };
   } finally {
     clearTimeout(t);
   }

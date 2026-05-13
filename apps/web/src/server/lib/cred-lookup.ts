@@ -27,6 +27,7 @@ import {
   type BasicAuthCreds,
 } from "./server-discovery";
 import { probeSshForCreds, type SshProbeStep } from "./ssh-creds";
+import { probeOpencodeDetailed } from "./server-discovery";
 import { listConfiguredServers } from "./server-registry";
 import { setAuth } from "./auth-store";
 import { invalidateLiveEndpoint } from "./server-resolver";
@@ -143,15 +144,17 @@ async function runProbe(
   port: number,
   options: RunOptions,
 ): Promise<CredLookupStatus> {
-  // Step 1: HTTP probe with no auth. If it works, the server doesn't
-  // require auth — record `succeeded` with no creds and exit.
+  // Step 1: HTTP probe with no auth. Tri-state: success = no auth
+  // needed; auth-required (401/403) = move to SSH; unreachable / other
+  // = bail out with an honest 'server unreachable' rather than SSH-ing
+  // in to look for credentials of a process that isn't running.
   if (!options.forceSsh) {
     set(host, port, {
       state: "probing-http",
       step: `Probing http://${host}:${port}`,
     });
-    const okWithoutAuth = await probeOpencode(host, port);
-    if (okWithoutAuth) {
+    const result = await probeOpencodeDetailed(host, port);
+    if (result.ok) {
       return set(host, port, {
         state: "succeeded",
         step: "Server does not require authentication.",
@@ -159,6 +162,21 @@ async function runProbe(
         authMode: "none",
       });
     }
+    if (result.reason === "unreachable") {
+      return set(host, port, {
+        state: "failed",
+        step: "unreachable",
+        message: `Server at ${host}:${port} is unreachable. Is opencode running there? Skipping SSH credential probe.`,
+      });
+    }
+    if (result.reason === "other") {
+      return set(host, port, {
+        state: "failed",
+        step: "unreachable",
+        message: `Server at ${host}:${port} returned HTTP ${result.status} (expected 200 or 401). Not running opencode? Skipping SSH credential probe.`,
+      });
+    }
+    // Falls through to SSH only for auth-required (401/403).
   }
 
   // Step 2: 401 (or forced). Try SSH.
