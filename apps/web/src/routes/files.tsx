@@ -347,6 +347,27 @@ function resolveLinkInDir(
   return { dir: full.slice(0, slash), file: full.slice(slash + 1) };
 }
 
+type ViewMode = "rendered" | "source" | "split";
+
+function detectRenderableKind(
+  filename: string,
+  language: string | undefined,
+): "markdown" | "html" | null {
+  const lower = filename.toLowerCase();
+  if (
+    language === "markdown" ||
+    lower.endsWith(".md") ||
+    lower.endsWith(".mdx") ||
+    lower.endsWith(".markdown")
+  ) {
+    return "markdown";
+  }
+  if (lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".xhtml")) {
+    return "html";
+  }
+  return null;
+}
+
 function FileViewer({
   file,
   currentDir,
@@ -356,7 +377,30 @@ function FileViewer({
   currentDir: string;
   onResolveLink: (target: string) => void;
 }) {
-  const [renderMarkdown, setRenderMarkdown] = useState(true);
+  const renderableKind = detectRenderableKind(
+    file.filename ?? "",
+    file.language,
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>("rendered");
+  useEffect(() => {
+    setViewMode(renderableKind ? "rendered" : "source");
+  }, [file.filename, renderableKind]);
+
+  const leftRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
+  const syncingRef = useRef(false);
+  const syncScroll = (source: HTMLDivElement, target: HTMLDivElement) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    const denom = source.scrollHeight - source.clientHeight;
+    if (denom > 0) {
+      const ratio = source.scrollTop / denom;
+      target.scrollTop = ratio * (target.scrollHeight - target.clientHeight);
+    }
+    requestAnimationFrame(() => {
+      syncingRef.current = false;
+    });
+  };
 
   if (file.error) {
     return (
@@ -391,9 +435,9 @@ function FileViewer({
           filename={filename}
           size={file.size}
           language="binary"
-          showRawToggle={false}
-          renderMarkdown={false}
-          setRenderMarkdown={() => {}}
+          renderableKind={null}
+          viewMode="source"
+          setViewMode={() => {}}
           onCopy={null}
           rawUrl={rawUrl}
         />
@@ -414,7 +458,6 @@ function FileViewer({
     );
   }
 
-  const isMarkdown = file.language === "markdown";
   const text = file.content ?? "";
   const onCopy = () => {
     void navigator.clipboard.writeText(text);
@@ -422,57 +465,103 @@ function FileViewer({
   };
   const rawUrl = `/api/fs/raw?path=${encodeURIComponent(file.path ?? "")}`;
 
+  const renderedPane = renderableKind === "markdown"
+    ? (
+      <div className="prose prose-sm dark:prose-invert max-w-none p-4 break-words [&_pre]:overflow-x-auto">
+        <MarkdownRenderer
+          source={text}
+          mode="extended"
+          components={{
+            a: ({ href, children, ...rest }) => {
+              if (!href) return <a {...rest}>{children}</a>;
+              if (
+                href.startsWith("http://") ||
+                href.startsWith("https://") ||
+                href.startsWith("mailto:") ||
+                href.startsWith("#")
+              ) {
+                return (
+                  <a href={href} target="_blank" rel="noreferrer" {...rest}>
+                    {children}
+                  </a>
+                );
+              }
+              return (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onResolveLink(href);
+                  }}
+                  {...rest}
+                >
+                  {children}
+                </a>
+              );
+            },
+          }}
+        />
+      </div>
+    )
+    : renderableKind === "html"
+      ? (
+        <iframe
+          title={file.filename ?? "html preview"}
+          srcDoc={text}
+          sandbox=""
+          className="h-full w-full border-0 bg-white"
+        />
+      )
+      : null;
+
+  const sourcePane = (
+    <CodeBlock content={text} language={file.language ?? "text"} />
+  );
+
   return (
     <div className="flex h-full flex-col">
       <FileHeader
         filename={file.filename ?? ""}
         size={file.size}
         language={file.language ?? "text"}
-        showRawToggle={isMarkdown}
-        renderMarkdown={renderMarkdown}
-        setRenderMarkdown={setRenderMarkdown}
+        renderableKind={renderableKind}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
         onCopy={onCopy}
         rawUrl={rawUrl}
       />
-      <div className="flex-1 overflow-auto">
-        {isMarkdown && renderMarkdown ? (
-          <div className="prose prose-sm dark:prose-invert max-w-none p-4 break-words [&_pre]:overflow-x-auto">
-            <MarkdownRenderer
-              source={text}
-              mode="extended"
-              components={{
-                a: ({ href, children, ...rest }) => {
-                  if (!href) return <a {...rest}>{children}</a>;
-                  if (
-                    href.startsWith("http://") ||
-                    href.startsWith("https://") ||
-                    href.startsWith("mailto:") ||
-                    href.startsWith("#")
-                  ) {
-                    return (
-                      <a href={href} target="_blank" rel="noreferrer" {...rest}>
-                        {children}
-                      </a>
-                    );
-                  }
-                  return (
-                    <a
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        onResolveLink(href);
-                      }}
-                      {...rest}
-                    >
-                      {children}
-                    </a>
-                  );
-                },
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {renderableKind && viewMode === "rendered" && (
+          <div className="h-full overflow-auto">{renderedPane}</div>
+        )}
+        {(!renderableKind || viewMode === "source") && (
+          <div className="h-full overflow-auto">{sourcePane}</div>
+        )}
+        {renderableKind && viewMode === "split" && (
+          <div className="flex h-full">
+            <div
+              ref={leftRef}
+              onScroll={() => {
+                if (leftRef.current && rightRef.current) {
+                  syncScroll(leftRef.current, rightRef.current);
+                }
               }}
-            />
+              className="flex-1 overflow-auto border-r border-border"
+            >
+              {renderedPane}
+            </div>
+            <div
+              ref={rightRef}
+              onScroll={() => {
+                if (leftRef.current && rightRef.current) {
+                  syncScroll(rightRef.current, leftRef.current);
+                }
+              }}
+              className="flex-1 overflow-auto"
+            >
+              {sourcePane}
+            </div>
           </div>
-        ) : (
-          <CodeBlock content={text} language={file.language ?? "text"} />
         )}
       </div>
     </div>
@@ -483,18 +572,18 @@ function FileHeader({
   filename,
   size,
   language,
-  showRawToggle,
-  renderMarkdown,
-  setRenderMarkdown,
+  renderableKind,
+  viewMode,
+  setViewMode,
   onCopy,
   rawUrl,
 }: {
   filename: string;
   size: number | undefined;
   language: string;
-  showRawToggle: boolean;
-  renderMarkdown: boolean;
-  setRenderMarkdown: (v: boolean) => void;
+  renderableKind: "markdown" | "html" | null;
+  viewMode: ViewMode;
+  setViewMode: (v: ViewMode) => void;
   onCopy: (() => void) | null;
   rawUrl: string;
 }) {
@@ -506,24 +595,34 @@ function FileHeader({
         <span className="text-muted-fg">{formatBytes(size)}</span>
       )}
       <div className="ml-auto flex items-center gap-1">
-        {showRawToggle && (
-          <button
-            type="button"
-            onClick={() => setRenderMarkdown(!renderMarkdown)}
-            className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30"
-          >
-            {renderMarkdown ? (
-              <>
-                <EyeSlashIcon className="size-3" />
-                Raw
-              </>
-            ) : (
-              <>
-                <EyeIcon className="size-3" />
-                Render
-              </>
-            )}
-          </button>
+        {renderableKind && (
+          <div className="inline-flex rounded border border-border bg-bg p-0.5">
+            <ViewModeButton
+              active={viewMode === "rendered"}
+              onClick={() => setViewMode("rendered")}
+              title="Rendered view"
+            >
+              <EyeIcon className="size-3" />
+              <span className="hidden sm:inline">Rendered</span>
+            </ViewModeButton>
+            <ViewModeButton
+              active={viewMode === "source"}
+              onClick={() => setViewMode("source")}
+              title="Source view"
+            >
+              <EyeSlashIcon className="size-3" />
+              <span className="hidden sm:inline">Source</span>
+            </ViewModeButton>
+            <ViewModeButton
+              active={viewMode === "split"}
+              onClick={() => setViewMode("split")}
+              title="Side by side (desktop)"
+              className="hidden md:inline-flex"
+            >
+              <span className="font-mono">⫶⫶</span>
+              <span className="hidden sm:inline">Split</span>
+            </ViewModeButton>
+          </div>
         )}
         {onCopy && (
           <button
@@ -547,6 +646,33 @@ function FileHeader({
         </a>
       </div>
     </div>
+  );
+}
+
+function ViewModeButton({
+  active,
+  onClick,
+  title,
+  className,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${
+        active ? "bg-primary/10 text-primary" : "text-muted-fg hover:bg-muted/30"
+      } ${className ?? ""}`}
+    >
+      {children}
+    </button>
   );
 }
 
