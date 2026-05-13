@@ -57,8 +57,14 @@ const USER_TASK_REGEX = /<user-task>\s*([\s\S]*?)\s*<\/user-task>/g;
 const AUTO_SLASH_REGEX = /<auto-slash-command>[\s\S]*?<\/auto-slash-command>/g;
 const ULTRAWORK_REGEX = /<ultrawork-mode>[\s\S]*?<\/ultrawork-mode>/g;
 const COMMAND_INSTR_REGEX = /<command-instruction>[\s\S]*?<\/command-instruction>/g;
+const SYSTEM_REMINDER_REGEX =
+  /<system-reminder>[\s\S]*?<\/system-reminder>(?:\s*<!-- OMO_INTERNAL_INITIATOR -->)?/g;
 const SEARCH_MODE_REGEX =
   /^\[search-mode\][\s\S]*?(?:\n---(?:\n|$)|$(?![\s\S]))/gm;
+const ANALYZE_MODE_REGEX =
+  /^\[analyze-mode\][\s\S]*?(?:\n---(?:\n|$)|$(?![\s\S]))/gm;
+const MANDATORY_PARAMS_REGEX =
+  /^MANDATORY [a-z_]+ params:[\s\S]*?(?:\n---(?:\n|$)|$(?![\s\S]))/gm;
 const CATEGORY_REMINDER_REGEX =
   /^\[Category\+Skill Reminder\][\s\S]*?(?=\n\n[^\s\[<]|$)/gm;
 const AGENT_USAGE_REMINDER_REGEX =
@@ -251,12 +257,35 @@ function collectAllOmoRanges(text: string): Range[] {
     (body) => firstLine(body.replace(/^<command-instruction>\s*/, "").trim()).slice(0, 120),
     2,
   );
+  const systemReminder = collectXmlRanges(
+    text,
+    SYSTEM_REMINDER_REGEX,
+    "<system-reminder>",
+    (body) =>
+      body.match(/\[[A-Z][^\]\n]+\]/)?.[0] ??
+      firstLine(body.replace(/^<system-reminder>\s*/, "").trim()).slice(0, 120),
+    4,
+  );
   const searchMode = collectLineRanges(
     text,
     SEARCH_MODE_REGEX,
     "[search-mode]",
     (body) =>
       body.match(/MAXIMIZE SEARCH EFFORT[^\n]*/)?.[0] ?? "(search-mode preamble)",
+  );
+  const analyzeMode = collectLineRanges(
+    text,
+    ANALYZE_MODE_REGEX,
+    "[analyze-mode]",
+    (body) =>
+      body.match(/ANALYSIS MODE[^\n]*/)?.[0] ?? "(analyze-mode preamble)",
+  );
+  const mandatoryParams = collectLineRanges(
+    text,
+    MANDATORY_PARAMS_REGEX,
+    "MANDATORY params",
+    (body) =>
+      body.match(/^MANDATORY ([a-z_]+) params:/)?.[1] ?? undefined,
   );
   const catReminder = collectLineRanges(
     text,
@@ -276,7 +305,10 @@ function collectAllOmoRanges(text: string): Range[] {
     ...ultrawork,
     ...autoSlash,
     ...commandInstr,
+    ...systemReminder,
     ...searchMode,
+    ...analyzeMode,
+    ...mandatoryParams,
     ...catReminder,
     ...agentUsage,
   ].sort((a, b) => a.start - b.start);
