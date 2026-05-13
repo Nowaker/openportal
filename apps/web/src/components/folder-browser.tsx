@@ -16,6 +16,12 @@ import {
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+import { PathInput, type PathInputHandle } from "@/components/ui/path-input";
+import {
+  fromTildeDisplay,
+  splitInput,
+  toTildeDisplay,
+} from "@/lib/path-utils";
 
 // Tracks visualViewport height to keep modal usable when on-screen keyboard
 // opens on Android Chrome. dvh units don't always shrink for the IME.
@@ -153,15 +159,6 @@ interface BodyProps {
   onSelect: (path: string, autoPrompt?: string) => void;
 }
 
-function splitInput(input: string): { dir: string; prefix: string } {
-  const lastSlash = input.lastIndexOf("/");
-  if (lastSlash < 0) return { dir: "", prefix: input };
-  return {
-    dir: input.slice(0, lastSlash + 1),
-    prefix: input.slice(lastSlash + 1),
-  };
-}
-
 interface CreateState {
   parent: string;
   leaf: string;
@@ -185,7 +182,7 @@ function FolderBrowserBody({ onClose, onSelect }: BodyProps) {
   const [createState, setCreateState] = useState<CreateState | null>(null);
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<PathInputHandle>(null);
 
   useEffect(() => {
     if (pathInput !== null) return;
@@ -197,14 +194,7 @@ function FolderBrowserBody({ onClose, onSelect }: BodyProps) {
     } else {
       setPathInput("/");
     }
-    setTimeout(() => {
-      const el = inputRef.current;
-      if (el) {
-        el.focus();
-        const len = el.value.length;
-        el.setSelectionRange(len, len);
-      }
-    }, 50);
+    setTimeout(() => inputRef.current?.setCaretEnd(), 50);
   }, [pathInput, configData, baseDirs, lcd]);
 
   const { dir, prefix } = useMemo(
@@ -249,19 +239,6 @@ function FolderBrowserBody({ onClose, onSelect }: BodyProps) {
     return data.entries.filter((e) => e.name.toLowerCase().startsWith(lower));
   }, [data?.entries, prefix]);
 
-  const completePath = (entry: Entry) => {
-    const next = (dir || "/") + entry.name + "/";
-    setPathInput(next);
-    requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (el) {
-        el.focus();
-        const len = el.value.length;
-        el.setSelectionRange(len, len);
-      }
-    });
-  };
-
   // Probes a path; if it doesn't exist (and parent is in scope + accessible),
   // switches to the create-project view. Otherwise opens the path normally.
   const probeAndSelect = async (rawPath: string) => {
@@ -300,22 +277,14 @@ function FolderBrowserBody({ onClose, onSelect }: BodyProps) {
     }
   };
 
-  const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Tab" && filteredEntries.length > 0) {
-      e.preventDefault();
-      completePath(filteredEntries[0]);
-      return;
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (!pathInput) return;
-      probeAndSelect(pathInput);
-    }
-  };
-
   const onEntrySelect = (entry: Entry) => {
     const fullPath = (dir || "/") + entry.name;
     onSelect(fullPath);
+  };
+
+  const completePath = (entry: Entry) => {
+    setPathInput((dir || "/") + entry.name + "/");
+    requestAnimationFrame(() => inputRef.current?.setCaretEnd());
   };
 
   if (createState) {
@@ -353,18 +322,13 @@ function FolderBrowserBody({ onClose, onSelect }: BodyProps) {
       </div>
 
       <div className="px-4 pt-3 pb-3 border-b border-border shrink-0">
-        <input
+        <PathInput
           ref={inputRef}
-          type="text"
           value={pathInput ?? ""}
-          onChange={(e) => setPathInput(e.target.value)}
-          onKeyDown={onInputKeyDown}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          autoComplete="off"
+          onChange={setPathInput}
+          onSubmit={() => pathInput && probeAndSelect(pathInput)}
+          entries={filteredEntries}
           disabled={probing}
-          className="w-full rounded-md border border-border bg-muted/20 px-3 py-2 text-sm font-mono outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
         />
         {probeError && (
           <p className="mt-2 text-xs text-danger-subtle-fg">{probeError}</p>

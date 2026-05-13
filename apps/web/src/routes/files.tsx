@@ -2,6 +2,7 @@ import {
   ArrowLeftIcon,
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowUpIcon,
   ClipboardDocumentIcon,
   DocumentIcon,
   EyeIcon,
@@ -10,13 +11,15 @@ import {
   HomeIcon,
 } from "@heroicons/react/24/outline";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Highlight, themes } from "prism-react-renderer";
 import useSWR from "swr";
 
 import { MarkdownRenderer } from "@/lib/markdown-renderer";
 import { Loader } from "@/components/ui/loader";
+import { PathInput, type PathInputHandle } from "@/components/ui/path-input";
 import { toast } from "@/components/ui/toast";
+import { fromTildeDisplay, toTildeDisplay } from "@/lib/path-utils";
 
 interface BrowseEntry {
   name: string;
@@ -96,13 +99,30 @@ function FilesPage() {
     });
   };
 
+  const home = browse?.home ?? "";
+  const [pathInput, setPathInput] = useState("");
+  useEffect(() => {
+    if (browse?.path) setPathInput(toTildeDisplay(browse.path, home));
+  }, [browse?.path, home]);
+
+  const submitPath = () => {
+    const abs = fromTildeDisplay(pathInput, home);
+    goTo(abs);
+  };
+
   return (
     <div className="flex h-screen flex-col bg-bg text-fg">
       <TopBar
-        currentPath={browse?.path}
+        pathInput={pathInput}
+        onPathInputChange={setPathInput}
+        onPathSubmit={submitPath}
+        entries={browse?.entries ?? []}
         home={browse?.home}
         parent={browse?.parent ?? null}
         onRefresh={() => void mutateBrowse()}
+        onGoBack={() => {
+          if (window.history.length > 1) window.history.back();
+        }}
         onGoHome={() => browse?.home && goTo(browse.home)}
         onGoUp={() => browse?.parent && goTo(browse.parent)}
       />
@@ -162,30 +182,47 @@ function FilesPage() {
 }
 
 function TopBar({
-  currentPath,
+  pathInput,
+  onPathInputChange,
+  onPathSubmit,
+  entries,
   home,
   parent,
   onRefresh,
+  onGoBack,
   onGoHome,
   onGoUp,
 }: {
-  currentPath: string | undefined;
+  pathInput: string;
+  onPathInputChange: (next: string) => void;
+  onPathSubmit: () => void;
+  entries: BrowseEntry[];
   home: string | undefined;
   parent: string | null;
   onRefresh: () => void;
+  onGoBack: () => void;
   onGoHome: () => void;
   onGoUp: () => void;
 }) {
+  const pathInputRef = useRef<PathInputHandle>(null);
   return (
-    <header className="flex items-center gap-2 border-b border-border bg-bg px-3 py-2">
+    <header className="flex items-center gap-1.5 border-b border-border bg-bg px-3 py-2">
+      <button
+        type="button"
+        onClick={onGoBack}
+        title="Back (browser history)"
+        className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+      >
+        <ArrowLeftIcon className="size-4" />
+      </button>
       <button
         type="button"
         onClick={onGoUp}
         disabled={!parent}
-        title="Up one directory"
+        title="Parent directory"
         className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
       >
-        <ArrowLeftIcon className="size-4" />
+        <ArrowUpIcon className="size-4" />
       </button>
       <button
         type="button"
@@ -196,13 +233,17 @@ function TopBar({
       >
         <HomeIcon className="size-4" />
       </button>
-      <h1 className="hidden text-sm font-semibold sm:inline">openportal files</h1>
-      <span
-        className="flex-1 truncate text-xs font-mono text-muted-fg sm:text-sm"
-        title={currentPath}
-      >
-        {currentPath ?? "…"}
-      </span>
+      <div className="flex-1 min-w-0">
+        <PathInput
+          ref={pathInputRef}
+          value={pathInput}
+          onChange={onPathInputChange}
+          onSubmit={onPathSubmit}
+          entries={entries}
+          placeholder="path"
+          className="w-full rounded-md border border-border bg-muted/20 px-2 py-1 text-xs font-mono outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
+        />
+      </div>
       <button
         type="button"
         onClick={onRefresh}
