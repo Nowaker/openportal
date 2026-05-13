@@ -21,18 +21,16 @@ function usernameFromHome(home: string): string {
   return home.split("/").filter(Boolean).pop() ?? "";
 }
 
-// Renders an absolute path as ~user/... when it's inside the runtime
-// user's home, falls back to the absolute form otherwise. The ~user
-// prefix (not just ~) is deliberate: it matches sh/zsh syntax (~root,
-// ~postgres) so a savvy user can later extend this to arbitrary users
-// without rewriting the renderer.
+// Renders absolute paths under the server's runtime home directory
+// as plain `~/...` - the server is the source of truth for "who am
+// I", and a bare ~ is the universal shell convention for "the current
+// user's home" regardless of which OS layout the home directory
+// actually lives at (/home/x on Linux, /Users/x on macOS).
 export function toTildeDisplay(absPath: string, home: string): string {
   if (!home || !absPath.startsWith("/")) return absPath;
-  const user = usernameFromHome(home);
-  if (!user) return absPath;
-  if (absPath === home) return `~${user}`;
+  if (absPath === home) return `~`;
   if (absPath.startsWith(home + "/")) {
-    return `~${user}${absPath.slice(home.length)}`;
+    return `~${absPath.slice(home.length)}`;
   }
   return absPath;
 }
@@ -46,6 +44,8 @@ export function fromTildeDisplay(displayPath: string, home: string): string {
   const user = usernameFromHome(home);
   if (displayPath === "~" || displayPath === "~/") return home;
   if (displayPath.startsWith("~/")) return home + displayPath.slice(1);
+  // Accept legacy ~user form too so paths saved before the bare-tilde
+  // rewrite still resolve correctly.
   if (user && displayPath === `~${user}`) return home;
   if (user && displayPath.startsWith(`~${user}/`)) {
     return home + displayPath.slice(user.length + 1);
