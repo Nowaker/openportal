@@ -118,6 +118,7 @@ function stripOmoFromUserText(messages: unknown, sessionId: string): void {
           header: b.header ?? "",
           summary: b.summary ?? "",
           bytes: b.text.length,
+          segments: b.segments,
         });
         out.push(`<!--OMO-STRIPPED:${encodeURIComponent(meta)}-->`);
       }

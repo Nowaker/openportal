@@ -1,17 +1,31 @@
 import { useState } from "react";
 import { MinusIcon, PlusIcon } from "@heroicons/react/24/outline";
+import type { OmoSegment } from "@/lib/omo-injection";
 
 interface Props {
   header: string;
   summary: string | undefined;
   text: string;
+  // When the source OMO wrapper consolidated multiple adjacent triggers
+  // (e.g. [search-mode] + [analyze-mode]), each contributing
+  // header+summary is listed here in source order. The collapsed title
+  // renders them all so the user sees every trigger that was merged.
+  // Single-trigger wrappers either omit this field or pass a one-entry
+  // list; the renderer falls back to the bare header/summary then.
+  segments?: OmoSegment[];
   // When the server stripped the OMO body to save wire bytes, `text`
   // arrives empty and `lazyFetchUrl` is set. First expand triggers a
   // fetch + caches the result inside this component instance.
   lazyFetchUrl?: string;
 }
 
-export function OmoBlockView({ header, summary, text, lazyFetchUrl }: Props) {
+export function OmoBlockView({
+  header,
+  summary,
+  text,
+  segments,
+  lazyFetchUrl,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
   const [fetched, setFetched] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -52,9 +66,24 @@ export function OmoBlockView({ header, summary, text, lazyFetchUrl }: Props) {
         ) : (
           <PlusIcon className="size-3 shrink-0" />
         )}
-        <span className="truncate font-mono">{header}</span>
-        {summary && (
-          <span className="truncate text-muted-fg/70">{summary}</span>
+        {segments && segments.length > 1 ? (
+          <span className="truncate flex items-center gap-1.5">
+            {segments.map((seg, i) => (
+              <span key={i} className="inline-flex items-center gap-1">
+                <span className="font-mono">{seg.header}</span>
+                {seg.summary && (
+                  <span className="text-muted-fg/70">{seg.summary}</span>
+                )}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <>
+            <span className="truncate font-mono">{header}</span>
+            {summary && (
+              <span className="truncate text-muted-fg/70">{summary}</span>
+            )}
+          </>
         )}
       </button>
       {expanded && (

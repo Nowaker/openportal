@@ -22,11 +22,21 @@
 // one collapsed block with the most informative headline available
 // from any of the merged sources.
 
+export interface OmoSegment {
+  header: string;
+  summary?: string;
+}
+
 export interface OmoBlock {
   kind: "user" | "omo";
   text: string;
   header?: string;
   summary?: string;
+  // When multiple adjacent OMO triggers consolidate into one collapsed
+  // wrapper (e.g. [search-mode]...[analyze-mode]...), this array lists
+  // each contributing trigger's header+summary in source order so the
+  // collapsed title can surface all of them, not just one.
+  segments?: OmoSegment[];
   // Lazy-fetch reference for OMO bodies that the server stripped to
   // save bandwidth. When set, the renderer fetches the full text on
   // expand via /api/opencode/{port}/session/{id}/message/{msgId}/omo/{ref.blockId}
@@ -98,6 +108,10 @@ interface Range {
   // candidate headers (e.g. an <ultrawork-mode> block plus an adjacent
   // <auto-slash-command>; ultrawork's "ENABLED!" banner wins).
   priority: number;
+  // Source-order list of (header, summary) pairs that contributed to
+  // this range. Single-trigger ranges have one entry; consolidateAdjacent
+  // concatenates the lists when it merges adjacent ranges.
+  segments: OmoSegment[];
   // Server-stripped OMO bodies carry a lazy-fetch reference instead of
   // inline text. The renderer pulls the full body from the dedicated
   // /omo/{blockId} endpoint on expand.
@@ -147,18 +161,22 @@ function collectInitiatorRanges(text: string): Range[] {
         header: "OMO directive",
         summary: undefined,
         priority: 1,
+        segments: [{ header: "OMO directive", summary: undefined }],
       });
       cursor = end;
       continue;
     }
     const absStart = cursor + headerStart;
     const body = text.slice(absStart, end);
+    const header = headerLineAt(text, absStart);
+    const summary = findInjectionSummary(body);
     out.push({
       start: absStart,
       end,
-      header: headerLineAt(text, absStart),
-      summary: findInjectionSummary(body),
+      header,
+      summary,
       priority: 3,
+      segments: [{ header, summary }],
     });
     cursor = end;
   }
@@ -207,12 +225,14 @@ function collectXmlRanges(
   const out: Range[] = [];
   for (const m of text.matchAll(re)) {
     if (m.index === undefined) continue;
+    const summary = buildSummary(m[0]);
     out.push({
       start: m.index,
       end: m.index + m[0].length,
       header,
-      summary: buildSummary(m[0]),
+      summary,
       priority,
+      segments: [{ header, summary }],
     });
   }
   return out;
@@ -227,12 +247,14 @@ function collectLineRanges(
   const out: Range[] = [];
   for (const m of text.matchAll(re)) {
     if (m.index === undefined) continue;
+    const summary = buildSummary(m[0]);
     out.push({
       start: m.index,
       end: m.index + m[0].length,
       header,
-      summary: buildSummary(m[0]),
+      summary,
       priority: 2,
+      segments: [{ header, summary }],
     });
   }
   return out;
@@ -242,7 +264,13 @@ function collectStrippedMarkerRanges(text: string): Range[] {
   const out: Range[] = [];
   for (const m of text.matchAll(STRIPPED_MARKER_REGEX)) {
     if (m.index === undefined) continue;
-    let meta: { id?: string; header?: string; summary?: string; bytes?: number } = {};
+    let meta: {
+      id?: string;
+      header?: string;
+      summary?: string;
+      bytes?: number;
+      segments?: OmoSegment[];
+    } = {};
     try {
       meta = JSON.parse(decodeURIComponent(m[1] ?? ""));
     } catch {
@@ -250,12 +278,23 @@ function collectStrippedMarkerRanges(text: string): Range[] {
     }
     const blockId = typeof meta.id === "string" ? meta.id : "";
     if (!blockId) continue;
+    const header = meta.header || "OMO directive";
+    const summary = meta.summary || undefined;
+    const segments = Array.isArray(meta.segments) && meta.segments.length > 0
+      ? meta.segments
+          .filter((s) => s && typeof (s as OmoSegment).header === "string")
+          .map((s) => ({
+            header: (s as OmoSegment).header,
+            summary: (s as OmoSegment).summary,
+          }))
+      : [{ header, summary }];
     out.push({
       start: m.index,
       end: m.index + m[0].length,
-      header: meta.header || "OMO directive",
-      summary: meta.summary || undefined,
+      header,
+      summary,
       priority: 10,
+      segments,
       ref: { blockId, bytes: typeof meta.bytes === "number" ? meta.bytes : 0 },
     });
   }
@@ -383,6 +422,8 @@ function splitRangeAroundUserTask(
         header: range.header,
         summary: range.summary,
         priority: range.priority,
+        segments: range.segments,
+        ref: range.ref,
       });
     }
     cur = ut.end;
@@ -394,6 +435,8 @@ function splitRangeAroundUserTask(
       header: range.header,
       summary: range.summary,
       priority: range.priority,
+      segments: range.segments,
+      ref: range.ref,
     });
   }
   return out;
@@ -415,6 +458,8 @@ function consolidateAdjacent(ranges: Range[], text: string): Range[] {
             ? r.summary ?? last.summary
             : last.summary ?? r.summary,
         priority: Math.max(last.priority, r.priority),
+        segments: [...last.segments, ...r.segments],
+        ref: last.ref ?? r.ref,
       };
       out[out.length - 1] = merged;
     } else {
@@ -478,6 +523,7 @@ export function parseOmoBlocks(text: string): OmoBlock[] {
       text: r.ref ? "" : text.slice(r.start, r.end),
       header: r.header,
       summary: r.summary,
+      segments: r.segments,
       ref: r.ref,
     });
     cursor = r.end;

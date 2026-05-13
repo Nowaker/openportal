@@ -1795,6 +1795,7 @@ const MessageItem = memo(function MessageItem({
                       key={`omo-${i}`}
                       header={block.header ?? "OMO block"}
                       summary={block.summary}
+                      segments={block.segments}
                       text={block.text}
                       lazyFetchUrl={
                         block.ref
