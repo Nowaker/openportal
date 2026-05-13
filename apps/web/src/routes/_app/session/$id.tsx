@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod/v4";
 import {
   useEffect,
@@ -2181,6 +2181,7 @@ function useComposerMaxHeight(): number {
 
 function SessionPage() {
   const { id: sessionId } = Route.useParams();
+  const navigate = useNavigate();
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
   const composerMaxHeight = useComposerMaxHeight();
