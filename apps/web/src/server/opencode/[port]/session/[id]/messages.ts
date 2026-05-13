@@ -7,6 +7,8 @@ import {
   setCachedMessages,
   messagesAfter,
 } from "../../../../lib/messages-cache";
+import { parseOmoBlocks } from "../../../../../lib/omo-injection";
+import { putOmoBody } from "../../../../lib/omo-strip-cache";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -64,10 +66,64 @@ async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
   const stripped = stripDiagnosticFixes(messages.data);
   stripUserMessageSummary(stripped);
   stripPartBloat(stripped);
+  stripOmoFromUserText(stripped, id);
   rewriteImageDataUrls(stripped, id);
   const arr = Array.isArray(stripped) ? stripped : [];
   setCachedMessages(id, arr);
   return arr;
+}
+
+// Replace OMO injection bodies inside user-text parts with compact
+// reference markers. The full content gets stashed in an in-memory
+// cache keyed by (sessionId, messageId, blockId) so the chat can
+// lazily fetch it on expand. Wire savings: typical OMO blocks are
+// 1-3 KB of directive text; a session with 20 collapsed wrappers
+// drops 20-60 KB per messages fetch.
+//
+// Marker shape: <!--OMO-STRIPPED:<encoded-json>-->
+// The encoded JSON carries id (blockId), header (display label),
+// summary (subtitle), bytes (size hint for the placeholder UI). The
+// client-side parser recognises the marker and renders OmoBlockView
+// in lazy mode.
+function stripOmoFromUserText(messages: unknown, sessionId: string): void {
+  if (!Array.isArray(messages)) return;
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") continue;
+    const m = msg as {
+      info?: { id?: string; role?: string };
+      parts?: unknown;
+    };
+    if (m.info?.role !== "user") continue;
+    const messageId = m.info?.id;
+    if (!messageId) continue;
+    const parts = m.parts;
+    if (!Array.isArray(parts)) continue;
+    for (let pIdx = 0; pIdx < parts.length; pIdx++) {
+      const part = parts[pIdx] as { type?: string; text?: unknown };
+      if (part?.type !== "text" || typeof part.text !== "string") continue;
+      const original = part.text;
+      const blocks = parseOmoBlocks(original);
+      if (!blocks.some((b) => b.kind === "omo")) continue;
+      let blockIdx = 0;
+      const out: string[] = [];
+      for (const b of blocks) {
+        if (b.kind === "user") {
+          out.push(b.text);
+          continue;
+        }
+        const blockId = `${pIdx}.${blockIdx++}`;
+        putOmoBody(sessionId, messageId, blockId, b.text);
+        const meta = JSON.stringify({
+          id: blockId,
+          header: b.header ?? "",
+          summary: b.summary ?? "",
+          bytes: b.text.length,
+        });
+        out.push(`<!--OMO-STRIPPED:${encodeURIComponent(meta)}-->`);
+      }
+      (part as { text: string }).text = out.join("");
+    }
+  }
 }
 
 // Aggressive per-part field stripping for opencode's persisted-but-unused

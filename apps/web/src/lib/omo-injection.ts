@@ -27,6 +27,11 @@ export interface OmoBlock {
   text: string;
   header?: string;
   summary?: string;
+  // Lazy-fetch reference for OMO bodies that the server stripped to
+  // save bandwidth. When set, the renderer fetches the full text on
+  // expand via /api/opencode/{port}/session/{id}/message/{msgId}/omo/{ref.blockId}
+  // instead of reading `text` (which is empty for stripped blocks).
+  ref?: { blockId: string; bytes: number };
 }
 
 interface InitiatorCatcher {
@@ -53,6 +58,7 @@ const INITIATOR_CATCHERS: InitiatorCatcher[] = [
 ];
 
 const INITIATOR = "<!-- OMO_INTERNAL_INITIATOR -->";
+const STRIPPED_MARKER_REGEX = /<!--OMO-STRIPPED:([^>]+)-->/g;
 const USER_TASK_REGEX = /<user-task>\s*([\s\S]*?)\s*<\/user-task>/g;
 const AUTO_SLASH_REGEX = /<auto-slash-command>[\s\S]*?<\/auto-slash-command>/g;
 const ULTRAWORK_REGEX = /<ultrawork-mode>[\s\S]*?<\/ultrawork-mode>/g;
@@ -92,6 +98,10 @@ interface Range {
   // candidate headers (e.g. an <ultrawork-mode> block plus an adjacent
   // <auto-slash-command>; ultrawork's "ENABLED!" banner wins).
   priority: number;
+  // Server-stripped OMO bodies carry a lazy-fetch reference instead of
+  // inline text. The renderer pulls the full body from the dedicated
+  // /omo/{blockId} endpoint on expand.
+  ref?: { blockId: string; bytes: number };
 }
 
 interface UserTaskRange {
@@ -228,7 +238,32 @@ function collectLineRanges(
   return out;
 }
 
+function collectStrippedMarkerRanges(text: string): Range[] {
+  const out: Range[] = [];
+  for (const m of text.matchAll(STRIPPED_MARKER_REGEX)) {
+    if (m.index === undefined) continue;
+    let meta: { id?: string; header?: string; summary?: string; bytes?: number } = {};
+    try {
+      meta = JSON.parse(decodeURIComponent(m[1] ?? ""));
+    } catch {
+      continue;
+    }
+    const blockId = typeof meta.id === "string" ? meta.id : "";
+    if (!blockId) continue;
+    out.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      header: meta.header || "OMO directive",
+      summary: meta.summary || undefined,
+      priority: 10,
+      ref: { blockId, bytes: typeof meta.bytes === "number" ? meta.bytes : 0 },
+    });
+  }
+  return out;
+}
+
 function collectAllOmoRanges(text: string): Range[] {
+  const stripped = collectStrippedMarkerRanges(text);
   const initiator = collectInitiatorRanges(text);
   const ultrawork = collectXmlRanges(
     text,
@@ -301,6 +336,7 @@ function collectAllOmoRanges(text: string): Range[] {
   );
 
   return [
+    ...stripped,
     ...initiator,
     ...ultrawork,
     ...autoSlash,
@@ -439,9 +475,10 @@ export function parseOmoBlocks(text: string): OmoBlock[] {
     }
     blocks.push({
       kind: "omo",
-      text: text.slice(r.start, r.end),
+      text: r.ref ? "" : text.slice(r.start, r.end),
       header: r.header,
       summary: r.summary,
+      ref: r.ref,
     });
     cursor = r.end;
   }

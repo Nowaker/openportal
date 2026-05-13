@@ -1796,6 +1796,15 @@ const MessageItem = memo(function MessageItem({
                       header={block.header ?? "OMO block"}
                       summary={block.summary}
                       text={block.text}
+                      lazyFetchUrl={
+                        block.ref
+                          ? `/api/opencode/${port}/session/${encodeURIComponent(
+                              sessionId,
+                            )}/message/${encodeURIComponent(
+                              message.info.id,
+                            )}/omo/${encodeURIComponent(block.ref.blockId)}`
+                          : undefined
+                      }
                     />
                   ) : block.text.trim() ? (
                     <MessageMarkdown
