@@ -182,27 +182,28 @@ export function listPrompts(filters: ListFilters = {}): ListResult {
     }
   };
 
-  let sql: string;
+  // FTS5's MATCH is whole-word-by-default; the user expects substring
+  // semantics where 'bleh' matches 'dupableh'. Skip the FTS index and
+  // use LIKE '%term%' on the prompts table directly. Slower for large
+  // archives but matches user intent; the SQLite linear scan still
+  // returns < 100ms for ~10k rows on this DB. Escape LIKE wildcards
+  // in the user input ('%', '_', '\') so a literal '%' query doesn't
+  // unexpectedly match everything.
+  const escapeLike = (s: string): string =>
+    s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+  let sql = `SELECT * FROM prompts WHERE 1=1`;
   if (filters.q && filters.q.trim().length > 0) {
-    sql = `SELECT p.* FROM prompts p JOIN prompts_fts f ON p.rowid = f.rowid WHERE f.raw_text MATCH ?`;
-    params.push(filters.q.trim());
-    addEq("p.project_path", filters.project);
-    addEq("p.session_id", filters.session);
-    addCmp("p.ts_ms", ">=", filters.from);
-    addCmp("p.ts_ms", "<=", filters.to);
-    addCmp("p.ts_ms", "<", filters.cursor);
-    if (where.length > 0) sql += ` AND ` + where.join(" AND ");
-    sql += ` ORDER BY p.ts_ms DESC LIMIT ?`;
-  } else {
-    sql = `SELECT * FROM prompts WHERE 1=1`;
-    addEq("project_path", filters.project);
-    addEq("session_id", filters.session);
-    addCmp("ts_ms", ">=", filters.from);
-    addCmp("ts_ms", "<=", filters.to);
-    addCmp("ts_ms", "<", filters.cursor);
-    if (where.length > 0) sql += ` AND ` + where.join(" AND ");
-    sql += ` ORDER BY ts_ms DESC LIMIT ?`;
+    where.push(`raw_text LIKE ? ESCAPE '\\'`);
+    params.push(`%${escapeLike(filters.q.trim())}%`);
   }
+  addEq("project_path", filters.project);
+  addEq("session_id", filters.session);
+  addCmp("ts_ms", ">=", filters.from);
+  addCmp("ts_ms", "<=", filters.to);
+  addCmp("ts_ms", "<", filters.cursor);
+  if (where.length > 0) sql += ` AND ` + where.join(" AND ");
+  sql += ` ORDER BY ts_ms DESC LIMIT ?`;
   params.push(limit + 1);
 
   const rows = db.prepare(sql).all(...params) as PromptRow[];
