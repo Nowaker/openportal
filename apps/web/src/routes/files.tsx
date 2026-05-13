@@ -12,13 +12,17 @@ import {
 } from "@heroicons/react/24/outline";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Highlight, themes } from "prism-react-renderer";
 import useSWR from "swr";
 
 import { MarkdownRenderer } from "@/lib/markdown-renderer";
 import { Loader } from "@/components/ui/loader";
 import { PathInput, type PathInputHandle } from "@/components/ui/path-input";
 import { toast } from "@/components/ui/toast";
+import {
+  LANGUAGE_OPTIONS,
+  ShikiCodeBlock,
+  detectLanguageFromContent,
+} from "@/components/code-block-shiki";
 import { fromTildeDisplay, toTildeDisplay } from "@/lib/path-utils";
 
 interface BrowseEntry {
@@ -382,8 +386,17 @@ function FileViewer({
     file.language,
   );
   const [viewMode, setViewMode] = useState<ViewMode>("rendered");
+  const [languageOverride, setLanguageOverride] = useState<string | null>(null);
+  const detectedLanguage = useMemo(() => {
+    const serverLang = file.language ?? "text";
+    if (serverLang !== "text") return serverLang;
+    if (file.kind !== "text" || !file.content) return "text";
+    return detectLanguageFromContent(file.content);
+  }, [file.language, file.content, file.kind]);
+  const effectiveLanguage = languageOverride ?? detectedLanguage;
   useEffect(() => {
     setViewMode(renderableKind ? "rendered" : "source");
+    setLanguageOverride(null);
   }, [file.filename, renderableKind]);
 
   const leftRef = useRef<HTMLDivElement>(null);
@@ -435,6 +448,7 @@ function FileViewer({
           filename={filename}
           size={file.size}
           language="binary"
+          onLanguageChange={null}
           renderableKind={null}
           viewMode="source"
           setViewMode={() => {}}
@@ -515,7 +529,7 @@ function FileViewer({
       : null;
 
   const sourcePane = (
-    <CodeBlock content={text} language={file.language ?? "text"} />
+    <ShikiCodeBlock content={text} language={effectiveLanguage} />
   );
 
   return (
@@ -523,7 +537,8 @@ function FileViewer({
       <FileHeader
         filename={file.filename ?? ""}
         size={file.size}
-        language={file.language ?? "text"}
+        language={effectiveLanguage}
+        onLanguageChange={(lang) => setLanguageOverride(lang)}
         renderableKind={renderableKind}
         viewMode={viewMode}
         setViewMode={setViewMode}
@@ -572,6 +587,7 @@ function FileHeader({
   filename,
   size,
   language,
+  onLanguageChange,
   renderableKind,
   viewMode,
   setViewMode,
@@ -581,6 +597,7 @@ function FileHeader({
   filename: string;
   size: number | undefined;
   language: string;
+  onLanguageChange: ((lang: string) => void) | null;
   renderableKind: "markdown" | "html" | null;
   viewMode: ViewMode;
   setViewMode: (v: ViewMode) => void;
@@ -590,7 +607,25 @@ function FileHeader({
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
       <span className="truncate font-mono text-sm font-medium">{filename}</span>
-      <span className="text-muted-fg">{language}</span>
+      {onLanguageChange ? (
+        <select
+          value={language}
+          onChange={(e) => onLanguageChange(e.target.value)}
+          title="Syntax highlighting language"
+          className="rounded border border-border bg-bg px-1.5 py-0.5 text-xs text-muted-fg hover:text-fg focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {LANGUAGE_OPTIONS.find((l) => l.id === language) === undefined && (
+            <option value={language}>{language}</option>
+          )}
+          {LANGUAGE_OPTIONS.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <span className="text-muted-fg">{language}</span>
+      )}
       {typeof size === "number" && (
         <span className="text-muted-fg">{formatBytes(size)}</span>
       )}
@@ -676,43 +711,4 @@ function ViewModeButton({
   );
 }
 
-function CodeBlock({ content, language }: { content: string; language: string }) {
-  // Cap the highlighter input. prism-react-renderer tokenizes the entire
-  // string up-front; multi-megabyte files (already capped at 5 MB server
-  // -side) make the tokenizer noticeably sluggish. 200 KB is comfortable
-  // for the typical source-file viewer use case while still flagging
-  // when the rest of a huge file is being truncated.
-  const HIGHLIGHT_CAP = 200 * 1024;
-  const truncated = content.length > HIGHLIGHT_CAP;
-  const display = truncated
-    ? content.slice(0, HIGHLIGHT_CAP) +
-      `\n\n[truncated for highlighter; ${formatBytes(content.length - HIGHLIGHT_CAP)} more - use Raw to see the rest]`
-    : content;
 
-  return (
-    <Highlight code={display} language={language} theme={themes.vsDark}>
-      {({ className, style, tokens, getLineProps, getTokenProps }) => (
-        <pre
-          className={`${className} m-0 overflow-auto p-4 text-xs leading-relaxed`}
-          style={style}
-        >
-          {tokens.map((line, i) => {
-            const lineProps = getLineProps({ line, key: i });
-            return (
-              <div key={i} {...lineProps} className="table-row">
-                <span className="table-cell select-none pr-3 text-right text-muted-fg/60">
-                  {i + 1}
-                </span>
-                <span className="table-cell">
-                  {line.map((token, key) => (
-                    <span key={key} {...getTokenProps({ token, key })} />
-                  ))}
-                </span>
-              </div>
-            );
-          })}
-        </pre>
-      )}
-    </Highlight>
-  );
-}
