@@ -2,6 +2,7 @@ import {
   ChevronUpDownIcon,
   ChevronRightIcon,
   ArchiveBoxIcon,
+  ServerStackIcon,
   ArchiveBoxArrowDownIcon,
   ArrowUturnLeftIcon,
   BellAlertIcon,
@@ -1546,6 +1547,15 @@ export default function AppSidebar(
             >
               <ArchiveBoxIcon />
               Prompt history
+            </MenuItem>
+            <MenuItem
+              onAction={() => {
+                setIsOpenOnMobile(false);
+                navigate({ to: "/servers" });
+              }}
+            >
+              <ServerStackIcon />
+              Server list
             </MenuItem>
             <MenuItem
               onAction={() => {
