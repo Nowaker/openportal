@@ -56,6 +56,7 @@ import {
   MicrophoneIcon,
   UserIcon,
   XMarkIcon,
+  ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -992,9 +993,22 @@ const ToolCallItem = memo(function ToolCallItem({
   const toolTimestamp = toolStart ? formatMessageTime(toolStart, dateFormat) : "";
   const toolTitleAt = formatAbsoluteAndRelative(toolStart);
   const [showInputModal, setShowInputModal] = useState(false);
+  const [inlineExpanded, setInlineExpanded] = useState(false);
   const toolInput = (part.state?.input ?? null) as Record<string, unknown> | null;
+  const isBashTool = (part.tool || "").toLowerCase() === "bash";
+  const bashCommand = isBashTool
+    ? String(toolInput?.command ?? toolInput?.cmd ?? "")
+    : "";
+  const bashDescription = isBashTool
+    ? String(toolInput?.description ?? "")
+    : "";
+  const canInlineExpand = isBashTool && bashCommand.length > 0;
   const canExpand =
-    !isEditTool && !hasQuestions && toolInput !== null && Object.keys(toolInput).length > 0;
+    !isEditTool &&
+    !hasQuestions &&
+    !canInlineExpand &&
+    toolInput !== null &&
+    Object.keys(toolInput).length > 0;
 
   if (hasQuestions) {
     return (
@@ -1044,22 +1058,63 @@ const ToolCallItem = memo(function ToolCallItem({
     );
   }
 
+  const toneClass = isError
+    ? "text-danger"
+    : isCompleted
+      ? "text-muted-fg"
+      : isPending
+        ? "text-warning"
+        : "text-fg";
+
+  if (canInlineExpand && inlineExpanded) {
+    return (
+      <div className={`font-mono text-xs flex items-start gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
+        <span className="opacity-60 shrink-0">$</span>
+        <div className="flex-1 min-w-0">
+          <pre className="m-0 whitespace-pre-wrap break-all">{bashCommand}</pre>
+          {bashDescription && (
+            <div className="mt-0.5 opacity-60"># {bashDescription}</div>
+          )}
+        </div>
+        {isPending && <span className="animate-pulse shrink-0">...</span>}
+        <button
+          type="button"
+          onClick={() => setInlineExpanded(false)}
+          aria-label="Collapse"
+          title="Collapse"
+          className="shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
+        >
+          <ArrowsPointingInIcon className="size-3" />
+        </button>
+        {toolTimestamp && (
+          <span
+            className="hidden sm:inline shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums pl-1.5"
+            title={toolTitleAt}
+          >
+            {toolTimestamp}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`font-mono text-xs flex items-center gap-1.5 py-0.5 min-w-0 ${
-        isError
-          ? "text-danger"
-          : isCompleted
-            ? "text-muted-fg"
-            : isPending
-              ? "text-warning"
-              : "text-fg"
-      }`}
-    >
+    <div className={`font-mono text-xs flex items-center gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
       <span className="opacity-60 shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
       {details && <span className="opacity-60 shrink-0">{details}</span>}
       {isPending && <span className="animate-pulse shrink-0">...</span>}
+      {canInlineExpand && (
+        <button
+          type="button"
+          onClick={() => setInlineExpanded(true)}
+          aria-label="Expand full command"
+          title="Expand full command"
+          className="ml-auto shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
+        >
+          <ArrowsPointingOutIcon className="size-3" />
+        </button>
+      )}
       {canExpand && (
         <button
           type="button"
@@ -1074,7 +1129,7 @@ const ToolCallItem = memo(function ToolCallItem({
       {toolTimestamp && (
         <span
           className={`hidden sm:inline shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums ${
-            canExpand ? "pl-1.5" : "ml-auto pl-2"
+            canExpand || canInlineExpand ? "pl-1.5" : "ml-auto pl-2"
           }`}
           title={toolTitleAt}
         >
