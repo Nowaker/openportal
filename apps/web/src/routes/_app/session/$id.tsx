@@ -1605,28 +1605,12 @@ function CodeBlockCopyButton({ text }: { text: string }) {
 function MessageMarkdown({
   text,
   remarkPlugins,
-  trailingInline,
 }: {
   text: string;
   remarkPlugins: NonNullable<React.ComponentProps<typeof Markdown>["remarkPlugins"]>;
-  trailingInline?: React.ReactNode;
 }) {
   const components = useMemo(
     () => ({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      p: ({ node, children, ...props }: any) => {
-        const isLast = node?.properties?.dataLastP === "true" && trailingInline;
-        return (
-          <p {...props}>
-            {children}
-            {isLast && (
-              <span className="ml-2 inline-flex items-center gap-1.5 align-middle text-[10px] text-muted-fg/70">
-                {trailingInline}
-              </span>
-            )}
-          </p>
-        );
-      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       pre: ({ node, children, ...props }: any) => {
         const codeText = extractTextFromHast(node as HastNode);
@@ -1638,15 +1622,11 @@ function MessageMarkdown({
         );
       },
     }),
-    [trailingInline],
+    [],
   );
 
   return (
-    <Markdown
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={trailingInline ? [rehypeMarkLastParagraph] : []}
-      components={components}
-    >
+    <Markdown remarkPlugins={remarkPlugins} components={components}>
       {text}
     </Markdown>
   );
@@ -1681,115 +1661,6 @@ function ErrorAcknowledgeControl({
     >
       Acknowledge
     </button>
-  );
-}
-
-function MessageTrailingControls({
-  isAssistant,
-  messageTimestamp,
-  messageTitleAt,
-  textContent,
-  onRevertRequest,
-}: {
-  isAssistant: boolean;
-  messageTimestamp: string;
-  messageTitleAt: string | undefined;
-  textContent: string;
-  onRevertRequest: () => void;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onRevertRequest}
-        className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-        aria-label={
-          isAssistant
-            ? "Revert to right after this message"
-            : "Revert to before this message"
-        }
-        title={
-          isAssistant
-            ? "Revert to right after this message"
-            : "Revert to before this message"
-        }
-      >
-        <RevertIcon className="size-3.5" />
-      </button>
-      {textContent && <CopyMarkdownButton text={textContent} />}
-      {messageTimestamp && (
-        <span
-          className="font-mono tabular-nums whitespace-nowrap"
-          title={messageTitleAt}
-        >
-          {messageTimestamp}
-        </span>
-      )}
-    </>
-  );
-}
-
-function UserMessageBody({
-  blocks,
-  textContent,
-  messageTimestamp,
-  messageTitleAt,
-  onRevertRequest,
-}: {
-  blocks: ReturnType<typeof parseOmoBlocks>;
-  textContent: string;
-  messageTimestamp: string;
-  messageTitleAt: string | undefined;
-  onRevertRequest: () => void;
-}) {
-  let lastUserBlockIdx = -1;
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const b = blocks[i];
-    if (b.kind === "user" && b.text.trim().length > 0) {
-      lastUserBlockIdx = i;
-      break;
-    }
-  }
-  const trailingControls = (
-    <MessageTrailingControls
-      isAssistant={false}
-      messageTimestamp={messageTimestamp}
-      messageTitleAt={messageTitleAt}
-      textContent={textContent}
-      onRevertRequest={onRevertRequest}
-    />
-  );
-  return (
-    <>
-      {blocks.map((block, i) => {
-        if (block.kind === "omo") {
-          return (
-            <OmoBlockView
-              key={`omo-${i}`}
-              header={block.header ?? "OMO block"}
-              summary={block.summary}
-              text={block.text}
-            />
-          );
-        }
-        if (!block.text.trim()) return null;
-        return (
-          <MessageMarkdown
-            key={`user-${i}`}
-            text={block.text}
-            remarkPlugins={[remarkGfm, remarkBreaks]}
-            trailingInline={
-              i === lastUserBlockIdx ? trailingControls : undefined
-            }
-          />
-        );
-      })}
-      {lastUserBlockIdx === -1 && (
-        <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-muted-fg/70">
-          {trailingControls}
-        </div>
-      )}
-    </>
   );
 }
 
@@ -1863,7 +1734,7 @@ const MessageItem = memo(function MessageItem({
     : "";
   return (
     <div
-      className={`${decoration} px-3 py-3 ${
+      className={`${decoration} relative px-3 py-3 ${
         !isAssistant && hasHeaderRow
           ? "border-t border-b border-primary/50 [[data-role=user]+&]:border-t-0"
           : ""
@@ -1881,43 +1752,69 @@ const MessageItem = memo(function MessageItem({
             </Badge>
           )}
           {textContent && (
-            <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere]">
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words pr-20 [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere]">
               {isAssistant ? (
                 <MessageMarkdown
                   text={textContent}
                   remarkPlugins={[remarkGfm]}
-                  trailingInline={
-                    <MessageTrailingControls
-                      isAssistant
-                      messageTimestamp={messageTimestamp}
-                      messageTitleAt={messageTitleAt}
-                      textContent={textContent}
-                      onRevertRequest={() =>
-                        onRevertRequest(message, textContent)
-                      }
-                    />
-                  }
                 />
               ) : (
-                <UserMessageBody
-                  blocks={omoBlocks}
-                  textContent={textContent}
-                  messageTimestamp={messageTimestamp}
-                  messageTitleAt={messageTitleAt}
-                  onRevertRequest={() => onRevertRequest(message, textContent)}
-                />
+                omoBlocks.map((block, i) =>
+                  block.kind === "omo" ? (
+                    <OmoBlockView
+                      key={`omo-${i}`}
+                      header={block.header ?? "OMO block"}
+                      summary={block.summary}
+                      text={block.text}
+                    />
+                  ) : block.text.trim() ? (
+                    <MessageMarkdown
+                      key={`user-${i}`}
+                      text={block.text}
+                      remarkPlugins={[remarkGfm, remarkBreaks]}
+                    />
+                  ) : null,
+                )
               )}
             </div>
           )}
           {fileParts.length > 0 && (
             <div
-              className={`${textContent ? "mt-2" : ""} flex flex-wrap gap-1.5`}
+              className={`${textContent ? "mt-2" : ""} flex flex-wrap gap-1.5 pr-20`}
             >
               {fileParts.map((part) => (
                 <AttachmentChip key={part.id} part={part} />
               ))}
             </div>
           )}
+          <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70">
+            <button
+              type="button"
+              onClick={() => onRevertRequest(message, textContent)}
+              className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+              aria-label={
+                isAssistant
+                  ? "Revert to right after this message"
+                  : "Revert to before this message"
+              }
+              title={
+                isAssistant
+                  ? "Revert to right after this message"
+                  : "Revert to before this message"
+              }
+            >
+              <RevertIcon className="size-3.5" />
+            </button>
+            {textContent && <CopyMarkdownButton text={textContent} />}
+            {messageTimestamp && (
+              <span
+                className="font-mono tabular-nums whitespace-nowrap"
+                title={messageTitleAt}
+              >
+                {messageTimestamp}
+              </span>
+            )}
+          </div>
         </>
       )}
       {toolCalls.length > 0 && (
@@ -3495,10 +3392,7 @@ function SessionPage() {
           </div>
         )}
 
-        <div
-          ref={messagesListRef}
-          className="overflow-x-hidden"
-        >
+        <div ref={messagesListRef}>
           {!loading && !error && (
             <>
               {!loadAllMessages && messages.length >= messageLimit && (
