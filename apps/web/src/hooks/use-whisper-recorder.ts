@@ -26,7 +26,7 @@ interface UseWhisperRecorderResult {
 }
 
 const VAD_RMS_THRESHOLD = 0.015;
-const VAD_SILENCE_MS = 900;
+const VAD_SILENCE_MS = 5000;
 const VAD_MIN_UTTERANCE_MS = 600;
 const ANALYSER_FFT_SIZE = 512;
 
