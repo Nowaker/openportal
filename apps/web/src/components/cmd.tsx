@@ -32,12 +32,6 @@ import { useTheme } from "@/providers/theme-provider";
 import { toast } from "@/components/ui/toast";
 import type { Session } from "@opencode-ai/sdk";
 
-function truncateTitle(title: string, maxLength = 40): string {
-  if (title.length <= maxLength) return title;
-  const halfLength = Math.floor((maxLength - 3) / 2);
-  return `${title.slice(0, halfLength)}...${title.slice(-halfLength)}`;
-}
-
 interface InstanceData {
   id: string;
   name: string;
