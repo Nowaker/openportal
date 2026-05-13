@@ -125,6 +125,29 @@ Set in `~/.openportal/openportal.json`. Priority order:
 
 ## UX preferences
 
+### Loading feedback (mandatory)
+
+Any UI that awaits data MUST show a visible loading indicator while
+the data is unresolved. The placeholder `—` dash, an empty body, or
+an unstyled container does NOT count - the user sees a frozen view
+and cannot tell whether the page is fetching or genuinely empty.
+
+Rules:
+
+- Components driven by SWR / useSWR / useSessionMessages: render
+  `<Loader className="size-5" />` (or an inline skeleton) while
+  `isLoading` is true AND the cached data is empty or insufficient.
+- Components driven by ad-hoc fetch + useState: track an explicit
+  `loading` boolean and render the spinner branch first.
+- Modals MUST cover the body region with a centered loader during
+  initial fetch; do not render fields with `?? "—"` placeholders.
+- Lists MUST show a spinner row (or skeleton placeholders) until
+  the response lands; "No results found" only after the fetch
+  resolves with an empty array.
+- Bonus: keep the previous data visible during silent refresh
+  (`keepPreviousData: true` in SWR) so the spinner only appears on
+  cold load, not on every revalidation.
+
 ### Composer
 
 - Drafts persist in `localStorage["opencode-composer-draft:<sid>"]`,

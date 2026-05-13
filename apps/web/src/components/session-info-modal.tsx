@@ -7,6 +7,7 @@ import {
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions, useProviders } from "@/hooks/use-opencode";
+import { Loader } from "@/components/ui/loader";
 
 interface Props {
   isOpen: boolean;
@@ -27,6 +28,7 @@ interface AssistantMessageInfo {
     cache?: { read?: number; write?: number };
   };
   time?: { created?: number; completed?: number };
+  finish?: string;
 }
 
 interface RawProviderConfig {
@@ -136,6 +138,38 @@ function fmtDate(ms: number | undefined | null): string {
   return new Date(ms).toLocaleString();
 }
 
+function describeFinishReason(finish: string): { title: string; detail?: string } {
+  switch (finish) {
+    case "content-filter":
+      return {
+        title: "Blocked by content filter",
+        detail:
+          "Provider's safety classifier rejected this response. The conversation contains content the model refuses to engage with — try editing the last user message or starting a fresh session.",
+      };
+    case "length":
+      return {
+        title: "Response cut off",
+        detail: "Model hit its max output tokens before finishing.",
+      };
+    case "error":
+      return {
+        title: "Model error",
+        detail: "Model stopped due to an error.",
+      };
+    case "other":
+      return {
+        title: "Stopped (other)",
+        detail: "Model stopped for an unspecified reason.",
+      };
+    default:
+      return {
+        title: `Stopped (${finish})`,
+        detail:
+          "Unexpected finish reason — open the model's response in raw view to inspect.",
+      };
+  }
+}
+
 export function SessionInfoModal({ isOpen, sessionId, onOpenChange }: Props) {
   return (
     <ModalOverlay
@@ -160,9 +194,16 @@ function Body({
   sessionId: string;
   onClose: () => void;
 }) {
-  const { messages } = useSessionMessages(sessionId, { loadAll: true });
-  const { data: sessions } = useSessions();
-  const { data: providersData } = useProviders();
+  const {
+    messages,
+    isLoading: messagesLoading,
+  } = useSessionMessages(sessionId, { loadAll: true });
+  const { data: sessions, isLoading: sessionsLoading } = useSessions();
+  const { data: providersData, isLoading: providersLoading } = useProviders();
+  const isLoading =
+    (messagesLoading && (!messages || messages.length === 0)) ||
+    (sessionsLoading && !sessions) ||
+    (providersLoading && !providersData);
 
   const session = useMemo(
     () =>
@@ -309,6 +350,14 @@ function Body({
       });
   }, [stats.breakdownChars, stats.inputSum]);
 
+  const finishReason = useMemo(() => {
+    const finish = stats.lastAssistant?.finish;
+    if (finish && finish !== "stop" && finish !== "tool-calls") {
+      return describeFinishReason(finish);
+    }
+    return null;
+  }, [stats.lastAssistant]);
+
   return (
     <>
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -323,6 +372,23 @@ function Body({
         </button>
       </div>
       <div className="overflow-y-auto p-4 space-y-5">
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-fg">
+            <Loader className="size-5" />
+            <span>Loading session info…</span>
+          </div>
+        )}
+        {!isLoading && finishReason && (
+          <div className="rounded-md border border-danger/40 bg-danger-subtle/30 p-3 text-xs text-danger-subtle-fg">
+            <div className="font-semibold">{finishReason.title}</div>
+            {finishReason.detail && (
+              <div className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug">
+                {finishReason.detail}
+              </div>
+            )}
+          </div>
+        )}
+        {!isLoading && (
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
           <Field label="Session" value={session?.title ?? "—"} />
           <Field label="Messages" value={fmt(stats.messages)} />
@@ -359,7 +425,8 @@ function Body({
             value={fmtDate(session?.time?.updated)}
           />
         </div>
-        {breakdown.length > 0 && (
+        )}
+        {!isLoading && breakdown.length > 0 && (
           <div className="space-y-2">
             <div className="text-xs text-muted-fg">Context Breakdown</div>
             <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
