@@ -1,29 +1,39 @@
-// The OhMyOpenCode plugin injects "directive" blocks into the user's
-// prompt before opencode sees it (todo-continuation, context-monitor,
-// search-mode, agent-usage reminders, slash-command wrappers, etc.).
-// They render verbatim in the chat as huge walls of text that the user
-// never actually typed and doesn't want to re-read on every scroll.
+// The OhMyOpenCode plugin and several user-side conventions inject
+// "directive" blocks into the prompt before opencode sees it: todo-
+// continuation, context-window monitor, search-mode preambles,
+// ultrawork-mode / ralph-loop boilerplate, slash-command wrappers,
+// auto-injected agent-usage reminders, background-task-completion
+// notifications, and so on. They render verbatim in chat as walls of
+// text the user never typed and does not want to re-read on every
+// scroll.
 //
 // parseOmoBlocks() splits a raw user-message body into alternating
-// user-typed chunks and OMO-injection chunks so the renderer can collapse
-// the injection chunks to a single line + summary.
+// user-typed chunks and OMO-injection chunks so the renderer can
+// collapse the injection chunks to a single line + extracted summary.
 //
-// Detection strategy:
-//   1. Find every <!-- OMO_INTERNAL_INITIATOR --> marker - that's the
-//      structural terminator the plugin emits at the end of each
-//      injected block.
-//   2. For each marker, walk back to the most recent bracketed [...]
-//      header at column 0 inside the unconsumed segment. The injection
-//      spans header -> marker (inclusive).
-//   3. Anything outside an injection range is user-typed prose.
-//   4. <auto-slash-command>...</auto-slash-command> blocks are detected
-//      separately - they wrap user slash invocations and don't use the
-//      OMO_INTERNAL_INITIATOR marker.
+// Three families of detectable injections:
 //
-// Catchers per known trigger pull a useful one-line summary out of the
-// injection body so the collapsed view exposes the relevant metadata
-// (todo-continuation surfaces Status, context-monitor surfaces Context
-// Status, slash-command surfaces the user-task line). Unknown triggers
+//   1. INITIATOR-terminated blocks. Start with a bracketed [...] header
+//      at column 0 and end with the <!-- OMO_INTERNAL_INITIATOR -->
+//      marker. Catches the plugin's directive class: TODO CONTINUATION,
+//      CONTEXT WINDOW MONITOR, BACKGROUND TASK COMPLETED, etc.
+//
+//   2. XML-tag wrappers. <tag>...</tag> blocks: <auto-slash-command>,
+//      <ultrawork-mode>, <command-instruction>. Caught as one collapsed
+//      block each. (<user-task> is intentionally NOT caught - that's
+//      the user's actual ask wrapped by the slash machinery.)
+//
+//   3. Line-based preambles. Open with a known bracketed tag on its
+//      own line ([search-mode], [ultrabrain], [deep], [artistry],
+//      [Category+Skill Reminder], [Agent Usage Reminder]) and stretch
+//      until a '---' separator line OR end-of-message. The user's
+//      convention: directive header + body + --- separator + actual
+//      prompt.
+//
+// Catchers per family extract a useful one-line summary so the
+// collapsed view still surfaces the actionable metadata (todo-
+// continuation surfaces Status, ultrawork-mode surfaces the wake-up
+// banner, slash-command surfaces the user-task line). Unknown triggers
 // collapse to header-only.
 
 export interface OmoBlock {
@@ -33,12 +43,12 @@ export interface OmoBlock {
   summary?: string;
 }
 
-interface Catcher {
+interface InitiatorCatcher {
   headerRegex: RegExp;
   extractSummary?: (body: string) => string | undefined;
 }
 
-const CATCHERS: Catcher[] = [
+const INITIATOR_CATCHERS: InitiatorCatcher[] = [
   {
     headerRegex: /\[SYSTEM DIRECTIVE: OH-MY-OPENCODE - TODO CONTINUATION\]/,
     extractSummary: (body) =>
@@ -52,19 +62,68 @@ const CATCHERS: Catcher[] = [
   {
     headerRegex: /\[BACKGROUND TASK COMPLETED\]/,
     extractSummary: (body) =>
-      body.match(/^[*]+ID:[*]+\s+`([^`]+)`/m)?.[1],
+      body.match(/^\*+ID:\*+\s+`([^`]+)`/m)?.[1],
+  },
+];
+
+interface NonInitiatorPattern {
+  regex: RegExp;
+  buildHeader: (match: string) => string;
+  buildSummary?: (match: string) => string | undefined;
+}
+
+const NON_INITIATOR_PATTERNS: NonInitiatorPattern[] = [
+  {
+    regex: /<auto-slash-command>[\s\S]*?<\/auto-slash-command>/g,
+    buildHeader: (body) => {
+      const m = body.match(/#\s*\/(\S+)\s+Command/i);
+      return m ? `/${m[1]} (slash command)` : "<auto-slash-command>";
+    },
+    buildSummary: (body) => {
+      const task = body
+        .match(/<user-task>\s*([\s\S]*?)\s*<\/user-task>/)?.[1]
+        ?.trim();
+      return task ? firstLine(task).slice(0, 120) : undefined;
+    },
+  },
+  {
+    regex: /<ultrawork-mode>[\s\S]*?<\/ultrawork-mode>/g,
+    buildHeader: () => "<ultrawork-mode>",
+    buildSummary: (body) => {
+      const banner = body.match(/ULTRAWORK MODE ENABLED!/)?.[0];
+      if (banner) return banner;
+      return body.match(/\[CODE RED\][^\n]*/)?.[0];
+    },
+  },
+  {
+    regex: /<command-instruction>[\s\S]*?<\/command-instruction>/g,
+    buildHeader: () => "<command-instruction>",
+    buildSummary: (body) => firstLine(body.replace(/^<command-instruction>\s*/, "").trim()).slice(0, 120),
+  },
+  {
+    regex: /^\[search-mode\][\s\S]*?(?:\n---(?:\n|$)|$(?![\s\S]))/gm,
+    buildHeader: () => "[search-mode]",
+    buildSummary: (body) =>
+      body.match(/MAXIMIZE SEARCH EFFORT[^\n]*/)?.[0] ?? "(search-mode preamble)",
+  },
+  {
+    regex: /^\[Category\+Skill Reminder\][\s\S]*?(?=\n\n[^\s\[<]|$)/gm,
+    buildHeader: () => "[Category+Skill Reminder]",
+  },
+  {
+    regex: /^\[Agent Usage Reminder\][\s\S]*?(?=\n\n[^\s\[<]|$)/gm,
+    buildHeader: () => "[Agent Usage Reminder]",
   },
 ];
 
 const INITIATOR = "<!-- OMO_INTERNAL_INITIATOR -->";
-const AUTO_SLASH = /<auto-slash-command>[\s\S]*?<\/auto-slash-command>/g;
 
 function firstLine(s: string): string {
   return s.split("\n", 1)[0] ?? "";
 }
 
 function findInjectionSummary(body: string): string | undefined {
-  for (const c of CATCHERS) {
+  for (const c of INITIATOR_CATCHERS) {
     if (c.headerRegex.test(body)) {
       return c.extractSummary?.(body);
     }
@@ -72,79 +131,97 @@ function findInjectionSummary(body: string): string | undefined {
   return undefined;
 }
 
-function parseAutoSlashBlocks(text: string): OmoBlock[] {
-  const blocks: OmoBlock[] = [];
-  AUTO_SLASH.lastIndex = 0;
-  let pos = 0;
-  let m: RegExpExecArray | null;
-  while ((m = AUTO_SLASH.exec(text)) !== null) {
-    if (m.index > pos) {
-      blocks.push({ kind: "user", text: text.slice(pos, m.index) });
-    }
-    const body = m[0];
-    const cmdName = body.match(/#\s*\/(\S+)\s+Command/i)?.[1];
-    const userTask = body
-      .match(/<user-task>\s*([\s\S]*?)\s*<\/user-task>/)?.[1]
-      ?.trim();
-    const summary = userTask ? firstLine(userTask).slice(0, 120) : undefined;
-    blocks.push({
-      kind: "omo",
-      text: body,
-      header: cmdName ? `/${cmdName}` : "slash command",
-      summary,
-    });
-    pos = m.index + body.length;
-  }
-  if (pos < text.length) blocks.push({ kind: "user", text: text.slice(pos) });
-  return blocks;
+interface Range {
+  start: number;
+  end: number;
+  header: string;
+  summary: string | undefined;
 }
 
-export function parseOmoBlocks(text: string): OmoBlock[] {
-  const hasInitiator = text.includes(INITIATOR);
-  const hasAutoSlash = AUTO_SLASH.test(text);
-  if (!hasInitiator && !hasAutoSlash) {
-    return [{ kind: "user", text }];
+function collectNonInitiatorRanges(text: string): Range[] {
+  const ranges: Range[] = [];
+  for (const pat of NON_INITIATOR_PATTERNS) {
+    pat.regex.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = pat.regex.exec(text)) !== null) {
+      const body = m[0];
+      ranges.push({
+        start: m.index,
+        end: m.index + body.length,
+        header: pat.buildHeader(body),
+        summary: pat.buildSummary?.(body),
+      });
+    }
   }
-  if (!hasInitiator) {
-    return parseAutoSlashBlocks(text);
-  }
+  return ranges.sort((a, b) => a.start - b.start);
+}
 
-  const blocks: OmoBlock[] = [];
+function collectInitiatorRanges(text: string): Range[] {
+  const ranges: Range[] = [];
   let cursor = 0;
   while (cursor < text.length) {
     const initiatorIdx = text.indexOf(INITIATOR, cursor);
-    if (initiatorIdx < 0) {
-      blocks.push({ kind: "user", text: text.slice(cursor) });
-      break;
-    }
+    if (initiatorIdx < 0) break;
     const segment = text.slice(cursor, initiatorIdx);
     const headerMatch = segment.match(/^\[[^\]\n]+\][^\n]*/m);
     if (!headerMatch) {
-      if (segment.length > 0) {
-        blocks.push({ kind: "user", text: segment });
-      }
       cursor = initiatorIdx + INITIATOR.length;
       continue;
     }
     const headerOffset = headerMatch.index ?? 0;
     const headerStart = cursor + headerOffset;
-    if (headerStart > cursor) {
-      blocks.push({ kind: "user", text: text.slice(cursor, headerStart) });
+    const end = initiatorIdx + INITIATOR.length;
+    const body = text.slice(headerStart, end);
+    ranges.push({
+      start: headerStart,
+      end,
+      header: headerMatch[0],
+      summary: findInjectionSummary(body),
+    });
+    cursor = end;
+  }
+  return ranges;
+}
+
+function mergeAndDedupe(ranges: Range[]): Range[] {
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const out: Range[] = [];
+  for (const r of sorted) {
+    const last = out[out.length - 1];
+    if (last && r.start < last.end) {
+      continue;
     }
-    const injectionText = text.slice(
-      headerStart,
-      initiatorIdx + INITIATOR.length,
-    );
+    out.push(r);
+  }
+  return out;
+}
+
+export function parseOmoBlocks(text: string): OmoBlock[] {
+  if (!text) return [{ kind: "user", text }];
+
+  const ranges = mergeAndDedupe([
+    ...collectInitiatorRanges(text),
+    ...collectNonInitiatorRanges(text),
+  ]);
+
+  if (ranges.length === 0) return [{ kind: "user", text }];
+
+  const blocks: OmoBlock[] = [];
+  let cursor = 0;
+  for (const r of ranges) {
+    if (r.start > cursor) {
+      blocks.push({ kind: "user", text: text.slice(cursor, r.start) });
+    }
     blocks.push({
       kind: "omo",
-      text: injectionText,
-      header: headerMatch[0],
-      summary: findInjectionSummary(injectionText),
+      text: text.slice(r.start, r.end),
+      header: r.header,
+      summary: r.summary,
     });
-    cursor = initiatorIdx + INITIATOR.length;
+    cursor = r.end;
   }
-
-  return blocks.flatMap((b) =>
-    b.kind === "user" && AUTO_SLASH.test(b.text) ? parseAutoSlashBlocks(b.text) : [b],
-  );
+  if (cursor < text.length) {
+    blocks.push({ kind: "user", text: text.slice(cursor) });
+  }
+  return blocks;
 }
