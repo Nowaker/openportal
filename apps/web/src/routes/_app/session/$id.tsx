@@ -1752,7 +1752,7 @@ const MessageItem = memo(function MessageItem({
             </Badge>
           )}
           {textContent && (
-            <div className="prose prose-sm dark:prose-invert max-w-none break-words pr-20 [&_pre]:overflow-x-auto [&_code]:break-words [&_code]:[overflow-wrap:anywhere]">
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words pr-20 [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]">
               {isAssistant ? (
                 <MessageMarkdown
                   text={textContent}
