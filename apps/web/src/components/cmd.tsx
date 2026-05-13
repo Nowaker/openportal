@@ -17,6 +17,7 @@ import {
 import { usePinnedSessions } from "@/hooks/use-pinned-sessions";
 import { useInstanceStore } from "@/stores/instance-store";
 import { resolveProjectPath } from "@/lib/project-path";
+import { HighlightedText, scoreItem, type MatchResult } from "@/lib/fuzzy-rank";
 import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import IconBox from "@/components/icons/box-icon";
@@ -48,6 +49,7 @@ interface InstanceData {
 export default function Cmd() {
   const [isOpen, setIsOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams({ strict: false });
@@ -117,7 +119,45 @@ export default function Cmd() {
       : display.replace(/^\//, "");
   };
 
-  const renderSessionItem = (session: Session, isPinned: boolean) => {
+  // Rank sessions by query relevance when the user is typing. Empty
+  // query keeps the natural Pinned/Recent ordering. With a query, items
+  // are sorted by score desc so an exact title hit beats a fuzzy hit.
+  // Items that fail to score (no match) are dropped from rendering -
+  // react-aria's own filter still runs as a second-pass safety net but
+  // our custom scorer is the primary filter when a query is present.
+  const rankSessions = (
+    list: Session[],
+  ): Array<{ session: Session; match: MatchResult }> => {
+    const trimmed = query.trim();
+    const out: Array<{ session: Session; match: MatchResult }> = [];
+    for (const s of list) {
+      const title = s.title || `Session ${s.id.slice(0, 8)}`;
+      const project = projectLabelForSession(s);
+      const m = scoreItem(title, project, trimmed);
+      if (m) out.push({ session: s, match: m });
+    }
+    if (trimmed) {
+      out.sort((a, b) => b.match.score - a.match.score);
+    }
+    return out;
+  };
+
+  const rankedPinned = useMemo(
+    () => rankSessions(pinnedSessions),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pinnedSessions, query, baseDirs.join("|"), homeDir],
+  );
+  const rankedRecent = useMemo(
+    () => rankSessions(recentSessions),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [recentSessions, query, baseDirs.join("|"), homeDir],
+  );
+
+  const renderSessionItem = (
+    session: Session,
+    isPinned: boolean,
+    match: MatchResult,
+  ) => {
     const title = session.title || `Session ${session.id.slice(0, 8)}`;
     const projectLabel = projectLabelForSession(session);
     const textValue = projectLabel ? `${title} ${projectLabel}` : title;
@@ -136,10 +176,15 @@ export default function Cmd() {
         )}
         <CommandMenuLabel>
           <div className="flex items-center gap-2 min-w-0 w-full">
-            <span className="flex-1 min-w-0 truncate">{title}</span>
+            <span className="flex-1 min-w-0 truncate">
+              <HighlightedText text={title} ranges={match.titleRanges} />
+            </span>
             {projectLabel && (
               <span className="text-xs text-muted-fg/70 shrink-0 font-mono">
-                {projectLabel}
+                <HighlightedText
+                  text={projectLabel}
+                  ranges={match.projectRanges}
+                />
               </span>
             )}
             {isCurrent && (
@@ -209,24 +254,26 @@ export default function Cmd() {
     <CommandMenu
       isOpen={isOpen}
       onOpenChange={setIsOpen}
+      inputValue={query}
+      onInputChange={setQuery}
       shortcut="k"
       size="wide"
       isBlurred
     >
       <CommandMenuSearch placeholder="Jump to session, action, or theme..." />
       <CommandMenuList>
-        {pinnedSessions.length > 0 && (
+        {rankedPinned.length > 0 && (
           <CommandMenuSection label="Pinned">
-            {pinnedSessions.map((session) =>
-              renderSessionItem(session, true),
+            {rankedPinned.map(({ session, match }) =>
+              renderSessionItem(session, true, match),
             )}
           </CommandMenuSection>
         )}
 
-        {recentSessions.length > 0 && (
-          <CommandMenuSection label={pinnedSessions.length > 0 ? "Recent" : "Sessions"}>
-            {recentSessions.map((session) =>
-              renderSessionItem(session, false),
+        {rankedRecent.length > 0 && (
+          <CommandMenuSection label={rankedPinned.length > 0 ? "Recent" : "Sessions"}>
+            {rankedRecent.map(({ session, match }) =>
+              renderSessionItem(session, false, match),
             )}
           </CommandMenuSection>
         )}
