@@ -48,6 +48,7 @@ import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
 import {
+  BoltIcon,
   DocumentIcon,
   PaperClipIcon,
   PhotoIcon,
@@ -60,6 +61,7 @@ import {
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
 } from "@heroicons/react/24/outline";
+import { BoltIcon as BoltIconSolid } from "@heroicons/react/24/solid";
 import {
   Modal,
   ModalOverlay,
@@ -75,6 +77,7 @@ import {
 import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useAutoApproveStore } from "@/stores/auto-approve-store";
 import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
@@ -839,6 +842,7 @@ interface PastPermissionDecision {
   patterns: string[];
   permissionType: string;
   toolName?: string;
+  auto?: boolean;
 }
 
 function PastPermissionDecisionPill({
@@ -864,6 +868,11 @@ function PastPermissionDecisionPill({
       <div className="flex items-center gap-1.5 font-medium">
         <CheckIcon className="size-3.5 shrink-0" />
         <span>{label}</span>
+        {decision.auto && (
+          <span className="rounded bg-violet-500/15 px-1 py-0 text-[9px] font-semibold uppercase tracking-wide text-violet-500">
+            auto
+          </span>
+        )}
         <span className="text-muted-fg/70 font-normal">
           ({decision.permissionType || "permission"})
         </span>
@@ -877,6 +886,35 @@ function PastPermissionDecisionPill({
         </div>
       )}
     </div>
+  );
+}
+
+function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
+  const enabled = useAutoApproveStore((s) => s.isEnabled(sessionId ?? null));
+  const toggle = useAutoApproveStore((s) => s.toggle);
+  if (!sessionId) return null;
+  const Icon = enabled ? BoltIconSolid : BoltIcon;
+  return (
+    <button
+      type="button"
+      onClick={() => toggle(sessionId)}
+      title={
+        enabled
+          ? "Auto-approve ON: permissions reply with 'once' immediately"
+          : "Auto-approve OFF: permissions require manual reply"
+      }
+      aria-label={
+        enabled ? "Disable auto-approve permissions" : "Enable auto-approve permissions"
+      }
+      aria-pressed={enabled}
+      className={`shrink-0 rounded-md p-0.5 sm:p-1.5 transition-colors ${
+        enabled
+          ? "text-violet-500 hover:bg-violet-500/15"
+          : "text-muted-fg hover:bg-muted hover:text-fg"
+      }`}
+    >
+      <Icon className="size-4" />
+    </button>
   );
 }
 
@@ -2702,6 +2740,56 @@ function SessionPage() {
     [port, sessionId, refreshPendingPermissions],
   );
 
+  const autoApproveEnabled = useAutoApproveStore((s) =>
+    s.isEnabled(sessionId ?? null),
+  );
+
+  // Per-request lock so concurrent renders never POST /reply twice for the
+  // same id. Wins the race against the next polling tick that would re-add
+  // the (already replied) permission until opencode's list catches up.
+  const autoApproveInflightRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!autoApproveEnabled) return;
+    if (!port || !sessionId) return;
+    if (pendingPermissions.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      for (const perm of pendingPermissions) {
+        if (cancelled) return;
+        if (autoApproveInflightRef.current.has(perm.id)) continue;
+        if (dismissedPermissionsRef.current.has(perm.id)) continue;
+        autoApproveInflightRef.current.add(perm.id);
+        try {
+          const res = await fetch(
+            `/api/opencode/${port}/permission/${perm.id}/reply`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ reply: "once", auto: true }),
+            },
+          );
+          if (res.ok) {
+            handlePermissionResolved(perm.id);
+          }
+        } catch {
+          // best-effort; next tick will retry while toggle is on
+        } finally {
+          autoApproveInflightRef.current.delete(perm.id);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoApproveEnabled,
+    pendingPermissions,
+    port,
+    sessionId,
+    handlePermissionResolved,
+  ]);
+
   useEffect(() => {
     refreshPendingPermissions();
 
@@ -3852,6 +3940,7 @@ function SessionPage() {
               <div className="sm:ml-auto shrink-0">
                 <TodoStrip snapshot={todoSnapshot} />
               </div>
+              <AutoApproveToggle sessionId={sessionId} />
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}

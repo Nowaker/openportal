@@ -13,6 +13,7 @@ import {
 const permissionReplySchema = z.object({
   reply: z.enum(["once", "always", "reject"]),
   message: z.string().optional(),
+  auto: z.boolean().optional(),
 });
 
 export default defineHandler(async (event) => {
@@ -43,6 +44,7 @@ export default defineHandler(async (event) => {
         patterns: Array.isArray(match.patterns) ? match.patterns : [],
         permissionType: typeof match.type === "string" ? match.type : "",
         toolName: match.tool?.name,
+        auto: body.auto === true,
       };
     }
   } catch {

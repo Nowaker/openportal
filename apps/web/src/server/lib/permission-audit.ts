@@ -8,6 +8,7 @@ export interface PermissionDecision {
   patterns: string[];
   permissionType: string;
   toolName: string | undefined;
+  auto: boolean;
 }
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
