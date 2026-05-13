@@ -14,7 +14,9 @@ export function OmoBlockView({ header, summary, text }: Props) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2 py-1 text-left hover:bg-muted/20 hover:text-fg"
+        className={`flex w-full items-center gap-1.5 px-2 py-1 text-left hover:bg-muted/20 hover:text-fg ${
+          expanded ? "sticky top-0 z-10 bg-bg/95 backdrop-blur" : ""
+        }`}
       >
         {expanded ? (
           <MinusIcon className="size-3 shrink-0" />

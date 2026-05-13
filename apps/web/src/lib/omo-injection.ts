@@ -163,24 +163,68 @@ function collectInitiatorRanges(text: string): Range[] {
     const initiatorIdx = text.indexOf(INITIATOR, cursor);
     if (initiatorIdx < 0) break;
     const segment = text.slice(cursor, initiatorIdx);
-    const headerMatch = segment.match(/^\[[^\]\n]+\][^\n]*/m);
-    if (!headerMatch) {
-      cursor = initiatorIdx + INITIATOR.length;
+    const headerOffset = findInjectionHeaderOffset(segment);
+    if (headerOffset === -1) {
+      const start = cursor;
+      const end = initiatorIdx + INITIATOR.length;
+      ranges.push({
+        start,
+        end,
+        header: "OMO directive",
+        summary: undefined,
+      });
+      cursor = end;
       continue;
     }
-    const headerOffset = headerMatch.index ?? 0;
     const headerStart = cursor + headerOffset;
+    if (headerStart > cursor) {
+      // Leave the user-typed prefix to the user side by starting the
+      // range at the header. The mergeAndDedupe pass keeps the prefix
+      // segment as a 'user' block.
+    }
     const end = initiatorIdx + INITIATOR.length;
     const body = text.slice(headerStart, end);
+    const headerLine = headerLineAt(text, headerStart);
     ranges.push({
       start: headerStart,
       end,
-      header: headerMatch[0],
+      header: headerLine,
       summary: findInjectionSummary(body),
     });
     cursor = end;
   }
   return ranges;
+}
+
+// Find the START position of the most useful bracketed header inside a
+// segment that ends just before an OMO_INTERNAL_INITIATOR. Tries
+// progressively more permissive patterns:
+//   1. [SYSTEM DIRECTIVE: ...] at column 0
+//   2. [SYSTEM DIRECTIVE: ...] anywhere
+//   3. any bracketed header [...] at column 0
+//   4. any bracketed header [...] anywhere
+// Returns -1 when nothing matches; caller treats the whole segment as
+// injection so the orphan marker still gets collapsed.
+function findInjectionHeaderOffset(segment: string): number {
+  const patterns: RegExp[] = [
+    /(?:^|\n)\[SYSTEM DIRECTIVE:[^\]\n]+\]/,
+    /\[SYSTEM DIRECTIVE:[^\]\n]+\]/,
+    /(?:^|\n)\[[^\]\n]+\][^\n]*/,
+    /\[[^\]\n]+\][^\n]*/,
+  ];
+  for (const re of patterns) {
+    const m = segment.match(re);
+    if (!m || m.index === undefined) continue;
+    const offsetInMatch = m[0].startsWith("\n") ? 1 : 0;
+    return m.index + offsetInMatch;
+  }
+  return -1;
+}
+
+function headerLineAt(text: string, headerStart: number): string {
+  const eol = text.indexOf("\n", headerStart);
+  const slice = eol < 0 ? text.slice(headerStart) : text.slice(headerStart, eol);
+  return slice;
 }
 
 function mergeAndDedupe(ranges: Range[]): Range[] {
