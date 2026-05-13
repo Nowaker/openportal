@@ -900,6 +900,59 @@ function PermissionRequestForm({
   );
 }
 
+// Renders any JSON-shape value as readable plain text: arrays as a
+// bullet list, objects as key: value pairs, primitives as themselves.
+// No JSON.stringify escaping, no curly braces, no quotation marks.
+// Strings render verbatim with their actual line breaks preserved so
+// multi-line tool inputs (bash commands, edit diffs) read as the
+// user-typed source rather than as one-line JSON with \n sequences.
+function FormattedValue({ value }: { value: unknown }): React.ReactElement {
+  if (value === null || value === undefined) {
+    return <span className="text-muted-fg/60 italic">(none)</span>;
+  }
+  if (typeof value === "string") {
+    return (
+      <span className="whitespace-pre-wrap break-words">{value}</span>
+    );
+  }
+  if (typeof value === "boolean" || typeof value === "number") {
+    return <span className="font-mono">{String(value)}</span>;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return <span className="text-muted-fg/60 italic">(empty list)</span>;
+    }
+    return (
+      <ul className="ml-3 mt-1 space-y-1 list-disc">
+        {value.map((item, i) => (
+          <li key={i} className="break-words">
+            <FormattedValue value={item} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return <span className="text-muted-fg/60 italic">(empty)</span>;
+    }
+    return (
+      <dl className="mt-1 space-y-1">
+        {entries.map(([k, v]) => (
+          <div key={k} className="grid grid-cols-[auto_1fr] gap-x-2 items-start">
+            <dt className="font-mono text-muted-fg text-xs pt-0.5">{k}:</dt>
+            <dd className="break-words text-fg">
+              <FormattedValue value={v} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+  return <span>{String(value)}</span>;
+}
+
 function ToolInputModal({
   toolName,
   input,
@@ -909,7 +962,8 @@ function ToolInputModal({
   input: Record<string, unknown>;
   onClose: () => void;
 }) {
-  const pretty = useMemo(() => {
+  const [view, setView] = useState<"formatted" | "json">("formatted");
+  const jsonText = useMemo(() => {
     try {
       return JSON.stringify(input, null, 2);
     } catch {
@@ -933,6 +987,30 @@ function ToolInputModal({
                 <h2 className="flex-1 min-w-0 truncate text-sm font-semibold font-mono">
                   {toolName}
                 </h2>
+                <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setView("formatted")}
+                    className={`rounded px-2 py-0.5 ${
+                      view === "formatted"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-fg hover:text-fg"
+                    }`}
+                  >
+                    Formatted
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView("json")}
+                    className={`rounded px-2 py-0.5 font-mono ${
+                      view === "json"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-fg hover:text-fg"
+                    }`}
+                  >
+                    JSON
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={close}
@@ -942,10 +1020,14 @@ function ToolInputModal({
                   <XMarkIcon className="size-4" />
                 </button>
               </header>
-              <div className="flex-1 min-h-0 overflow-y-auto p-4">
-                <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 rounded p-3">
-                  {pretty}
-                </pre>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 text-sm">
+                {view === "formatted" ? (
+                  <FormattedValue value={input} />
+                ) : (
+                  <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 rounded p-3">
+                    {jsonText}
+                  </pre>
+                )}
               </div>
             </>
           )}
