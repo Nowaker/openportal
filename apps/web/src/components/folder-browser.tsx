@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
+import { Loader } from "@/components/ui/loader";
 import {
   ModalOverlay,
   Modal,
@@ -337,8 +338,9 @@ function FolderBrowserBody({ onClose, onSelect }: BodyProps) {
 
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain">
         {loading && filteredEntries.length === 0 && (
-          <div className="px-4 py-8 text-center text-sm text-muted-fg">
-            Loading...
+          <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-fg">
+            <Loader className="size-4" />
+            <span>Loading…</span>
           </div>
         )}
         {data?.error && (

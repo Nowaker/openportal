@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import useSWR from "swr";
 import useMediaQuery from "@/hooks/use-media-query";
 import { useInstanceStore } from "@/stores/instance-store";
+import { Loader } from "@/components/ui/loader";
 
 interface OpencodeCommand {
   name: string;
@@ -154,9 +155,10 @@ export function SlashCommandPopover({
   onSelectedIndexChange,
   onClose,
 }: SlashCommandPopoverProps) {
-  const { data: commands } = useCommands();
+  const { data: commands, isLoading: commandsLoading } = useCommands();
   const items: SlashItem[] =
     mode === "command" ? (commands ?? []) : (customItems ?? []);
+  const isLoading = mode === "command" && commandsLoading && !commands;
   const [position, setPosition] = useState<CaretPosition | null>(null);
   const [, forceTick] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -344,7 +346,12 @@ export function SlashCommandPopover({
           ref={listRef}
           className="flex-1 min-h-0 overflow-y-auto p-1.5"
         >
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-2 px-3 py-4 text-sm text-muted-fg/60">
+              <Loader className="size-4" />
+              <span>Loading…</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="px-3 py-4 text-center text-sm text-muted-fg/60">
               No commands match
             </div>
@@ -369,7 +376,12 @@ export function SlashCommandPopover({
       >
         {header}
         <div ref={listRef} className="max-h-[360px] overflow-y-auto p-1.5">
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-2 px-3 py-4 text-sm text-muted-fg/60">
+              <Loader className="size-4" />
+              <span>Loading…</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="px-3 py-4 text-center text-sm text-muted-fg/60">
               No commands match
             </div>

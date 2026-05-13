@@ -2,6 +2,7 @@ import { DocumentIcon } from "@heroicons/react/24/outline";
 import { useEffect, useRef, useState } from "react";
 import useMediaQuery from "@/hooks/use-media-query";
 import { useInstanceStore } from "@/stores/instance-store";
+import { Loader } from "@/components/ui/loader";
 
 interface FileResult {
   path: string;
@@ -232,13 +233,20 @@ export function FileMentionPopover({
         ref={popoverRef}
         className="absolute bottom-full left-5 right-5 mb-3 z-50 rounded-xl border border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200"
       >
-        <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-fg/80 border-b border-border/40 bg-muted/20 rounded-t-xl">
+        <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-fg/80 border-b border-border/40 bg-muted/20 rounded-t-xl flex items-center gap-1.5">
+          {loading && <Loader className="size-3" />}
           {loading ? "Searching..." : `Files matching "${searchQuery}"`}
         </div>
         <div
           ref={listRef}
           className="max-h-56 overflow-y-auto p-1.5 scrollbar-hide"
         >
+          {loading && files.length === 0 && (
+            <div className="flex items-center justify-center gap-2 px-3 py-4 text-sm text-muted-fg/60">
+              <Loader className="size-4" />
+              <span>Loading…</span>
+            </div>
+          )}
           {files.length === 0 && !loading && (
             <div className="px-3 py-4 text-center text-sm text-muted-fg/60">
               No files found
@@ -304,13 +312,20 @@ export function FileMentionPopover({
       className="fixed z-50 min-w-72 max-w-lg rounded-xl border border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-150 ease-out"
       style={desktopStyle}
     >
-      <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-fg/80 border-b border-border/40 bg-muted/20 rounded-t-xl">
+      <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-fg/80 border-b border-border/40 bg-muted/20 rounded-t-xl flex items-center gap-1.5">
+        {loading && <Loader className="size-3" />}
         {loading ? "Searching..." : `Files matching "${searchQuery}"`}
       </div>
       <div
         ref={listRef}
         className="max-h-[300px] overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-border/50 scrollbar-track-transparent"
       >
+        {loading && files.length === 0 && (
+          <div className="flex items-center justify-center gap-2 px-3 py-4 text-sm text-muted-fg/60">
+            <Loader className="size-4" />
+            <span>Loading…</span>
+          </div>
+        )}
         {files.length === 0 && !loading && (
           <div className="px-3 py-4 text-center text-sm text-muted-fg/60">
             No files found

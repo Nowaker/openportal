@@ -8,6 +8,7 @@ import { CodeBracketIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import useSWR from "swr";
 
 import { Button } from "@/components/ui/button";
+import { Loader } from "@/components/ui/loader";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { toast } from "@/components/ui/toast";
 
@@ -87,15 +88,21 @@ export function VSCodeLink({
 
   const localHref = data?.isLocal ? buildVscodeHref(directory) : "#";
 
+  const isLoading = data === undefined;
   return (
     <>
       <a
         href={localHref}
         onClick={onClick}
         className={className}
-        title={title}
+        title={isLoading ? `${title} (loading…)` : title}
+        aria-busy={isLoading || undefined}
       >
-        {children ?? <CodeBracketIcon className="size-3.5" />}
+        {isLoading ? (
+          <Loader className="size-3.5" />
+        ) : (
+          children ?? <CodeBracketIcon className="size-3.5" />
+        )}
       </a>
       {modalOpen && data && !data.isLocal && (
         <VSCodeMappingModal
