@@ -766,6 +766,7 @@ export function PinnedTabStrip() {
     shouldThrow: false,
   });
   const currentSessionId = sessionMatch?.params?.id ?? null;
+  const { isMobile } = useMediaQuery();
 
   const pinned = data?.sessions ?? [];
   const sessions: Session[] = sessionsData ?? [];
@@ -818,6 +819,59 @@ export function PinnedTabStrip() {
     void reorder(next);
   };
 
+  // Mobile gets a plain horizontally-scrollable strip - no drag, no
+  // touch-none, no SortableContext - because press-and-hold drag fights
+  // the user's swipe-to-scroll intent on a phone. Desktop keeps the
+  // full DnD wrapper for click-and-drag reordering with a mouse.
+  const renderTabs = (sortable: boolean) =>
+    tabs.map(({ id, session }) => {
+      const active = id === currentSessionId;
+      const title = session.title ?? "(untitled)";
+      const hasDraft = sessionHasDraft(id);
+      const hasNewContent = sessionHasNewContent(
+        session,
+        lastViewedMap,
+        currentSessionId,
+      );
+      const hasQuestion = questionSessionIds.has(id);
+      const hasError = errorSessionIds.has(id);
+      const tabStatus = statusMap?.[id]?.type;
+      const hasStatusDot =
+        hasQuestion ||
+        hasError ||
+        tabStatus === "busy" ||
+        tabStatus === "retry" ||
+        hasNewContent;
+      const hasAnyIndicator = hasDraft || hasStatusDot;
+      return (
+        <SortablePinnedTab
+          key={id}
+          id={id}
+          sortable={sortable}
+          active={active}
+          title={title}
+          hasAnyIndicator={hasAnyIndicator}
+          hasDraft={hasDraft}
+          tabStatus={tabStatus}
+          hasNewContent={hasNewContent}
+          hasQuestion={hasQuestion}
+          hasError={hasError}
+          onNavigate={() =>
+            void navigate({ to: "/session/$id", params: { id } })
+          }
+          onUnpin={() => void togglePin(id, "unpin")}
+        />
+      );
+    });
+
+  if (isMobile) {
+    return (
+      <div className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border bg-bg/95 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {renderTabs(false)}
+      </div>
+    );
+  }
+
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <SortableContext
@@ -825,44 +879,7 @@ export function PinnedTabStrip() {
         strategy={horizontalListSortingStrategy}
       >
         <div className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border bg-bg/95 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tabs.map(({ id, session }) => {
-            const active = id === currentSessionId;
-            const title = session.title ?? "(untitled)";
-            const hasDraft = sessionHasDraft(id);
-            const hasNewContent = sessionHasNewContent(
-              session,
-              lastViewedMap,
-              currentSessionId,
-            );
-            const hasQuestion = questionSessionIds.has(id);
-            const hasError = errorSessionIds.has(id);
-            const tabStatus = statusMap?.[id]?.type;
-            const hasStatusDot =
-              hasQuestion ||
-              hasError ||
-              tabStatus === "busy" ||
-              tabStatus === "retry" ||
-              hasNewContent;
-            const hasAnyIndicator = hasDraft || hasStatusDot;
-            return (
-              <SortablePinnedTab
-                key={id}
-                id={id}
-                active={active}
-                title={title}
-                hasAnyIndicator={hasAnyIndicator}
-                hasDraft={hasDraft}
-                tabStatus={tabStatus}
-                hasNewContent={hasNewContent}
-                hasQuestion={hasQuestion}
-                hasError={hasError}
-                onNavigate={() =>
-                  void navigate({ to: "/session/$id", params: { id } })
-                }
-                onUnpin={() => void togglePin(id, "unpin")}
-              />
-            );
-          })}
+          {renderTabs(true)}
         </div>
       </SortableContext>
     </DndContext>
@@ -871,6 +888,7 @@ export function PinnedTabStrip() {
 
 interface SortablePinnedTabProps {
   id: string;
+  sortable: boolean;
   active: boolean;
   title: string;
   hasAnyIndicator: boolean;
@@ -885,6 +903,7 @@ interface SortablePinnedTabProps {
 
 function SortablePinnedTab({
   id,
+  sortable,
   active,
   title,
   hasAnyIndicator,
@@ -896,15 +915,62 @@ function SortablePinnedTab({
   onNavigate,
   onUnpin,
 }: SortablePinnedTabProps) {
+  if (!sortable) {
+    return (
+      <NonSortablePinnedTab
+        active={active}
+        title={title}
+        hasAnyIndicator={hasAnyIndicator}
+        hasDraft={hasDraft}
+        tabStatus={tabStatus}
+        hasNewContent={hasNewContent}
+        hasQuestion={hasQuestion}
+        hasError={hasError}
+        onNavigate={onNavigate}
+        onUnpin={onUnpin}
+      />
+    );
+  }
+  return (
+    <SortableTabInner
+      id={id}
+      active={active}
+      title={title}
+      hasAnyIndicator={hasAnyIndicator}
+      hasDraft={hasDraft}
+      tabStatus={tabStatus}
+      hasNewContent={hasNewContent}
+      hasQuestion={hasQuestion}
+      hasError={hasError}
+      onNavigate={onNavigate}
+      onUnpin={onUnpin}
+    />
+  );
+}
+
+type TabVisualProps = Omit<SortablePinnedTabProps, "id" | "sortable">;
+
+function NonSortablePinnedTab(props: TabVisualProps) {
+  return (
+    <PinnedTabContent
+      {...props}
+      className={`group relative flex items-center gap-0 -mb-px border-b-2 pl-0 pr-0 py-1 text-xs transition-colors shrink-0 ${
+        props.active
+          ? "border-primary bg-bg text-fg"
+          : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
+      }`}
+    />
+  );
+}
+
+function SortableTabInner({ id, ...visual }: { id: string } & TabVisualProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
-
   const style = {
     transform: DndCSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
-
   return (
     <div
       ref={setNodeRef}
@@ -912,11 +978,41 @@ function SortablePinnedTab({
       {...attributes}
       {...listeners}
       className={`group relative flex items-center gap-0 -mb-px border-b-2 pl-0 pr-0 py-1 text-xs transition-colors shrink-0 cursor-grab active:cursor-grabbing touch-none ${
-        active
+        visual.active
           ? "border-primary bg-bg text-fg"
           : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
       }`}
     >
+      <PinnedTabInner {...visual} />
+    </div>
+  );
+}
+
+function PinnedTabContent({
+  className,
+  ...visual
+}: TabVisualProps & { className: string }) {
+  return (
+    <div className={className}>
+      <PinnedTabInner {...visual} />
+    </div>
+  );
+}
+
+function PinnedTabInner(visual: TabVisualProps) {
+  const {
+    title,
+    hasAnyIndicator,
+    hasDraft,
+    tabStatus,
+    hasNewContent,
+    hasQuestion,
+    hasError,
+    onNavigate,
+    onUnpin,
+  } = visual;
+  return (
+    <>
       {hasAnyIndicator && (
         <div className="flex items-center gap-0.5 pl-1 pr-1">
           <DraftIndicator hasDraft={hasDraft} reserveSpace={false} />
@@ -947,6 +1043,6 @@ function SortablePinnedTab({
       >
         <XMarkIcon className="size-3" />
       </button>
-    </div>
+    </>
   );
 }
