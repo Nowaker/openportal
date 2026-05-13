@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -180,6 +180,7 @@ function ServersPage() {
   // bottom of the page.
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
   const setInstance = useInstanceStore((s) => s.setInstance);
+  const { mutate: globalMutate } = useSWRConfig();
   const { data, error: loadError, isLoading, mutate } = useSWR<
     ServerListResponse
   >("/api/servers", fetcher, {
@@ -207,6 +208,15 @@ function ServersPage() {
             port: picked.port,
           });
         }
+        // _app.tsx's redirect-to-/servers effect fires when
+        // /api/instance/self resolves to a null instance. SWR may
+        // serve the cached null from the configless state for a
+        // microtask after this navigate, so the home route bounces
+        // straight back here and Open looks like a no-op. Force-
+        // refresh /api/instance/self AND wait for it to land before
+        // navigating so the home route sees the fresh active server
+        // on first render.
+        await globalMutate("/api/instance/self");
         void navigate({ to: "/" });
       } catch (e) {
         setError(e instanceof Error ? e.message : "activate failed");
@@ -214,7 +224,7 @@ function ServersPage() {
         setBusyId(null);
       }
     },
-    [mutate, navigate, setInstance],
+    [globalMutate, mutate, navigate, setInstance],
   );
 
   // Common path used by Configured.Use, Configured.Reconnect, and

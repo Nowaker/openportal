@@ -141,8 +141,8 @@ export default function Cmd() {
           <ChatBubbleLeftIcon className="size-4" />
         )}
         <CommandMenuLabel>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="truncate">{truncateTitle(title)}</span>
+          <div className="flex items-center gap-2 min-w-0 w-full">
+            <span className="flex-1 min-w-0 truncate">{title}</span>
             {projectLabel && (
               <span className="text-xs text-muted-fg/70 shrink-0 font-mono">
                 {projectLabel}
