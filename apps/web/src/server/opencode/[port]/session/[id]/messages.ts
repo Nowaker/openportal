@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/messages-cache";
 import { parseOmoBlocks } from "../../../../../lib/omo-injection";
 import { putOmoBody } from "../../../../lib/omo-strip-cache";
+import { getDecisionsForMessage } from "../../../../lib/permission-audit";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -67,10 +68,28 @@ async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
   stripUserMessageSummary(stripped);
   stripPartBloat(stripped);
   stripOmoFromUserText(stripped, id);
+  attachPermissionDecisions(stripped, port, id);
   rewriteImageDataUrls(stripped, id);
   const arr = Array.isArray(stripped) ? stripped : [];
   setCachedMessages(id, arr);
   return arr;
+}
+
+function attachPermissionDecisions(
+  messages: unknown,
+  port: number,
+  sessionId: string,
+): void {
+  if (!Array.isArray(messages)) return;
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") continue;
+    const m = msg as { info?: { id?: string } };
+    const messageId = m.info?.id;
+    if (!messageId) continue;
+    const decisions = getDecisionsForMessage(port, sessionId, messageId);
+    if (decisions.length === 0) continue;
+    (m.info as { _permissionDecisions?: unknown })._permissionDecisions = decisions;
+  }
 }
 
 // Replace OMO injection bodies inside user-text parts with compact

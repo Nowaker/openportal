@@ -829,6 +829,57 @@ function QuestionAnswerForm({
   );
 }
 
+interface PastPermissionDecision {
+  requestId: string;
+  sessionId: string;
+  messageId?: string;
+  callId?: string;
+  decision: "once" | "always" | "reject";
+  decidedAt: number;
+  patterns: string[];
+  permissionType: string;
+  toolName?: string;
+}
+
+function PastPermissionDecisionPill({
+  decision,
+}: {
+  decision: PastPermissionDecision;
+}) {
+  const isReject = decision.decision === "reject";
+  const label =
+    decision.decision === "always"
+      ? "Allowed always"
+      : decision.decision === "once"
+        ? "Allowed once"
+        : "Rejected";
+  const palette = isReject
+    ? "border-danger/40 bg-danger/10 text-danger"
+    : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600";
+  const firstPattern = decision.patterns[0];
+  return (
+    <div
+      className={`rounded-md border ${palette} px-3 py-2 text-xs space-y-1`}
+    >
+      <div className="flex items-center gap-1.5 font-medium">
+        <CheckIcon className="size-3.5 shrink-0" />
+        <span>{label}</span>
+        <span className="text-muted-fg/70 font-normal">
+          ({decision.permissionType || "permission"})
+        </span>
+        <span className="ml-auto text-[10px] text-muted-fg/70 font-normal tabular-nums">
+          {new Date(decision.decidedAt).toLocaleTimeString()}
+        </span>
+      </div>
+      {firstPattern && (
+        <div className="text-muted-fg break-all">
+          Path: <span className="font-mono">{firstPattern}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PermissionRequestForm({
   permission,
   port,
@@ -1893,6 +1944,22 @@ const MessageItem = memo(function MessageItem({
           ))}
         </div>
       )}
+      {(() => {
+        const decisions =
+          ((message.info as { _permissionDecisions?: PastPermissionDecision[] })
+            ._permissionDecisions ?? []).filter(
+            (d) =>
+              !messagePermissions.some((p) => p.id === d.requestId),
+          );
+        if (decisions.length === 0) return null;
+        return (
+          <div className={`${textContent ? "mt-2 ml-6" : ""} space-y-1.5`}>
+            {decisions.map((d) => (
+              <PastPermissionDecisionPill key={d.requestId} decision={d} />
+            ))}
+          </div>
+        );
+      })()}
       {errorDescription && (
         <div
           className={`${textContent || toolCalls.length > 0 ? "mt-2 ml-6" : ""} rounded-md border border-danger/40 bg-danger-subtle/30 p-3 text-xs text-danger-subtle-fg`}
