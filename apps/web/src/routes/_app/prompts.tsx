@@ -9,8 +9,8 @@ import {
   MagnifyingGlassIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog as PrimitiveDialog,
   Modal,
@@ -31,7 +31,14 @@ import {
 } from "@/lib/format-time";
 import { useInstanceStore } from "@/stores/instance-store";
 
+interface PromptsSearch {
+  focus?: string;
+}
+
 export const Route = createFileRoute("/_app/prompts")({
+  validateSearch: (raw): PromptsSearch => ({
+    focus: typeof raw.focus === "string" ? raw.focus : undefined,
+  }),
   component: PromptsPage,
 });
 
@@ -80,6 +87,7 @@ function basename(path: string): string {
 
 function PromptsPage() {
   const { setPageTitle } = useBreadcrumb();
+  const search = useSearch({ from: "/_app/prompts" });
   const [q, setQ] = useState("");
   const [view, setView] = useState<ViewMode>("tree");
   const [refireTargetId, setRefireTargetId] = useState<string | null>(null);
@@ -191,6 +199,7 @@ function PromptsPage() {
             ) : (
               <TreeView
                 rows={rows}
+                focusSessionId={search.focus}
                 expandedRawIds={expandedRawIds}
                 onToggleRaw={toggleRaw}
                 onRefire={setRefireTargetId}
@@ -276,11 +285,13 @@ function buildTree(rows: PromptRow[]): TreeGroup[] {
 
 function TreeView({
   rows,
+  focusSessionId,
   expandedRawIds,
   onToggleRaw,
   onRefire,
 }: {
   rows: PromptRow[];
+  focusSessionId: string | undefined;
   expandedRawIds: Set<string>;
   onToggleRaw: (id: string) => void;
   onRefire: (id: string) => void;
@@ -292,6 +303,39 @@ function TreeView({
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(
     () => new Set(),
   );
+
+  // Seed collapse state once, after groups first arrive. With a focus
+  // session id present (set by the topbar burger when invoked from
+  // inside a session page), expand only the project + session that
+  // contain it; collapse everything else. Without focus (sidebar
+  // footer burger or direct nav), collapse all projects so the user
+  // starts from a clean overview.
+  const seededForRef = useRef<string | "none" | null>(null);
+  useEffect(() => {
+    if (groups.length === 0) return;
+    const seedKey = focusSessionId ?? "none";
+    if (seededForRef.current === seedKey) return;
+
+    const focusGroup = focusSessionId
+      ? groups.find((g) => g.bySession.has(focusSessionId))
+      : undefined;
+    const focusProject = focusGroup?.projectPath;
+
+    const projs = new Set<string>();
+    for (const g of groups) {
+      if (g.projectPath !== focusProject) projs.add(g.projectPath);
+    }
+    setCollapsedProjects(projs);
+
+    const sessions = new Set<string>();
+    if (focusGroup && focusSessionId) {
+      for (const sid of focusGroup.bySession.keys()) {
+        if (sid !== focusSessionId) sessions.add(sid);
+      }
+    }
+    setCollapsedSessions(sessions);
+    seededForRef.current = seedKey;
+  }, [groups, focusSessionId]);
 
   const toggleProject = (path: string) => {
     setCollapsedProjects((prev) => {

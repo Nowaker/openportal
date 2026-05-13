@@ -464,7 +464,10 @@ export function AppSidebarNav() {
             <MenuSection>
               <MenuItem
                 onAction={() => {
-                  void navigate({ to: "/prompts" });
+                  void navigate({
+                    to: "/prompts",
+                    search: sessionId ? { focus: sessionId } : {},
+                  });
                 }}
               >
                 <ArchiveBoxIcon className="size-4" data-slot="icon" />
