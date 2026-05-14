@@ -116,6 +116,17 @@ anything that needs a tracker on GitLab.
 - Permission widget: Allow once / Allow always / Reject with
   local-dismiss tracking so a freshly-replied request cannot get
   resurrected by an eventually-consistent polling response.
+- Audit trail: every reply (manual or auto) leaves an inline pill
+  next to the originating tool call with the decision and an
+  `auto` badge when the worker fired it. 7-day in-memory TTL.
+- Auto-approve: backend-persisted in
+  `~/.openportal-state.json settings.autoApprove` (global default
+  + per-session overrides) and fired by a server-side worker that
+  holds a `/event` SSE connection to every configured opencode -
+  approvals continue with no browser tab open. Composer shield
+  toggle writes the same store; toggling to a value matching the
+  global default removes the override so Settings only lists
+  genuinely-different sessions.
 - Confidence indicators per request type.
 
 ### Operator surface
@@ -127,6 +138,28 @@ anything that needs a tracker on GitLab.
 - Pin-bar drag-reorder (desktop) + read-only display (mobile).
 - Connection monitor: pings every 10s, surfaces "Reconnecting"
   banner, globally invalidates SWR cache on reconnect.
+- Permalinks: any URL carries `?server=<id>` for the currently-
+  bound server. Open in another tab / paste in chat / scan a QR
+  and the receiving openportal binds to the matching server (or
+  falls through to the picker if the id is unknown). Emitted by
+  the layout effect, consumed by `POST /api/servers/active`.
+
+### Plugin telemetry (companion plugin)
+
+- `packages/openportal-companion-plugin` is an opencode-side plugin
+  that observes events, tool calls, permission asks, and
+  compactions, then writes a rolling snapshot to
+  `~/.openportal/companion-plugin-state-<port>.json` (per-port so
+  two opencodes don't race on a single file).
+- One-click install from the Plugin Info modal: writes the plugin
+  entry into `~/.opencode/opencode.json`. "Install & Restart"
+  picks up the systemd unit name from `/proc/<pid>/cgroup` and
+  restarts that unit; system-scope units prompt for sudo via an
+  in-browser modal (password is piped through stdin, never argv,
+  never logged).
+- Detect-other-instances enumerates every running opencode-serve,
+  maps each to its systemd unit + scope, and renders them in the
+  panel so you can tell which one is currently bound.
 
 ### Plumbing
 
