@@ -213,6 +213,23 @@ function AppLayout() {
     });
   }, [search.server, hydrated, instance?.id]);
 
+  // Permalink emission: keep ?server=<id> in sync with the active
+  // instance so every URL copies as a permalink. Skip until hydrated -
+  // pre-hydration we'd stamp the wrong id (or null) ahead of the
+  // consumer effect.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!instance?.id) return;
+    if (search.server === instance.id) return;
+    void navigate({
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        server: instance.id,
+      }),
+      replace: true,
+    });
+  }, [hydrated, instance?.id, search.server, navigate]);
+
   useEffect(() => {
     if (!selfData) return;
     if (selfData.instance) {
