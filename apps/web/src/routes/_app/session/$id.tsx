@@ -48,7 +48,6 @@ import IconPen from "@/components/icons/pen-icon";
 import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
 import {
-  BoltIcon,
   DocumentIcon,
   PaperClipIcon,
   PhotoIcon,
@@ -56,12 +55,13 @@ import {
   CheckIcon,
   ChatBubbleLeftRightIcon,
   MicrophoneIcon,
+  ShieldCheckIcon,
   UserIcon,
   XMarkIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
 } from "@heroicons/react/24/outline";
-import { BoltIcon as BoltIconSolid } from "@heroicons/react/24/solid";
+import { ShieldCheckIcon as ShieldCheckIconSolid } from "@heroicons/react/24/solid";
 import {
   Modal,
   ModalOverlay,
@@ -893,7 +893,7 @@ function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
   const enabled = useAutoApproveStore((s) => s.isEnabled(sessionId ?? null));
   const toggle = useAutoApproveStore((s) => s.toggle);
   if (!sessionId) return null;
-  const Icon = enabled ? BoltIconSolid : BoltIcon;
+  const Icon = enabled ? ShieldCheckIconSolid : ShieldCheckIcon;
   return (
     <button
       type="button"
@@ -3934,7 +3934,7 @@ function SessionPage() {
                   instanceId={instanceId}
                 />
               </div>
-              <div className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
+              <div className="shrink-0 w-fit [&>*]:!w-auto">
                 <ThinkingSelect sessionId={sessionId} />
               </div>
               <div className="sm:ml-auto shrink-0">
