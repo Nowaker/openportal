@@ -11,6 +11,7 @@ import {
 } from "../../../../lib/validation";
 import { invalidateMessagesCache } from "../../../../lib/messages-cache";
 import { archivePrompt } from "../../../../lib/prompt-archive";
+import { detectStuckFromRestart } from "../../../../lib/stuck-detector-bridge";
 
 const attachmentSchema = z.object({
   mime: z.string().min(1),
@@ -275,6 +276,23 @@ export default defineHandler(async (event) => {
     variant: body.variant,
   };
 
+  // Pre-flight: when opencode's session DB shows an in-flight assistant
+  // turn but /session/status has no busy/retry runner for the session,
+  // the previous opencode process died mid-turn (OOM, kill, restart).
+  // Abort the dead row first so cleanupStuckSession can proceed and the
+  // next promptAsync actually dispatches instead of stacking behind the
+  // corpse - otherwise the UI stays on 'queued' forever with no progress.
+  let recoveredFromRestart = false;
+  if (await detectStuckFromRestart(port, id)) {
+    try {
+      const client = await getOpencodeClient(port);
+      await client.session.abort({ path: { id } });
+      recoveredFromRestart = true;
+    } catch {
+      // Abort may noop if opencode already reaped the dead row; that is fine.
+    }
+  }
+
   const cleanup = await cleanupStuckSession(port, id);
 
   try {
@@ -284,7 +302,7 @@ export default defineHandler(async (event) => {
       body: promptBody,
     });
     invalidateMessagesCache(id);
-    return { accepted: true, cleanup };
+    return { accepted: true, cleanup, recoveredFromRestart };
   } catch (error) {
     throw new HTTPError(
       error instanceof Error ? error.message : "Prompt failed",

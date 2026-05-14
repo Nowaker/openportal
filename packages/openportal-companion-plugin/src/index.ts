@@ -14,7 +14,6 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 
 const STATE_DIR = join(homedir(), ".openportal");
-const STATE_FILE = join(STATE_DIR, "companion-plugin-state.json");
 const FLUSH_DEBOUNCE_MS = 1500;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const MAX_RECENT_EVENTS = 200;
@@ -119,16 +118,37 @@ const subscribedHooks: SelfHookSubscriptions = {
 };
 
 let state: CompanionState | null = null;
+let stateFile: string = join(STATE_DIR, "companion-plugin-state.json");
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 const inflightToolStartedAt = new Map<string, number>();
 
 function ensureStateDir(): void {
   try {
-    mkdirSync(dirname(STATE_FILE), { recursive: true });
+    mkdirSync(dirname(stateFile), { recursive: true });
   } catch {
     // If we can't make the dir, future writes will throw - swallow silently.
   }
+}
+
+// Each opencode instance owns its own state file keyed by the port it's
+// listening on. Two opencodes (LAN + Tailscale, or two stand-alone projects)
+// each running this plugin would otherwise race on a single file and corrupt
+// each other's snapshot last-writer-wins; the port suffix gives openportal
+// a deterministic way to fetch state from the instance it's currently
+// bound to via /api/companion-plugin-state?port=N.
+function deriveStateFile(serverUrl: URL | string | undefined): string {
+  let port: string | null = null;
+  try {
+    if (serverUrl) {
+      const url = typeof serverUrl === "string" ? new URL(serverUrl) : serverUrl;
+      if (url.port) port = url.port;
+    }
+  } catch {
+    port = null;
+  }
+  const suffix = port ? `-${port}` : "";
+  return join(STATE_DIR, `companion-plugin-state${suffix}.json`);
 }
 
 function scheduleFlush(): void {
@@ -144,7 +164,7 @@ function flushNow(): void {
   if (!state) return;
   state.heartbeat.lastWriteAt = Date.now();
   try {
-    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+    writeFileSync(stateFile, JSON.stringify(state, null, 2), "utf-8");
   } catch (err) {
     console.warn(
       "[openportal-companion] failed to write state file:",
@@ -223,6 +243,7 @@ export default async function openportalCompanion(
   input: MinimalPluginInput,
   options?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  stateFile = deriveStateFile(input.serverUrl);
   ensureStateDir();
 
   state = {

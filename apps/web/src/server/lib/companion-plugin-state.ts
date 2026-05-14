@@ -2,8 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const STATE_FILE = join(homedir(), ".openportal", "companion-plugin-state.json");
+const STATE_DIR = join(homedir(), ".openportal");
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
+
+function stateFileFor(port: number | null): string {
+  const suffix = port ? `-${port}` : "";
+  return join(STATE_DIR, `companion-plugin-state${suffix}.json`);
+}
 
 export interface CompanionPluginState {
   schemaVersion: 1;
@@ -78,17 +83,18 @@ export interface CompanionStateSummary {
   filePath: string;
 }
 
-export function readCompanionState(): CompanionStateSummary {
-  if (!existsSync(STATE_FILE)) {
-    return { available: false, stale: false, state: null, filePath: STATE_FILE };
+export function readCompanionState(port: number | null): CompanionStateSummary {
+  const filePath = stateFileFor(port);
+  if (!existsSync(filePath)) {
+    return { available: false, stale: false, state: null, filePath };
   }
   try {
-    const raw = readFileSync(STATE_FILE, "utf-8");
+    const raw = readFileSync(filePath, "utf-8");
     const state = JSON.parse(raw) as CompanionPluginState;
     const lastWrite = state.heartbeat?.lastWriteAt ?? 0;
     const stale = lastWrite > 0 && Date.now() - lastWrite > STALE_THRESHOLD_MS;
-    return { available: true, stale, state, filePath: STATE_FILE };
+    return { available: true, stale, state, filePath };
   } catch {
-    return { available: false, stale: false, state: null, filePath: STATE_FILE };
+    return { available: false, stale: false, state: null, filePath };
   }
 }

@@ -1,4 +1,5 @@
 import useSWR from "swr";
+import { useInstanceStore } from "@/stores/instance-store";
 
 interface CompanionPluginState {
   schemaVersion: number;
@@ -75,8 +76,9 @@ function fmtAge(ms: number | null | undefined): string {
 }
 
 export function CompanionTelemetryPanel() {
+  const port = useInstanceStore((s) => s.instance?.port ?? null);
   const { data, isLoading } = useSWR<CompanionSummary>(
-    "/api/companion-plugin-state",
+    port ? `/api/companion-plugin-state?port=${port}` : null,
     fetcher,
     { refreshInterval: 5000 },
   );
