@@ -4,6 +4,8 @@ import remarkGfm from "remark-gfm";
 import remarkGithubBlockquoteAlert from "remark-github-blockquote-alert";
 import rehypeRaw from "rehype-raw";
 import type { Components } from "react-markdown";
+import useMediaQuery from "@/hooks/use-media-query";
+import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 
 // Two-mode markdown renderer.
 //
@@ -106,12 +108,11 @@ export function MarkdownRenderer({
   className,
   components,
 }: MarkdownRendererProps) {
+  const { isMobile } = useMediaQuery();
   const remarkPlugins =
     mode === "extended"
       ? [remarkGfm, remarkBreaks, remarkGithubBlockquoteAlert]
       : [remarkGfm, remarkBreaks];
-  // rehype-raw is the only thing that lets HTML in markdown survive.
-  // Strict mode (default) intentionally drops it.
   const rehypePlugins = mode === "extended" ? [rehypeRaw] : undefined;
 
   const repoBase =
@@ -125,6 +126,35 @@ export function MarkdownRenderer({
         children?: React.ReactNode;
       } & Record<string, unknown>;
       const finalHref = rewriteRelative(href, repoBase, false);
+      if (finalHref?.startsWith("file://")) {
+        return (
+          <a
+            {...rest}
+            href={finalHref}
+            onClick={(e) => {
+              e.preventDefault();
+              let path: string | null = null;
+              let hash = "";
+              try {
+                const u = new URL(finalHref);
+                path = decodeURIComponent(u.pathname);
+                hash = u.hash;
+              } catch {
+                path = null;
+              }
+              if (!path) return;
+              if (isMobile) {
+                const target = `/files?path=${encodeURIComponent(path)}${hash}`;
+                window.open(target, "_blank", "noopener,noreferrer");
+              } else {
+                useFileBrowserPanelStore.getState().open(path);
+              }
+            }}
+          >
+            {children}
+          </a>
+        );
+      }
       return (
         <a
           {...rest}
