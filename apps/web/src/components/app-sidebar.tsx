@@ -570,6 +570,18 @@ function ProjectsList({
   lastViewedMap,
   home,
 }: ProjectsListProps) {
+  const { data: pinnedData } = usePinnedSessions();
+  const hasMatchingPin = useMemo(() => {
+    if (!searchQuery) return false;
+    const q = searchQuery.toLowerCase();
+    const pinnedIds = pinnedData?.sessions ?? [];
+    for (const id of pinnedIds) {
+      const s = sessions.find((x) => x.id === id);
+      if (s && (s.title ?? "").toLowerCase().includes(q)) return true;
+    }
+    return false;
+  }, [pinnedData, sessions, searchQuery]);
+
   const childrenByParent = useMemo(
     () => groupSessionsByParent(sessions),
     [sessions],
@@ -775,7 +787,7 @@ function ProjectsList({
     );
   }
 
-  if (searchQuery && filteredGroups.length === 0) {
+  if (searchQuery && filteredGroups.length === 0 && !hasMatchingPin) {
     return (
       <div className="text-xs text-muted-fg px-3 py-2">
         No matches for "{searchQuery}"
@@ -793,6 +805,7 @@ function ProjectsList({
         questionSessionIds={questionSessionIds}
         errorSessionIds={errorSessionIds}
         lastViewedMap={lastViewedMap}
+        searchQuery={searchQuery}
       />
       {sections.map((section, idx) => (
         <Fragment key={section.basePath || `unset-${idx}`}>
@@ -841,6 +854,7 @@ function PinnedSection({
   questionSessionIds,
   errorSessionIds,
   lastViewedMap,
+  searchQuery,
 }: {
   sessions: Session[];
   currentSessionId: string | undefined;
@@ -849,14 +863,19 @@ function PinnedSection({
   questionSessionIds: Set<string>;
   errorSessionIds: Set<string>;
   lastViewedMap: Record<string, number>;
+  searchQuery: string;
 }) {
   const { data } = usePinnedSessions();
   const togglePin = useTogglePinnedSession();
   const navigate = useNavigate();
   const pinned = data?.sessions ?? [];
-  const rows = pinned
+  const allRows = pinned
     .map((id) => sessions.find((s) => s.id === id))
     .filter((s): s is Session => Boolean(s));
+  const q = searchQuery.trim().toLowerCase();
+  const rows = q
+    ? allRows.filter((s) => (s.title ?? "").toLowerCase().includes(q))
+    : allRows;
   if (rows.length === 0) return null;
   return (
     <Fragment>
@@ -900,7 +919,9 @@ function PinnedSection({
                 }}
                 className="flex-1 min-w-0 truncate text-left text-xs sm:text-sm text-sidebar-fg hover:text-fg"
               >
-                {session.title || "(untitled)"}
+                {session.title
+                  ? highlightMatch(session.title, searchQuery)
+                  : "(untitled)"}
               </button>
               <button
                 type="button"
