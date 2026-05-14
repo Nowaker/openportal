@@ -212,6 +212,94 @@ Rules:
 - Performance on mobile in mind. 1m intervals for periodic stuff.
   10pct steps for font size.
 
+## Network trust + presence detection
+
+OpenPortal exposes a `client` field on every `/api/instance/self`
+response that downstream code (AI prompts, companion plugin, the
+VSCode link split) reads to decide whether the user is physically at
+this computer or accessing via a remote tailnet peer. The decision
+flows from the security model in
+`apps/web/src/server/lib/client-detection.ts` and depends on the
+reverse proxy preserving the real client IP.
+
+### Trust model
+
+| Layer | What it carries | Trust |
+|---|---|---|
+| TCP socket peer | IP the kernel reports on the inbound connection | always authoritative for "who connected to me" |
+| `X-Forwarded-For` first hop | The reverse proxy's claim about the real client | trusted ONLY when the socket peer is one of THIS HOST's own IPs |
+| `X-Real-IP` | Same as XFF, single-value | same conditional trust as XFF |
+
+Why conditional: a tailnet peer can fabricate `X-Forwarded-For:
+127.0.0.1` on a direct connection. If we trusted that, anyone with
+tailscale would mark themselves as "local" and bypass the
+GUI-sudo-vs-web-sudo split. We only honor XFF when the socket peer is
+already on this host (loopback, or any address from
+`networkInterfaces()`, plus the operator-controlled
+`OPENPORTAL_LOCAL_IPS` env list).
+
+### Behaviour matrix
+
+| Where the request comes from | Socket peer | XFF trusted? | Effective IP | `isLocal` |
+|---|---|---|---|---|
+| Browser on this host via Caddy | 127.0.0.1 | yes | this host's tailnet IP (from XFF) | true |
+| `curl` on this host direct to `:5000` | 127.0.0.1 | yes (loopback) | 127.0.0.1 | true |
+| Browser on remote tailnet peer via Caddy | 127.0.0.1 | yes | peer's tailnet IP (from XFF) | false |
+| `curl` on remote tailnet peer direct to `:5000` | peer's tailnet IP | no | peer's tailnet IP (socket) | false |
+| Remote tailnet peer direct + spoofed XFF: 127.0.0.1 | peer's tailnet IP | NO (the spoof is dropped) | peer's tailnet IP (socket) | false |
+
+### Caddy / reverse proxy requirements
+
+Caddy v2 already adds `X-Forwarded-For` and `X-Forwarded-Proto`
+automatically when you use a `reverse_proxy` directive. The only
+non-default thing this trust model needs is:
+
+- **Reverse proxy MUST run on this host** (Caddy, nginx, traefik -
+  whichever). Off-host proxies would have a remote socket peer and
+  XFF would be ignored. If you absolutely need an off-host proxy,
+  add its IP to `OPENPORTAL_LOCAL_IPS` via the systemd unit:
+
+  ```ini
+  [Service]
+  Environment=OPENPORTAL_LOCAL_IPS=192.0.2.5,2001:db8::1
+  ```
+
+- **No XFF stripping**: do not configure Caddy / nginx to strip
+  inbound XFF before adding its own (the default Caddy behaviour
+  appends, which is what we want). nginx specifically needs
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` if
+  ever swapped in.
+
+- **OpenPortal must NOT bind to `0.0.0.0`**: the trust model assumes
+  every direct (non-proxied) request is meaningful for presence
+  detection. Binding to `0.0.0.0` would mix loopback + tailnet +
+  LAN + docker + anything-else on the same listener. Current setup
+  binds only to the tailnet IP - keep it that way.
+
+### Verifying after a network change
+
+```bash
+# from this host - via Caddy:
+curl -sS -k https://portal.desktop.ts.nowaker.net:8443/api/instance/self \
+  | jq .client
+# expect: { ip: "<this host's tailnet IPv4 or IPv6>", isLocal: true, proxied: true }
+
+# from this host - direct:
+curl -sS http://100.105.229.19:5000/api/instance/self | jq .client
+# expect: { ip: "127.0.0.1", isLocal: true, proxied: false }
+
+# from a remote tailnet peer (m4max etc) - via Caddy:
+ssh m4max.ts.nowaker.net 'curl -sS -k https://portal.desktop.ts.nowaker.net:8443/api/instance/self' \
+  | jq .client
+# expect: { ip: "<m4max's tailnet IP>", isLocal: false, proxied: true }
+
+# spoof check from a remote peer:
+ssh m4max.ts.nowaker.net 'curl -sS -H "X-Forwarded-For: 127.0.0.1" http://100.105.229.19:5000/api/instance/self' \
+  | jq .client
+# expect: { ip: "<m4max's tailnet IP>", isLocal: false, proxied: false }
+# the spoofed XFF MUST be ignored
+```
+
 ## Diagnostics protocol
 
 User reports an issue -> my flow:

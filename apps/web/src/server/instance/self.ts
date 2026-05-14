@@ -5,6 +5,7 @@ import { join } from "path";
 import { getActiveServer } from "../lib/server-registry";
 import { resolveLiveEndpoint } from "../lib/server-resolver";
 import { probeOpencode } from "../lib/server-discovery";
+import { detectClient } from "../lib/client-detection";
 
 const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 
@@ -29,7 +30,8 @@ const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 // changed port, the instance-store is reseated, all SWR keys
 // (which include port in their URL) refetch against the new endpoint.
 
-export default defineHandler(async () => {
+export default defineHandler(async (event) => {
+  const client = detectClient(event);
   const active = getActiveServer();
   if (active) {
     // Force a fresh resolve so ephemeral entries pick up port shifts.
@@ -59,6 +61,7 @@ export default defineHandler(async () => {
           port: active.port,
           ephemeral: active.ephemeral,
         },
+        client,
       };
     }
     // For non-ephemeral active servers, also do a real HTTP probe so
@@ -82,6 +85,7 @@ export default defineHandler(async () => {
             port: fresh.port,
             ephemeral: fresh.ephemeral,
           },
+          client,
         };
       }
     }
@@ -90,26 +94,20 @@ export default defineHandler(async () => {
         id: fresh.id,
         name: fresh.label,
         directory: undefined,
-        // The browser uses `port` as a routing handle into our
-        // /api/opencode/[port]/... proxy layer. For ephemeral configured
-        // servers that handle is the *stored* port from the registry —
-        // which the resolver just updated to the live one above. The
-        // backend resolver also translates it to the live (possibly
-        // re-discovered) endpoint at request time as a second line of
-        // defense.
         port: fresh.port,
         hostname: fresh.host,
         ephemeral: fresh.ephemeral,
       },
+      client,
     };
   }
 
   const myPort = parseInt(process.env.PORT || "", 10);
   if (!myPort || Number.isNaN(myPort)) {
-    return { instance: null, error: "PORT env not set" };
+    return { instance: null, error: "PORT env not set", client };
   }
   if (!existsSync(LEGACY_CONFIG_PATH)) {
-    return { instance: null, error: "no active server, no legacy config" };
+    return { instance: null, error: "no active server, no legacy config", client };
   }
   try {
     const config = JSON.parse(readFileSync(LEGACY_CONFIG_PATH, "utf-8"));
@@ -117,7 +115,7 @@ export default defineHandler(async () => {
       (i: { port: number | null }) => i.port === myPort,
     );
     if (!me) {
-      return { instance: null, error: `no registry entry for PORT=${myPort}` };
+      return { instance: null, error: `no registry entry for PORT=${myPort}`, client };
     }
     return {
       instance: {
@@ -128,11 +126,13 @@ export default defineHandler(async () => {
         hostname: me.hostname,
         ephemeral: false,
       },
+      client,
     };
   } catch (e) {
     return {
       instance: null,
       error: e instanceof Error ? e.message : "config read failed",
+      client,
     };
   }
 });
