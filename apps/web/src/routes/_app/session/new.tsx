@@ -1,30 +1,68 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { z } from "zod/v4";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useVirtualSessionStore } from "@/stores/virtual-session-store";
 import { useCreateSession } from "@/hooks/use-opencode";
+import { useComposerStore } from "@/stores/composer-store";
+import { useSttModeStore } from "@/stores/stt-mode-store";
+import { useSttEngine } from "@/hooks/use-stt-engine";
+import useMediaQuery from "@/hooks/use-media-query";
+import { toast } from "@/components/ui/toast";
+import { AgentSelect } from "@/components/agent-select";
+import { ModelSelect } from "@/components/model-select";
+import { ThinkingSelect } from "@/components/thinking-select";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import SendIcon from "@/components/icons/send-icon";
 import { useSWRConfig } from "swr";
 import { mutate as mutateSWR } from "swr";
-import { Bars3Icon } from "@heroicons/react/24/outline";
+import {
+  Bars3Icon,
+  PhotoIcon,
+  PaperClipIcon,
+  PlayIcon,
+  MicrophoneIcon,
+  DocumentIcon,
+  StopIcon,
+} from "@heroicons/react/24/outline";
 import {
   resolveToolsFromState,
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
 
+interface PromptAttachment {
+  mime: string;
+  filename?: string;
+  url: string;
+}
+
 const searchSchema = z.object({
   directory: z.string().optional(),
   autoPrompt: z.string().optional(),
 });
 
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
 export const Route = createFileRoute("/_app/session/new")({
   component: NewSessionPage,
   validateSearch: searchSchema,
 });
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [meta, b64] = dataUrl.split(",", 2);
+  const mime = /data:([^;]+)/.exec(meta)?.[1] ?? "application/octet-stream";
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
 
 function NewSessionPage() {
   const navigate = useNavigate();
@@ -72,8 +110,6 @@ function NewSessionPage() {
   const dragSourceIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  // Sync if Settings -> Tools is mutated while this page is mounted (rare,
-  // but otherwise the user would have to reload to see the change).
   useEffect(() => {
     setOrder(initialOrder);
   }, [initialOrder]);
@@ -109,10 +145,6 @@ function NewSessionPage() {
     return checkedInOrder.map((t) => t.prompt).join("\n\n---\n\n");
   }, [order, selected]);
 
-  // Initial textarea value: explicit autoPrompt search-param wins (came
-  // from folder-browser CreateProjectView, already user-confirmed) over
-  // composed-from-checked-templates fallback. The user can edit either
-  // before submitting.
   const [text, setText] = useState(autoPrompt ?? composedAutoPrompt);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,9 +153,61 @@ function NewSessionPage() {
   const autoSubmittedRef = useRef(false);
   const hasUserEditedRef = useRef(false);
 
-  // Reflect template-checkbox changes into the textarea ONLY if the user
-  // hasn't manually edited it yet. Once they type, their text wins -
-  // toggling templates after that would clobber their edits.
+  const [pendingAttachments, setPendingAttachments] = useState<
+    PromptAttachment[]
+  >([]);
+  const fileAttachInputRef = useRef<HTMLInputElement>(null);
+  const anyFileAttachInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAttachFiles = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    const oversized: string[] = [];
+    const reads = await Promise.all(
+      list.map(
+        (file) =>
+          new Promise<PromptAttachment | null>((resolve) => {
+            if (file.size > ATTACHMENT_MAX_BYTES) {
+              oversized.push(file.name);
+              resolve(null);
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result;
+              if (typeof result !== "string") {
+                resolve(null);
+                return;
+              }
+              resolve({
+                mime: file.type || "application/octet-stream",
+                filename: file.name,
+                url: result,
+              });
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
+    if (oversized.length > 0) {
+      toast.error(
+        `Skipped ${oversized.length} file(s) over 10 MB: ${oversized.join(", ")}`,
+      );
+    }
+    const valid = reads.filter((a): a is PromptAttachment => a !== null);
+    if (valid.length === 0) return;
+    setPendingAttachments((prev) => [...prev, ...valid]);
+  }, []);
+
+  const removeAttachment = useCallback((index: number) => {
+    setPendingAttachments((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const sttMode = useSttModeStore((s) => s.mode);
+  const sttSubmitOnEndRef = useRef(false);
+  const sttTranscriptArrivedRef = useRef(false);
+
   useEffect(() => {
     if (autoPrompt) return;
     if (hasUserEditedRef.current) return;
@@ -142,72 +226,134 @@ function NewSessionPage() {
     };
   }, [clearStore]);
 
-  const handleSubmit = async (override?: string) => {
-    if (sending) return;
-    if (!directory) {
-      setError("No directory selected.");
-      return;
-    }
-    const message = (override ?? text).trim();
-    if (!message) return;
-    if (!port) {
-      setError("Portal not bound to opencode.");
-      return;
-    }
-
-    setSending(true);
-    setError(null);
-
-    try {
-      const session = await createSession({ directory });
-      const sessionId = session.id;
-
-      const res = await fetch(
-        `/api/opencode/${port}/session/${sessionId}/prompt`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: message }),
-        },
-      );
-      if (!res.ok) {
-        throw new Error(`prompt failed: ${res.status}`);
+  const handleSubmit = useCallback(
+    async (override?: string) => {
+      if (sending) return;
+      if (!directory) {
+        setError("No directory selected.");
+        return;
+      }
+      const message = (override ?? text).trim();
+      if (!message && pendingAttachments.length === 0) return;
+      if (!port) {
+        setError("Portal not bound to opencode.");
+        return;
       }
 
-      submittedRef.current = true;
-      clearStore();
-      await globalMutate(`/api/opencode/${port}/sessions`);
-      mutateSWR(
-        (key) =>
-          typeof key === "string" &&
-          key.startsWith(`/api/opencode/${port}/session/${sessionId}/messages`),
-      );
-      navigate({ to: "/session/$id", params: { id: sessionId } });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start session");
-      setSending(false);
+      setSending(true);
+      setError(null);
+
+      try {
+        const session = await createSession({ directory });
+        const sessionId = session.id;
+
+        const body = {
+          text: message,
+          ...(pendingAttachments.length > 0
+            ? { attachments: pendingAttachments }
+            : {}),
+        };
+
+        const res = await fetch(
+          `/api/opencode/${port}/session/${sessionId}/prompt`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        );
+        if (!res.ok) {
+          throw new Error(`prompt failed: ${res.status}`);
+        }
+
+        submittedRef.current = true;
+        setPendingAttachments([]);
+        clearStore();
+        await globalMutate(`/api/opencode/${port}/sessions`);
+        mutateSWR(
+          (key) =>
+            typeof key === "string" &&
+            key.startsWith(`/api/opencode/${port}/session/${sessionId}/messages`),
+        );
+        navigate({ to: "/session/$id", params: { id: sessionId } });
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to start session",
+        );
+        setSending(false);
+      }
+    },
+    [
+      sending,
+      directory,
+      text,
+      pendingAttachments,
+      port,
+      createSession,
+      clearStore,
+      globalMutate,
+      navigate,
+    ],
+  );
+
+  const speechRecognition = useSttEngine({
+    continuous: sttMode === "vad",
+    onTranscript: (transcript) => {
+      sttTranscriptArrivedRef.current = true;
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const current = ta.value;
+      const sep =
+        current && !current.endsWith(" ") && !current.endsWith("\n")
+          ? " "
+          : "";
+      const next = `${current}${sep}${transcript}`;
+      setText(next);
+      hasUserEditedRef.current = true;
+    },
+    onEnd: () => {
+      if (sttMode === "push-to-talk" && sttSubmitOnEndRef.current) {
+        sttSubmitOnEndRef.current = false;
+        if (sttTranscriptArrivedRef.current) {
+          void handleSubmit();
+        }
+      }
+    },
+  });
+
+  const handleMicToggle = () => {
+    if (speechRecognition.isListening) {
+      sttSubmitOnEndRef.current = sttMode === "push-to-talk";
+      void speechRecognition.stop();
+    } else {
+      sttSubmitOnEndRef.current = false;
+      sttTranscriptArrivedRef.current = false;
+      void speechRecognition.start();
     }
   };
 
-  // When the create-project flow lands here with a non-empty autoPrompt,
-  // submit it automatically once - the user already confirmed the
-  // templates in the folder browser, so the new-session composer is
-  // skipped entirely. Guarded by ref + port presence so it fires exactly
-  // once after the opencode port is known.
+  const { isMobile } = useMediaQuery();
+  const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
+
   useEffect(() => {
     if (autoSubmittedRef.current) return;
     if (!autoPrompt) return;
     if (!directory) return;
     if (!port) return;
     autoSubmittedRef.current = true;
-    handleSubmit(autoPrompt);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPrompt, directory, port]);
+    void handleSubmit(autoPrompt);
+  }, [autoPrompt, directory, port, handleSubmit]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSubmit();
+    if (e.key !== "Enter") return;
+    if (e.shiftKey) return;
+    const isModified = e.metaKey || e.ctrlKey;
+    const wantsSubmit =
+      isModified || (!isMobile && enterKeyAction === "submit");
+    if (!wantsSubmit) return;
+    e.preventDefault();
+    if (text.trim() || pendingAttachments.length > 0) {
+      void handleSubmit();
     }
   };
 
@@ -220,112 +366,300 @@ function NewSessionPage() {
   }
 
   const showTemplatePicker = !autoPrompt && order.length > 0;
+  const hasContent = text.trim().length > 0;
 
   return (
-    <div className="flex h-full flex-col items-center justify-start gap-4 p-4 sm:p-6 overflow-y-auto">
-      <div className="text-center max-w-2xl space-y-1 shrink-0">
-        <p className="text-xs uppercase tracking-wide text-muted-fg">
-          New session
-        </p>
-        <h1 className="text-base font-mono break-all">{directory}</h1>
-        <p className="text-sm text-muted-fg">
-          Type your first message. The session is created when you send.
-        </p>
-      </div>
-
-      {showTemplatePicker && (
-        <div className="w-full max-w-2xl rounded-lg border border-border bg-bg/60 p-3 space-y-2 shrink-0">
-          <div className="flex items-baseline justify-between gap-2 flex-wrap">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-fg">
-              Init templates
-            </h2>
-            <p className="text-[11px] text-muted-fg/80">
-              Checked = concatenated as first prompt. Drag to reorder.
-            </p>
-          </div>
-          <div className="space-y-1">
-            {order.map((tool) => {
-              const isDragOver = dragOverId === tool.id;
-              const isSelected = selected.has(tool.id);
-              return (
-                <div
-                  key={tool.id}
-                  draggable
-                  onDragStart={(e) => {
-                    dragSourceIdRef.current = tool.id;
-                    e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData("text/plain", tool.id);
-                  }}
-                  onDragOver={(e) => {
-                    if (!dragSourceIdRef.current) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    if (dragOverId !== tool.id) setDragOverId(tool.id);
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverId === tool.id) setDragOverId(null);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    handleDrop(tool.id);
-                  }}
-                  onDragEnd={() => {
-                    dragSourceIdRef.current = null;
-                    setDragOverId(null);
-                  }}
-                  className={`flex items-center gap-2 rounded-md border border-border bg-bg/60 px-2 py-1.5 text-sm ${
-                    isDragOver ? "bg-primary/10 border-primary/40" : ""
-                  }`}
-                >
-                  <Bars3Icon className="size-4 text-muted-fg shrink-0 cursor-grab active:cursor-grabbing" />
-                  <label className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggle(tool.id)}
-                      className="size-4 accent-primary shrink-0"
-                    />
-                    <span className="truncate">{tool.name}</span>
-                  </label>
-                  {!tool.enabled && (
-                    <span className="text-[10px] uppercase tracking-wide text-muted-fg shrink-0">
-                      disabled
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+    <div className="flex h-full flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 flex flex-col items-center gap-4">
+        <div className="text-center max-w-2xl space-y-1 shrink-0">
+          <p className="text-xs uppercase tracking-wide text-muted-fg">
+            New session
+          </p>
+          <h1 className="text-base font-mono break-all">{directory}</h1>
+          <p className="text-sm text-muted-fg">
+            Type your first message. The session is created when you send.
+          </p>
         </div>
-      )}
 
-      <div className="w-full max-w-2xl space-y-2 shrink-0">
-        <Textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => {
-            hasUserEditedRef.current = true;
-            setText(e.target.value);
-          }}
-          onKeyDown={onKeyDown}
-          placeholder="What do you want to do?"
-          className="min-h-[180px] font-mono text-xs"
-          disabled={sending}
-        />
-        {error && (
-          <div className="text-sm text-danger-subtle-fg bg-danger-subtle px-3 py-2 rounded">
-            {error}
+        {showTemplatePicker && (
+          <div className="w-full max-w-2xl rounded-lg border border-border bg-bg/60 p-3 space-y-2 shrink-0">
+            <div className="flex items-baseline justify-between gap-2 flex-wrap">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-muted-fg">
+                Init templates
+              </h2>
+              <p className="text-[11px] text-muted-fg/80">
+                Checked = concatenated as first prompt. Drag to reorder.
+              </p>
+            </div>
+            <div className="space-y-1">
+              {order.map((tool) => {
+                const isDragOver = dragOverId === tool.id;
+                const isSelected = selected.has(tool.id);
+                return (
+                  <div
+                    key={tool.id}
+                    draggable
+                    onDragStart={(e) => {
+                      dragSourceIdRef.current = tool.id;
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", tool.id);
+                    }}
+                    onDragOver={(e) => {
+                      if (!dragSourceIdRef.current) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragOverId !== tool.id) setDragOverId(tool.id);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverId === tool.id) setDragOverId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleDrop(tool.id);
+                    }}
+                    onDragEnd={() => {
+                      dragSourceIdRef.current = null;
+                      setDragOverId(null);
+                    }}
+                    className={`flex items-center gap-2 rounded-md border border-border bg-bg/60 px-2 py-1.5 text-sm ${
+                      isDragOver ? "bg-primary/10 border-primary/40" : ""
+                    }`}
+                  >
+                    <Bars3Icon className="size-4 text-muted-fg shrink-0 cursor-grab active:cursor-grabbing" />
+                    <label className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggle(tool.id)}
+                        className="size-4 accent-primary shrink-0"
+                      />
+                      <span className="truncate">{tool.name}</span>
+                    </label>
+                    {!tool.enabled && (
+                      <span className="text-[10px] uppercase tracking-wide text-muted-fg shrink-0">
+                        disabled
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
-        <div className="flex justify-end">
-          <Button
+      </div>
+
+      <div className="border-t border-border shrink-0 relative flex flex-col overflow-hidden">
+        <div className="flex items-center gap-0.5 sm:gap-1 px-1 py-1 text-[10px] sm:text-sm [&_button[data-slot=control]]:py-0.5 sm:[&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:px-1.5 sm:[&_button[data-slot=control]]:px-2.5 [&_button[data-slot=control]]:text-[10px] sm:[&_button[data-slot=control]]:text-sm">
+          <div className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
+            <AgentSelect sessionId={null} />
+          </div>
+          <div className="flex-1 min-w-0 sm:flex-none sm:shrink sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
+            <ModelSelect />
+          </div>
+          <div className="shrink-0 w-fit [&>*]:!w-auto">
+            <ThinkingSelect sessionId={null} />
+          </div>
+          <div className="ml-auto" />
+          <button
             type="button"
-            onPress={() => handleSubmit()}
-            isDisabled={sending || !text.trim()}
+            onClick={() => fileAttachInputRef.current?.click()}
+            className="md:hidden shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+            title="Attach photo"
+            aria-label="Attach photo"
           >
-            <SendIcon />
-            {sending ? "Starting…" : "Send"}
-          </Button>
+            <PhotoIcon className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => anyFileAttachInputRef.current?.click()}
+            className="shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
+            title="Attach any file"
+            aria-label="Attach any file"
+          >
+            <PaperClipIcon className="size-4" />
+          </button>
+        </div>
+        <div className="px-1 pt-0.5 pb-0.5 flex flex-col">
+          <input
+            ref={fileAttachInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              if (e.target.files) {
+                void handleAttachFiles(e.target.files);
+              }
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={anyFileAttachInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              if (e.target.files) {
+                void handleAttachFiles(e.target.files);
+              }
+              e.target.value = "";
+            }}
+          />
+          {pendingAttachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {pendingAttachments.map((a, i) => {
+                const isImage = (a.mime ?? "").startsWith("image/");
+                return (
+                  <div
+                    key={`${a.filename ?? "attachment"}-${i}`}
+                    className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = a.url ?? "";
+                        if (!url.startsWith("data:")) return;
+                        try {
+                          const blob = dataUrlToBlob(url);
+                          const objUrl = URL.createObjectURL(blob);
+                          window.open(
+                            objUrl,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
+                          window.setTimeout(
+                            () => URL.revokeObjectURL(objUrl),
+                            60_000,
+                          );
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      title={a.filename ?? "Preview attachment"}
+                      aria-label={a.filename ?? "Preview attachment"}
+                      className="block h-full w-full"
+                    >
+                      {isImage ? (
+                        <img
+                          src={a.url}
+                          alt={a.filename ?? `Attachment ${i + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 text-muted-fg">
+                          <DocumentIcon className="size-5 shrink-0" />
+                          <span className="w-full truncate text-[9px] leading-tight">
+                            {a.filename ?? "file"}
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(i)}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 px-1 text-[10px] leading-tight text-fg shadow hover:bg-bg"
+                      aria-label={`Remove ${a.filename ?? "attachment"}`}
+                      title="Remove"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {error && (
+            <div className="mb-2 text-sm text-danger-subtle-fg bg-danger-subtle px-3 py-2 rounded">
+              {error}
+            </div>
+          )}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSubmit();
+            }}
+            className="w-full flex flex-col"
+          >
+            <div className="flex items-stretch gap-2">
+              <div className="min-w-0 flex-1 flex flex-col">
+                <Textarea
+                  ref={textareaRef}
+                  value={text}
+                  inputMode="text"
+                  autoCapitalize="sentences"
+                  autoCorrect="on"
+                  onPaste={(e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    const images: File[] = [];
+                    for (const item of items) {
+                      if (item.kind !== "file") continue;
+                      if (!item.type.startsWith("image/")) continue;
+                      const file = item.getAsFile();
+                      if (file) images.push(file);
+                    }
+                    if (images.length === 0) return;
+                    e.preventDefault();
+                    void handleAttachFiles(images);
+                  }}
+                  onChange={(e) => {
+                    hasUserEditedRef.current = true;
+                    setText(e.target.value);
+                  }}
+                  onKeyDown={onKeyDown}
+                  placeholder="What do you want to do?"
+                  className="resize-none overflow-y-auto text-sm min-h-[120px]"
+                  disabled={sending}
+                />
+              </div>
+              <div className="flex flex-col justify-end gap-1.5 shrink-0">
+                {sttMode !== "off" && speechRecognition.isSupported && (
+                  <div className="flex w-12 gap-0 justify-end">
+                    <button
+                      type="button"
+                      onClick={handleMicToggle}
+                      className={`size-6 rounded-md inline-flex items-center justify-center transition-colors ${
+                        speechRecognition.isListening
+                          ? "bg-red-500 text-white animate-pulse"
+                          : "bg-muted hover:bg-muted/80 text-muted-fg"
+                      }`}
+                      aria-label={
+                        speechRecognition.isListening
+                          ? "Stop voice input"
+                          : "Start voice input"
+                      }
+                      title={
+                        sttMode === "push-to-talk"
+                          ? speechRecognition.isListening
+                            ? "Tap to stop and submit"
+                            : "Tap to start; tap again to stop and submit"
+                          : speechRecognition.isListening
+                            ? "Tap to stop listening"
+                            : "Tap to start continuous listening"
+                      }
+                    >
+                      {speechRecognition.isListening ? (
+                        <StopIcon className="size-3" />
+                      ) : (
+                        <MicrophoneIcon className="size-3" />
+                      )}
+                    </button>
+                  </div>
+                )}
+                <Button
+                  type="submit"
+                  isDisabled={
+                    sending ||
+                    (!hasContent && pendingAttachments.length === 0)
+                  }
+                  className="size-12 !p-0"
+                  aria-label={sending ? "Starting…" : "Send"}
+                >
+                  <PlayIcon className="size-6" />
+                </Button>
+              </div>
+            </div>
+          </form>
         </div>
       </div>
     </div>
