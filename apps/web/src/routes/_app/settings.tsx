@@ -9,7 +9,20 @@ import {
   SwatchIcon,
   InformationCircleIcon,
   PencilSquareIcon,
+  ShieldCheckIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Loader } from "@/components/ui/loader";
+import { toast } from "@/components/ui/toast";
+import {
+  useAutoApproveConfig,
+  setAutoApproveDefault,
+  removeSessionOverride,
+  clearAllOverrides,
+} from "@/stores/auto-approve-store";
 import {
   Select,
   SelectContent,
@@ -755,6 +768,173 @@ function ComposerSettings() {
   );
 }
 
+function PermissionsSettings() {
+  const { config, isLoading } = useAutoApproveConfig();
+  const [pendingRemove, setPendingRemove] = React.useState<string | null>(null);
+  const [busyDefault, setBusyDefault] = React.useState(false);
+  const [confirmClearAll, setConfirmClearAll] = React.useState(false);
+  const [clearBusy, setClearBusy] = React.useState(false);
+
+  const overrideEntries = React.useMemo(() => {
+    return Object.entries(config.sessionOverrides).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+  }, [config.sessionOverrides]);
+
+  const handleDefaultChange = async (value: boolean) => {
+    setBusyDefault(true);
+    try {
+      await setAutoApproveDefault(value);
+    } catch {
+      toast.error("Failed to update global default");
+    } finally {
+      setBusyDefault(false);
+    }
+  };
+
+  const handleRemoveOne = async (sessionId: string) => {
+    setPendingRemove(sessionId);
+    try {
+      await removeSessionOverride(sessionId);
+    } catch {
+      toast.error("Failed to remove override");
+    } finally {
+      setPendingRemove(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setClearBusy(true);
+    try {
+      await clearAllOverrides();
+      setConfirmClearAll(false);
+    } catch {
+      toast.error("Failed to clear overrides");
+    } finally {
+      setClearBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-10">
+      <div>
+        <h2 className="text-lg font-semibold">Permissions</h2>
+        <p className="text-sm text-muted-fg">
+          Auto-approve permission requests so the agent doesn&#39;t wait for a
+          manual reply. The openportal server holds an SSE connection to
+          every configured opencode instance and fires replies independently
+          of any browser tab being open. Every auto-fired reply is recorded
+          in the chat audit trail with an &quot;auto&quot; badge.
+        </p>
+      </div>
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">Global default</h3>
+          <p className="text-xs text-muted-fg">
+            Applied to every session that has no override below. The composer
+            shield toggle in each chat sets an override for that session.
+          </p>
+        </div>
+        <Checkbox
+          isSelected={config.globalDefault}
+          isDisabled={isLoading || busyDefault}
+          onChange={(value) => {
+            void handleDefaultChange(value);
+          }}
+        >
+          Auto-approve permissions by default
+        </Checkbox>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Per-session overrides</h3>
+            <p className="text-xs text-muted-fg">
+              Sessions where the shield toggle differs from the global
+              default. Remove to fall back to the default.
+            </p>
+          </div>
+          {overrideEntries.length > 0 && (
+            <Button
+              intent="danger"
+              size="sm"
+              onPress={() => setConfirmClearAll(true)}
+              isDisabled={clearBusy}
+            >
+              <TrashIcon className="size-4" data-slot="icon" />
+              Remove all
+            </Button>
+          )}
+        </div>
+        {isLoading ? (
+          <div className="flex justify-center py-4">
+            <Loader className="size-5" />
+          </div>
+        ) : overrideEntries.length === 0 ? (
+          <p className="text-xs text-muted-fg italic">
+            No overrides. All sessions follow the global default above.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {overrideEntries.map(([sid, value]) => (
+              <li
+                key={sid}
+                className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2"
+              >
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="font-mono text-xs truncate">{sid}</div>
+                  <div className="text-xs text-muted-fg">
+                    Auto-approve:{" "}
+                    <span
+                      className={
+                        value
+                          ? "font-medium text-violet-500"
+                          : "font-medium text-muted-fg"
+                      }
+                    >
+                      {value ? "ON" : "OFF"}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  isDisabled={pendingRemove === sid}
+                  onPress={() => {
+                    void handleRemoveOne(sid);
+                  }}
+                  aria-label={`Remove override for ${sid}`}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <ConfirmDialog
+        isOpen={confirmClearAll}
+        title="Remove all session overrides?"
+        description={`All ${overrideEntries.length} session override${
+          overrideEntries.length === 1 ? "" : "s"
+        } will be removed; those sessions will follow the global default (${
+          config.globalDefault ? "ON" : "OFF"
+        }).`}
+        confirmLabel="Remove all"
+        tone="danger"
+        busy={clearBusy}
+        onConfirm={handleClearAll}
+        onClose={() => {
+          if (!clearBusy) setConfirmClearAll(false);
+        }}
+      />
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { fontFamily, setFontFamily } = useTheme();
   const { setPageTitle } = useBreadcrumb();
@@ -796,7 +976,9 @@ function SettingsPage() {
   const [settingsTab, setSettingsTabState] = React.useState<string>(() => {
     if (typeof window === "undefined") return "appearance";
     const hash = window.location.hash.replace(/^#/, "");
-    return ["appearance", "prompt", "diagnostics"].includes(hash) ? hash : "appearance";
+    return ["appearance", "prompt", "permissions", "diagnostics"].includes(hash)
+      ? hash
+      : "appearance";
   });
 
   React.useEffect(() => {
@@ -804,7 +986,9 @@ function SettingsPage() {
     const onHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       setSettingsTabState(
-        ["appearance", "prompt", "diagnostics"].includes(hash) ? hash : "appearance",
+        ["appearance", "prompt", "permissions", "diagnostics"].includes(hash)
+          ? hash
+          : "appearance",
       );
     };
     window.addEventListener("hashchange", onHash);
@@ -838,6 +1022,10 @@ function SettingsPage() {
           <Tab id="prompt">
             <PencilSquareIcon className="size-4" data-slot="icon" />
             Prompt
+          </Tab>
+          <Tab id="permissions">
+            <ShieldCheckIcon className="size-4" data-slot="icon" />
+            Permissions
           </Tab>
           <Tab id="diagnostics">
             <InformationCircleIcon className="size-4" data-slot="icon" />
@@ -1021,6 +1209,10 @@ function SettingsPage() {
               <ToolsSettings />
             </section>
           </div>
+        </TabPanel>
+
+        <TabPanel id="permissions" className="pt-6">
+          <PermissionsSettings />
         </TabPanel>
 
         <TabPanel id="diagnostics" className="pt-6">

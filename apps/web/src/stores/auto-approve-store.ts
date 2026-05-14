@@ -1,33 +1,140 @@
-import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+// Auto-approve client-side state. Backed by the server's persistence
+// (~/.openportal-state.json `settings.autoApprove`) via SWR; the browser
+// is just a view onto the server-truth config. Replacing the previous
+// localStorage-only implementation that broke whenever the browser was
+// closed (since auto-approves were fired from the chat-page polling
+// loop, not the server).
+//
+// Effective resolution: per-session override wins over globalDefault.
+// Toggling in the composer collapses to "remove override" whenever
+// the new value would match globalDefault, so the Settings overrides
+// list only shows truly-overridden sessions.
 
-interface AutoApproveState {
-  enabled: Record<string, boolean>;
-  isEnabled: (sessionId: string | null) => boolean;
-  setEnabled: (sessionId: string, value: boolean) => void;
-  toggle: (sessionId: string) => void;
+import useSWR, { mutate as globalMutate } from "swr";
+
+const KEY = "/api/auto-approve";
+
+export interface AutoApproveConfig {
+  globalDefault: boolean;
+  sessionOverrides: Record<string, boolean>;
 }
 
-export const useAutoApproveStore = create<AutoApproveState>()(
-  persist(
-    (set, get) => ({
-      enabled: {},
-      isEnabled: (sessionId) => {
-        if (!sessionId) return false;
-        return Boolean(get().enabled[sessionId]);
-      },
-      setEnabled: (sessionId, value) =>
-        set((s) => ({
-          enabled: { ...s.enabled, [sessionId]: value },
-        })),
-      toggle: (sessionId) =>
-        set((s) => ({
-          enabled: { ...s.enabled, [sessionId]: !s.enabled[sessionId] },
-        })),
-    }),
+export const EMPTY_AUTO_APPROVE_CONFIG: AutoApproveConfig = {
+  globalDefault: false,
+  sessionOverrides: {},
+};
+
+async function fetcher(url: string): Promise<AutoApproveConfig> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`auto-approve fetch failed: ${r.status}`);
+  const raw = (await r.json()) as Partial<AutoApproveConfig>;
+  return {
+    globalDefault: Boolean(raw.globalDefault),
+    sessionOverrides:
+      raw.sessionOverrides && typeof raw.sessionOverrides === "object"
+        ? raw.sessionOverrides
+        : {},
+  };
+}
+
+export function useAutoApproveConfig(): {
+  config: AutoApproveConfig;
+  isLoading: boolean;
+  error: Error | undefined;
+} {
+  const { data, isLoading, error } = useSWR<AutoApproveConfig>(KEY, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 2000,
+    keepPreviousData: true,
+  });
+  return {
+    config: data ?? EMPTY_AUTO_APPROVE_CONFIG,
+    isLoading: isLoading && !data,
+    error: error as Error | undefined,
+  };
+}
+
+export function isEffectivelyEnabled(
+  config: AutoApproveConfig,
+  sessionId: string | null,
+): boolean {
+  if (!sessionId) return false;
+  if (sessionId in config.sessionOverrides) {
+    return config.sessionOverrides[sessionId];
+  }
+  return config.globalDefault;
+}
+
+export function hasSessionOverride(
+  config: AutoApproveConfig,
+  sessionId: string | null,
+): boolean {
+  if (!sessionId) return false;
+  return sessionId in config.sessionOverrides;
+}
+
+async function pushConfig(next: AutoApproveConfig): Promise<void> {
+  await globalMutate(KEY, next, { revalidate: false });
+}
+
+export async function setAutoApproveDefault(value: boolean): Promise<void> {
+  const r = await fetch(KEY, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+  if (!r.ok) throw new Error(`setAutoApproveDefault failed: ${r.status}`);
+  const next = (await r.json()) as AutoApproveConfig;
+  await pushConfig(next);
+}
+
+export async function setSessionOverride(
+  sessionId: string,
+  value: boolean,
+): Promise<void> {
+  const r = await fetch(
+    `${KEY}/session/${encodeURIComponent(sessionId)}`,
     {
-      name: "openportal-auto-approve",
-      storage: createJSONStorage(() => localStorage),
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
     },
-  ),
-);
+  );
+  if (!r.ok) throw new Error(`setSessionOverride failed: ${r.status}`);
+  const next = (await r.json()) as AutoApproveConfig;
+  await pushConfig(next);
+}
+
+export async function removeSessionOverride(
+  sessionId: string,
+): Promise<void> {
+  const r = await fetch(
+    `${KEY}/session/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
+  );
+  if (!r.ok) throw new Error(`removeSessionOverride failed: ${r.status}`);
+  const next = (await r.json()) as AutoApproveConfig;
+  await pushConfig(next);
+}
+
+export async function clearAllOverrides(): Promise<void> {
+  const r = await fetch(`${KEY}/sessions`, { method: "DELETE" });
+  if (!r.ok) throw new Error(`clearAllOverrides failed: ${r.status}`);
+  const next = (await r.json()) as AutoApproveConfig;
+  await pushConfig(next);
+}
+
+export async function toggleAutoApprove(
+  sessionId: string,
+  config: AutoApproveConfig,
+): Promise<void> {
+  const effective = isEffectivelyEnabled(config, sessionId);
+  const next = !effective;
+  if (next === config.globalDefault) {
+    if (sessionId in config.sessionOverrides) {
+      await removeSessionOverride(sessionId);
+    }
+  } else {
+    await setSessionOverride(sessionId, next);
+  }
+}

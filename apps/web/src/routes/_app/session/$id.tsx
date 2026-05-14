@@ -77,7 +77,11 @@ import {
 import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
-import { useAutoApproveStore } from "@/stores/auto-approve-store";
+import {
+  useAutoApproveConfig,
+  isEffectivelyEnabled,
+  toggleAutoApprove,
+} from "@/stores/auto-approve-store";
 import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
@@ -890,17 +894,19 @@ function PastPermissionDecisionPill({
 }
 
 function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
-  const enabled = useAutoApproveStore((s) => s.isEnabled(sessionId ?? null));
-  const toggle = useAutoApproveStore((s) => s.toggle);
+  const { config } = useAutoApproveConfig();
+  const enabled = isEffectivelyEnabled(config, sessionId);
   if (!sessionId) return null;
   const Icon = enabled ? ShieldCheckIconSolid : ShieldCheckIcon;
   return (
     <button
       type="button"
-      onClick={() => toggle(sessionId)}
+      onClick={() => {
+        void toggleAutoApprove(sessionId, config);
+      }}
       title={
         enabled
-          ? "Auto-approve ON: permissions reply with 'once' immediately"
+          ? "Auto-approve ON: server fires reply 'once' on every permission ask"
           : "Auto-approve OFF: permissions require manual reply"
       }
       aria-label={
@@ -2740,55 +2746,12 @@ function SessionPage() {
     [port, sessionId, refreshPendingPermissions],
   );
 
-  const autoApproveEnabled = useAutoApproveStore((s) =>
-    s.isEnabled(sessionId ?? null),
-  );
-
-  // Per-request lock so concurrent renders never POST /reply twice for the
-  // same id. Wins the race against the next polling tick that would re-add
-  // the (already replied) permission until opencode's list catches up.
-  const autoApproveInflightRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!autoApproveEnabled) return;
-    if (!port || !sessionId) return;
-    if (pendingPermissions.length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      for (const perm of pendingPermissions) {
-        if (cancelled) return;
-        if (autoApproveInflightRef.current.has(perm.id)) continue;
-        if (dismissedPermissionsRef.current.has(perm.id)) continue;
-        autoApproveInflightRef.current.add(perm.id);
-        try {
-          const res = await fetch(
-            `/api/opencode/${port}/permission/${perm.id}/reply`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ reply: "once", auto: true }),
-            },
-          );
-          if (res.ok) {
-            handlePermissionResolved(perm.id);
-          }
-        } catch {
-          // best-effort; next tick will retry while toggle is on
-        } finally {
-          autoApproveInflightRef.current.delete(perm.id);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    autoApproveEnabled,
-    pendingPermissions,
-    port,
-    sessionId,
-    handlePermissionResolved,
-  ]);
+  // Auto-approve firing lives in the server-side worker plugin
+  // (apps/web/src/server/plugins/auto-approve-worker.ts) so it keeps
+  // running with no browser open. The chat keeps polling the pending-
+  // permission list because the local /messages cache settles on the
+  // approved state via opencode's SSE stream, but the reply itself is
+  // not driven from here anymore.
 
   useEffect(() => {
     refreshPendingPermissions();
