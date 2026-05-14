@@ -3205,16 +3205,29 @@ function SessionPage() {
     }
     if (!lastUserText) return;
     try {
-      await fetch(`/api/opencode/${port}/session/${sessionId}/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: lastUserText,
-          model: isOverridingDefault() ? selectedModel : undefined,
-          agent: selectedAgent,
-          variant: thinkingEffort || undefined,
-        }),
-      });
+      const retryRes = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/prompt`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: lastUserText,
+            model: isOverridingDefault() ? selectedModel : undefined,
+            agent: selectedAgent,
+            variant: thinkingEffort || undefined,
+          }),
+        },
+      );
+      if (retryRes.ok) {
+        const retryResult = (await retryRes
+          .json()
+          .catch(() => null)) as { recoveredFromRestart?: boolean } | null;
+        if (retryResult?.recoveredFromRestart) {
+          toast.success(
+            "Recovered: this session was stuck from a previous restart.",
+          );
+        }
+      }
       mutateSessionMessages(port, sessionId);
     } catch {
       // Best-effort; the indicator will continue to show the stuck
@@ -3443,9 +3456,14 @@ function SessionPage() {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
-      // Acknowledged. Now it's safe to clear the textarea and the persisted
-      // draft. If the network or backend had failed before this point, the
-      // user's text would still be both in the textarea and in localStorage.
+      const promptResult = (await response
+        .json()
+        .catch(() => null)) as { recoveredFromRestart?: boolean } | null;
+      if (promptResult?.recoveredFromRestart) {
+        toast.success(
+          "Recovered: this session was stuck from a previous restart.",
+        );
+      }
       if (textareaRef.current) {
         textareaRef.current.value = "";
       }
