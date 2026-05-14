@@ -355,6 +355,11 @@ export default async function openportalCompanion(
     },
     "tool.execute.after": async (
       toolInput: { tool?: string; callID?: string },
+      toolOutput?: {
+        title?: string;
+        output?: string;
+        metadata?: unknown;
+      },
     ) => {
       if (!state || !toolInput.tool) return;
       const t = ensureTool(toolInput.tool);
@@ -371,6 +376,22 @@ export default async function openportalCompanion(
         t.p50Ms = percentile(t.recentMs, 0.5);
         t.p95Ms = percentile(t.recentMs, 0.95);
         if (toolInput.callID) inflightToolStartedAt.delete(toolInput.callID);
+      }
+      if (toolOutput) {
+        const meta = toolOutput.metadata;
+        const metaError =
+          meta && typeof meta === "object"
+            ? Boolean((meta as { error?: unknown }).error)
+            : false;
+        const outputText =
+          typeof toolOutput.output === "string" ? toolOutput.output : "";
+        const outputLooksLikeError =
+          /^\s*error[:\s]/i.test(outputText) ||
+          /^\s*exception[:\s]/i.test(outputText) ||
+          /^\s*failed[:\s]/i.test(outputText);
+        if (metaError || outputLooksLikeError) {
+          t.errorCount += 1;
+        }
       }
       scheduleFlush();
     },

@@ -430,6 +430,47 @@ export function CompanionTelemetryPanel() {
           </ul>
         </div>
       )}
+
+      {s.toolDefinitionsSeen.length > 0 && (
+        <details className="group rounded-md border border-border bg-muted/20">
+          <summary className="cursor-pointer select-none px-2 py-1.5 text-[11px] font-semibold text-muted-fg flex items-center justify-between gap-2 hover:text-fg">
+            <span>
+              Tool definitions observed
+              <span className="ml-1 tabular-nums">
+                ({s.toolDefinitionsSeen.length})
+              </span>
+            </span>
+            <span className="text-[10px] uppercase tracking-wide opacity-60 group-open:opacity-100">
+              {"toggle"}
+            </span>
+          </summary>
+          <ul className="px-2 pb-2 font-mono text-[11px] space-y-0.5 max-h-72 overflow-y-auto">
+            {[...s.toolDefinitionsSeen]
+              .sort((a, b) => a.localeCompare(b))
+              .map((name) => {
+                const stats = s.tools[name];
+                const calls = stats?.callCount ?? 0;
+                const errs = stats?.errorCount ?? 0;
+                return (
+                  <li
+                    key={name}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate">{name}</span>
+                    <span className="text-muted-fg tabular-nums shrink-0">
+                      {calls}×
+                      {errs > 0 && (
+                        <span className="ml-1 text-danger">
+                          ({errs} err)
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

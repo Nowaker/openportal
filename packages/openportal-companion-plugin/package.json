@@ -8,10 +8,14 @@
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --external @opencode-ai/plugin"
+    "build": "bun build src/index.ts --outdir dist --target bun --external @opencode-ai/plugin",
+    "check-types": "tsc --noEmit"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": "*"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.7.0"
+  }
 }
