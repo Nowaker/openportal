@@ -1,0 +1,131 @@
+import { execSync } from "node:child_process";
+
+export type ServiceScope = "user" | "system" | "unknown";
+
+export interface OpencodeServiceInfo {
+  scope: ServiceScope;
+  unitName: string | null;
+  opencodePid: number | null;
+  detectionNotes: string[];
+}
+
+// Walks pid -> cgroup -> systemd unit so the caller knows exactly which
+// service backs the opencode listening on a given hostname:port pair.
+// Falls back gracefully when the process is not under systemd at all
+// (e.g. a developer running `opencode serve` from a terminal): unitName
+// stays null, the caller surfaces a manual-restart instruction instead
+// of attempting a noop systemctl call.
+export function detectOpencodeService(
+  hostname: string,
+  port: number,
+): OpencodeServiceInfo {
+  const notes: string[] = [];
+  let opencodePid: number | null = null;
+  try {
+    const out = execSync(
+      `ss -tlnp -H 2>/dev/null | awk '$4=="${hostname}:${port}" || $4=="*:${port}"{print $0}'`,
+      { encoding: "utf-8", timeout: 2000 },
+    ).trim();
+    if (out) {
+      const m = out.match(/pid=(\d+)/);
+      if (m) opencodePid = Number(m[1]);
+    }
+  } catch (e) {
+    notes.push(
+      `ss probe failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  if (opencodePid === null) {
+    try {
+      const out = execSync(
+        `pgrep -af 'opencode serve.*${hostname}' 2>/dev/null | head -1`,
+        { encoding: "utf-8", timeout: 2000 },
+      ).trim();
+      const m = out.match(/^(\d+)\s/);
+      if (m) opencodePid = Number(m[1]);
+    } catch {
+      // pgrep absence is non-fatal - we just stay null.
+    }
+  }
+
+  if (opencodePid === null) {
+    return {
+      scope: "unknown",
+      unitName: null,
+      opencodePid: null,
+      detectionNotes: [...notes, "no opencode process matched host:port"],
+    };
+  }
+
+  try {
+    const cgroup = execSync(`cat /proc/${opencodePid}/cgroup 2>/dev/null`, {
+      encoding: "utf-8",
+      timeout: 1000,
+    }).trim();
+
+    const userMatch = cgroup.match(
+      /\/user\.slice\/[^/]+\/[^/]*?(?<unit>[\w@.-]+\.service)/,
+    );
+    if (userMatch?.groups?.unit) {
+      return {
+        scope: "user",
+        unitName: userMatch.groups.unit,
+        opencodePid,
+        detectionNotes: [...notes, `cgroup: ${cgroup}`],
+      };
+    }
+
+    const sysMatch = cgroup.match(/\/system\.slice\/[^/]*?([\w@.-]+\.service)/);
+    if (sysMatch?.[1]) {
+      return {
+        scope: "system",
+        unitName: sysMatch[1],
+        opencodePid,
+        detectionNotes: [...notes, `cgroup: ${cgroup}`],
+      };
+    }
+
+    return {
+      scope: "unknown",
+      unitName: null,
+      opencodePid,
+      detectionNotes: [
+        ...notes,
+        `cgroup does not match any systemd slice: ${cgroup}`,
+      ],
+    };
+  } catch (e) {
+    return {
+      scope: "unknown",
+      unitName: null,
+      opencodePid,
+      detectionNotes: [
+        ...notes,
+        `cgroup read failed: ${e instanceof Error ? e.message : String(e)}`,
+      ],
+    };
+  }
+}
+
+export function restartUserService(unit: string): { ok: boolean; output: string } {
+  try {
+    const out = execSync(`systemctl --user restart ${shellEscape(unit)}`, {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+    return { ok: true, output: out };
+  } catch (e) {
+    return {
+      ok: false,
+      output: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+function shellEscape(s: string): string {
+  if (!/^[\w@.+:-]+$/.test(s)) {
+    throw new Error(`refusing to shell-escape suspicious unit name: ${s}`);
+  }
+  return s;
+}

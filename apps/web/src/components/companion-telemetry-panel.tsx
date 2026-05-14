@@ -1,5 +1,8 @@
+import { useState } from "react";
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 
 interface CompanionPluginState {
   schemaVersion: number;
@@ -77,32 +80,78 @@ function fmtAge(ms: number | null | undefined): string {
 
 export function CompanionTelemetryPanel() {
   const port = useInstanceStore((s) => s.instance?.port ?? null);
-  const { data, isLoading } = useSWR<CompanionSummary>(
+  const { data, isLoading, mutate } = useSWR<CompanionSummary>(
     port ? `/api/companion-plugin-state?port=${port}` : null,
     fetcher,
     { refreshInterval: 5000 },
   );
+  const [installing, setInstalling] = useState<"install" | "install+restart" | null>(null);
+
+  const handleInstall = async (restart: boolean) => {
+    setInstalling(restart ? "install+restart" : "install");
+    try {
+      const url = restart
+        ? `/api/companion-plugin/install-and-restart?port=${port}`
+        : "/api/companion-plugin/install";
+      const r = await fetch(url, { method: "POST" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+      const j = (await r.json()) as {
+        changed?: boolean;
+        alreadyInstalled?: boolean;
+        configPath?: string;
+        note?: string;
+        restart?: { ok: boolean; output?: string };
+      };
+      const ok = restart ? j.restart?.ok !== false : true;
+      const message = j.note ?? (j.changed ? "Installed" : "Already installed");
+      (ok ? toast.success : toast.error)(message);
+      await mutate();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `Install failed: ${err.message}` : "Install failed",
+      );
+    } finally {
+      setInstalling(null);
+    }
+  };
 
   if (isLoading && !data) return null;
 
   if (!data?.available) {
     return (
-      <div className="border-t border-border pt-3 text-xs text-muted-fg space-y-1">
+      <div className="border-t border-border pt-3 text-xs text-muted-fg space-y-2">
         <h3 className="text-xs font-bold uppercase tracking-widest text-muted-fg">
           Companion telemetry
         </h3>
         <p>
           Install the openportal companion plugin to see live runtime telemetry.
         </p>
-        <p className="font-mono text-[11px] break-all">
-          Add to <code>~/.opencode/opencode.json</code>:{" "}
-          <code>
-            "plugin": ["file:///home/nowaker/projekty/webapps/portal/packages/openportal-companion-plugin"]
-          </code>
-        </p>
-        <p>
-          Then restart your opencode-serve service so the plugin loads, and
-          this panel will populate.
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            intent="secondary"
+            onPress={() => void handleInstall(false)}
+            isDisabled={installing !== null}
+          >
+            {installing === "install" ? "Installing…" : "Install"}
+          </Button>
+          <Button
+            size="sm"
+            intent="primary"
+            onPress={() => void handleInstall(true)}
+            isDisabled={installing !== null || !port}
+          >
+            {installing === "install+restart"
+              ? "Installing & restarting…"
+              : "Install & restart opencode"}
+          </Button>
+        </div>
+        <p className="text-[11px]">
+          "Install" just writes the file:// entry into{" "}
+          <code>~/.opencode/opencode.json</code>. "Install &amp; restart"
+          additionally detects which systemd unit serves the active opencode
+          and restarts it via <code>systemctl --user</code>. System-scope
+          services require manual <code>sudo systemctl restart</code>.
         </p>
       </div>
     );
