@@ -18,6 +18,20 @@ process.on("uncaughtException", (reason) => {
   console.error("[web-wrapper] uncaughtException (suppressed):", reason);
 });
 
+// Disable Bun.serve's default 10s idleTimeout. The Nitro/srvx bun adapter
+// has no knob for this, so we monkey-patch Bun.serve before the bundle
+// imports. 10s kills long-lived SSE streams: the browser subscribes to
+// /api/opencode/{port}/event, no events flow for 10s, Bun drops the
+// inbound socket, caddy logs "reading: unexpected EOF" on its upstream,
+// browser reconnects, cycle repeats forever and the chat UI appears
+// dead.
+if (globalThis.Bun?.serve) {
+  const originalServe = globalThis.Bun.serve.bind(globalThis.Bun);
+  globalThis.Bun.serve = function patchedServe(options) {
+    return originalServe({ idleTimeout: 0, ...options });
+  };
+}
+
 const target = process.env.OPENPORTAL_WEB_BUNDLE;
 if (!target) {
   console.error(
