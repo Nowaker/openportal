@@ -163,7 +163,17 @@ function NotificationPermissionBanner() {
   );
 }
 
+interface AppSearch {
+  server?: string;
+}
+
 export const Route = createFileRoute("/_app")({
+  validateSearch: (raw: Record<string, unknown>): AppSearch => ({
+    server:
+      typeof raw.server === "string" && raw.server.length > 0
+        ? raw.server
+        : undefined,
+  }),
   component: AppLayout,
 });
 
@@ -173,9 +183,35 @@ function AppLayout() {
   const navigate = useNavigate();
   const { data: selfData, isLoading, error } = useSelfInstance();
   const [hydrated, setHydrated] = useState(false);
+  const search = Route.useSearch();
   usePullToRefresh();
   useSettingsSync();
   useEventStream();
+
+  // Permalink consumption: when a URL carries ?server=<id> and the
+  // instance store is not yet bound to that server, POST to
+  // /api/servers/active so the rest of the app talks to the intended
+  // opencode. Fire-once per (id) - we never override a freshly-clicked
+  // 'Use' action from /servers. Suppress when self-instance has not
+  // hydrated yet so we don't race the initial bootstrap.
+  const lastBoundFromUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    const targetId = search.server;
+    if (!targetId) return;
+    if (!hydrated) return;
+    if (instance?.id === targetId) return;
+    if (lastBoundFromUrlRef.current === targetId) return;
+    lastBoundFromUrlRef.current = targetId;
+    void fetch("/api/servers/active", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: targetId }),
+    }).catch(() => {
+      // Permalink-driven activation is best-effort; if the server id is
+      // unknown on this openportal, the existing redirect/banner path
+      // handles the fallback.
+    });
+  }, [search.server, hydrated, instance?.id]);
 
   useEffect(() => {
     if (!selfData) return;
