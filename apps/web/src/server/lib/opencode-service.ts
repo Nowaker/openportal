@@ -64,23 +64,21 @@ export function detectOpencodeService(
       timeout: 1000,
     }).trim();
 
-    const userMatch = cgroup.match(
-      /\/user\.slice\/[^/]+\/[^/]*?(?<unit>[\w@.-]+\.service)/,
-    );
-    if (userMatch?.groups?.unit) {
+    const segments = cgroup.split("/").filter((s) => s.endsWith(".service"));
+    const leaf = segments[segments.length - 1] ?? "";
+    const leafIsActualUnit = leaf && !leaf.startsWith("user@");
+    if (leafIsActualUnit && cgroup.includes("/user.slice/")) {
       return {
         scope: "user",
-        unitName: userMatch.groups.unit,
+        unitName: leaf,
         opencodePid,
         detectionNotes: [...notes, `cgroup: ${cgroup}`],
       };
     }
-
-    const sysMatch = cgroup.match(/\/system\.slice\/[^/]*?([\w@.-]+\.service)/);
-    if (sysMatch?.[1]) {
+    if (leafIsActualUnit && cgroup.includes("/system.slice/")) {
       return {
         scope: "system",
-        unitName: sysMatch[1],
+        unitName: leaf,
         opencodePid,
         detectionNotes: [...notes, `cgroup: ${cgroup}`],
       };

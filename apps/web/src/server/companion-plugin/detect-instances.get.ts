@@ -17,15 +17,21 @@ function readCgroupUnit(pid: number): {
 } {
   try {
     const cgroup = readFileSync(`/proc/${pid}/cgroup`, "utf-8").trim();
-    const userMatch = cgroup.match(
-      /\/user\.slice\/[^/]+\/[^/]*?(?<unit>[\w@.-]+\.service)/,
-    );
-    if (userMatch?.groups?.unit) {
-      return { scope: "user", systemdUnit: userMatch.groups.unit };
+    // /proc/<pid>/cgroup looks like:
+    //   0::/user.slice/user-1000.slice/user@1000.service/app.slice/opencode-serve-lan.service
+    // The LAST .service segment is the unit that actually owns this pid;
+    // anchoring on the trailing segment avoids capturing the user@<uid>.service
+    // wrapper that lives further up the path.
+    const segments = cgroup.split("/").filter((s) => s.endsWith(".service"));
+    const leaf = segments[segments.length - 1] ?? null;
+    if (!leaf || leaf.startsWith("user@")) {
+      return { scope: "unknown", systemdUnit: null };
     }
-    const sysMatch = cgroup.match(/\/system\.slice\/[^/]*?([\w@.-]+\.service)/);
-    if (sysMatch?.[1]) {
-      return { scope: "system", systemdUnit: sysMatch[1] };
+    if (cgroup.includes("/user.slice/")) {
+      return { scope: "user", systemdUnit: leaf };
+    }
+    if (cgroup.includes("/system.slice/")) {
+      return { scope: "system", systemdUnit: leaf };
     }
   } catch {
     // /proc/<pid>/cgroup is the source of truth - if it's gone, the process exited
