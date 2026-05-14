@@ -193,21 +193,26 @@ function AppLayout() {
   }, [selfData, instance, setInstance]);
 
   // First-run / configless / no-active-server: bounce to /servers so the
-  // user can pick or add one. Once we've seen ANY instance attached this
-  // session, NEVER auto-redirect on subsequent selfData?.instance going
-  // null - a transient disconnect (opencode hiccup, mid-restart) was
-  // forcibly dropping the user back to /servers, losing scroll, drafts,
-  // and SWR cache. The connection-monitor's 'Reconnecting' banner owns
-  // that UX path now; let it. The seenInstanceRef makes the redirect
-  // fire-once-on-cold-start only.
+  // user can pick or add one. Two failure modes that we deliberately do
+  // NOT redirect on:
+  //   1. Transient disconnect (opencode hiccup, mid-restart) - selfData
+  //      flips to null for a poll cycle. seenInstanceRef catches this.
+  //   2. SWR cache lag right after adoptServer's globalMutate - the
+  //      window between adoptServer's navigate({to:"/"}) and the SWR
+  //      cache committing the new selfData was bouncing the user
+  //      straight back to /servers, leaving the green-Open click feeling
+  //      silently broken. The persisted zustand instance store catches
+  //      this: if the store already holds an instance, the active server
+  //      is real, just not yet echoed back by selfData. The
+  //      connection-monitor banner owns the disconnect UX.
   const seenInstanceRef = useRef(false);
   useEffect(() => {
-    if (selfData?.instance) seenInstanceRef.current = true;
+    if (selfData?.instance || instance) seenInstanceRef.current = true;
     if (isLoading || !hydrated) return;
-    if (!selfData?.instance && !seenInstanceRef.current) {
+    if (!selfData?.instance && !instance && !seenInstanceRef.current) {
       void navigate({ to: "/servers", replace: true });
     }
-  }, [isLoading, hydrated, selfData, navigate]);
+  }, [isLoading, hydrated, selfData, instance, navigate]);
 
   if (isLoading || !hydrated) {
     return (
