@@ -1,8 +1,140 @@
 import { useState } from "react";
+import {
+  Modal,
+  ModalOverlay,
+  Dialog as PrimitiveDialog,
+} from "react-aria-components";
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
+
+interface DetectedOpencode {
+  pid: number;
+  hostname: string | null;
+  port: number | null;
+  systemdUnit: string | null;
+  scope: "user" | "system" | "unknown";
+  cmdline: string;
+}
+
+interface DetectedInstancesResponse {
+  instances: DetectedOpencode[];
+}
+
+interface SudoPromptState {
+  unit: string;
+  port: number;
+}
+
+function SudoPasswordModal({
+  state,
+  onClose,
+  onSuccess,
+}: {
+  state: SudoPromptState | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!state || !password) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/companion-plugin/restart-with-sudo?port=${state.port}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password, unit: state.unit }),
+        },
+      );
+      const j = (await res.json()) as { ok?: boolean; note?: string };
+      setPassword("");
+      if (j.ok) {
+        toast.success(j.note ?? `Restarted ${state.unit}`);
+        onSuccess();
+        onClose();
+      } else {
+        toast.error(j.note ?? `Restart of ${state.unit} failed`);
+      }
+    } catch (err) {
+      setPassword("");
+      toast.error(
+        err instanceof Error ? `Restart failed: ${err.message}` : "Restart failed",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <ModalOverlay
+      isOpen={state !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setPassword("");
+          onClose();
+        }
+      }}
+      isDismissable
+      className={MODAL_OVERLAY_CLASSES}
+    >
+      <Modal className="w-full max-w-md rounded-xl border border-border bg-bg shadow-2xl outline-none">
+        <PrimitiveDialog className="flex flex-col gap-3 p-5 outline-none">
+          <h2 className="text-sm font-semibold">
+            Sudo password for {state?.unit}
+          </h2>
+          <p className="text-xs text-muted-fg">
+            {state?.unit} is a system-scope service. Enter your sudo password
+            to restart it via <code>sudo systemctl restart {state?.unit}</code>.
+            Password is piped to sudo over stdin and never logged or stored.
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            <input
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="sudo password"
+              autoComplete="off"
+              className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                intent="secondary"
+                size="sm"
+                onPress={() => {
+                  setPassword("");
+                  onClose();
+                }}
+                isDisabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                intent="primary"
+                size="sm"
+                type="submit"
+                isDisabled={submitting || password.length === 0}
+              >
+                {submitting ? "Restarting…" : "Restart"}
+              </Button>
+            </div>
+          </form>
+        </PrimitiveDialog>
+      </Modal>
+    </ModalOverlay>
+  );
+}
 
 interface CompanionPluginState {
   schemaVersion: number;
@@ -85,7 +217,13 @@ export function CompanionTelemetryPanel() {
     fetcher,
     { refreshInterval: 5000 },
   );
+  const { data: detected } = useSWR<DetectedInstancesResponse>(
+    "/api/companion-plugin/detect-instances",
+    fetcher,
+    { refreshInterval: 15_000 },
+  );
   const [installing, setInstalling] = useState<"install" | "install+restart" | null>(null);
+  const [sudoPrompt, setSudoPrompt] = useState<SudoPromptState | null>(null);
 
   const handleInstall = async (restart: boolean) => {
     setInstalling(restart ? "install+restart" : "install");
@@ -101,7 +239,21 @@ export function CompanionTelemetryPanel() {
         configPath?: string;
         note?: string;
         restart?: { ok: boolean; output?: string };
+        service?: {
+          scope?: string;
+          unitName?: string | null;
+        };
       };
+      if (
+        restart &&
+        port &&
+        j.restart?.ok === false &&
+        j.service?.scope === "system" &&
+        j.service?.unitName
+      ) {
+        setSudoPrompt({ unit: j.service.unitName, port });
+        return;
+      }
       const ok = restart ? j.restart?.ok !== false : true;
       const message = j.note ?? (j.changed ? "Installed" : "Already installed");
       (ok ? toast.success : toast.error)(message);
@@ -116,6 +268,10 @@ export function CompanionTelemetryPanel() {
   };
 
   if (isLoading && !data) return null;
+
+  const otherInstances = (detected?.instances ?? []).filter(
+    (i) => i.port !== port,
+  );
 
   if (!data?.available) {
     return (
@@ -143,7 +299,7 @@ export function CompanionTelemetryPanel() {
           >
             {installing === "install+restart"
               ? "Installing & restarting…"
-              : "Install & restart opencode"}
+              : "Install & restart"}
           </Button>
         </div>
         <p className="text-[11px]">
@@ -151,8 +307,40 @@ export function CompanionTelemetryPanel() {
           <code>~/.opencode/opencode.json</code>. "Install &amp; restart"
           additionally detects which systemd unit serves the active opencode
           and restarts it via <code>systemctl --user</code>. System-scope
-          services require manual <code>sudo systemctl restart</code>.
+          services prompt for your sudo password (piped to{" "}
+          <code>sudo -S</code> over stdin, never logged or stored).
         </p>
+        {otherInstances.length > 0 && (
+          <div className="space-y-1">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted-fg/70">
+              Other opencode instances detected on this host
+            </h4>
+            <ul className="font-mono text-[11px] space-y-0.5">
+              {otherInstances.map((inst) => (
+                <li key={inst.pid} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    {inst.hostname ?? "?"}:{inst.port ?? "?"}
+                  </span>
+                  <span className="text-muted-fg shrink-0">
+                    pid {inst.pid}
+                    {inst.systemdUnit && ` · ${inst.systemdUnit}`}
+                    {inst.scope !== "user" && inst.scope !== "system" && " · ?"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[10px] text-muted-fg/70">
+              Bind openportal to any of these from /servers; the plugin entry
+              applies to every opencode that loads <code>~/.opencode/opencode.json</code>,
+              but each needs its own restart to pick it up.
+            </p>
+          </div>
+        )}
+        <SudoPasswordModal
+          state={sudoPrompt}
+          onClose={() => setSudoPrompt(null)}
+          onSuccess={() => void mutate()}
+        />
       </div>
     );
   }
