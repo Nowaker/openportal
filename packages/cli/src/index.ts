@@ -509,7 +509,7 @@ async function startWebServer(port: number, hostname: string): Promise<number> {
   console.log(`Starting Web UI server...`);
   const proc = Bun.spawn(["bun", "run", WEB_WRAPPER_PATH], {
     cwd: dirname(WEB_SERVER_PATH),
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", "inherit", "inherit"],
     env: {
       ...process.env,
       OPENPORTAL_WEB_BUNDLE: WEB_SERVER_PATH,
