@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowPathIcon,
   BellAlertIcon,
@@ -192,13 +192,19 @@ function AppLayout() {
     setHydrated(true);
   }, [selfData, instance, setInstance]);
 
-  // Configless / first-run / removed-active-server: bounce to /servers
-  // so the user can pick or add an opencode to bind to. We do this in
-  // an effect (not at render time) so the redirect uses the router and
-  // history is clean.
+  // First-run / configless / no-active-server: bounce to /servers so the
+  // user can pick or add one. Once we've seen ANY instance attached this
+  // session, NEVER auto-redirect on subsequent selfData?.instance going
+  // null - a transient disconnect (opencode hiccup, mid-restart) was
+  // forcibly dropping the user back to /servers, losing scroll, drafts,
+  // and SWR cache. The connection-monitor's 'Reconnecting' banner owns
+  // that UX path now; let it. The seenInstanceRef makes the redirect
+  // fire-once-on-cold-start only.
+  const seenInstanceRef = useRef(false);
   useEffect(() => {
+    if (selfData?.instance) seenInstanceRef.current = true;
     if (isLoading || !hydrated) return;
-    if (!selfData?.instance) {
+    if (!selfData?.instance && !seenInstanceRef.current) {
       void navigate({ to: "/servers", replace: true });
     }
   }, [isLoading, hydrated, selfData, navigate]);
