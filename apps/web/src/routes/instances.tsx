@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import {
   GridList,
   GridListItem,
@@ -6,7 +7,11 @@ import {
 } from "@/components/ui/grid-list";
 import { useInstances, useSelfInstance } from "@/hooks/use-opencode";
 import IconBox from "@/components/icons/box-icon";
+import { Button } from "@/components/ui/button";
+import { Loader } from "@/components/ui/loader";
 import { PageTitle } from "@/components/ui/typography";
+import { toast } from "@/components/ui/toast";
+import { TrashIcon } from "@heroicons/react/24/outline";
 import { ServerIcon } from "@heroicons/react/24/solid";
 
 export const Route = createFileRoute("/instances")(
@@ -43,9 +48,33 @@ function buildWebUrl(instance: InstanceData): string | null {
 }
 
 function InstancesPage() {
-  const { data, error } = useInstances();
+  const { data, error, mutate } = useInstances();
   const { data: selfData } = useSelfInstance();
   const selfId = selfData?.instance?.id ?? null;
+  const [cleaning, setCleaning] = useState(false);
+  const staleCount =
+    (data as { staleCount?: number } | undefined)?.staleCount ?? 0;
+
+  const handleCleanup = async () => {
+    setCleaning(true);
+    try {
+      const res = await fetch("/api/instances/cleanup", { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = (await res.json()) as { removed: number; remaining: number };
+      toast.success(
+        j.removed > 0
+          ? `Pruned ${j.removed} stale ${j.removed === 1 ? "entry" : "entries"} from ~/.portal.json`
+          : "Registry already clean",
+      );
+      await mutate();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `Cleanup failed: ${err.message}` : "Cleanup failed",
+      );
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   const handleOpen = (instance: InstanceData) => {
     const url = buildWebUrl(instance);
@@ -59,7 +88,22 @@ function InstancesPage() {
   return (
     <div className="container mx-auto max-w-4xl space-y-8 px-4 py-10">
       <div className="space-y-2">
-        <PageTitle>Other Portals</PageTitle>
+        <div className="flex items-center justify-between gap-2">
+          <PageTitle>Other Portals</PageTitle>
+          {staleCount > 0 && (
+            <Button
+              intent="secondary"
+              size="sm"
+              isDisabled={cleaning}
+              onPress={handleCleanup}
+            >
+              <TrashIcon className="size-4" />
+              {cleaning
+                ? "Cleaning…"
+                : `Clean up ${staleCount} stale ${staleCount === 1 ? "entry" : "entries"}`}
+            </Button>
+          )}
+        </div>
         <p className="text-sm text-muted-fg">
           Each Portal is bound to its own opencode. Click to open another in a
           new tab.
@@ -146,8 +190,9 @@ function InstancesPage() {
           }}
         </GridList>
       ) : (
-        <div className="py-12 text-center text-muted-fg">
-          Loading Portals...
+        <div className="flex items-center justify-center gap-2 py-12 text-muted-fg">
+          <Loader className="size-5" />
+          <span>Loading Portals…</span>
         </div>
       )}
     </div>
