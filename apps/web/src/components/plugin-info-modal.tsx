@@ -18,6 +18,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { MarkdownRenderer } from "@/lib/markdown-renderer";
 import { useMarkdownModeStore } from "@/stores/markdown-mode-store";
+import { CompanionTelemetryPanel } from "@/components/companion-telemetry-panel";
 
 interface Props {
   isOpen: boolean;
@@ -240,6 +241,8 @@ function Body({ spec, onClose }: { spec: string; onClose: () => void }) {
                 )}
               </div>
             )}
+
+            <CompanionTelemetryPanel />
           </>
         )}
       </div>

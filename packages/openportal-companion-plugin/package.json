@@ -1,0 +1,17 @@
+{
+  "name": "@openportal/companion-plugin",
+  "version": "0.1.0",
+  "description": "Opencode plugin that emits runtime telemetry openportal renders in its Plugin Info modal",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --external @opencode-ai/plugin"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  },
+  "license": "MIT"
+}
