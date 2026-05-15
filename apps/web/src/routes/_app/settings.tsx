@@ -1121,7 +1121,7 @@ function SettingsPage() {
 
             <section className="space-y-6">
               <div>
-                <h3 className="text-sm font-semibold">Model</h3>
+                <h3 className="text-sm font-semibold">Default model</h3>
                 <p className="text-xs text-muted-fg">
                   The model used for generating code and responses. The server
                   default is marked, and your selection is remembered locally.
