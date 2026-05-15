@@ -20,6 +20,7 @@ import useSWR from "swr";
 
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
+import { StaleDataBanner } from "@/components/stale-data-banner";
 import { PageTitle } from "@/components/ui/typography";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { toast } from "@/components/ui/toast";
@@ -122,6 +123,10 @@ function PromptsPage() {
 
   return (
     <div className="-m-4 flex h-full flex-col">
+      <StaleDataBanner
+        headline="Showing cached prompt history - opencode is unreachable."
+        hint="The archive is served from openportal's local SQLite. Re-firing a prompt into a session will fail until opencode is back."
+      />
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <div className="relative flex flex-1 items-center">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-2 size-4 text-muted-fg" />
