@@ -2623,44 +2623,51 @@ function SessionPage() {
   }, [messages]);
   const isQuestionBlocked = blockingQuestionMessageId !== null;
 
-  // Race-window grace period for the busy/idle disagreement banner: between
-  // the moment a prompt is appended (local-busy=true) and opencode flipping
-  // its /session/status to busy + our 3s SWR poll catching it, there's a
-  // legit 3-5s window where the warning would lie. Only show the "Server is
-  // idle" banner if the disagreement has persisted past that grace.
-  // Matches opencode-stuck-detector's DISPATCH_GRACE_MS - the
-  // empirical floor below which normal-LLM-TTFB sessions trip false
-  // positives. Anthropic claude-opus-4-7 with thinking=max routinely
-  // takes 5-15 seconds before /session/status flips to busy; opencode
-  // first persists the user message (flips local isAssistantBusy=true
-  // instantly), then runs plugin hooks + resolves tools + waits for
-  // the LLM's time-to-first-token before the runner reports busy.
-  // The previous 5s threshold caught that startup window and showed
-  // a "Server is idle" banner with a Resubmit button, leading to
-  // double-submissions. 30s mirrors the stuck-detector's vocabulary
-  // (the canonical opencode tool for this verdict family).
-  const STALL_GRACE_MS = 30_000;
+  // Stall verdict matching opencode-stuck-detector's three-state vocabulary.
+  // 'silent' (age < 30s): the assistant just received the prompt, give
+  // opencode room to dispatch the LLM call (claude-opus-4-7 with
+  // thinking=max routinely takes 5-15s of plugin hooks + tool resolution
+  // + LLM time-to-first-token before /session/status flips to busy).
+  // No banner during this window prevents the "Server is idle" false
+  // positive that led to double-submissions on the old 5s threshold.
+  // 'no-dispatch' (age >= 30s AND opencode reports idle): the prompt was
+  // persisted but generation never dispatched - the same bug the
+  // stuck-detector flags. Offer Resubmit + Restore-to-composer.
+  // 'stuck-busy' (age >= 5min AND opencode reports busy): opencode says
+  // it is generating but nothing has streamed in five minutes. Likely a
+  // wedged session on the opencode side. Offer Abort+Retry which calls
+  // /session/:id/abort first (free the runner) then re-submits the last
+  // user prompt.
+  const DISPATCH_GRACE_MS = 30_000;
+  const STUCK_BUSY_THRESHOLD_MS = 5 * 60_000;
   const [busyIdleSince, setBusyIdleSince] = useState<number | null>(null);
   useEffect(() => {
-    const inDisagreement = isAssistantBusy && !isServerBusy;
-    if (!inDisagreement) {
+    if (!isAssistantBusy) {
       if (busyIdleSince !== null) setBusyIdleSince(null);
       return;
     }
     if (busyIdleSince === null) {
       setBusyIdleSince(Date.now());
     }
-  }, [isAssistantBusy, isServerBusy, busyIdleSince]);
+  }, [isAssistantBusy, busyIdleSince]);
   const [stallElapsedTick, setStallElapsedTick] = useState(0);
   useEffect(() => {
     if (busyIdleSince === null) return;
     const id = window.setInterval(() => setStallElapsedTick((n) => n + 1), 1000);
     return () => window.clearInterval(id);
   }, [busyIdleSince]);
-  const showStallBanner =
-    busyIdleSince !== null &&
-    Date.now() - busyIdleSince >= STALL_GRACE_MS &&
-    stallElapsedTick >= 0;
+  const stallVerdict = useMemo<
+    "silent" | "no-dispatch" | "stuck-busy" | null
+  >(() => {
+    void stallElapsedTick;
+    if (!isAssistantBusy) return null;
+    if (!busyIdleSince) return null;
+    const age = Date.now() - busyIdleSince;
+    if (age < DISPATCH_GRACE_MS) return "silent";
+    if (!isServerBusy) return "no-dispatch";
+    if (age >= STUCK_BUSY_THRESHOLD_MS) return "stuck-busy";
+    return null;
+  }, [isAssistantBusy, busyIdleSince, isServerBusy, stallElapsedTick]);
 
   // Pending-prompt safety net: holds the text the user last submitted that
   // hasn't yet received an assistant reply. Hydrated from localStorage on
@@ -2983,7 +2990,7 @@ function SessionPage() {
     messages,
     isAssistantBusy,
     isServerBusy,
-    showStallBanner,
+    stallVerdict,
     scrollToBottom,
   ]);
 
@@ -3291,6 +3298,17 @@ function SessionPage() {
       // Best-effort abort.
     }
   }, [port, sessionId]);
+
+  // stuck-busy recovery: opencode reports busy + ours agrees, but no
+  // streaming progress for >= 5 minutes. abort the wedged generation
+  // first (POST /session/:id/abort), then re-submit the last user
+  // prompt. The order matters - if we resubmit without aborting,
+  // opencode's queue piles up behind the wedged turn.
+
+  const handleAbortAndRetry = useCallback(async () => {
+    await handleAbort();
+    await handleRetryLastUserPrompt();
+  }, [handleAbort, handleRetryLastUserPrompt]);
 
   const handleForkRequest = useCallback(
     async (message: MessageWithParts) => {
@@ -3917,20 +3935,11 @@ function SessionPage() {
             </div>
           </div>
         )}
-        {/* Local heuristic says the assistant should be working (last
-            message is a user prompt with no completion time) but
-            opencode's /session/status reports the session as IDLE. That
-            means the prompt was persisted but generation never
-            dispatched - the bug we kept trying to repro. Surface it
-            instead of showing a misleading 'Thinking...' for an hour,
-            and offer a one-click retry that re-submits the last user
-            message. */}
-        {showStallBanner && (
+        {stallVerdict === "no-dispatch" && (
           <div className="py-3 px-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm text-warning-subtle-fg">
-                Server is idle - the prompt was received but the AI never
-                started generating.
+                Server is idle - prompt accepted but generation never started.
               </span>
               <button
                 type="button"
@@ -3955,6 +3964,23 @@ function SessionPage() {
                   Restore to composer
                 </button>
               )}
+            </div>
+          </div>
+        )}
+        {stallVerdict === "stuck-busy" && (
+          <div className="py-3 px-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-warning-subtle-fg">
+                Session may be wedged - opencode reports busy but no streaming progress.
+              </span>
+              <button
+                type="button"
+                onClick={() => handleAbortAndRetry()}
+                className="text-xs underline underline-offset-2 text-fg hover:text-primary"
+                title="Cancel the in-flight turn on opencode, then re-submit the last user prompt"
+              >
+                Abort + retry
+              </button>
             </div>
           </div>
         )}
