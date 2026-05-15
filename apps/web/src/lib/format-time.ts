@@ -28,11 +28,18 @@ export function formatMessageTime(ms: number, format: DateFormat): string {
           })
           .replace(/\s/g, "")
           .toLowerCase()
-      : d.toLocaleTimeString("en-GB", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        });
+      : format === "24h"
+        ? d.toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : d
+            .toLocaleTimeString(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+            })
+            .replace(/\s+/g, " ");
 
   if (sameDay) return time;
   const month = d.getMonth() + 1;
