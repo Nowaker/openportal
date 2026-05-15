@@ -56,6 +56,7 @@ export interface UseSessionMessagesOptions {
   loadAll?: boolean;
   limit?: number;
   enabled?: boolean;
+  onlyUser?: boolean;
 }
 
 export function useSessionMessages(
@@ -66,7 +67,13 @@ export function useSessionMessages(
   const enabled = options.enabled !== false;
   const key =
     enabled && port && sessionId
-      ? getMessagesKey(port, sessionId, options.loadAll, options.limit)
+      ? getMessagesKey(
+          port,
+          sessionId,
+          options.loadAll,
+          options.limit,
+          options.onlyUser,
+        )
       : null;
 
   const pollMs = usePollMs(3000);
@@ -95,11 +102,16 @@ export function getMessagesKey(
   sessionId: string,
   loadAll = false,
   limit?: number,
+  onlyUser?: boolean,
 ) {
   const base = `/api/opencode/${port}/session/${sessionId}/messages`;
-  if (loadAll) return `${base}?limit=all`;
-  if (typeof limit === "number" && limit > 0) return `${base}?limit=${limit}`;
-  return base;
+  const parts: string[] = [];
+  if (loadAll) parts.push("limit=all");
+  else if (typeof limit === "number" && limit > 0) {
+    parts.push(`limit=${limit}`);
+  }
+  if (onlyUser) parts.push("onlyUser=1");
+  return parts.length > 0 ? `${base}?${parts.join("&")}` : base;
 }
 
 export function mutateSessionMessages(port: number, sessionId: string) {
@@ -285,12 +297,18 @@ function mergeByIdSorted(
 export function useSessionMessagesAround(
   sessionId: string | undefined,
   targetMessageId: string | null,
-  options: { windowSize?: number; latestSize?: number; enabled?: boolean } = {},
+  options: {
+    windowSize?: number;
+    latestSize?: number;
+    enabled?: boolean;
+    onlyUser?: boolean;
+  } = {},
 ): PermalinkWindowState {
   const port = usePort();
   const windowSize = options.windowSize ?? 10;
   const latestSize = options.latestSize ?? 10;
   const enabled = options.enabled !== false;
+  const onlyUserSuffix = options.onlyUser ? "&onlyUser=1" : "";
 
   const [target, setTarget] = useState<MessageWithParts[]>([]);
   const [before, setBefore] = useState<MessageWithParts[]>([]);
@@ -340,7 +358,7 @@ export function useSessionMessagesAround(
     const enc = encodeURIComponent(targetMessageId);
     const tasks: Array<() => Promise<void>> = [
       async () => {
-        const r = await fetchWindow(`${baseUrl}?id=${enc}`);
+        const r = await fetchWindow(`${baseUrl}?id=${enc}${onlyUserSuffix}`);
         if (myToken !== cancelTokenRef.current) return;
         setTarget(r.messages);
         if (r.targetIndex !== null) setTargetIndex(r.targetIndex);
@@ -350,7 +368,7 @@ export function useSessionMessagesAround(
       },
       async () => {
         const r = await fetchWindow(
-          `${baseUrl}?before=${enc}&limit=${windowSize}`,
+          `${baseUrl}?before=${enc}&limit=${windowSize}${onlyUserSuffix}`,
         );
         if (myToken !== cancelTokenRef.current) return;
         setBefore(r.messages);
@@ -360,7 +378,7 @@ export function useSessionMessagesAround(
       },
       async () => {
         const r = await fetchWindow(
-          `${baseUrl}?after=${enc}&limit=${windowSize}`,
+          `${baseUrl}?after=${enc}&limit=${windowSize}${onlyUserSuffix}`,
         );
         if (myToken !== cancelTokenRef.current) return;
         setAfter(r.messages);
@@ -369,7 +387,9 @@ export function useSessionMessagesAround(
         setLoading((s) => ({ ...s, after: false }));
       },
       async () => {
-        const r = await fetchWindow(`${baseUrl}?limit=${latestSize}`);
+        const r = await fetchWindow(
+          `${baseUrl}?limit=${latestSize}${onlyUserSuffix}`,
+        );
         if (myToken !== cancelTokenRef.current) return;
         setLatest(r.messages);
         setLoading((s) => ({ ...s, latest: false }));
@@ -390,7 +410,7 @@ export function useSessionMessagesAround(
     return () => {
       cancelTokenRef.current += 1;
     };
-  }, [enabled, baseUrl, targetMessageId, windowSize, latestSize]);
+  }, [enabled, baseUrl, targetMessageId, windowSize, latestSize, onlyUserSuffix]);
 
   const fillGap = useCallback(
     async (strategy: FillGapStrategy) => {
@@ -400,7 +420,9 @@ export function useSessionMessagesAround(
       const myToken = cancelTokenRef.current;
       try {
         if (strategy === "all") {
-          const r = await fetchWindow(`${baseUrl}?limit=all`);
+          const r = await fetchWindow(
+            `${baseUrl}?limit=all${onlyUserSuffix}`,
+          );
           if (myToken !== cancelTokenRef.current) return;
           setBefore([]);
           setAfter(r.messages);
@@ -412,7 +434,9 @@ export function useSessionMessagesAround(
           const anchor = around[around.length - 1];
           if (!anchor) return;
           const enc = encodeURIComponent(anchor.info.id);
-          const r = await fetchWindow(`${baseUrl}?after=${enc}&limit=50`);
+          const r = await fetchWindow(
+            `${baseUrl}?after=${enc}&limit=50${onlyUserSuffix}`,
+          );
           if (myToken !== cancelTokenRef.current) return;
           setAfter((cur) => mergeByIdSorted([cur, r.messages]));
           if (r.total !== null) setTotalCount(r.total);
@@ -426,7 +450,7 @@ export function useSessionMessagesAround(
         }
       }
     },
-    [baseUrl, before, target, after, loading.fillGap],
+    [baseUrl, before, target, after, loading.fillGap, onlyUserSuffix],
   );
 
   const around = useMemo(

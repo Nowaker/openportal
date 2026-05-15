@@ -67,11 +67,26 @@ export default defineHandler(async (event) => {
     typeof query.after === "string" && query.after.length > 0
       ? query.after
       : null;
+  // ?onlyUser=1 filters the response to role==="user" messages BEFORE
+  // applying limit/before/after/id slicing. The full session is still
+  // cached unfiltered (so untoggling the flag is a free cache hit), but
+  // pagination math (slicing, X-Target-Index, X-Messages-Total) runs
+  // against the filtered view. Lets the chat "show prompts only" toggle
+  // page through user messages without dragging thousands of tool calls
+  // over the wire just to filter them out client-side.
+  const onlyUser =
+    query.onlyUser === "1" ||
+    query.onlyUser === "true" ||
+    query.onlyUser === "yes";
 
   let full = getCachedMessages(id);
   if (full === null) {
     full = await fetchAndCache(port, id);
   }
+  let view = onlyUser ? full.filter(isUserMessage) : full;
+  // Always report the FULL session size so the client can show "N
+  // messages skipped" affordances even in user-only view.
+  setResponseHeader(event, "X-Messages-Total-Raw", String(full.length));
 
   // Permalink-mode lookups all hinge on the index of a specific msgId.
   // When the cached list misses (e.g. cache went stale while the user
@@ -79,45 +94,113 @@ export default defineHandler(async (event) => {
   // permalink page never lies about "not found" purely because of TTL.
   const permalinkAnchor = targetId ?? beforeId ?? afterId;
   if (permalinkAnchor !== null) {
-    let idx = indexOfMessageId(full, permalinkAnchor);
+    let idx = indexOfMessageId(view, permalinkAnchor);
     if (idx < 0) {
       full = await fetchAndCache(port, id);
-      idx = indexOfMessageId(full, permalinkAnchor);
+      view = onlyUser ? full.filter(isUserMessage) : full;
+      idx = indexOfMessageId(view, permalinkAnchor);
+      setResponseHeader(event, "X-Messages-Total-Raw", String(full.length));
     }
-    setResponseHeader(event, "X-Messages-Total", String(full.length));
+    setResponseHeader(event, "X-Messages-Total", String(view.length));
     setResponseHeader(event, "X-Target-Found", idx >= 0 ? "true" : "false");
     if (idx >= 0) {
       setResponseHeader(event, "X-Target-Index", String(idx));
     }
     if (targetId !== null) {
-      return idx >= 0 ? [full[idx]] : [];
+      return idx >= 0 ? [view[idx]] : [];
     }
     if (beforeId !== null) {
       if (idx < 0) return [];
       const n = parsePositiveLimit(query.limit, 10);
       const start = Math.max(0, idx - n);
-      return full.slice(start, idx);
+      return view.slice(start, idx);
     }
     if (afterId !== null) {
       if (idx < 0) return [];
       const n = parsePositiveLimit(query.limit, 10);
-      const end = Math.min(full.length, idx + 1 + n);
-      return full.slice(idx + 1, end);
+      const end = Math.min(view.length, idx + 1 + n);
+      return view.slice(idx + 1, end);
     }
   }
 
   if (since) {
+    // since=<msgId> is incremental polling - resolved against the raw
+    // list so the client gets every new message (incl. assistant/tool
+    // events) and can apply onlyUser filtering after the fact. The
+    // onlyUser filter is still honoured on the response so live updates
+    // in user-only view stay clean.
     let after = messagesAfter(full, since);
     if (after === null) {
       full = await fetchAndCache(port, id);
       after = messagesAfter(full, since);
+      view = onlyUser ? full.filter(isUserMessage) : full;
     }
-    return after ?? full;
+    const tail = after ?? full;
+    return onlyUser ? tail.filter(isUserMessage) : tail;
   }
 
-  if (limit === undefined) return full;
-  return full.slice(-limit);
+  setResponseHeader(event, "X-Messages-Total", String(view.length));
+  if (limit === undefined) return view;
+  return view.slice(-limit);
 });
+
+function isUserMessage(msg: unknown): boolean {
+  if (!msg || typeof msg !== "object") return false;
+  const m = msg as { info?: { role?: string } };
+  return m.info?.role === "user";
+}
+
+function permalinkResponse(
+  event: Parameters<Parameters<typeof defineHandler>[0]>[0],
+  list: unknown[],
+  idx: number,
+  targetId: string | null,
+  beforeId: string | null,
+  afterId: string | null,
+  query: ReturnType<typeof getQuery>,
+): unknown[] {
+  setResponseHeader(event, "X-Messages-Total", String(list.length));
+  setResponseHeader(event, "X-Target-Found", idx >= 0 ? "true" : "false");
+  if (idx >= 0) {
+    setResponseHeader(event, "X-Target-Index", String(idx));
+  }
+  if (targetId !== null) {
+    return idx >= 0 ? [list[idx]] : [];
+  }
+  if (beforeId !== null) {
+    if (idx < 0) return [];
+    const n = parsePositiveLimit(query.limit, 10);
+    const start = Math.max(0, idx - n);
+    return list.slice(start, idx);
+  }
+  if (afterId !== null) {
+    if (idx < 0) return [];
+    const n = parsePositiveLimit(query.limit, 10);
+    const end = Math.min(list.length, idx + 1 + n);
+    return list.slice(idx + 1, end);
+  }
+  return [];
+}
+
+function isTruthyParam(raw: unknown): boolean {
+  if (raw === undefined || raw === null) return false;
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") {
+    const s = raw.toLowerCase();
+    return s === "1" || s === "true" || s === "yes";
+  }
+  if (Array.isArray(raw)) return raw.some(isTruthyParam);
+  return false;
+}
+
+function filterUserMessages(messages: unknown[]): unknown[] {
+  if (!Array.isArray(messages)) return [];
+  return messages.filter((m) => {
+    if (!m || typeof m !== "object") return false;
+    const info = (m as { info?: { role?: string } }).info;
+    return info?.role === "user";
+  });
+}
 
 function indexOfMessageId(messages: unknown[], msgId: string): number {
   for (let i = 0; i < messages.length; i++) {

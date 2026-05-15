@@ -120,6 +120,7 @@ import type { Session } from "@opencode-ai/sdk";
 
 const sessionSearchSchema = z.object({
   focus: z.literal("composer").optional(),
+  prompts: z.literal("1").optional(),
 });
 
 export const Route = createFileRoute("/_app/session/$id")({
@@ -2655,7 +2656,25 @@ function SessionPage() {
     scrollTop: number;
     scrollHeight: number;
   } | null>(null);
-  const [onlyUserMessages, setOnlyUserMessages] = useState(false);
+  const promptsSearchParam = Route.useSearch({
+    select: (s) => s.prompts === "1",
+  });
+  const [onlyUserMessages, setOnlyUserMessages] = useState(promptsSearchParam);
+  useEffect(() => {
+    setOnlyUserMessages(promptsSearchParam);
+  }, [promptsSearchParam]);
+  const togglePromptsOnly = useCallback(() => {
+    setOnlyUserMessages((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (next) url.searchParams.set("prompts", "1");
+        else url.searchParams.delete("prompts");
+        window.history.replaceState(null, "", url.toString());
+      }
+      return next;
+    });
+  }, []);
 
   // Permalink mode: when the URL carries `#msg-<id>` on mount (or via
   // back/forward / hashchange), switch from the normal "load last 50,
@@ -2682,11 +2701,12 @@ function SessionPage() {
     loadAll: loadAllMessages,
     limit: messageLimit,
     enabled: !permalinkMode,
+    onlyUser: onlyUserMessages,
   });
   const permalinkWindow = useSessionMessagesAround(
     sessionId,
     permalinkTarget,
-    { enabled: permalinkMode },
+    { enabled: permalinkMode, onlyUser: onlyUserMessages },
   );
 
   const messages: MessageWithParts[] = permalinkMode
@@ -4503,7 +4523,7 @@ function SessionPage() {
             </button>
             <button
               type="button"
-              onClick={() => setOnlyUserMessages((v) => !v)}
+              onClick={togglePromptsOnly}
               aria-pressed={onlyUserMessages}
               className={`flex size-10 items-center justify-center rounded-full border bg-bg/95 shadow-lg transition-colors ${
                 onlyUserMessages
