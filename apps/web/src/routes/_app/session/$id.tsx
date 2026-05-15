@@ -3432,17 +3432,6 @@ function SessionPage() {
     }
   }, [port, sessionId]);
 
-  // stuck-busy recovery: opencode reports busy + ours agrees, but no
-  // streaming progress for >= 5 minutes. abort the wedged generation
-  // first (POST /session/:id/abort), then re-submit the last user
-  // prompt. The order matters - if we resubmit without aborting,
-  // opencode's queue piles up behind the wedged turn.
-
-  const handleAbortAndRetry = useCallback(async () => {
-    await handleAbort();
-    await handleRetryLastUserPrompt();
-  }, [handleAbort, handleRetryLastUserPrompt]);
-
   const handleForkRequest = useCallback(
     async (message: MessageWithParts) => {
       if (!port || !sessionId) return;
@@ -3537,6 +3526,24 @@ function SessionPage() {
     selectedModel,
     selectedAgent,
   ]);
+
+  // stuck-busy recovery: opencode reports busy + ours agrees, but no
+  // streaming progress for >= 5 minutes. abort the wedged generation
+  // first (POST /session/:id/abort), then re-submit the last user
+  // prompt. The order matters - if we resubmit without aborting,
+  // opencode's queue piles up behind the wedged turn.
+  //
+  // Declared AFTER handleRetryLastUserPrompt because the deps array
+  // (a real expression) reads handleRetryLastUserPrompt at render
+  // time. With handleAbortAndRetry placed BEFORE handleRetryLast
+  // UserPrompt, the dep-array evaluation TDZ-errors on the const
+  // before initialization; minifier symbol-reuse for the same name
+  // means the throw surfaces as the cryptic 'Cannot access X before
+  // initialization' from anywhere downstream in the same render.
+  const handleAbortAndRetry = useCallback(async () => {
+    await handleAbort();
+    await handleRetryLastUserPrompt();
+  }, [handleAbort, handleRetryLastUserPrompt]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
