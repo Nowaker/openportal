@@ -2350,6 +2350,50 @@ function useComposerMaxHeight(): number {
   return maxPx;
 }
 
+interface PendingPromptRow {
+  id: string;
+  ts_ms: number;
+  raw_text: string;
+  attempts: number;
+  last_attempt_at: number | null;
+  last_error: string | null;
+}
+
+function PendingPromptsBanner({ sessionId }: { sessionId: string | null }) {
+  const { data } = useSWR<{ rows: PendingPromptRow[] }>(
+    sessionId
+      ? `/api/prompts/pending?session=${encodeURIComponent(sessionId)}`
+      : null,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { refreshInterval: 2000, revalidateOnFocus: false },
+  );
+  const rows = data?.rows ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <div className="border-t border-border bg-warning-subtle/40 px-3 py-2 text-xs flex flex-col gap-1">
+      {rows.map((row) => {
+        const preview = row.raw_text.replace(/\s+/g, " ").slice(0, 200);
+        const ageMs = Date.now() - row.ts_ms;
+        const ageLabel = ageMs < 5000 ? "just now" : `${Math.floor(ageMs / 1000)}s ago`;
+        return (
+          <div key={row.id} className="flex items-baseline gap-2">
+            <span className="shrink-0 font-mono uppercase tracking-wide text-[10px] text-warning-subtle-fg">
+              Waiting for opencode
+            </span>
+            <span className="text-muted-fg truncate flex-1" title={row.raw_text}>
+              {preview}
+            </span>
+            <span className="shrink-0 text-muted-fg/70">
+              {row.attempts > 0 ? `${row.attempts} attempts · ` : ""}
+              {ageLabel}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SessionPage() {
   const { id: sessionId } = Route.useParams();
   const navigate = useNavigate();
@@ -3958,6 +4002,8 @@ function SessionPage() {
           </div>
         )}
       </div>
+
+      <PendingPromptsBanner sessionId={sessionId} />
 
       {!composerCollapsed && (
         <div
