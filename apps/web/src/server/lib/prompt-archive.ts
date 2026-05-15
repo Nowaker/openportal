@@ -24,6 +24,8 @@ export interface ArchiveInput {
   parentSessionIdOverride?: string | null;
 }
 
+export type PromptStatus = "pending" | "delivered" | "failed" | "sent";
+
 export interface PromptRow {
   id: string;
   ts_ms: number;
@@ -38,6 +40,24 @@ export interface PromptRow {
   variant: string | null;
   source: PromptSource;
   attachments_count: number;
+  status: PromptStatus;
+  port: number | null;
+  payload_json: string | null;
+  delivered_at: number | null;
+  last_attempt_at: number | null;
+  attempts: number;
+  last_error: string | null;
+}
+
+export const MAX_DELIVERY_ATTEMPTS = 12;
+export const BASE_BACKOFF_MS = 1_000;
+export const MAX_BACKOFF_MS = 60_000;
+
+export interface PendingPayload {
+  parts: unknown[];
+  model?: { providerID: string; modelID: string };
+  agent?: string;
+  variant?: string;
 }
 
 export interface ListFilters {
@@ -93,12 +113,16 @@ const INSERT_SQL = `
     id, ts_ms, project_path, session_id, parent_session_id,
     raw_text, raw_text_unfiltered,
     model_provider, model_id, agent, variant,
-    source, attachments_count
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    source, attachments_count,
+    status, port, payload_json, delivered_at, last_attempt_at, attempts, last_error
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 export async function archivePrompt(
-  input: ArchiveInput,
+  input: ArchiveInput & {
+    status?: PromptStatus;
+    payload?: PendingPayload;
+  },
 ): Promise<PromptRow | null> {
   const f = filterPrompt(input.rawText);
   if (!f.shouldArchive) return null;
@@ -114,6 +138,9 @@ export async function archivePrompt(
     parentSessionId = meta.parentID;
   }
 
+  const status: PromptStatus = input.status ?? "sent";
+  const payload_json = input.payload ? JSON.stringify(input.payload) : null;
+
   const row: PromptRow = {
     id: randomUUID(),
     ts_ms: Date.now(),
@@ -128,6 +155,13 @@ export async function archivePrompt(
     variant: input.variant ?? null,
     source: input.source,
     attachments_count: input.attachmentsCount ?? 0,
+    status,
+    port: input.port,
+    payload_json,
+    delivered_at: status === "sent" || status === "delivered" ? Date.now() : null,
+    last_attempt_at: null,
+    attempts: 0,
+    last_error: null,
   };
   try {
     getPromptDb()
@@ -146,12 +180,66 @@ export async function archivePrompt(
         row.variant,
         row.source,
         row.attachments_count,
+        row.status,
+        row.port,
+        row.payload_json,
+        row.delivered_at,
+        row.last_attempt_at,
+        row.attempts,
+        row.last_error,
       );
   } catch (err) {
     console.error("[prompt-archive] insert failed:", err);
     return null;
   }
   return row;
+}
+
+export function listPendingPrompts(limit = 50): PromptRow[] {
+  const db = getPromptDb();
+  return db
+    .query(
+      `SELECT * FROM prompts WHERE status = 'pending' ORDER BY ts_ms ASC LIMIT ?`,
+    )
+    .all(limit) as unknown as PromptRow[];
+}
+
+export function listPendingPromptsForSession(sessionId: string): PromptRow[] {
+  const db = getPromptDb();
+  return db
+    .query(
+      `SELECT * FROM prompts WHERE status = 'pending' AND session_id = ? ORDER BY ts_ms ASC`,
+    )
+    .all(sessionId) as unknown as PromptRow[];
+}
+
+export function markPromptDelivered(id: string): void {
+  const db = getPromptDb();
+  db.prepare(
+    `UPDATE prompts SET status = 'delivered', delivered_at = ?, last_error = NULL WHERE id = ? AND status = 'pending'`,
+  ).run(Date.now(), id);
+}
+
+export function markPromptFailed(id: string, error: string): void {
+  const db = getPromptDb();
+  db.prepare(
+    `UPDATE prompts SET status = 'failed', last_error = ? WHERE id = ? AND status = 'pending'`,
+  ).run(error.slice(0, 2000), id);
+}
+
+export function recordDeliveryAttempt(
+  id: string,
+  error: string | null,
+): void {
+  const db = getPromptDb();
+  db.prepare(
+    `UPDATE prompts SET attempts = attempts + 1, last_attempt_at = ?, last_error = ? WHERE id = ?`,
+  ).run(Date.now(), error ? error.slice(0, 2000) : null, id);
+}
+
+export function backoffMsForAttempts(attempts: number): number {
+  const ms = BASE_BACKOFF_MS * 2 ** Math.min(attempts, 10);
+  return Math.min(ms, MAX_BACKOFF_MS);
 }
 
 export function getPromptById(id: string): PromptRow | null {

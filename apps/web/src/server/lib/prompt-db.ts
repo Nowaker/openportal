@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import init_0001 from "./migrations/0001_init.sql?raw";
+import pending_0002 from "./migrations/0002_pending_prompts.sql?raw";
 
 interface Migration {
   version: number;
@@ -14,6 +15,7 @@ interface Migration {
 // Never edit a shipped migration in place.
 const MIGRATIONS: Migration[] = [
   { version: 1, sql: init_0001 },
+  { version: 2, sql: pending_0002 },
 ];
 
 const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
