@@ -13,6 +13,8 @@ import {
   TrashIcon,
   ChatBubbleLeftEllipsisIcon,
   ChatBubbleLeftRightIcon,
+  BoltIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1062,6 +1064,8 @@ function SettingsPage() {
       "prompt",
       "composer",
       "chat",
+      "tools",
+      "performance",
       "diagnostics",
     ].includes(hash)
       ? hash
@@ -1078,6 +1082,8 @@ function SettingsPage() {
           "prompt",
           "composer",
           "chat",
+          "tools",
+          "performance",
           "diagnostics",
         ].includes(hash)
           ? hash
@@ -1123,6 +1129,14 @@ function SettingsPage() {
           <Tab id="chat">
             <ChatBubbleLeftRightIcon className="size-4" data-slot="icon" />
             Chat
+          </Tab>
+          <Tab id="tools">
+            <WrenchScrewdriverIcon className="size-4" data-slot="icon" />
+            Tools
+          </Tab>
+          <Tab id="performance">
+            <BoltIcon className="size-4" data-slot="icon" />
+            Performance
           </Tab>
           <Tab id="diagnostics">
             <InformationCircleIcon className="size-4" data-slot="icon" />
@@ -1277,15 +1291,7 @@ function SettingsPage() {
             </section>
 
             <section>
-              <LiveUpdatesSetting />
-            </section>
-
-            <section>
               <VoiceInputSetting />
-            </section>
-
-            <section>
-              <ToolsSettings />
             </section>
           </div>
         </TabPanel>
@@ -1339,6 +1345,32 @@ function SettingsPage() {
             <section>
               <MarkdownSetting />
             </section>
+          </div>
+        </TabPanel>
+
+        <TabPanel id="tools" className="pt-6">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-lg font-semibold">Tools</h2>
+              <p className="text-sm text-muted-fg">
+                Customize which tools the agent has access to, edit their
+                prompts, or add your own custom tools.
+              </p>
+            </div>
+            <ToolsSettings />
+          </div>
+        </TabPanel>
+
+        <TabPanel id="performance" className="pt-6">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-lg font-semibold">Performance</h2>
+              <p className="text-sm text-muted-fg">
+                Tune how openportal stays in sync with opencode and how much
+                data crosses the wire. Per-device (localStorage), not synced.
+              </p>
+            </div>
+            <LiveUpdatesSetting />
           </div>
         </TabPanel>
 
