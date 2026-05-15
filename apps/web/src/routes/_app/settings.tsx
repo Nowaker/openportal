@@ -253,17 +253,6 @@ const fonts = [
   { id: "system", title: "System Default" },
 ];
 
-const STRATEGIES = [
-  {
-    id: "specific" as const,
-    title: "Always use a specific agent",
-  },
-  {
-    id: "last-used" as const,
-    title: "Last used in any session (with fallback)",
-  },
-];
-
 function AgentSettings() {
   const { data, isLoading } = useAgents();
   const agents = (data ?? []) as Agent[];
@@ -271,53 +260,43 @@ function AgentSettings() {
   const instance = useInstanceStore((s) => s.instance);
   const instanceId = instance?.id ?? null;
 
-  const defaultAgentStrategy = useAgentStore((s) => s.defaultAgentStrategy);
   const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
-  const setDefaultAgentStrategy = useAgentStore(
-    (s) => s.setDefaultAgentStrategy,
-  );
   const setDefaultAgentName = useAgentStore((s) => s.setDefaultAgentName);
   const lastUsedAgentGlobal = useAgentStore((s) => s.lastUsedAgentGlobal);
+  const setLastUsedAgentGlobal = useAgentStore((s) => s.setLastUsedAgentGlobal);
   const lastUsedAgentForInstance = useAgentStore((s) =>
     s.getLastUsedAgentForInstance(instanceId),
   );
-
-  const fallbackLabel =
-    defaultAgentStrategy === "specific" ? "Default agent" : "Fallback agent";
-  const fallbackHelp =
-    defaultAgentStrategy === "specific"
-      ? "New sessions will start with this agent selected."
-      : "When 'last used' resolves to nothing on this server or globally, this is the agent the new session falls back to.";
+  const setLastUsedAgentForInstance = useAgentStore((s) => s.setLastUsedAgentForInstance);
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Agent</h2>
-        <p className="text-sm text-muted-fg">
-          Choose how Portal picks the agent for a new session.
+        <h3 className="text-sm font-semibold">Default agent</h3>
+        <p className="text-xs text-muted-fg">
+          Choose how Portal picks the agent for a new session. New sessions resolve in this order: this server &rarr; any server &rarr; default.
         </p>
       </div>
 
       <div className="space-y-6">
         <div className="space-y-2">
-          <p className="text-sm font-medium">Default agent strategy</p>
-          <p className="text-xs text-muted-fg">
-            Whether new sessions inherit your last choice or always start from
-            a fixed agent.
-          </p>
+          <p className="text-sm font-medium">Default for this server</p>
           <Select
-            selectedKey={defaultAgentStrategy}
+            selectedKey={lastUsedAgentForInstance ?? "none"}
             onSelectionChange={(key) => {
-              if (key) setDefaultAgentStrategy(String(key) as never);
+              if (key) setLastUsedAgentForInstance(instanceId, String(key) === "none" ? null : String(key));
             }}
-            placeholder="Select a strategy"
-            aria-label="Default agent strategy"
+            placeholder={isLoading ? "Loading agents..." : "Select an agent"}
+            aria-label="Default for this server"
           >
             <SelectTrigger className="max-w-sm" />
             <SelectContent>
-              {STRATEGIES.map((item) => (
-                <SelectItem key={item.id} id={item.id} textValue={item.title}>
-                  {item.title}
+              <SelectItem id="none" textValue="None (inherit global)">
+                None (inherit global)
+              </SelectItem>
+              {agents.map((agent) => (
+                <SelectItem key={agent.name} id={agent.name} textValue={agent.name}>
+                  {agent.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -325,15 +304,38 @@ function AgentSettings() {
         </div>
 
         <div className="space-y-2">
-          <p className="text-sm font-medium">{fallbackLabel}</p>
-          <p className="text-xs text-muted-fg">{fallbackHelp}</p>
+          <p className="text-sm font-medium">Default across all servers</p>
+          <Select
+            selectedKey={lastUsedAgentGlobal ?? "none"}
+            onSelectionChange={(key) => {
+              if (key) setLastUsedAgentGlobal(String(key) === "none" ? null : String(key));
+            }}
+            placeholder={isLoading ? "Loading agents..." : "Select an agent"}
+            aria-label="Default across all servers"
+          >
+            <SelectTrigger className="max-w-sm" />
+            <SelectContent>
+              <SelectItem id="none" textValue="None (inherit default)">
+                None (inherit default)
+              </SelectItem>
+              {agents.map((agent) => (
+                <SelectItem key={agent.name} id={agent.name} textValue={agent.name}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Default agent</p>
           <Select
             selectedKey={defaultAgentName}
             onSelectionChange={(key) => {
               if (key) setDefaultAgentName(String(key));
             }}
             placeholder={isLoading ? "Loading agents..." : "Select an agent"}
-            aria-label={fallbackLabel}
+            aria-label="Default agent"
           >
             <SelectTrigger className="max-w-sm" />
             <SelectContent items={agents}>
@@ -345,27 +347,6 @@ function AgentSettings() {
             </SelectContent>
           </Select>
         </div>
-
-        {defaultAgentStrategy === "last-used" && (
-          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-fg space-y-1">
-            <div>
-              <span className="font-medium">On this server: </span>
-              {lastUsedAgentForInstance ?? (
-                <span className="opacity-60">none yet</span>
-              )}
-            </div>
-            <div>
-              <span className="font-medium">Anywhere (global): </span>
-              {lastUsedAgentGlobal ?? (
-                <span className="opacity-60">none yet</span>
-              )}
-            </div>
-            <div className="opacity-70 italic">
-              New sessions resolve in this order:
-              this server → any server → fallback above.
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -558,6 +539,8 @@ function VoiceInputSetting() {
   const setBackend = useSttModeStore((s) => s.setBackend);
   const sidecarUrl = useSttModeStore((s) => s.sidecarUrl);
   const setSidecarUrl = useSttModeStore((s) => s.setSidecarUrl);
+  const endOfStreamTimeoutMs = useSttModeStore((s) => s.endOfStreamTimeoutMs);
+  const setEndOfStreamTimeoutMs = useSttModeStore((s) => s.setEndOfStreamTimeoutMs);
 
   return (
     <div className="space-y-6">
@@ -641,6 +624,23 @@ function VoiceInputSetting() {
           <p className="text-xs text-muted-fg">
             Where the @openportal/voice-stt service is listening. POST audio is
             sent to <code>{`${sidecarUrl.replace(/\/+$/, "")}/transcribe`}</code>.
+          </p>
+        </div>
+      )}
+
+      {mode === "push-to-talk" && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">End of stream timeout (ms)</p>
+          <Input
+            type="number"
+            value={endOfStreamTimeoutMs}
+            onChange={(e) => setEndOfStreamTimeoutMs(parseInt(e.target.value, 10) || 0)}
+            className="max-w-sm"
+            min={0}
+            step={100}
+          />
+          <p className="text-xs text-muted-fg">
+            How long to wait after you stop talking before automatically submitting the prompt.
           </p>
         </div>
       )}

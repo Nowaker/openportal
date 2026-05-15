@@ -1,8 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type DefaultAgentStrategy = "specific" | "last-used";
-
 interface AgentState {
   selectedAgents: Record<string, string | undefined>;
   // Most-recent agent picked on a given instance (keyed by instance.id), used
@@ -12,7 +10,6 @@ interface AgentState {
   // Most-recent agent picked across any instance ever, last-resort fallback
   // for the layered default-agent strategy.
   lastUsedAgentGlobal: string | null;
-  defaultAgentStrategy: DefaultAgentStrategy;
   defaultAgentName: string;
   setSelectedAgent: (
     sessionId: string,
@@ -23,8 +20,8 @@ interface AgentState {
     sessionId: string | null | undefined,
   ) => string | undefined;
   getLastUsedAgentForInstance: (instanceId: string | null | undefined) => string | null;
-  setDefaultAgentStrategy: (strategy: DefaultAgentStrategy) => void;
-  setDefaultAgentName: (name: string) => void;
+  setLastUsedAgentForInstance: (instanceId: string | null | undefined, agent: string | null) => void;
+  setLastUsedAgentGlobal: (agent: string | null) => void;
 }
 
 export const useAgentStore = create<AgentState>()(
@@ -33,7 +30,6 @@ export const useAgentStore = create<AgentState>()(
       selectedAgents: {},
       lastUsedAgentByInstance: {},
       lastUsedAgentGlobal: null,
-      defaultAgentStrategy: "last-used",
       defaultAgentName: "plan",
       setSelectedAgent: (sessionId, agent, instanceId) =>
         set((state) => ({
@@ -51,8 +47,19 @@ export const useAgentStore = create<AgentState>()(
         if (!instanceId) return null;
         return get().lastUsedAgentByInstance[instanceId] ?? null;
       },
-      setDefaultAgentStrategy: (strategy) =>
-        set({ defaultAgentStrategy: strategy }),
+      setLastUsedAgentForInstance: (instanceId, agent) => {
+        if (!instanceId) return;
+        set((state) => {
+          const next = { ...state.lastUsedAgentByInstance };
+          if (agent === null) {
+            delete next[instanceId];
+          } else {
+            next[instanceId] = agent;
+          }
+          return { lastUsedAgentByInstance: next };
+        });
+      },
+      setLastUsedAgentGlobal: (agent) => set({ lastUsedAgentGlobal: agent }),
       setDefaultAgentName: (name) => set({ defaultAgentName: name }),
     }),
     {
@@ -60,7 +67,6 @@ export const useAgentStore = create<AgentState>()(
       partialize: (state) => ({
         lastUsedAgentByInstance: state.lastUsedAgentByInstance,
         lastUsedAgentGlobal: state.lastUsedAgentGlobal,
-        defaultAgentStrategy: state.defaultAgentStrategy,
         defaultAgentName: state.defaultAgentName,
       }),
     },
