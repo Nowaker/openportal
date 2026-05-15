@@ -6,6 +6,7 @@ import rehypeRaw from "rehype-raw";
 import type { Components } from "react-markdown";
 import useMediaQuery from "@/hooks/use-media-query";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
+import { useChatLinkStore } from "@/stores/chat-link-store";
 
 // Two-mode markdown renderer.
 //
@@ -109,6 +110,7 @@ export function MarkdownRenderer({
   components,
 }: MarkdownRendererProps) {
   const { isMobile } = useMediaQuery();
+  const linkBehavior = useChatLinkStore((s) => s.behavior);
   const remarkPlugins =
     mode === "extended"
       ? [remarkGfm, remarkBreaks, remarkGithubBlockquoteAlert]
@@ -157,14 +159,36 @@ export function MarkdownRenderer({
       }
       const isAnchor = finalHref?.startsWith("#") ?? false;
       const isMailto = finalHref?.startsWith("mailto:") ?? false;
-      const openInNewTab = !!finalHref && !isAnchor && !isMailto;
+      const externalLink = !!finalHref && !isAnchor && !isMailto;
+      if (externalLink && linkBehavior === "none") {
+        return <span {...rest}>{children}</span>;
+      }
+      if (externalLink && linkBehavior === "new-window") {
+        return (
+          <a
+            {...rest}
+            href={finalHref}
+            onClick={(e) => {
+              e.preventDefault();
+              window.open(
+                finalHref,
+                "_blank",
+                "noopener,noreferrer,popup=yes",
+              );
+            }}
+          >
+            {children}
+          </a>
+        );
+      }
+      const target =
+        externalLink && linkBehavior === "new-tab" ? "_blank" : undefined;
+      const rel =
+        externalLink && linkBehavior === "new-tab"
+          ? "noreferrer noopener"
+          : undefined;
       return (
-        <a
-          {...rest}
-          href={finalHref}
-          target={openInNewTab ? "_blank" : undefined}
-          rel={openInNewTab ? "noreferrer noopener" : undefined}
-        >
+        <a {...rest} href={finalHref} target={target} rel={rel}>
           {children}
         </a>
       );
