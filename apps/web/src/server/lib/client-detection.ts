@@ -31,7 +31,7 @@
 
 import { networkInterfaces } from "node:os";
 
-import type { HTTPEvent } from "nitro/h3";
+import { getRequestIP, type HTTPEvent } from "nitro/h3";
 
 const LOOPBACK = new Set([
   "127.0.0.1",
@@ -87,11 +87,20 @@ export interface ClientInfo {
 
 export function detectClient(event: HTTPEvent): ClientInfo {
   const headers = (event as unknown as { headers?: Headers }).headers;
-  const socketPeer = (
-    (event as unknown as {
-      node?: { req?: { socket?: { remoteAddress?: string } } };
-    }).node?.req?.socket?.remoteAddress ?? "127.0.0.1"
-  ).replace("::ffff:", "");
+  // getRequestIP() in h3 v2 reads event.req.context.clientAddress ||
+  // event.req.ip, which the srvx Bun adapter populates from
+  // server.requestIP(request). The previous implementation reached
+  // into event.node.req.socket.remoteAddress, which is the H3 v1
+  // Node-compat shim - in Bun that shim does not exist and the
+  // optional chain returns undefined, defaulting to 127.0.0.1 for
+  // every request (including remote tailnet peers). The XFF trust
+  // gate then accepted spoofed XFF from anyone, and the presence
+  // tracker recorded every browser request as "local". Use the
+  // runtime-agnostic h3 helper instead.
+  const socketPeer = (getRequestIP(event) ?? "127.0.0.1").replace(
+    "::ffff:",
+    "",
+  );
 
   const localIps = getLocalIps();
   const socketTrusted = localIps.has(socketPeer);
