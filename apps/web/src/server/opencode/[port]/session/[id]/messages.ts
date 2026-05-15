@@ -261,16 +261,17 @@ function stripOmoFromUserText(messages: unknown, sessionId: string): void {
 // its parsed todo array there and lib/todos.ts reads it.
 function stripPartBloat(messages: unknown): void {
   if (!Array.isArray(messages)) return;
+  const outputCap = getToolOutputMaxBytes();
   for (const msg of messages) {
     const parts = (msg as { parts?: unknown }).parts;
     if (!Array.isArray(parts)) continue;
     for (const part of parts) {
-      stripOnePartBloat(part);
+      stripOnePartBloat(part, outputCap);
     }
   }
 }
 
-function stripOnePartBloat(part: unknown): void {
+function stripOnePartBloat(part: unknown, outputCap: number | null): void {
   if (!part || typeof part !== "object") return;
   const p = part as Record<string, unknown> & {
     type?: string;
@@ -296,23 +297,39 @@ function stripOnePartBloat(part: unknown): void {
 
   for (const state of partStates(p)) {
     if (!state || typeof state !== "object") continue;
-    if ("output" in state) delete state.output;
+    capOrDropOutput(state, "output", outputCap);
     if ("title" in state) delete state.title;
     stripHeavyInputFields(state, p.type);
     const meta = state.metadata as Record<string, unknown> | undefined;
     if (meta && typeof meta === "object") {
-      for (const k of [
-        "output",
-        "description",
-        "diff",
-        "filediff",
-        "filepath",
-        "preview",
-      ]) {
+      capOrDropOutput(meta, "output", outputCap);
+      for (const k of ["description", "diff", "filediff", "filepath", "preview"]) {
         if (k in meta) delete meta[k];
       }
     }
   }
+}
+
+function capOrDropOutput(
+  obj: Record<string, unknown>,
+  key: string,
+  cap: number | null,
+): void {
+  if (!(key in obj)) return;
+  if (cap === null) {
+    delete obj[key];
+    return;
+  }
+  const v = obj[key];
+  if (typeof v === "string") {
+    if (v.length > cap) {
+      obj[key] =
+        v.slice(0, cap) +
+        `\n\n[...truncated ${v.length - cap} bytes - configure cap in Settings -> Performance]`;
+    }
+    return;
+  }
+  delete obj[key];
 }
 
 // Tool-specific heavy input-field stripping. The per-part ajax endpoint
