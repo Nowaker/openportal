@@ -40,3 +40,6 @@ yarn-error.log*
 
 # AI scratch
 tmp/
+
+# Whisper STT model binaries (downloaded on demand, multi-GB)
+apps/voice-stt/models/
