@@ -56,6 +56,65 @@ INTERRUPTS every running task. Identify them by hostname (no explicit
 Portal-spawned opencodes are different (explicit `--port 4500` etc.)
 and may be killed when the lifecycle mode requires it.
 
+### Dev sandbox (parallel to prod)
+
+When source changes are big or risky enough that breaking prod
+openportal mid-session is unacceptable, deploy to the dev sandbox
+first and verify there. Three systemd units make this safe:
+
+- `opencode-sandbox.slice` - 4GB memory cap, isolated from
+  `opencode-serve.slice`. Spawned opencodes for the dev sandbox
+  live here so a runaway prompt cannot evict the prod opencodes.
+- `opencode-sandbox-local.service` - opencode bound to
+  `127.0.0.1:4998` with `XDG_DATA_HOME=~/.local/share-sandbox` and
+  `XDG_CONFIG_HOME=~/.config-sandbox`. Completely separate DB +
+  settings from the user's primary opencode at port 4096.
+- `openportal-dev.service` - openportal bound to tailnet IP
+  `100.105.229.19:5001` with the env overrides
+  `OPENPORTAL_DIR=~/.openportal-dev`,
+  `OPENPORTAL_STATE_PATH=~/.openportal-dev-state.json`,
+  `OPENPORTAL_DB_PATH=~/.local/share/openportal-dev/openportal.db`.
+  Zero risk to prod's registry / auth / db / settings.
+
+Public access via Caddy: `https://dev-portal.desktop.ts.nowaker.net:8443/`
+(reverse-proxies to `:5001`). The caddy block lives in
+`~/projekty/webapps/caddy/Caddyfile` (user-scope caddy, reload via
+`systemctl --user reload caddy.service` - no sudo).
+
+Build cycle for dev:
+
+```bash
+cd ~/projekty/webapps/portal
+rm -rf apps/web/.output && bun run build
+systemctl --user restart openportal-dev.service
+curl -sS http://100.105.229.19:5001/ | grep -oE 'src="/assets/index-[^"]*"' | head -1
+```
+
+A standalone dev rebuild leaves prod openportal:5000 untouched.
+
+### Turbo cache + asset hash drift
+
+`rm -rf apps/web/.output` alone is sometimes not enough. Turbo's
+own cache at `.turbo/`, `apps/web/.turbo/`, `apps/docs/.turbo/`,
+`packages/cli/.turbo/`, `packages/openportal-companion-plugin/.turbo/`
+can restore a previous build's outputs verbatim when source content
+hashes match a prior input - producing the OLD asset hashes when
+you EXPECTED new ones. This bit us during the TDZ-fix deploy:
+turbo restored a pre-fix bundle.
+
+Force-clean rebuild:
+
+```bash
+cd ~/projekty/webapps/portal
+rm -rf apps/web/.output \
+       apps/web/.turbo apps/docs/.turbo .turbo \
+       packages/cli/.turbo packages/openportal-companion-plugin/.turbo
+bun run build
+# new asset hash will appear in apps/web/.output/public/assets/
+```
+
+Then restart prod or dev as usual.
+
 ## OpenPortal architecture facts
 
 - Hard fork of `hosenur/portal`. Active branch `main-nowaker` against
@@ -383,6 +442,99 @@ curl -sS http://100.105.229.19:5000/api/instance/self | jq .presence
 # the curl call itself was filtered out, so the previous browser
 # record is still the "latest browser" record
 ```
+
+## Settings UI structure
+
+`/settings` is split into seven tabs, hash-routed so deep links like
+`/settings#chat` jump directly to the relevant pane. Tab list,
+hash array, and TabPanel ids all live in
+`apps/web/src/routes/_app/settings.tsx`:
+
+| Tab | Contents |
+|---|---|
+| `appearance` | Theme, font family, font size, accent (with custom `#hex` + native color picker). |
+| `prompt` | Default model, default thinking effort, default agent (per-server / global / default). Voice input. |
+| `composer` | Enter-key behaviour, auto-approve permissions (global default + per-session overrides). |
+| `chat` | Date/time format (locale / 12h / 24h), link opening behavior, per-icon visibility grid, hover info toggle, info icon toggle, markdown rendering. |
+| `tools` | The system + custom tool catalog with enable / edit / reset, project-init ordering. |
+| `performance` | Live updates strategy (per-platform), tool output byte cap. |
+| `diagnostics` | Health + presence + companion plugin state. |
+
+Heading hierarchy: each `<TabPanel>` has its own `<h2>` for the tab
+title and intro paragraph; every sub-section inside a panel uses
+`<h3>` with an `<p class="text-xs text-muted-fg">` description.
+Mixing `<h2>` for both tab and subsection produces two competing
+top-level headings per panel — the `ac069c5` cleanup normalized
+everything so this is now a hard rule.
+
+When adding a new sub-section to an existing tab, follow the
+existing pattern:
+
+```tsx
+<section className="space-y-2">
+  <div>
+    <h3 className="text-sm font-semibold">Section title</h3>
+    <p className="text-xs text-muted-fg">
+      One-paragraph description of what this knob does and why.
+    </p>
+  </div>
+  <YourSettingComponent />
+</section>
+```
+
+When adding a new tab: register the id in BOTH hash-validation
+arrays in `SettingsPage()` (initial state + `hashchange` handler),
+add a `<Tab id="...">` to `TabList`, and a matching `<TabPanel
+id="..." className="pt-6">`. The tab order in the source file IS
+the visible order in the tab strip.
+
+## Instance-level settings
+
+Per-openportal-instance configuration that should outlive a
+browser localStorage purge lives in `~/.openportal-state.json`
+under `settings.<namespace>`. The infrastructure is at
+`apps/web/src/server/lib/portal-state.ts` with two read/write
+helpers:
+
+```ts
+getSettings(): Record<string, unknown>
+setSetting(namespace: string, value: unknown): Record<string, unknown>
+```
+
+Each feature wraps these into a typed module under
+`apps/web/src/server/lib/`:
+
+- `auto-approve-state.ts` — `settings.autoApprove`
+  (`globalDefault: boolean`, `sessionOverrides: Record<string, boolean>`).
+- `instance-settings-state.ts` — `settings.instance`
+  (`toolOutputMaxBytes: number | null`).
+
+Each typed module then exposes:
+
+- A `readConfig(): TypedShape` that validates the loose object
+  against the schema (defaults on type mismatch).
+- A `writeConfig(config): TypedShape` that round-trips through
+  `setSetting()`.
+- Public getters/setters that take/return the typed shape.
+
+The HTTP layer is one route per namespace:
+
+- `/api/auto-approve` — GET returns config, PUT updates global default.
+- `/api/instance-settings` — GET returns config, PUT updates fields.
+
+Frontend hooks live in `apps/web/src/stores/`:
+
+- `auto-approve-store.ts` — SWR + mutators (uses `globalMutate(KEY, next)` for write-through).
+- `instance-settings-store.ts` — same shape.
+
+Settings tab components consume the hook + render an input + on
+change call the mutator. Loading-spinner-while-saving is handled
+inside the component.
+
+NEVER duplicate the namespace map between server and client — the
+server is the source of truth, the client SWR cache is a view.
+Putting client-only mirrors into localStorage is the auto-approve
+v0 bug we just removed; don't reintroduce it.
 
 ## Diagnostics protocol
 
