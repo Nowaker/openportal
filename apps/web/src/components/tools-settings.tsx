@@ -495,17 +495,14 @@ export function ToolsSettings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-sm font-semibold">Tools</h3>
-        <p className="text-xs text-muted-fg">
-          Tools appear in the topbar action menu. Disable any you don't want
-          to see; edit a system tool's prompt to customise it (your edit
-          survives future updates and you can hit Reset to restore the
-          shipped version). Add your own prompt templates with the button
-          at the bottom. Use the <strong>Init</strong> checkbox on any
-          template to mark it as a project-init template.
-        </p>
-      </div>
+      <p className="text-xs text-muted-fg">
+        Tools appear in the topbar action menu. Disable any you don&#39;t want
+        to see; edit a system tool&#39;s prompt to customise it (your edit
+        survives future updates and you can hit Reset to restore the shipped
+        version). Add your own prompt templates with the button at the bottom.
+        Use the <strong>Init</strong> checkbox on any template to mark it as
+        a project-init template.
+      </p>
 
       <ProjectInitOrderingSection tools={tools} />
 

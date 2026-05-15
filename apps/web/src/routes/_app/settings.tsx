@@ -561,8 +561,8 @@ function MarkdownSetting() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Markdown rendering</h2>
-        <p className="text-sm text-muted-fg">
+        <h3 className="text-sm font-semibold">Markdown rendering</h3>
+        <p className="text-xs text-muted-fg">
           Two surfaces, two preferences. Extended renders raw HTML from the
           markdown source - safe for plugin READMEs (you ran their code
           already), riskier for AI chat output.
@@ -639,8 +639,8 @@ function VoiceInputSetting() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Voice input</h2>
-        <p className="text-sm text-muted-fg">
+        <h3 className="text-sm font-semibold">Voice input</h3>
+        <p className="text-xs text-muted-fg">
           Speech-to-text for prompts. This preference is per-tab/per-device
           (localStorage), not synced.
         </p>
@@ -829,8 +829,8 @@ function LiveUpdatesSetting() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Live updates</h2>
-        <p className="text-sm text-muted-fg">
+        <h3 className="text-sm font-semibold">Live updates</h3>
+        <p className="text-xs text-muted-fg">
           How openportal stays in sync with opencode while a session runs. Each
           platform has its own strategy because mobile devices benefit from
           throttling whereas desktops generally don't. Preferences are per-
