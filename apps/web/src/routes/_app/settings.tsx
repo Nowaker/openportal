@@ -54,6 +54,10 @@ import {
   useChatLinkStore,
   type ChatLinkBehavior,
 } from "@/stores/chat-link-store";
+import {
+  useInstanceSettings,
+  setToolOutputMaxBytes,
+} from "@/stores/instance-settings-store";
 import { Input } from "@/components/ui/input";
 import {
   FONT_SIZE_PRESETS,
@@ -738,6 +742,84 @@ function VoiceInputSetting() {
   );
 }
 
+function ToolOutputCapSetting() {
+  const { settings, isLoading } = useInstanceSettings();
+  const current = settings.toolOutputMaxBytes;
+  const [draftKb, setDraftKb] = React.useState<string>(() =>
+    current === null ? "" : String(Math.round(current / 1024)),
+  );
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    setDraftKb(current === null ? "" : String(Math.round(current / 1024)));
+  }, [current]);
+
+  const handleSave = async () => {
+    setBusy(true);
+    try {
+      const trimmed = draftKb.trim();
+      if (trimmed === "") {
+        await setToolOutputMaxBytes(null);
+      } else {
+        const kb = Number(trimmed);
+        if (!Number.isFinite(kb) || kb <= 0) {
+          toast.error("Enter a positive integer (KB), or leave blank to disable.");
+          setBusy(false);
+          return;
+        }
+        await setToolOutputMaxBytes(Math.floor(kb * 1024));
+      }
+    } catch {
+      toast.error("Failed to update tool output cap");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">Tool output byte cap</h3>
+      <p className="text-xs text-muted-fg">
+        How much tool output (kilobytes) openportal sends to your browser
+        per tool call. Large outputs (e.g. <code>find</code>,{" "}
+        <code>grep</code> across a giant repo) are truncated server-side so
+        the chat does not stall while your phone re-renders megabytes.
+        Leave blank for no cap (forwards full output). Applies to every
+        session on this openportal instance.
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          step={1}
+          placeholder="No cap"
+          value={draftKb}
+          onChange={(e) => setDraftKb(e.target.value)}
+          className="max-w-[10rem]"
+          isDisabled={isLoading || busy}
+          aria-label="Tool output cap in kilobytes"
+        />
+        <span className="text-xs text-muted-fg">KB</span>
+        <Button
+          size="sm"
+          onPress={() => {
+            void handleSave();
+          }}
+          isDisabled={
+            isLoading ||
+            busy ||
+            draftKb ===
+              (current === null ? "" : String(Math.round(current / 1024)))
+          }
+        >
+          {busy ? <Loader className="size-4" /> : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function LiveUpdatesSetting() {
   const desktop = useUpdateStrategyStore((s) => s.desktop);
   const mobile = useUpdateStrategyStore((s) => s.mobile);
@@ -1367,10 +1449,13 @@ function SettingsPage() {
               <h2 className="text-lg font-semibold">Performance</h2>
               <p className="text-sm text-muted-fg">
                 Tune how openportal stays in sync with opencode and how much
-                data crosses the wire. Per-device (localStorage), not synced.
+                data crosses the wire. Live-update settings are per-device
+                (localStorage); the tool output cap is global to this
+                openportal instance.
               </p>
             </div>
             <LiveUpdatesSetting />
+            <ToolOutputCapSetting />
           </div>
         </TabPanel>
 
