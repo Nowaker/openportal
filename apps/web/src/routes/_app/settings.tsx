@@ -12,6 +12,7 @@ import {
   ShieldCheckIcon,
   TrashIcon,
   ChatBubbleLeftEllipsisIcon,
+  ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,6 +48,10 @@ import {
   type SttBackend,
 } from "@/stores/stt-mode-store";
 import { useMarkdownModeStore } from "@/stores/markdown-mode-store";
+import {
+  useChatLinkStore,
+  type ChatLinkBehavior,
+} from "@/stores/chat-link-store";
 import { Input } from "@/components/ui/input";
 import {
   FONT_SIZE_PRESETS,
@@ -128,16 +133,36 @@ function DateFormatSetting() {
   const format = useDateFormatStore((s) => s.format);
   const setFormat = useDateFormatStore((s) => s.setFormat);
 
+  const localePreview = React.useMemo(() => {
+    if (typeof Intl === "undefined") return "";
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(2025, 0, 1, 14, 23));
+    } catch {
+      return "";
+    }
+  }, []);
+
   return (
     <Select
       aria-label="Date and time format"
       selectedKey={format}
       onSelectionChange={(key) => {
-        if (key === "12h" || key === "24h") setFormat(key);
+        if (key === "locale" || key === "12h" || key === "24h") setFormat(key);
       }}
     >
       <SelectTrigger className="max-w-sm" />
       <SelectContent>
+        <SelectItem id="locale" textValue={`Browser default (${localePreview})`}>
+          <SelectLabel>
+            Browser default
+            {localePreview && (
+              <span className="ml-1 text-muted-fg">({localePreview})</span>
+            )}
+          </SelectLabel>
+        </SelectItem>
         <SelectItem id="12h" textValue="12-hour (2:23pm)">
           <SelectLabel>
             12-hour <span className="ml-1 text-muted-fg">(2:23pm)</span>
@@ -148,6 +173,68 @@ function DateFormatSetting() {
             24-hour <span className="ml-1 text-muted-fg">(14:23)</span>
           </SelectLabel>
         </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+const chatLinkOptions: {
+  id: ChatLinkBehavior;
+  title: string;
+  description: string;
+}[] = [
+  {
+    id: "new-tab",
+    title: "Open in a new tab",
+    description:
+      "Default. The chat scroll position is preserved; the link opens in a background tab.",
+  },
+  {
+    id: "new-window",
+    title: "Open in a new window",
+    description:
+      "Pop the link out into a separate browser window via window.open. Useful for side-by-side reading on desktop.",
+  },
+  {
+    id: "this-tab",
+    title: "Replace this tab",
+    description:
+      "Navigate the chat tab itself. The user has to come back to return to the conversation. Some keyboard-driven readers prefer this.",
+  },
+  {
+    id: "none",
+    title: "Do not link (inert text)",
+    description:
+      "URLs in chat are rendered as plain text. No clickable anchors, no accidental taps on mobile.",
+  },
+];
+
+function ChatLinkBehaviorSetting() {
+  const behavior = useChatLinkStore((s) => s.behavior);
+  const setBehavior = useChatLinkStore((s) => s.setBehavior);
+
+  return (
+    <Select
+      aria-label="Chat link opening behavior"
+      selectedKey={behavior}
+      onSelectionChange={(key) => {
+        if (!key) return;
+        setBehavior(String(key) as ChatLinkBehavior);
+      }}
+    >
+      <SelectTrigger className="max-w-sm" />
+      <SelectContent>
+        {chatLinkOptions.map((opt) => (
+          <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+            <SelectLabel>{opt.title}</SelectLabel>
+            <div
+              slot="description"
+              className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+            >
+              {opt.description}
+            </div>
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
   );
@@ -970,7 +1057,13 @@ function SettingsPage() {
   const [settingsTab, setSettingsTabState] = React.useState<string>(() => {
     if (typeof window === "undefined") return "appearance";
     const hash = window.location.hash.replace(/^#/, "");
-    return ["appearance", "prompt", "composer", "diagnostics"].includes(hash)
+    return [
+      "appearance",
+      "prompt",
+      "composer",
+      "chat",
+      "diagnostics",
+    ].includes(hash)
       ? hash
       : "appearance";
   });
@@ -980,7 +1073,13 @@ function SettingsPage() {
     const onHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       setSettingsTabState(
-        ["appearance", "prompt", "composer", "diagnostics"].includes(hash)
+        [
+          "appearance",
+          "prompt",
+          "composer",
+          "chat",
+          "diagnostics",
+        ].includes(hash)
           ? hash
           : "appearance",
       );
@@ -1020,6 +1119,10 @@ function SettingsPage() {
           <Tab id="composer">
             <ChatBubbleLeftEllipsisIcon className="size-4" data-slot="icon" />
             Composer
+          </Tab>
+          <Tab id="chat">
+            <ChatBubbleLeftRightIcon className="size-4" data-slot="icon" />
+            Chat
           </Tab>
           <Tab id="diagnostics">
             <InformationCircleIcon className="size-4" data-slot="icon" />
@@ -1088,16 +1191,6 @@ function SettingsPage() {
                   Primary color for buttons and highlights.
                 </p>
                 <AccentSelector />
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Date and time format</p>
-                <p className="text-xs text-muted-fg">
-                  Display format for chat message timestamps. Date prefix
-                  (e.g. <code>4/3</code>) is added when the message is from
-                  a previous day.
-                </p>
-                <DateFormatSetting />
               </div>
             </div>
           </div>
@@ -1192,10 +1285,6 @@ function SettingsPage() {
             </section>
 
             <section>
-              <MarkdownSetting />
-            </section>
-
-            <section>
               <ToolsSettings />
             </section>
           </div>
@@ -1211,6 +1300,45 @@ function SettingsPage() {
             </div>
             <ComposerSettings />
             <PermissionsSettings />
+          </div>
+        </TabPanel>
+
+        <TabPanel id="chat" className="pt-6">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-lg font-semibold">Chat</h2>
+              <p className="text-sm text-muted-fg">
+                How chat messages render: markdown formatter, link opening
+                behavior, and timestamp formatting.
+              </p>
+            </div>
+
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Date and time format</h3>
+                <p className="text-xs text-muted-fg">
+                  Display format for chat message timestamps. Date prefix
+                  (e.g. <code>4/3</code>) is added when the message is from
+                  a previous day; the year is added when it&#39;s from a
+                  previous year.
+                </p>
+              </div>
+              <DateFormatSetting />
+            </section>
+
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Link opening behavior</h3>
+                <p className="text-xs text-muted-fg">
+                  What happens when you click a link inside an AI response.
+                </p>
+              </div>
+              <ChatLinkBehaviorSetting />
+            </section>
+
+            <section>
+              <MarkdownSetting />
+            </section>
           </div>
         </TabPanel>
 
