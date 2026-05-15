@@ -155,12 +155,15 @@ export function MarkdownRenderer({
           </a>
         );
       }
+      const isAnchor = finalHref?.startsWith("#") ?? false;
+      const isMailto = finalHref?.startsWith("mailto:") ?? false;
+      const openInNewTab = !!finalHref && !isAnchor && !isMailto;
       return (
         <a
           {...rest}
           href={finalHref}
-          target={finalHref?.startsWith("http") ? "_blank" : undefined}
-          rel={finalHref?.startsWith("http") ? "noreferrer" : undefined}
+          target={openInNewTab ? "_blank" : undefined}
+          rel={openInNewTab ? "noreferrer noopener" : undefined}
         >
           {children}
         </a>
