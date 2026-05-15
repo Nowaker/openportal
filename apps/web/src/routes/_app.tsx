@@ -350,9 +350,9 @@ function AppLayout() {
         <SidebarProvider className="h-dvh overflow-hidden">
           <AppSidebar collapsible="dock" />
           <SidebarInset className="overflow-hidden">
-            <ConnectionStatusBanner />
             <BuildMismatchBanner />
             <NotificationPermissionBanner />
+            <ConnectionStatusBanner />
             <PinnedTabStrip />
             <AppSidebarNav />
             <div className="flex-1 overflow-hidden">
