@@ -2,8 +2,13 @@ import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
 
 const PROBE_INTERVAL_MS = 10_000;
-const PROBE_TIMEOUT_MS = 5_000;
+const PROBE_TIMEOUT_MS = 15_000;
 const PROBE_URL = "/api/instance/self";
+// Number of consecutive failed probes before flipping the banner to
+// openportal-down. Single isolated failures (browser woke from
+// background and the first probe was slow, or a Bun-side HTTP/2
+// keep-alive blip) MUST NOT flash the destructive banner.
+const FAILURE_THRESHOLD = 2;
 
 // Three states the rest of the UI cares about:
 //   - connected        Both openportal and its bound opencode are
@@ -52,11 +57,12 @@ export function useConnectionMonitor(): ConnectionStatus {
   useEffect(() => {
     let cancelled = false;
     let prev: ConnectionStatus = "connected";
+    let consecutiveFailures = 0;
 
     const probe = async () => {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
-      let next: ConnectionStatus = "openportal-down";
+      let probed: ConnectionStatus | null = null;
       try {
         const res = await fetch(PROBE_URL, {
           signal: ctrl.signal,
@@ -72,38 +78,40 @@ export function useConnectionMonitor(): ConnectionStatus {
             };
             const opencodeHealth = body?.health?.opencode;
             if (opencodeHealth === "up") {
-              next = "connected";
+              probed = "connected";
             } else if (opencodeHealth === "down") {
-              // Only fly the opencode-down banner when there's an
-              // active server context to be cached/stale about. If
-              // no server has ever been selected (first-run or no
-              // legacy config), the user is on / or about to be
-              // bounced to /servers, and a yellow banner would just
-              // be noise. body.lastKnown is the active-but-down
-              // marker.
               if (body?.lastKnown) {
-                next = "opencode-down";
+                probed = "opencode-down";
               } else {
-                next = "connected";
+                probed = "connected";
               }
             } else if (body?.error === "active-server-unreachable") {
-              // Fallback for older openportal builds that don't
-              // emit health.opencode yet. Keeps the connection
-              // monitor working during a rolling upgrade window.
-              next = "opencode-down";
+              probed = "opencode-down";
             } else {
-              next = "connected";
+              probed = "connected";
             }
           } catch {
-            next = "connected";
+            probed = "connected";
           }
         }
       } catch {
-        next = "openportal-down";
+        // probed stays null - treat as failure (counter increments below)
       } finally {
         clearTimeout(timer);
       }
       if (cancelled) return;
+      let next: ConnectionStatus;
+      if (probed === null) {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= FAILURE_THRESHOLD) {
+          next = "openportal-down";
+        } else {
+          next = prev;
+        }
+      } else {
+        consecutiveFailures = 0;
+        next = probed;
+      }
       if (next !== prev) {
         if (next === "connected" && prev !== "connected") {
           void mutate(() => true);
