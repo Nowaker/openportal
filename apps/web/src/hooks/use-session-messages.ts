@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import type {
   FilePart,
@@ -210,18 +210,29 @@ export function removeOptimisticMessage(
 // a one-shot loader. Once everything settles, the route can choose to
 // transition into normal polling mode by clearing `enabled` and
 // letting useSessionMessages take over.
+// Gap-fill strategy passed to fillGap(). 'next50' chunks 50 messages
+// at a time from the bottom edge of the around-target window upward
+// into the gap; 'all' replaces the merged view with the full
+// (?limit=all) session list.
+export type FillGapStrategy = "next50" | "all";
+
 export interface PermalinkWindowState {
   messages: MessageWithParts[];
+  around: MessageWithParts[];
+  latest: MessageWithParts[];
   loading: {
     target: boolean;
     before: boolean;
     after: boolean;
     latest: boolean;
+    fillGap: boolean;
   };
   targetFound: boolean | null;
   targetIndex: number | null;
   totalCount: number | null;
+  gap: { count: number } | null;
   error: string | null;
+  fillGap: (strategy: FillGapStrategy) => Promise<void>;
 }
 
 async function fetchWindow(
@@ -290,6 +301,7 @@ export function useSessionMessagesAround(
     before: false,
     after: false,
     latest: false,
+    fillGap: false,
   });
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -322,6 +334,7 @@ export function useSessionMessagesAround(
       before: true,
       after: true,
       latest: true,
+      fillGap: false,
     });
 
     const enc = encodeURIComponent(targetMessageId);
@@ -379,17 +392,79 @@ export function useSessionMessagesAround(
     };
   }, [enabled, baseUrl, targetMessageId, windowSize, latestSize]);
 
-  const messages = useMemo(
-    () => mergeByIdSorted([before, target, after, latest]),
-    [before, target, after, latest],
+  const fillGap = useCallback(
+    async (strategy: FillGapStrategy) => {
+      if (!baseUrl) return;
+      if (loading.fillGap) return;
+      setLoading((s) => ({ ...s, fillGap: true }));
+      const myToken = cancelTokenRef.current;
+      try {
+        if (strategy === "all") {
+          const r = await fetchWindow(`${baseUrl}?limit=all`);
+          if (myToken !== cancelTokenRef.current) return;
+          setBefore([]);
+          setAfter(r.messages);
+          setLatest([]);
+          setTarget([]);
+          setTotalCount(r.messages.length);
+        } else {
+          const around = mergeByIdSorted([before, target, after]);
+          const anchor = around[around.length - 1];
+          if (!anchor) return;
+          const enc = encodeURIComponent(anchor.info.id);
+          const r = await fetchWindow(`${baseUrl}?after=${enc}&limit=50`);
+          if (myToken !== cancelTokenRef.current) return;
+          setAfter((cur) => mergeByIdSorted([cur, r.messages]));
+          if (r.total !== null) setTotalCount(r.total);
+        }
+      } catch (err) {
+        if (myToken !== cancelTokenRef.current) return;
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (myToken === cancelTokenRef.current) {
+          setLoading((s) => ({ ...s, fillGap: false }));
+        }
+      }
+    },
+    [baseUrl, before, target, after, loading.fillGap],
   );
+
+  const around = useMemo(
+    () => mergeByIdSorted([before, target, after]),
+    [before, target, after],
+  );
+
+  // Merged + sorted full view. When around and latest don't overlap,
+  // we deliberately stitch them with the gap unfilled: the route
+  // splits this list at `around.length` and renders the gap banner
+  // between halves.
+  const messages = useMemo(() => {
+    if (around.length === 0) return latest;
+    if (latest.length === 0) return around;
+    const aroundIds = new Set(around.map((m) => m.info.id));
+    const latestFiltered = latest.filter((m) => !aroundIds.has(m.info.id));
+    return [...around, ...latestFiltered];
+  }, [around, latest]);
+
+  const gap = useMemo(() => {
+    if (totalCount === null || targetIndex === null) return null;
+    const aroundEnd = targetIndex + after.length;
+    const latestStart = totalCount - latest.length;
+    if (latest.length === 0) return null;
+    if (aroundEnd + 1 >= latestStart) return null;
+    return { count: latestStart - aroundEnd - 1 };
+  }, [totalCount, targetIndex, after.length, latest.length]);
 
   return {
     messages,
+    around,
+    latest,
     loading,
     targetFound,
     targetIndex,
     totalCount,
+    gap,
     error,
+    fillGap,
   };
 }

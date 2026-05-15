@@ -1885,6 +1885,61 @@ function MessageMarkdown({
   );
 }
 
+// Gap banner rendered between the around-target window and the latest
+// window in permalink mode. Surfaces (a) how many messages are between
+// the two windows, (b) a spinner while a fillGap fetch is in flight,
+// and (c) two load-more buttons: "Load 50 more" (next chunk of the
+// gap) and "Load all" (entire session - slow on big histories).
+function PermalinkGapBanner({
+  gapCount,
+  loading,
+  onLoadNext,
+  onLoadAll,
+}: {
+  gapCount: number;
+  loading: boolean;
+  onLoadNext: () => void;
+  onLoadAll: () => void;
+}) {
+  return (
+    <div className="my-3 mx-3 rounded-md border border-dashed border-border bg-muted/20 px-3 py-3 flex flex-col gap-2 items-center text-center">
+      <div className="text-xs text-muted-fg">
+        Gap of {gapCount.toLocaleString()} message
+        {gapCount === 1 ? "" : "s"} between target window and latest
+        messages.
+      </div>
+      <div className="flex items-center justify-center gap-2 flex-wrap">
+        {loading ? (
+          <div className="flex items-center gap-2">
+            <Loader className="size-4" />
+            <span className="text-xs text-muted-fg">Loading...</span>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onLoadNext}
+              disabled={loading}
+              className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
+            >
+              Load 50 more
+            </button>
+            <button
+              type="button"
+              onClick={onLoadAll}
+              disabled={loading}
+              title="Loading the entire history can take long on big sessions"
+              className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
+            >
+              Load all (slow)
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Top-of-list status bar shown in permalink mode. Surfaces the journey:
 // which buckets are still loading (target / before / after / latest),
 // whether the target was found, the target's position in the full
@@ -1898,6 +1953,7 @@ function PermalinkLoaderBar({
   targetIndex,
   error,
   onExit,
+  onLoadAll,
 }: {
   target: string | null;
   loading: {
@@ -1905,12 +1961,14 @@ function PermalinkLoaderBar({
     before: boolean;
     after: boolean;
     latest: boolean;
+    fillGap: boolean;
   };
   targetFound: boolean | null;
   totalCount: number | null;
   targetIndex: number | null;
   error: string | null;
   onExit: () => void;
+  onLoadAll: () => void;
 }) {
   const anyLoading =
     loading.target || loading.before || loading.after || loading.latest;
@@ -1930,14 +1988,25 @@ function PermalinkLoaderBar({
             {targetFound === false ? " - not found in session history" : ""}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onExit}
-          title="Clear the permalink and resume live polling"
-          className="rounded-md border border-border bg-bg px-2 py-0.5 text-[11px] text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
-        >
-          Resume live view
-        </button>
+        <div className="flex items-center gap-1.5">
+          {targetFound === false && (
+            <button
+              type="button"
+              onClick={onLoadAll}
+              className="rounded-md border border-border bg-bg px-2 py-0.5 text-[11px] text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+            >
+              Load all
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onExit}
+            title="Clear the permalink and resume live polling"
+            className="rounded-md border border-border bg-bg px-2 py-0.5 text-[11px] text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+          >
+            Resume live view
+          </button>
+        </div>
       </div>
       {anyLoading && (
         <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-fg/80">
@@ -3986,52 +4055,32 @@ function SessionPage() {
     }
   };
 
-  const messageNodes = useMemo(() => {
-    // No filter against session.revert.messageID here: that pointer is
-    // transient and gets cleared by opencode the moment a new prompt is
-    // appended. Permanent truncation is now done by hard-deleting messages
-    // through the message-DELETE route in handleSubmit, so the message list
-    // returned by /session/{id}/message is already authoritative.
-    const baseVisible = messages.filter((message) => hasVisibleContent(message));
-    const visible = onlyUserMessages
-      ? baseVisible.filter((m) => m.info.role === "user")
-      : baseVisible;
-    // Compute pending-delete flags based on the staged revertTarget.
-    //   user-mode: target message and everything below it are pending delete.
-    //   assistant-mode: only messages strictly below the target.
-    const targetIndex = revertTarget
-      ? visible.findIndex((m) => m.info.id === revertTarget.messageId)
-      : -1;
-    let lastErrorMessageId: string | undefined;
-    for (let i = visible.length - 1; i >= 0; i--) {
-      const m = visible[i];
-      if (m.info.role === "assistant" && isFailedAssistant(m.info)) {
-        lastErrorMessageId = m.info.id;
-        break;
-      }
-    }
-    return visible.map((message, idx) => {
+  const renderMessage = useCallback(
+    (
+      message: MessageWithParts,
+      idx: number,
+      ctx: {
+        baseVisible: MessageWithParts[];
+        revertIndex: number;
+        lastErrorMessageId: string | undefined;
+      },
+    ) => {
       let pendingDelete = false;
-      if (revertTarget && targetIndex >= 0) {
+      if (revertTarget && ctx.revertIndex >= 0) {
         if (revertTarget.mode === "user") {
-          pendingDelete = idx >= targetIndex;
+          pendingDelete = idx >= ctx.revertIndex;
         } else {
-          pendingDelete = idx > targetIndex;
+          pendingDelete = idx > ctx.revertIndex;
         }
       }
-      // CodeNomad-style queue badge: a user message is "queued" if there is
-      // no assistant reply between it and the next user message (or end of
-      // history). Always scan the UNFILTERED list (baseVisible) - in
-      // prompts-only mode the visible array drops every assistant reply, so
-      // scanning `visible` would mis-flag every prompt as queued.
       let isQueued = false;
       if (message.info.role === "user") {
-        const baseIdx = baseVisible.findIndex(
+        const baseIdx = ctx.baseVisible.findIndex(
           (m) => m.info.id === message.info.id,
         );
         let answered = false;
-        for (let j = baseIdx + 1; j < baseVisible.length; j++) {
-          const next = baseVisible[j];
+        for (let j = baseIdx + 1; j < ctx.baseVisible.length; j++) {
+          const next = ctx.baseVisible[j];
           if (!next) break;
           if (next.info.role === "user") break;
           if (next.info.role === "assistant") {
@@ -4040,11 +4089,9 @@ function SessionPage() {
           }
         }
         const isLastInBase =
-          baseIdx >= 0 && baseIdx === baseVisible.length - 1;
+          baseIdx >= 0 && baseIdx === ctx.baseVisible.length - 1;
         isQueued = !answered && !(isLastInBase && isServerBusy);
       }
-      // Stamp the flag onto the message reference so the existing
-      // <MessageItem> Badge render picks it up without a new prop.
       const messageWithQueueFlag = isQueued
         ? { ...message, isQueued: true }
         : message;
@@ -4062,24 +4109,84 @@ function SessionPage() {
           pendingDelete={pendingDelete}
           onRevertRequest={handleRevertRequest}
           onForkRequest={handleForkRequest}
-          isLastError={message.info.id === lastErrorMessageId}
+          isLastError={message.info.id === ctx.lastErrorMessageId}
         />
       );
-    });
+    },
+    [
+      port,
+      sessionId,
+      pendingPermissions,
+      handlePermissionResolved,
+      isAssistantBusy,
+      isQuestionBlocked,
+      isServerBusy,
+      handleAbort,
+      revertTarget,
+      handleRevertRequest,
+      handleForkRequest,
+    ],
+  );
+
+  const messageNodes = useMemo(() => {
+    // No filter against session.revert.messageID here: that pointer is
+    // transient and gets cleared by opencode the moment a new prompt is
+    // appended. Permanent truncation is now done by hard-deleting messages
+    // through the message-DELETE route in handleSubmit, so the message list
+    // returned by /session/{id}/message is already authoritative.
+    const baseVisible = messages.filter((message) => hasVisibleContent(message));
+    const visible = onlyUserMessages
+      ? baseVisible.filter((m) => m.info.role === "user")
+      : baseVisible;
+    const revertIndex = revertTarget
+      ? visible.findIndex((m) => m.info.id === revertTarget.messageId)
+      : -1;
+    let lastErrorMessageId: string | undefined;
+    for (let i = visible.length - 1; i >= 0; i--) {
+      const m = visible[i];
+      if (m.info.role === "assistant" && isFailedAssistant(m.info)) {
+        lastErrorMessageId = m.info.id;
+        break;
+      }
+    }
+    const ctx = { baseVisible, revertIndex, lastErrorMessageId };
+
+    if (!permalinkMode || !permalinkWindow.gap) {
+      return visible.map((message, idx) => renderMessage(message, idx, ctx));
+    }
+
+    const aroundIds = new Set(permalinkWindow.around.map((m) => m.info.id));
+    const aroundPart: MessageWithParts[] = [];
+    const latestPart: MessageWithParts[] = [];
+    for (const m of visible) {
+      if (aroundIds.has(m.info.id)) aroundPart.push(m);
+      else latestPart.push(m);
+    }
+
+    return (
+      <>
+        {aroundPart.map((message, idx) => renderMessage(message, idx, ctx))}
+        <PermalinkGapBanner
+          gapCount={permalinkWindow.gap.count}
+          loading={permalinkWindow.loading.fillGap}
+          onLoadNext={() => permalinkWindow.fillGap("next50")}
+          onLoadAll={() => permalinkWindow.fillGap("all")}
+        />
+        {latestPart.map((message, idx) =>
+          renderMessage(message, aroundPart.length + idx, ctx),
+        )}
+      </>
+    );
   }, [
     messages,
-    port,
-    sessionId,
-    pendingPermissions,
-    handlePermissionResolved,
-    isAssistantBusy,
-    isQuestionBlocked,
-    isServerBusy,
-    handleAbort,
-    revertTarget,
-    handleRevertRequest,
-    handleForkRequest,
     onlyUserMessages,
+    revertTarget,
+    permalinkMode,
+    permalinkWindow.gap,
+    permalinkWindow.around,
+    permalinkWindow.loading.fillGap,
+    permalinkWindow.fillGap,
+    renderMessage,
   ]);
 
   // Size cap is conservative because the prompt body is sent inline as a
@@ -4192,6 +4299,7 @@ function SessionPage() {
               targetIndex={permalinkWindow.targetIndex}
               error={permalinkWindow.error}
               onExit={exitPermalinkMode}
+              onLoadAll={() => permalinkWindow.fillGap("all")}
             />
           )}
           {!loading && !error && (
