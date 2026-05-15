@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [
     "./src/server/plugins/portal-layout-init.ts",
     "./src/server/plugins/build-id-header.ts",
+    "./src/server/plugins/presence-tracker-hook.ts",
     "./src/server/plugins/auto-approve-worker.ts",
     "./src/server/plugins/pending-prompt-worker.ts",
   ],

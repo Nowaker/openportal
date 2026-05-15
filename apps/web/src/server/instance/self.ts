@@ -6,6 +6,13 @@ import { getActiveServer } from "../lib/server-registry";
 import { resolveLiveEndpoint } from "../lib/server-resolver";
 import { probeOpencode } from "../lib/server-discovery";
 import { detectClient } from "../lib/client-detection";
+import { getLatestBrowserPresence } from "../lib/presence-tracker";
+
+function buildPresencePayload() {
+  const p = getLatestBrowserPresence();
+  if (!p) return null;
+  return { ip: p.ip, isLocal: p.isLocal, at: p.at, ageMs: Date.now() - p.at };
+}
 
 const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 
@@ -32,6 +39,7 @@ const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 
 export default defineHandler(async (event) => {
   const client = detectClient(event);
+  const presence = buildPresencePayload();
   const active = getActiveServer();
   if (active) {
     // Force a fresh resolve so ephemeral entries pick up port shifts.
@@ -49,20 +57,21 @@ export default defineHandler(async (event) => {
       // render a "your last server was X — pick it again or choose
       // another" hint.
       return {
-        instance: null,
-        error: "active-server-unreachable",
-        reason: active.ephemeral
-          ? "Active opencode is no longer running (ephemeral) and could not be re-discovered."
-          : "Active opencode is no longer reachable at its configured endpoint.",
-        lastKnown: {
-          id: active.id,
-          label: active.label,
-          host: active.host,
-          port: active.port,
-          ephemeral: active.ephemeral,
-        },
-        client,
-      };
+              instance: null,
+              error: "active-server-unreachable",
+              reason: active.ephemeral
+                ? "Active opencode is no longer running (ephemeral) and could not be re-discovered."
+                : "Active opencode is no longer reachable at its configured endpoint.",
+              lastKnown: {
+                id: active.id,
+                label: active.label,
+                host: active.host,
+                port: active.port,
+                ephemeral: active.ephemeral,
+              },
+              client,
+              presence,
+            };
     }
     // For non-ephemeral active servers, also do a real HTTP probe so
     // that "process listening on the registry's port but it's a
@@ -86,6 +95,7 @@ export default defineHandler(async (event) => {
             ephemeral: fresh.ephemeral,
           },
           client,
+          presence,
         };
       }
     }
@@ -99,15 +109,16 @@ export default defineHandler(async (event) => {
         ephemeral: fresh.ephemeral,
       },
       client,
+      presence,
     };
   }
 
   const myPort = parseInt(process.env.PORT || "", 10);
   if (!myPort || Number.isNaN(myPort)) {
-    return { instance: null, error: "PORT env not set", client };
+    return { instance: null, error: "PORT env not set", client, presence };
   }
   if (!existsSync(LEGACY_CONFIG_PATH)) {
-    return { instance: null, error: "no active server, no legacy config", client };
+    return { instance: null, error: "no active server, no legacy config", client, presence };
   }
   try {
     const config = JSON.parse(readFileSync(LEGACY_CONFIG_PATH, "utf-8"));
@@ -115,7 +126,7 @@ export default defineHandler(async (event) => {
       (i: { port: number | null }) => i.port === myPort,
     );
     if (!me) {
-      return { instance: null, error: `no registry entry for PORT=${myPort}`, client };
+      return { instance: null, error: `no registry entry for PORT=${myPort}`, client, presence };
     }
     return {
       instance: {
@@ -127,12 +138,14 @@ export default defineHandler(async (event) => {
         ephemeral: false,
       },
       client,
+      presence,
     };
   } catch (e) {
     return {
       instance: null,
       error: e instanceof Error ? e.message : "config read failed",
       client,
+      presence,
     };
   }
 });
