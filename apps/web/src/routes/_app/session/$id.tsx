@@ -916,7 +916,7 @@ function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
       aria-pressed={enabled}
       className={`shrink-0 rounded-md p-0.5 sm:p-1.5 transition-colors ${
         enabled
-          ? "text-violet-500 hover:bg-violet-500/15"
+          ? "text-accent hover:bg-accent/15"
           : "text-muted-fg hover:bg-muted hover:text-fg"
       }`}
     >
@@ -2707,18 +2707,40 @@ function SessionPage() {
   >(() => (sessionId ? readAttachments(sessionId) : []));
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const sttMode = useSttModeStore((s) => s.mode);
+  const sttEndOfStreamTimeoutMs = useSttModeStore((s) => s.endOfStreamTimeoutMs);
   const sttSubmitOnEndRef = useRef(false);
   const sttTranscriptArrivedRef = useRef(false);
+  const [sttTimeoutProgress, setSttTimeoutProgress] = useState<number | null>(null);
+  const sttTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sttIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const cancelSttTimeout = useCallback(() => {
+    if (sttTimeoutRef.current) clearTimeout(sttTimeoutRef.current);
+    if (sttIntervalRef.current) clearInterval(sttIntervalRef.current);
+    sttTimeoutRef.current = null;
+    sttIntervalRef.current = null;
+    setSttTimeoutProgress(null);
+  }, []);
+
   const speechRecognition = useSttEngine({
     continuous: sttMode === "vad",
     onTranscript: (transcript) => {
+      cancelSttTimeout();
       sttTranscriptArrivedRef.current = true;
       const ta = textareaRef.current;
       if (!ta) return;
       const current = ta.value;
-      const sep = current && !current.endsWith(" ") && !current.endsWith("\n") ? " " : "";
-      const next = `${current}${sep}${transcript}`;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const before = current.substring(0, start);
+      const after = current.substring(end);
+      const sepBefore = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
+      const sepAfter = after && !after.startsWith(" ") && !after.startsWith("\n") ? " " : "";
+      const insert = `${sepBefore}${transcript}${sepAfter}`;
+      const next = before + insert + after;
       ta.value = next;
+      ta.selectionStart = start + insert.length - sepAfter.length;
+      ta.selectionEnd = ta.selectionStart;
       setHasContent(next.length > 0);
       scheduleDraftSave(next);
     },
@@ -2728,10 +2750,36 @@ function SessionPage() {
     onEnd: () => {
       if (sttSubmitOnEndRef.current) {
         sttSubmitOnEndRef.current = false;
+        cancelSttTimeout();
         if (sttTranscriptArrivedRef.current) {
           sttTranscriptArrivedRef.current = false;
           textareaRef.current?.form?.requestSubmit();
         }
+      } else if (sttMode === "push-to-talk" && sttEndOfStreamTimeoutMs > 0) {
+        const startTime = Date.now();
+        setSttTimeoutProgress(0);
+        
+        sttIntervalRef.current = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(100, (elapsed / sttEndOfStreamTimeoutMs) * 100);
+          setSttTimeoutProgress(progress);
+        }, 50);
+
+        sttTimeoutRef.current = setTimeout(() => {
+          cancelSttTimeout();
+          sttSubmitOnEndRef.current = true;
+          speechRecognition.stop();
+          if (sttTranscriptArrivedRef.current) {
+            sttTranscriptArrivedRef.current = false;
+            textareaRef.current?.form?.requestSubmit();
+          }
+        }, sttEndOfStreamTimeoutMs);
+
+        setTimeout(() => {
+          if (sttTimeoutRef.current) {
+            speechRecognition.start();
+          }
+        }, 10);
       }
     },
   });
@@ -4418,12 +4466,15 @@ function SessionPage() {
                       {sttMode !== "off" && speechRecognition.isSupported && (
                         <button
                           type="button"
-                          onClick={handleMicToggle}
-                          className={`size-6 rounded-md inline-flex items-center justify-center transition-colors ${
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            handleMicToggle();
+                          }}
+                          className={`relative size-6 rounded-md inline-flex items-center justify-center transition-colors ${
                             speechRecognition.isListening
-                              ? "bg-red-500 text-white animate-pulse"
+                              ? "bg-red-500 text-white"
                               : "bg-muted hover:bg-muted/80 text-muted-fg"
-                          }`}
+                          } ${speechRecognition.isListening && sttTimeoutProgress === null ? "animate-pulse" : ""}`}
                           aria-label={
                             speechRecognition.isListening
                               ? "Stop voice input"
@@ -4439,6 +4490,21 @@ function SessionPage() {
                                 : "Tap to start continuous listening"
                           }
                         >
+                          {sttTimeoutProgress !== null && (
+                            <svg className="absolute inset-0 size-full -rotate-90" viewBox="0 0 24 24">
+                              <circle
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeDasharray="62.83"
+                                strokeDashoffset={62.83 - (62.83 * sttTimeoutProgress) / 100}
+                                className="text-white/50 transition-all duration-75"
+                              />
+                            </svg>
+                          )}
                           <MicrophoneIcon className="size-3" />
                         </button>
                       )}

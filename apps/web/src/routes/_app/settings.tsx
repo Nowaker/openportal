@@ -11,6 +11,7 @@ import {
   PencilSquareIcon,
   ShieldCheckIcon,
   TrashIcon,
+  ChatBubbleLeftEllipsisIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -725,15 +726,8 @@ function ComposerSettings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Composer</h2>
-        <p className="text-sm text-muted-fg">
-          Customize the message composer behaviour.
-        </p>
-      </div>
-
       <div className="space-y-2">
-        <p className="text-sm font-medium">Enter key behaviour</p>
+        <h3 className="text-sm font-semibold">Enter key behaviour</h3>
         <p className="text-xs text-muted-fg">
           What unmodified Enter does in the composer.
           {" "}
@@ -818,8 +812,8 @@ function PermissionsSettings() {
   return (
     <div className="space-y-10">
       <div>
-        <h2 className="text-lg font-semibold">Permissions</h2>
-        <p className="text-sm text-muted-fg">
+        <h3 className="text-sm font-semibold">Permissions</h3>
+        <p className="text-xs text-muted-fg">
           Auto-approve permission requests so the agent doesn&#39;t wait for a
           manual reply. The openportal server holds an SSE connection to
           every configured opencode instance and fires replies independently
@@ -830,7 +824,7 @@ function PermissionsSettings() {
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-semibold">Global default</h3>
+          <h4 className="text-sm font-medium">Global default</h4>
           <p className="text-xs text-muted-fg">
             Applied to every session that has no override below. The composer
             shield toggle in each chat sets an override for that session.
@@ -850,7 +844,7 @@ function PermissionsSettings() {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold">Per-session overrides</h3>
+            <h4 className="text-sm font-medium">Per-session overrides</h4>
             <p className="text-xs text-muted-fg">
               Sessions where the shield toggle differs from the global
               default. Remove to fall back to the default.
@@ -890,7 +884,7 @@ function PermissionsSettings() {
                     <span
                       className={
                         value
-                          ? "font-medium text-violet-500"
+                          ? "font-medium text-accent"
                           : "font-medium text-muted-fg"
                       }
                     >
@@ -976,7 +970,7 @@ function SettingsPage() {
   const [settingsTab, setSettingsTabState] = React.useState<string>(() => {
     if (typeof window === "undefined") return "appearance";
     const hash = window.location.hash.replace(/^#/, "");
-    return ["appearance", "prompt", "permissions", "diagnostics"].includes(hash)
+    return ["appearance", "prompt", "composer", "diagnostics"].includes(hash)
       ? hash
       : "appearance";
   });
@@ -986,7 +980,7 @@ function SettingsPage() {
     const onHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       setSettingsTabState(
-        ["appearance", "prompt", "permissions", "diagnostics"].includes(hash)
+        ["appearance", "prompt", "composer", "diagnostics"].includes(hash)
           ? hash
           : "appearance",
       );
@@ -1023,9 +1017,9 @@ function SettingsPage() {
             <PencilSquareIcon className="size-4" data-slot="icon" />
             Prompt
           </Tab>
-          <Tab id="permissions">
-            <ShieldCheckIcon className="size-4" data-slot="icon" />
-            Permissions
+          <Tab id="composer">
+            <ChatBubbleLeftEllipsisIcon className="size-4" data-slot="icon" />
+            Composer
           </Tab>
           <Tab id="diagnostics">
             <InformationCircleIcon className="size-4" data-slot="icon" />
@@ -1190,10 +1184,6 @@ function SettingsPage() {
             </section>
 
             <section>
-              <ComposerSettings />
-            </section>
-
-            <section>
               <LiveUpdatesSetting />
             </section>
 
@@ -1211,8 +1201,17 @@ function SettingsPage() {
           </div>
         </TabPanel>
 
-        <TabPanel id="permissions" className="pt-6">
-          <PermissionsSettings />
+        <TabPanel id="composer" className="pt-6">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-lg font-semibold">Composer</h2>
+              <p className="text-sm text-muted-fg">
+                Customize the message composer behaviour and auto-approve permissions.
+              </p>
+            </div>
+            <ComposerSettings />
+            <PermissionsSettings />
+          </div>
         </TabPanel>
 
         <TabPanel id="diagnostics" className="pt-6">
