@@ -5,24 +5,46 @@ const PROBE_INTERVAL_MS = 10_000;
 const PROBE_TIMEOUT_MS = 5_000;
 const PROBE_URL = "/api/instance/self";
 
-// Three states:
-//   - connected       Portal reachable AND its bound opencode is up.
-//   - upstream-down   Portal reachable but the bound opencode isn't.
-//                     (Portal itself answers /api/instance/self with
-//                     `{ instance: null, error: 'active-server-
-//                     unreachable' }`.)
-//   - disconnected    Portal itself is unreachable (likely got
-//                     restarted to ship code, transient network blip).
-export type ConnectionStatus = "connected" | "upstream-down" | "disconnected";
+// Three states the rest of the UI cares about:
+//   - connected        Both openportal and its bound opencode are
+//                      reachable. Steady state.
+//   - opencode-down    Openportal answers but reports its bound
+//                      opencode as unreachable. Cached / openportal-
+//                      owned views (prompts, sessions list from local
+//                      cache, settings, server list) still render,
+//                      surfaced under a yellow staleness banner.
+//                      Renamed from the old "upstream-down" because
+//                      "upstream" was ambiguous (could mean upstream
+//                      git remote, upstream library, ...).
+//   - openportal-down  /api/instance/self itself failed (openportal
+//                      restarted to ship code, transient network
+//                      blip). Destructive-toned banner; nothing we can
+//                      fetch will succeed until it comes back.
+//                      Renamed from "disconnected" - "openportal-
+//                      down" is concrete and pairs symmetrically with
+//                      opencode-down.
+export type ConnectionStatus = "connected" | "opencode-down" | "openportal-down";
 
-// Periodically pings a cheap server endpoint to detect openportal-side
-// outages (most common: openportal got restarted to ship code, all open
-// tabs would otherwise sit stuck on stale SWR caches with paused polling
-// because Bun keep-alive sockets to the dead old process don't immediately
-// surface as fetch errors). On disconnect transition: surface state so a
-// banner can render. On reconnect transition: globally invalidate every
-// SWR key (mutate(() => true)) so all pollers re-fetch the live state in
-// one wave instead of waiting up to their refreshInterval.
+// Periodically pings /api/instance/self to detect outages on either
+// side of the openportal -> opencode bridge:
+//
+// - openportal-down: fetch throws (process restarted, network blip).
+//   The banner takes a destructive tone because nothing useful can
+//   load until openportal returns.
+//
+// - opencode-down: fetch succeeds, body.health.opencode === 'down'.
+//   The banner takes a yellow / warning tone because openportal-
+//   owned data (prompts archive, server list, settings, persisted
+//   sessions list) still renders correctly off cached / local
+//   sources; only live opencode reads (session messages, providers,
+//   agents) degrade.
+//
+// On any transition back to 'connected', globally invalidate every
+// SWR key (mutate(() => true)) so pollers refetch in one wave
+// instead of waiting up to their refreshInterval. Important for the
+// opencode-down -> connected case because /api/opencode/{port}/*
+// keys were returning errors throughout the outage; without the
+// global mutate they'd sit on stale error caches for up to a minute.
 export function useConnectionMonitor(): ConnectionStatus {
   const { mutate } = useSWRConfig();
   const [status, setStatus] = useState<ConnectionStatus>("connected");
@@ -34,7 +56,7 @@ export function useConnectionMonitor(): ConnectionStatus {
     const probe = async () => {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
-      let next: ConnectionStatus = "disconnected";
+      let next: ConnectionStatus = "openportal-down";
       try {
         const res = await fetch(PROBE_URL, {
           signal: ctrl.signal,
@@ -45,15 +67,31 @@ export function useConnectionMonitor(): ConnectionStatus {
             const body = (await res.json()) as {
               instance?: unknown;
               error?: string;
+              lastKnown?: unknown;
+              health?: { openportal?: string; opencode?: string };
             };
-            if (body?.instance) {
+            const opencodeHealth = body?.health?.opencode;
+            if (opencodeHealth === "up") {
               next = "connected";
+            } else if (opencodeHealth === "down") {
+              // Only fly the opencode-down banner when there's an
+              // active server context to be cached/stale about. If
+              // no server has ever been selected (first-run or no
+              // legacy config), the user is on / or about to be
+              // bounced to /servers, and a yellow banner would just
+              // be noise. body.lastKnown is the active-but-down
+              // marker.
+              if (body?.lastKnown) {
+                next = "opencode-down";
+              } else {
+                next = "connected";
+              }
             } else if (body?.error === "active-server-unreachable") {
-              next = "upstream-down";
+              // Fallback for older openportal builds that don't
+              // emit health.opencode yet. Keeps the connection
+              // monitor working during a rolling upgrade window.
+              next = "opencode-down";
             } else {
-              // /api/instance/self returned a benign null (no active
-              // server selected). The frontend bounce-to-/servers
-              // handles this; treat the portal itself as connected.
               next = "connected";
             }
           } catch {
@@ -61,14 +99,12 @@ export function useConnectionMonitor(): ConnectionStatus {
           }
         }
       } catch {
-        next = "disconnected";
+        next = "openportal-down";
       } finally {
         clearTimeout(timer);
       }
       if (cancelled) return;
       if (next !== prev) {
-        // On any transition INTO connected from a degraded state,
-        // globally invalidate SWR caches so every poller refetches.
         if (next === "connected" && prev !== "connected") {
           void mutate(() => true);
         }

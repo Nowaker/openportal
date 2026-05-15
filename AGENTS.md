@@ -214,15 +214,25 @@ Rules:
 
 ## Network trust + presence detection
 
-OpenPortal exposes a `client` field on every `/api/instance/self`
-response that downstream code (AI prompts, companion plugin, the
-VSCode link split) reads to decide whether the user is physically at
-this computer or accessing via a remote tailnet peer. The decision
-flows from the security model in
-`apps/web/src/server/lib/client-detection.ts` and depends on the
-reverse proxy preserving the real client IP.
+Two related but distinct signals live on every `/api/instance/self`
+response:
 
-### Trust model
+- `client` — who is making THIS request right now. Reverse-proxy
+  aware, per-request, derived from socket peer + (conditionally
+  trusted) `X-Forwarded-For`. Drives the VSCode-link local/remote
+  split, the companion plugin's local-vs-remote rendering, and any
+  per-call decisions that depend on the immediate caller.
+- `presence` — where the user's eyes are right now. NOT per-request;
+  it's the last BROWSER-classified request the openportal process
+  has seen since startup. Drives the sudo dispatch (GUI askpass on
+  this host vs. web modal on the user's remote browser) and
+  anything else where the right answer is "where is the human?"
+  not "who's calling me?".
+
+Both signals share the same trust model for resolving a real client
+IP, but they answer different questions and MUST NOT be conflated.
+
+### Trust model (shared)
 
 | Layer | What it carries | Trust |
 |---|---|---|
@@ -238,15 +248,61 @@ already on this host (loopback, or any address from
 `networkInterfaces()`, plus the operator-controlled
 `OPENPORTAL_LOCAL_IPS` env list).
 
-### Behaviour matrix
+### Per-request `client` behaviour matrix
 
-| Where the request comes from | Socket peer | XFF trusted? | Effective IP | `isLocal` |
+| Where the request comes from | Socket peer | XFF trusted? | Effective IP | `client.isLocal` |
 |---|---|---|---|---|
 | Browser on this host via Caddy | 127.0.0.1 | yes | this host's tailnet IP (from XFF) | true |
 | `curl` on this host direct to `:5000` | 127.0.0.1 | yes (loopback) | 127.0.0.1 | true |
 | Browser on remote tailnet peer via Caddy | 127.0.0.1 | yes | peer's tailnet IP (from XFF) | false |
 | `curl` on remote tailnet peer direct to `:5000` | peer's tailnet IP | no | peer's tailnet IP (socket) | false |
 | Remote tailnet peer direct + spoofed XFF: 127.0.0.1 | peer's tailnet IP | NO (the spoof is dropped) | peer's tailnet IP (socket) | false |
+
+### Presence tracker (where are the user's eyes?)
+
+Lives in `apps/web/src/server/lib/presence-tracker.ts`. A Nitro
+`request` hook (`apps/web/src/server/plugins/presence-tracker-hook.ts`)
+fires on EVERY HTTP request, runs `detectClient(event)`, and — only
+if the request's `User-Agent` looks like a real browser — overwrites
+a single in-memory record with `{ ip, isLocal, at }`. No history, no
+mini-buffer; the last browser request wins, full stop.
+
+Behaviour invariants:
+
+- **Last browser request wins.** No time window, no decay. If you
+  send a prompt from m4max your m4max browser's poll lands and the
+  process now believes the user is remote. If you then walk to the
+  desktop and open openportal there, the desktop browser's first
+  request flips presence back to local. There is no expectation that
+  a stale 30-minute-old local poll can override a fresh remote one —
+  the spec is fresh-always-wins, regardless of magnitude.
+- **Browser-only.** `User-Agent` is matched against
+  `/Mozilla|Chrome|Safari|Firefox|Edge/i`. curl, wget, Bun/Node
+  fetch, and the openportal-sudo-mcp sidecar all fail this filter
+  and DO NOT register presence. Critical: the MCP sidecar calls
+  `/api/sudo/run` from loopback; if it registered presence it would
+  self-flip the verdict to "local" microseconds before the
+  dispatcher reads it, defeating the whole point of the tracker.
+- **In-memory only.** No disk, no DB. An openportal restart legitimately
+  resets presence — the moment the connection-monitor reconnects the
+  browser repopulates the tracker. Persisting would re-introduce the
+  stale-after-reboot bug the design is avoiding.
+- **The sudo dispatcher uses ONLY presence, never per-request `client`.**
+  `/api/sudo/run` is called by the MCP sidecar from loopback, so its
+  per-request `client.isLocal` is always true and useless for routing.
+  `isUserLocallyPresent()` is the correct signal there.
+- **VSCode link generation, companion plugin rendering, etc. still use
+  per-request `client`.** Those callers ARE the user's browser, and
+  "is this request coming from this host" is the right question for them.
+
+The `/api/instance/self` `presence` field exposes the current record
+as `{ ip, isLocal, at, ageMs }` so the frontend (and the AI inspecting
+its session state) can see where the last browser request came from.
+`ageMs` will typically be near zero when the browser itself polls the
+endpoint — the request that fetched the response just updated the
+record. Look at `ageMs` going up between polls only when SOMETHING
+ELSE last hit openportal (a curl probe, an MCP sidecar call) and the
+poll is the first browser request after that.
 
 ### Caddy / reverse proxy requirements
 
@@ -278,6 +334,9 @@ non-default thing this trust model needs is:
 
 ### Verifying after a network change
 
+Per-request `client` (the same IP-trust model the presence tracker
+relies on internally):
+
 ```bash
 # from this host - via Caddy:
 curl -sS -k https://portal.desktop.ts.nowaker.net:8443/api/instance/self \
@@ -298,6 +357,31 @@ ssh m4max.ts.nowaker.net 'curl -sS -H "X-Forwarded-For: 127.0.0.1" http://100.10
   | jq .client
 # expect: { ip: "<m4max's tailnet IP>", isLocal: false, proxied: false }
 # the spoofed XFF MUST be ignored
+```
+
+Presence tracker (curl has a non-browser UA, so these calls do NOT
+update presence themselves — they let you inspect what the last
+genuine browser hit looked like):
+
+```bash
+# inspect current presence (whatever the last browser request was):
+curl -sS http://100.105.229.19:5000/api/instance/self | jq .presence
+# null when no browser has hit openportal since startup;
+# otherwise: { ip, isLocal, at, ageMs }
+
+# spoof a browser UA from a remote peer and verify it DOES register
+# (this is intentional — the security model relies on tailnet ACL,
+# not UA fingerprinting):
+ssh m4max.ts.nowaker.net 'curl -sS -A "Mozilla/5.0 Chrome/120 spoof" \
+  -k https://portal.desktop.ts.nowaker.net:8443/api/instance/self' \
+  | jq .presence
+# expect: { ip: "<m4max's tailnet IP>", isLocal: false, ageMs: small }
+
+# back to a non-browser UA — presence should NOT be overwritten:
+curl -sS http://100.105.229.19:5000/api/instance/self | jq .presence
+# expect: { ip: "<m4max's tailnet IP>", isLocal: false, ageMs: larger }
+# the curl call itself was filtered out, so the previous browser
+# record is still the "latest browser" record
 ```
 
 ## Diagnostics protocol
