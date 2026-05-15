@@ -112,6 +112,7 @@ import {
   useProviders,
 } from "@/hooks/use-opencode";
 import useMediaQuery from "@/hooks/use-media-query";
+import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import type { Session } from "@opencode-ai/sdk";
 
 const sessionSearchSchema = z.object({
@@ -1732,6 +1733,7 @@ function MessageMarkdown({
   text: string;
   remarkPlugins: NonNullable<React.ComponentProps<typeof Markdown>["remarkPlugins"]>;
 }) {
+  const { isMobile } = useMediaQuery();
   const components = useMemo(
     () => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1744,8 +1746,56 @@ function MessageMarkdown({
           </div>
         );
       },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      a: ({ href, children, ...rest }: any) => {
+        if (typeof href === "string" && href.startsWith("file://")) {
+          return (
+            <a
+              {...rest}
+              href={href}
+              onClick={(e) => {
+                e.preventDefault();
+                let path: string | null = null;
+                let hash = "";
+                try {
+                  const u = new URL(href);
+                  path = decodeURIComponent(u.pathname);
+                  hash = u.hash;
+                } catch {
+                  path = null;
+                }
+                if (!path) return;
+                if (isMobile) {
+                  window.open(
+                    `/files?path=${encodeURIComponent(path)}${hash}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                } else {
+                  useFileBrowserPanelStore.getState().open(path);
+                }
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+        const isAnchor = typeof href === "string" && href.startsWith("#");
+        const isMailto = typeof href === "string" && href.startsWith("mailto:");
+        const openInNewTab = !!href && !isAnchor && !isMailto;
+        return (
+          <a
+            {...rest}
+            href={href}
+            target={openInNewTab ? "_blank" : undefined}
+            rel={openInNewTab ? "noreferrer noopener" : undefined}
+          >
+            {children}
+          </a>
+        );
+      },
     }),
-    [],
+    [isMobile],
   );
 
   return (
