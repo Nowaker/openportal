@@ -1,15 +1,26 @@
 import type { HTTPError, HTTPEvent } from "nitro/h3";
-import { setResponseStatus } from "nitro/h3";
 
-// Single Nitro errorHandler covering two distinct failure rewrites:
+// Single Nitro errorHandler covering three distinct failure rewrites:
 //
-//   /assets/* 500 -> 404. When the in-memory asset manifest references
-//   a file that's gone from disk (deploy race: process started with
-//   build vN, disk now has vN+1), the static handler throws and lands
-//   on 500. The browser's <script> error handler treats 500 as
-//   "server failure" instead of "asset missing", which blocks the
-//   inline recovery path. 404 is the honest status and matches what a
-//   well-behaved CDN would serve for the same content.
+//   /assets/*.js missing -> 200 with reload shim. When the in-memory
+//   asset manifest references a file that's gone from disk (deploy
+//   race: browser cached `index.html` from build vN, server now
+//   serves build vN+M which wiped the old hashed assets), the static
+//   handler throws and lands here. Returning 404 (the previous
+//   behaviour) was honest but useless - the browser's
+//   <script type="module"> tag has no recovery path on 404, the page
+//   crashes hard with a console error. We instead serve a 200 with a
+//   tiny JS payload that triggers `window.location.reload()`, which
+//   re-fetches `index.html` (uncached per route rule below). The new
+//   HTML references the current build's asset hashes and the page
+//   renders normally. SessionStorage guard prevents infinite reload
+//   loops if the new HTML somehow still references a missing asset.
+//
+//   /assets/*.css missing -> 200 with empty body. Stylesheet links
+//   don't trigger reloads (a missing style sheet just means an
+//   unstyled page until the next navigation) so we just return an
+//   empty CSS body. Same Cache-Control: no-store so the shim
+//   doesn't get cached if the browser is being aggressive.
 //
 //   /api/opencode/<port>/* upstream-unreachable -> 502 with structured
 //   body. The SDK and raw fetch wrapper throw ConnectionRefused /
@@ -24,6 +35,20 @@ import { setResponseStatus } from "nitro/h3";
 //   converge here so the response shape stays consistent.
 //
 //   Everything else -> default Nitro JSON error response.
+
+const MISSING_ASSET_JS_SHIM = `console.warn("[openportal] asset hash drift; reloading to pick up latest build");
+(function () {
+  var key = "openportal:reload-attempted";
+  var now = Date.now();
+  var last = parseInt(sessionStorage.getItem(key) || "0", 10);
+  if (now - last < 5000) {
+    console.error("[openportal] reload loop blocked - build may be broken");
+    return;
+  }
+  sessionStorage.setItem(key, String(now));
+  location.reload();
+})();
+`;
 
 const NETWORK_ERR_PATTERNS = [
   "ConnectionRefused",
@@ -71,8 +96,25 @@ export default async function errorHandler(
   const path = (event as unknown as { path?: string }).path ?? "";
 
   if (path.startsWith("/assets/")) {
-    setResponseStatus(event as never, 404);
-    return null;
+    if (path.endsWith(".js")) {
+      return new Response(MISSING_ASSET_JS_SHIM, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/javascript; charset=utf-8",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    }
+    if (path.endsWith(".css")) {
+      return new Response("/* openportal: asset missing, ignored */\n", {
+        status: 200,
+        headers: {
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    }
+    return new Response(null, { status: 404 });
   }
 
   if (looksLikeUpstreamError(error) && path.startsWith("/api/opencode/")) {

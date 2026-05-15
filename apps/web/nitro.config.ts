@@ -11,6 +11,12 @@ export default defineConfig({
     "./src/server/plugins/auto-approve-worker.ts",
     "./src/server/plugins/pending-prompt-worker.ts",
   ],
+  handlers: [
+    {
+      route: "/assets/**",
+      handler: "./src/middleware/asset-fallback.ts",
+    },
+  ],
   errorHandler: "./src/server/error.ts",
   routeRules: {
     // SPA fallback HTML must never be cached: every navigation to

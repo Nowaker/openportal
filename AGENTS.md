@@ -23,28 +23,67 @@ self-heals on each start because runner.sh is the only writer.
 ### Build -> restart -> commit cycle
 
 1. Edit source under `~/projekty/webapps/portal/`.
-2. Always `rm -rf apps/web/.output` before running the web build.
-   Vite's incremental rebuild can leave a stale `renderer-template.mjs`
-   that bakes the SOURCE `apps/web/index.html` (with `/src/main.tsx`
-   references) instead of the post-Vite-transformed HTML with hashed
-   asset paths. Symptom: `Failed to load module script: Expected JS
-   but server responded with text/html` because `/src/main.tsx` does
-   not exist on disk and Nitro's SPA fallback returns the same broken
-   HTML.
-3. `bun run build` at the monorepo root (turbo dispatches Vite + Nitro
-   for web AND a Bun bundle for the CLI).
-4. Restart Portal via the systemd cycle above.
-5. Verify the new asset hash is in the served HTML AND returns 200.
-6. Commit (atomic). Push to BOTH remotes (github + origin gitlab).
+2. Run `bash scripts/build.sh` from the repo root. This wraps the
+   raw `bun run build`:
+   - Snapshots current `.output/public/assets/` to a /tmp dir
+     BEFORE the wipe.
+   - Wipes `.output` AND every `.turbo/` cache in the monorepo
+     (turbo's content-hash cache otherwise hands back a stale
+     bundle when source matches a prior input).
+   - Builds.
+   - Re-layers the snapshot assets back into the fresh
+     `.output/public/assets/` so prior builds' hashes coexist with
+     the new ones. The asset-fallback middleware (below) serves
+     anything on disk, so a browser tab still referencing an older
+     hash gets its file - it does NOT crash on MIME mismatch.
+   - Prunes retained assets older than 14 days.
+3. Restart Portal via the systemd cycle above.
+4. Verify the new asset hash is in the served HTML AND returns 200.
+5. Commit (atomic). Push to BOTH remotes (github + origin gitlab).
 
-### Multiple back-to-back rebuilds
+NEVER call `bun run build` directly outside the wrapper - it wipes
+old assets without retention and breaks any browser tab that hasn't
+yet refetched the new `index.html`. The wrapper is the only path.
 
-Each rebuild changes asset hashes. The browser may cache the old
-`index.html` referencing a hash no longer on disk -> Nitro's SPA
-fallback returns HTML -> "MIME type text/html" error. End every
-session with a single clean restart so the served HTML matches the
-assets on disk. Tell the user to hard-refresh (`Ctrl+Shift+R`) when
-in doubt.
+### Stale asset 500s are impossible by construction
+
+A browser tab whose cached `index.html` references a hashed asset
+that has been rebuilt away would, in a naive setup, request the
+deleted file, miss the manifest, fall through to Nitro's SPA fallback
+(returns `index.html` as HTML) and crash the `<script type="module">`
+loader with "Failed to load module script: text/html". This codebase
+defends against that on three independent layers:
+
+1. `scripts/build.sh` preserves prior builds' assets on disk for 14
+   days. The hash a browser references is almost always still there.
+2. `apps/web/src/middleware/asset-fallback.ts` (registered via
+   `handlers: [{ route: "/assets/**", ... }]` in nitro.config.ts)
+   serves ANY file present under `.output/public/assets/` with
+   `Content-Type: application/javascript` and an immutable cache
+   header. Resolution uses `globalThis.__nitro_main__` (same as
+   Nitro's own asset path resolution), NOT `process.cwd()` (which
+   under `systemctl --user openportal.service` resolves to
+   `/home/nowaker/projekty` and would miss the .output dir entirely).
+   The middleware also adds `X-OpenPortal-Asset-Source: disk|shim`
+   so the browser DevTools network panel makes the path visible.
+3. If a hash is truly gone (older than retention), the same
+   middleware returns a 200 reload shim: 460 bytes of JS that
+   `location.reload()`s, guarded by sessionStorage against
+   infinite reload loops. The reloaded `index.html` (route rule
+   `Cache-Control: no-store` on `/`) references the current
+   hashes; the page recovers without manual intervention. The
+   `error.ts` handler has the same shim as a fourth fallback in
+   case Nitro routes the request through an error path instead.
+
+To verify the layers are intact after a rebuild:
+
+```bash
+curl -sS -D - -o /dev/null http://100.105.229.19:5000/assets/index-FAKEHASH.js | grep -i x-openportal-asset-source
+# expect: X-OpenPortal-Asset-Source: shim
+```
+
+Net effect: the user-reported `net::ERR_ABORTED 500` for
+`/assets/index-OLDHASH.js` is structurally impossible.
 
 ### Never restart user-managed opencode
 
@@ -81,39 +120,19 @@ Public access via Caddy: `https://dev-portal.desktop.ts.nowaker.net:8443/`
 `~/projekty/webapps/caddy/Caddyfile` (user-scope caddy, reload via
 `systemctl --user reload caddy.service` - no sudo).
 
-Build cycle for dev:
+Build cycle for dev (or prod - both share the same `.output`):
 
 ```bash
 cd ~/projekty/webapps/portal
-rm -rf apps/web/.output && bun run build
+bash scripts/build.sh
 systemctl --user restart openportal-dev.service
 curl -sS http://100.105.229.19:5001/ | grep -oE 'src="/assets/index-[^"]*"' | head -1
 ```
 
-A standalone dev rebuild leaves prod openportal:5000 untouched.
-
-### Turbo cache + asset hash drift
-
-`rm -rf apps/web/.output` alone is sometimes not enough. Turbo's
-own cache at `.turbo/`, `apps/web/.turbo/`, `apps/docs/.turbo/`,
-`packages/cli/.turbo/`, `packages/openportal-companion-plugin/.turbo/`
-can restore a previous build's outputs verbatim when source content
-hashes match a prior input - producing the OLD asset hashes when
-you EXPECTED new ones. This bit us during the TDZ-fix deploy:
-turbo restored a pre-fix bundle.
-
-Force-clean rebuild:
-
-```bash
-cd ~/projekty/webapps/portal
-rm -rf apps/web/.output \
-       apps/web/.turbo apps/docs/.turbo .turbo \
-       packages/cli/.turbo packages/openportal-companion-plugin/.turbo
-bun run build
-# new asset hash will appear in apps/web/.output/public/assets/
-```
-
-Then restart prod or dev as usual.
+A standalone dev rebuild leaves prod openportal:5000 untouched at the
+process level - the restart only re-execs the dev service. Both share
+the same `.output` directory on disk, so a build + dev restart means
+prod is also serving the latest bundle the next time it restarts.
 
 ## OpenPortal architecture facts
 
