@@ -22,9 +22,11 @@ interface SttModeState {
   mode: SttMode;
   backend: SttBackend;
   sidecarUrl: string;
+  endOfStreamTimeoutMs: number;
   setMode: (mode: SttMode) => void;
   setBackend: (backend: SttBackend) => void;
   setSidecarUrl: (url: string) => void;
+  setEndOfStreamTimeoutMs: (ms: number) => void;
 }
 
 export const useSttModeStore = create<SttModeState>()(
@@ -33,9 +35,11 @@ export const useSttModeStore = create<SttModeState>()(
       mode: "off",
       backend: "web-speech",
       sidecarUrl: "http://127.0.0.1:4150",
+      endOfStreamTimeoutMs: 5000,
       setMode: (mode) => set({ mode }),
       setBackend: (backend) => set({ backend }),
       setSidecarUrl: (sidecarUrl) => set({ sidecarUrl }),
+      setEndOfStreamTimeoutMs: (endOfStreamTimeoutMs) => set({ endOfStreamTimeoutMs }),
     }),
     { name: "openportal-stt-mode" },
   ),

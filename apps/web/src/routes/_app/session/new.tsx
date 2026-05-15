@@ -205,8 +205,20 @@ function NewSessionPage() {
   }, []);
 
   const sttMode = useSttModeStore((s) => s.mode);
+  const sttEndOfStreamTimeoutMs = useSttModeStore((s) => s.endOfStreamTimeoutMs);
   const sttSubmitOnEndRef = useRef(false);
   const sttTranscriptArrivedRef = useRef(false);
+  const [sttTimeoutProgress, setSttTimeoutProgress] = useState<number | null>(null);
+  const sttTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sttIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const cancelSttTimeout = useCallback(() => {
+    if (sttTimeoutRef.current) clearTimeout(sttTimeoutRef.current);
+    if (sttIntervalRef.current) clearInterval(sttIntervalRef.current);
+    sttTimeoutRef.current = null;
+    sttIntervalRef.current = null;
+    setSttTimeoutProgress(null);
+  }, []);
 
   useEffect(() => {
     if (autoPrompt) return;
@@ -299,32 +311,74 @@ function NewSessionPage() {
   const speechRecognition = useSttEngine({
     continuous: sttMode === "vad",
     onTranscript: (transcript) => {
+      cancelSttTimeout();
       sttTranscriptArrivedRef.current = true;
       const ta = textareaRef.current;
       if (!ta) return;
       const current = ta.value;
-      const sep =
-        current && !current.endsWith(" ") && !current.endsWith("\n")
-          ? " "
-          : "";
-      const next = `${current}${sep}${transcript}`;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const before = current.substring(0, start);
+      const after = current.substring(end);
+      const sepBefore = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
+      const sepAfter = after && !after.startsWith(" ") && !after.startsWith("\n") ? " " : "";
+      const insert = `${sepBefore}${transcript}${sepAfter}`;
+      const next = before + insert + after;
       setText(next);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.selectionStart = start + insert.length - sepAfter.length;
+          textareaRef.current.selectionEnd = textareaRef.current.selectionStart;
+        }
+      }, 0);
       hasUserEditedRef.current = true;
     },
     onEnd: () => {
       if (sttMode === "push-to-talk" && sttSubmitOnEndRef.current) {
         sttSubmitOnEndRef.current = false;
+        cancelSttTimeout();
         if (sttTranscriptArrivedRef.current) {
+          sttTranscriptArrivedRef.current = false;
           void handleSubmit();
         }
+      } else if (sttMode === "push-to-talk" && sttEndOfStreamTimeoutMs > 0) {
+        const startTime = Date.now();
+        setSttTimeoutProgress(0);
+        
+        sttIntervalRef.current = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(100, (elapsed / sttEndOfStreamTimeoutMs) * 100);
+          setSttTimeoutProgress(progress);
+        }, 50);
+
+        sttTimeoutRef.current = setTimeout(() => {
+          cancelSttTimeout();
+          sttSubmitOnEndRef.current = true;
+          speechRecognition.stop();
+          if (sttTranscriptArrivedRef.current) {
+            sttTranscriptArrivedRef.current = false;
+            void handleSubmit();
+          }
+        }, sttEndOfStreamTimeoutMs);
+
+        setTimeout(() => {
+          if (sttTimeoutRef.current) {
+            speechRecognition.start();
+          }
+        }, 10);
       }
     },
   });
 
   const handleMicToggle = () => {
-    if (speechRecognition.isListening) {
+    if (speechRecognition.isListening || sttTimeoutRef.current) {
       sttSubmitOnEndRef.current = sttMode === "push-to-talk";
+      cancelSttTimeout();
       void speechRecognition.stop();
+      if (sttTranscriptArrivedRef.current) {
+        sttTranscriptArrivedRef.current = false;
+        void handleSubmit();
+      }
     } else {
       sttSubmitOnEndRef.current = false;
       sttTranscriptArrivedRef.current = false;
@@ -617,12 +671,15 @@ function NewSessionPage() {
                   <div className="flex w-12 gap-0 justify-end">
                     <button
                       type="button"
-                      onClick={handleMicToggle}
-                      className={`size-6 rounded-md inline-flex items-center justify-center transition-colors ${
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        handleMicToggle();
+                      }}
+                      className={`relative size-6 rounded-md inline-flex items-center justify-center transition-colors ${
                         speechRecognition.isListening
-                          ? "bg-red-500 text-white animate-pulse"
+                          ? "bg-red-500 text-white"
                           : "bg-muted hover:bg-muted/80 text-muted-fg"
-                      }`}
+                      } ${speechRecognition.isListening && sttTimeoutProgress === null ? "animate-pulse" : ""}`}
                       aria-label={
                         speechRecognition.isListening
                           ? "Stop voice input"
@@ -638,11 +695,22 @@ function NewSessionPage() {
                             : "Tap to start continuous listening"
                       }
                     >
-                      {speechRecognition.isListening ? (
-                        <StopIcon className="size-3" />
-                      ) : (
-                        <MicrophoneIcon className="size-3" />
+                      {sttTimeoutProgress !== null && (
+                        <svg className="absolute inset-0 size-full -rotate-90" viewBox="0 0 24 24">
+                          <circle
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray="62.83"
+                            strokeDashoffset={62.83 - (62.83 * sttTimeoutProgress) / 100}
+                            className="text-white/50 transition-all duration-75"
+                          />
+                        </svg>
                       )}
+                      <MicrophoneIcon className="size-3" />
                     </button>
                   </div>
                 )}

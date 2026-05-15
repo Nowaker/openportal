@@ -111,6 +111,7 @@ import {
   useAgents,
   useProviders,
 } from "@/hooks/use-opencode";
+import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
 import useMediaQuery from "@/hooks/use-media-query";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import type { Session } from "@opencode-ai/sdk";
@@ -2784,9 +2785,14 @@ function SessionPage() {
     },
   });
   const handleMicToggle = () => {
-    if (speechRecognition.isListening) {
+    if (speechRecognition.isListening || sttTimeoutRef.current) {
       if (sttMode === "push-to-talk") sttSubmitOnEndRef.current = true;
+      cancelSttTimeout();
       speechRecognition.stop();
+      if (sttTranscriptArrivedRef.current) {
+        sttTranscriptArrivedRef.current = false;
+        textareaRef.current?.form?.requestSubmit();
+      }
     } else {
       sttTranscriptArrivedRef.current = false;
       speechRecognition.start();
@@ -2899,7 +2905,19 @@ function SessionPage() {
   ]);
   const filteredCommands = slashItems;
 
-  const error = messagesError?.message || sendError;
+  const connectionStatus = useConnectionMonitor();
+  // When opencode is down, useSessionMessages naturally fails (the
+  // /api/opencode/{port}/session/{id}/messages proxy returns 502/500).
+  // Hide the generic red "Error: HTTP 500" payload in that case - the
+  // global yellow ConnectionStatusBanner is already telling the user
+  // exactly what's wrong, and a separate destructive error inside the
+  // chat view just adds noise. The friendly empty state below takes
+  // over instead.
+  const rawError = messagesError?.message || sendError;
+  const error =
+    connectionStatus === "opencode-down" && rawError ? null : rawError;
+  const opencodeUnreachable =
+    connectionStatus === "opencode-down" && !!messagesError;
 
   // Locally-tracked set of permission requestIDs the user has already
   // replied to from THIS browser. Polling may briefly re-include a
@@ -3883,7 +3901,21 @@ function SessionPage() {
           </div>
         )}
 
-        {!loading && !error && messages.length === 0 && (
+        {!loading && !error && opencodeUnreachable && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="text-base font-medium text-fg">
+              Opencode is unreachable
+            </div>
+            <p className="max-w-md text-sm text-muted-fg">
+              Live session messages can't load until opencode is back. The
+              connection monitor is retrying every 10 seconds. Prompts
+              archive, settings, and the server list still work in the
+              meantime.
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && !opencodeUnreachable && messages.length === 0 && (
           <div className="flex h-full items-center justify-center">
             <div className="text-center text-muted-fg">No messages yet</div>
           </div>
