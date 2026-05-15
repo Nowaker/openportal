@@ -58,3 +58,71 @@ export function useHashOpen(
 
   return [isOpen, setOpen];
 }
+
+// Two-way binding between a string|null UI state and a prefixed URL
+// fragment of the shape `#<prefix>:<value>`. Used for modals whose
+// open state is identified by which value is shown (e.g. "the MCP
+// info modal for redis" -> `#mcp:redis`; "the plugin info modal for
+// @scope/pkg" -> `#plugin:%40scope%2Fpkg`). null clears the hash.
+//
+// Same semantics as useHashOpen: pushState on set-to-value,
+// replaceState on set-to-null (so closing doesn't leave a stale
+// history entry). Listens to popstate + hashchange so browser
+// navigation flips the React state.
+export function useHashValue(
+  prefix: string,
+): [string | null, (value: string | null) => void] {
+  const tag = `#${prefix}:`;
+  const read = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    const h = window.location.hash;
+    if (!h.startsWith(tag)) return null;
+    try {
+      return decodeURIComponent(h.slice(tag.length));
+    } catch {
+      return h.slice(tag.length);
+    }
+  }, [tag]);
+
+  const [value, setValueInternal] = useState<string | null>(read);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setValueInternal(read());
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    sync();
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+    };
+  }, [read]);
+
+  const setValue = useCallback(
+    (next: string | null) => {
+      if (typeof window === "undefined") {
+        setValueInternal(next);
+        return;
+      }
+      const url = new URL(window.location.href);
+      const desired = next === null ? "" : `${prefix}:${encodeURIComponent(next)}`;
+      const currentHashWithoutLead = window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash;
+      if (currentHashWithoutLead === desired) {
+        setValueInternal(next);
+        return;
+      }
+      url.hash = desired;
+      if (next === null) {
+        window.history.replaceState(null, "", url.toString());
+      } else {
+        window.history.pushState(null, "", url.toString());
+      }
+      setValueInternal(next);
+    },
+    [prefix],
+  );
+
+  return [value, setValue];
+}

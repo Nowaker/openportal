@@ -226,6 +226,44 @@ Rules:
   (`keepPreviousData: true` in SWR) so the spinner only appears on
   cold load, not on every revalidation.
 
+### Everything is a permalink (URL-driven UI state)
+
+Every non-trivial UI surface MUST round-trip through the URL: paste
+the URL into a fresh browser tab, get back exactly the same view. No
+exceptions for "it's just a modal" or "it's just a panel". The user
+should never be unable to share or bookmark a state they're currently
+looking at.
+
+Covered:
+
+- Active session: `/session/<id>` route path. Already routed.
+- Active server: `?server=<id>` search param. Already routed (the
+  layout effect emits, `POST /api/servers/active` consumes).
+- Settings tabs: `/settings#<tab-id>` hash. Hash-routed in
+  `apps/web/src/routes/_app/settings.tsx` via `setSettingsTab`.
+- Message permalinks: `/session/<id>#msg-<msg-id>` hash, with the
+  smart-window loader (`use-session-messages.ts`) reading the
+  fragment on cold load.
+- Session info modal: `/session/<id>#info` via the canonical
+  `useHashOpen("info")` hook in
+  `apps/web/src/hooks/use-hash-open.ts`. Back/forward navigate in
+  and out of the modal.
+
+Required for any new modal, panel, expanded section, or wizard:
+
+- Boolean open/closed state: use `useHashOpen(hashId)` from
+  `apps/web/src/hooks/use-hash-open.ts`.
+- String-valued state (selected MCP, selected plugin, file path
+  in a browser, etc.): the URL must encode the value too. Follow
+  the same hash pattern: `#mcp:redis`, `#plugin:foo`,
+  `#files:/abs/path`. URL-encode the value with
+  `encodeURIComponent`. A `useHashValue<T>(prefix)` follow-up
+  hook is fair game when more than one consumer needs it.
+
+The acceptance test for any new UI state: open it, copy the URL,
+hard-refresh, expect the exact same view. If the test fails, the
+state is wrong and must be moved into the URL.
+
 ### Composer
 
 - Drafts persist in `localStorage["opencode-composer-draft:<sid>"]`,

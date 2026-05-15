@@ -41,7 +41,7 @@ import {
 import { SessionInfoModal } from "@/components/session-info-modal";
 import { McpInfoModal } from "@/components/mcp-info-modal";
 import { PluginInfoModal } from "@/components/plugin-info-modal";
-import { useHashOpen } from "@/hooks/use-hash-open";
+import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
@@ -120,8 +120,8 @@ export function AppSidebarNav() {
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
   const [showSessionInfo, setShowSessionInfo] = useHashOpen("info");
-  const [mcpInfoName, setMcpInfoName] = useState<string | null>(null);
-  const [pluginInfoSpec, setPluginInfoSpec] = useState<string | null>(null);
+  const [mcpInfoName, setMcpInfoName] = useHashValue("mcp");
+  const [pluginInfoSpec, setPluginInfoSpec] = useHashValue("plugin");
 
   const sessionMatch = useMatch({
     from: "/_app/session/$id",

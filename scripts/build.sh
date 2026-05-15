@@ -83,6 +83,13 @@ if [ "$PRUNED" -gt 0 ]; then
   echo "build.sh: pruned $PRUNED file(s) older than $RETENTION_DAYS days"
 fi
 
-# 6. Report.
-NEW_INDEX=$(ls "$ASSETS"/index-*.js 2>/dev/null | head -1)
-echo "build.sh: build complete. Current entry: $NEW_INDEX"
+# 6. Report. The current entry is whichever index-*.js the freshly
+#    built .output/server/index.mjs references - newest by mtime
+#    isn't reliable when retention restored older files.
+SERVER_INDEX="$OUTPUT/server/index.mjs"
+if [ -f "$SERVER_INDEX" ]; then
+  CURRENT_ENTRY=$(grep -oE '/assets/index-[^"]+\.js' "$SERVER_INDEX" | head -1)
+  echo "build.sh: build complete. Current entry: ${CURRENT_ENTRY:-(unknown)}"
+else
+  echo "build.sh: build complete. (server bundle not found)"
+fi
