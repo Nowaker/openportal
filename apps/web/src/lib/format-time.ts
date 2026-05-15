@@ -1,10 +1,13 @@
 import type { DateFormat } from "@/stores/date-format-store";
 
 // Compact message timestamp:
-//   today           -> "2:23pm" / "14:23"
-//   any other day   -> "4/3, 2:23pm" / "4/3, 14:23"
+//   today                   -> "2:23pm" / "14:23"
+//   same year, other day    -> "4/3, 2:23pm" / "4/3, 14:23"
+//   different year (past)   -> "4/3/2024, 2:23pm" / "4/3/2024, 14:23"
 // The 12h variant strips the locale-default space ("2:23 PM" -> "2:23pm")
-// so the badge stays compact in the floating right-side gutter.
+// so the badge stays compact in the floating right-side gutter. YYYY only
+// appears when the message is from a previous year so the current-year
+// stream stays terse.
 export function formatMessageTime(ms: number, format: DateFormat): string {
   if (!ms || !Number.isFinite(ms)) return "";
   const d = new Date(ms);
@@ -13,6 +16,7 @@ export function formatMessageTime(ms: number, format: DateFormat): string {
     d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
+  const sameYear = d.getFullYear() === now.getFullYear();
 
   const time =
     format === "12h"
@@ -31,7 +35,9 @@ export function formatMessageTime(ms: number, format: DateFormat): string {
         });
 
   if (sameDay) return time;
-  const date = `${d.getMonth() + 1}/${d.getDate()}`;
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const date = sameYear ? `${month}/${day}` : `${month}/${day}/${d.getFullYear()}`;
   return `${date}, ${time}`;
 }
 
