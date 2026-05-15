@@ -34,7 +34,7 @@ function ConnectionStatusBanner() {
         <ArrowPathIcon className="size-4 shrink-0 animate-spin text-warning" />
         <span className="flex-1 text-fg">
           {isUpstream
-            ? "Lost connection to the opencode server. Reconnecting\u2026"
+            ? "opencode is unreachable \u2014 openportal still works, chat shows cached data. Retrying\u2026"
             : "Lost connection to OpenPortal. Reconnecting\u2026"}
         </span>
         <Link
@@ -47,7 +47,7 @@ function ConnectionStatusBanner() {
       </div>
       <span className="pl-6 text-xs text-muted-fg">
         {isUpstream
-          ? "Your prompt drafts and pasted images are saved locally. Reconnect via the Server list if needed."
+          ? "Prompt history, settings and other openportal-owned data remain live. Live chat updates resume when opencode comes back."
           : "Your prompt drafts and pasted images are saved locally \u2014 nothing will be lost."}
       </span>
     </div>
