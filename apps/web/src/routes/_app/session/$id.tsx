@@ -2544,7 +2544,18 @@ function SessionPage() {
   // its /session/status to busy + our 3s SWR poll catching it, there's a
   // legit 3-5s window where the warning would lie. Only show the "Server is
   // idle" banner if the disagreement has persisted past that grace.
-  const STALL_GRACE_MS = 5000;
+  // Matches opencode-stuck-detector's DISPATCH_GRACE_MS - the
+  // empirical floor below which normal-LLM-TTFB sessions trip false
+  // positives. Anthropic claude-opus-4-7 with thinking=max routinely
+  // takes 5-15 seconds before /session/status flips to busy; opencode
+  // first persists the user message (flips local isAssistantBusy=true
+  // instantly), then runs plugin hooks + resolves tools + waits for
+  // the LLM's time-to-first-token before the runner reports busy.
+  // The previous 5s threshold caught that startup window and showed
+  // a "Server is idle" banner with a Resubmit button, leading to
+  // double-submissions. 30s mirrors the stuck-detector's vocabulary
+  // (the canonical opencode tool for this verdict family).
+  const STALL_GRACE_MS = 30_000;
   const [busyIdleSince, setBusyIdleSince] = useState<number | null>(null);
   useEffect(() => {
     const inDisagreement = isAssistantBusy && !isServerBusy;
