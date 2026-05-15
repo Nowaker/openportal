@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowPathIcon,
   BellAlertIcon,
+  ExclamationTriangleIcon,
   ServerStackIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -24,18 +25,55 @@ import {
   PullToRefreshWrapper,
 } from "@/components/pull-to-refresh-indicator";
 
+// Global, always-visible-when-degraded health banner. Two modes:
+//
+//   - opencode-down: yellow / warning intent. Openportal-owned views
+//     (prompts archive, server list, settings, persisted sessions
+//     list) keep working off cached data. Live opencode reads
+//     (session messages, providers, agents) auto-resume when
+//     opencode is back. Distinct from a destructive banner because
+//     the app is largely usable; we just want the user to know why
+//     the chat view looks stuck.
+//
+//   - openportal-down: destructive intent. /api/instance/self itself
+//     stopped answering, which means nothing else will load either.
+//     The 'reconnecting' wording is honest because openportal-dev /
+//     openportal restart hooks pick the server back up in seconds.
 function ConnectionStatusBanner() {
   const status = useConnectionMonitor();
   if (status === "connected") return null;
-  const isUpstream = status === "upstream-down";
+  if (status === "opencode-down") {
+    return (
+      <div className="flex flex-col gap-0.5 border-b border-warning/40 bg-warning-subtle px-3 py-2 text-sm">
+        <div className="flex items-center gap-2">
+          <ExclamationTriangleIcon
+            className="size-4 shrink-0 text-warning-subtle-fg"
+            aria-hidden="true"
+          />
+          <span className="flex-1 text-warning-subtle-fg">
+            Opencode is unreachable. Showing cached data - retrying every 10s...
+          </span>
+          <Link
+            to="/servers"
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
+          >
+            <ServerStackIcon className="size-3.5" />
+            Server list
+          </Link>
+        </div>
+        <span className="pl-6 text-xs text-warning-subtle-fg/80">
+          Openportal-owned features (prompts archive, server list, settings)
+          keep working. Live opencode reads will resume automatically.
+        </span>
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-0.5 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+    <div className="flex flex-col gap-0.5 border-b border-danger/40 bg-danger-subtle/40 px-3 py-2 text-sm">
       <div className="flex items-center gap-2">
-        <ArrowPathIcon className="size-4 shrink-0 animate-spin text-warning" />
+        <ArrowPathIcon className="size-4 shrink-0 animate-spin text-danger" />
         <span className="flex-1 text-fg">
-          {isUpstream
-            ? "opencode is unreachable \u2014 openportal still works, chat shows cached data. Retrying\u2026"
-            : "Lost connection to OpenPortal. Reconnecting\u2026"}
+          Lost connection to OpenPortal. Reconnecting...
         </span>
         <Link
           to="/servers"
@@ -46,9 +84,8 @@ function ConnectionStatusBanner() {
         </Link>
       </div>
       <span className="pl-6 text-xs text-muted-fg">
-        {isUpstream
-          ? "Prompt history, settings and other openportal-owned data remain live. Live chat updates resume when opencode comes back."
-          : "Your prompt drafts and pasted images are saved locally \u2014 nothing will be lost."}
+        Your prompt drafts and pasted images are saved locally - nothing
+        will be lost.
       </span>
     </div>
   );
@@ -280,7 +317,23 @@ function AppLayout() {
   // "Redirecting…" - the redirect is part of the normal first-run /
   // no-active-server flow, not an error state worth alarming the user
   // about.
-  if (error || !selfData?.instance) {
+  //
+  // Important: when opencode is down but openportal is still up,
+  // selfData.instance is null (since the probe failed) but the
+  // persisted zustand instance store still holds the port we were
+  // bound to. We MUST keep mounting the layout in that case so the
+  // yellow ConnectionStatusBanner shows, prompts archive still loads,
+  // session sidebar still lists cached sessions, etc. Only blank out
+  // when BOTH the live response and the persisted store are empty -
+  // i.e. genuine first-run / no-active-server.
+  if (error && !instance) {
+    return (
+      <div className="flex h-dvh items-center justify-center text-muted-fg">
+        Loading…
+      </div>
+    );
+  }
+  if (!selfData?.instance && !instance) {
     return (
       <div className="flex h-dvh items-center justify-center text-muted-fg">
         Loading…
