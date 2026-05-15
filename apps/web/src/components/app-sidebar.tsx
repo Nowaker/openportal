@@ -1453,10 +1453,11 @@ export default function AppSidebar(
                 onChange={(e) => {
                   const v = e.target.value;
                   setSearchInput(v);
-                  // Auto-submit empty query whenever the field becomes empty
-                  // (backspace-to-zero or our X button below) so the filter
-                  // resets in lock-step with the input.
-                  if (v.length === 0) setSearchQuery("");
+                  if (v.length === 0) {
+                    setSearchQuery("");
+                  } else if (!isMobile) {
+                    setSearchQuery(v.trim());
+                  }
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
