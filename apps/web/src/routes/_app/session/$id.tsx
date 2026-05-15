@@ -4510,17 +4510,19 @@ function SessionPage() {
             <ChevronUpIcon className="size-4" />
           </button>
         )}
-        {messages.some((m) => m.info.role === "user") && (
+        {messages.length > 0 && (
           <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => handleJumpUserPrompt("previous")}
-              className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
-              aria-label="Previous user message"
-              title="Previous user message"
-            >
-              <ChevronUpIcon className="size-5" />
-            </button>
+            {messages.some((m) => m.info.role === "user") && (
+              <button
+                type="button"
+                onClick={() => handleJumpUserPrompt("previous")}
+                className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
+                aria-label="Previous user message"
+                title="Previous user message"
+              >
+                <ChevronUpIcon className="size-5" />
+              </button>
+            )}
             <button
               type="button"
               onClick={togglePromptsOnly}
@@ -4543,15 +4545,17 @@ function SessionPage() {
                 <ChatBubbleLeftRightIcon className="size-5" />
               )}
             </button>
-            <button
-              type="button"
-              onClick={() => handleJumpUserPrompt("next")}
-              className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
-              aria-label="Next user message"
-              title="Next user message"
-            >
-              <ChevronDownIcon className="size-5" />
-            </button>
+            {messages.some((m) => m.info.role === "user") && (
+              <button
+                type="button"
+                onClick={() => handleJumpUserPrompt("next")}
+                className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
+                aria-label="Next user message"
+                title="Next user message"
+              >
+                <ChevronDownIcon className="size-5" />
+              </button>
+            )}
             {/* Jump-to-bottom keeps its slot in the stack even when the
                 user is already at the bottom: visibility:hidden preserves
                 the layout box, so prev/next don't reflow downward as the
