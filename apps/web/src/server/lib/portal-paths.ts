@@ -27,12 +27,24 @@ import {
 import { homedir } from "os";
 import { join } from "path";
 
-const PORTAL_DIR = join(homedir(), ".openportal");
+// OPENPORTAL_DIR overrides the default ~/.openportal location so a dev
+// or sandbox openportal instance can run side-by-side with prod without
+// touching the same config/auth/gitignore files.
+const PORTAL_DIR =
+  process.env.OPENPORTAL_DIR && process.env.OPENPORTAL_DIR.length > 0
+    ? process.env.OPENPORTAL_DIR
+    : join(homedir(), ".openportal");
 const CONFIG_FILE = join(PORTAL_DIR, "openportal.json");
 const AUTH_FILE = join(PORTAL_DIR, "openportal-auth.json");
 const GITIGNORE_FILE = join(PORTAL_DIR, ".gitignore");
 
-const LEGACY_CONFIG_FILE = join(homedir(), ".openportal.json");
+// Legacy migration source. When OPENPORTAL_DIR is set we skip migration
+// entirely - a dev/sandbox instance must never inherit ~/.openportal.json
+// from prod.
+const LEGACY_CONFIG_FILE =
+  process.env.OPENPORTAL_DIR && process.env.OPENPORTAL_DIR.length > 0
+    ? null
+    : join(homedir(), ".openportal.json");
 
 const GITIGNORE_LINE = "openportal-auth.json";
 
@@ -72,7 +84,10 @@ function migrateLegacyConfig(): void {
   // The classic ~/.openportal.json (top-level dotfile) needs to move to
   // ~/.openportal/openportal.json. The fully-tested path is "the new
   // file doesn't exist yet AND the legacy one does"; in any other state
-  // we leave both alone and prefer the new file in the readers.
+  // we leave both alone and prefer the new file in the readers. When
+  // OPENPORTAL_DIR is set (dev/sandbox), LEGACY_CONFIG_FILE is null and
+  // migration is a no-op.
+  if (!LEGACY_CONFIG_FILE) return;
   if (!existsSync(LEGACY_CONFIG_FILE)) return;
   if (existsSync(CONFIG_FILE)) return;
   try {

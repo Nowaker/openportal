@@ -16,19 +16,25 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const CONFIG_PATH = join(homedir(), ".portal.json");
+// OPENPORTAL_DIR overrides the default ~/.openportal location so dev
+// or sandbox instances can run side-by-side with prod without sharing
+// the legacy instances file (~/.portal.json equivalent), the new
+// openportal.json config, or the auth file. When set, the legacy
+// ~/.openportal.json migration source is also disabled - a sandbox
+// must never inherit prod's legacy state.
+const OPENPORTAL_DIR_OVERRIDE =
+  process.env.OPENPORTAL_DIR && process.env.OPENPORTAL_DIR.length > 0
+    ? process.env.OPENPORTAL_DIR
+    : null;
+const OPENPORTAL_BASE_DIR = OPENPORTAL_DIR_OVERRIDE ?? join(homedir(), ".openportal");
+const CONFIG_PATH = OPENPORTAL_DIR_OVERRIDE
+  ? join(OPENPORTAL_DIR_OVERRIDE, ".portal.json")
+  : join(homedir(), ".portal.json");
 const CONFIG_LOCK_PATH = `${CONFIG_PATH}.lock`;
-// New canonical config path: ~/.openportal/openportal.json. The web
-// layer's portal-paths.ts does the migration from the legacy
-// ~/.openportal.json on boot. The CLI checks the new location first
-// and falls back to the legacy file for installs that haven't booted
-// the web layer yet.
-const OPENPORTAL_CONFIG_PATH = join(
-  homedir(),
-  ".openportal",
-  "openportal.json",
-);
-const OPENPORTAL_CONFIG_PATH_LEGACY = join(homedir(), ".openportal.json");
+const OPENPORTAL_CONFIG_PATH = join(OPENPORTAL_BASE_DIR, "openportal.json");
+const OPENPORTAL_CONFIG_PATH_LEGACY = OPENPORTAL_DIR_OVERRIDE
+  ? null
+  : join(homedir(), ".openportal.json");
 const DEFAULT_HOSTNAME = "0.0.0.0";
 const DEFAULT_PORT = 3000;
 const DEFAULT_OPENCODE_PORT = 4000;
@@ -256,7 +262,7 @@ function readOpenportalConfig(): OpenportalCliConfig {
   // performs the migration).
   const path = existsSync(OPENPORTAL_CONFIG_PATH)
     ? OPENPORTAL_CONFIG_PATH
-    : existsSync(OPENPORTAL_CONFIG_PATH_LEGACY)
+    : OPENPORTAL_CONFIG_PATH_LEGACY && existsSync(OPENPORTAL_CONFIG_PATH_LEGACY)
       ? OPENPORTAL_CONFIG_PATH_LEGACY
       : null;
   if (!path) return {};

@@ -2,7 +2,13 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-const STATE_FILE = join(homedir(), ".openportal-state.json");
+// OPENPORTAL_STATE_PATH overrides the default ~/.openportal-state.json
+// so dev/sandbox instances keep their lastViewed/pinnedSessions/settings
+// fully isolated from prod.
+const STATE_FILE =
+  process.env.OPENPORTAL_STATE_PATH && process.env.OPENPORTAL_STATE_PATH.length > 0
+    ? process.env.OPENPORTAL_STATE_PATH
+    : join(homedir(), ".openportal-state.json");
 
 interface PortalState {
   lastViewed?: Record<string, number>;
