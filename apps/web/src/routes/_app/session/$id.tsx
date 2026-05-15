@@ -111,6 +111,7 @@ import {
   useSessionStatus,
   useAgents,
   useProviders,
+  usePollMs,
 } from "@/hooks/use-opencode";
 import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
 import useMediaQuery from "@/hooks/use-media-query";
@@ -2601,12 +2602,13 @@ interface PendingPromptRow {
 }
 
 function PendingPromptsBanner({ sessionId }: { sessionId: string | null }) {
+  const pendingPromptsPollMs = usePollMs(2000);
   const { data } = useSWR<{ rows: PendingPromptRow[] }>(
     sessionId
       ? `/api/prompts/pending?session=${encodeURIComponent(sessionId)}`
       : null,
     (url: string) => fetch(url).then((r) => r.json()),
-    { refreshInterval: 2000, revalidateOnFocus: false },
+    { refreshInterval: pendingPromptsPollMs, revalidateOnFocus: false },
   );
   const rows = data?.rows ?? [];
   if (rows.length === 0) return null;
@@ -3254,14 +3256,18 @@ function SessionPage() {
   // approved state via opencode's SSE stream, but the reply itself is
   // not driven from here anymore.
 
+  const permissionsPollMs = usePollMs(2000);
   useEffect(() => {
     refreshPendingPermissions();
 
-    if (!port || !sessionId) return;
+    if (!port || !sessionId || permissionsPollMs === 0) return;
 
-    const interval = window.setInterval(refreshPendingPermissions, 2000);
+    const interval = window.setInterval(
+      refreshPendingPermissions,
+      permissionsPollMs,
+    );
     return () => window.clearInterval(interval);
-  }, [port, sessionId, refreshPendingPermissions]);
+  }, [port, sessionId, refreshPendingPermissions, permissionsPollMs]);
 
   const visibleMessageIds = useMemo(
     () => new Set(messages.map((m) => m.info.id)),

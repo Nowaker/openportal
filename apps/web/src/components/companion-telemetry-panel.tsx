@@ -6,6 +6,7 @@ import {
 } from "react-aria-components";
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
+import { usePollMs } from "@/hooks/use-opencode";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
@@ -212,15 +213,17 @@ function fmtAge(ms: number | null | undefined): string {
 
 export function CompanionTelemetryPanel() {
   const port = useInstanceStore((s) => s.instance?.port ?? null);
+  const statePollMs = usePollMs(5000);
+  const detectPollMs = usePollMs(15_000);
   const { data, isLoading, mutate } = useSWR<CompanionSummary>(
     port ? `/api/companion-plugin-state?port=${port}` : null,
     fetcher,
-    { refreshInterval: 5000 },
+    { refreshInterval: statePollMs },
   );
   const { data: detected } = useSWR<DetectedInstancesResponse>(
     "/api/companion-plugin/detect-instances",
     fetcher,
-    { refreshInterval: 15_000 },
+    { refreshInterval: detectPollMs },
   );
   const [installing, setInstalling] = useState<"install" | "install+restart" | null>(null);
   const [sudoPrompt, setSudoPrompt] = useState<SudoPromptState | null>(null);

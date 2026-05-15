@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
+import { usePollMs } from "@/hooks/use-opencode";
 import {
   ArrowPathIcon,
   CheckCircleIcon,
@@ -186,10 +187,11 @@ function ServersPage() {
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
   const setInstance = useInstanceStore((s) => s.setInstance);
   const { mutate: globalMutate } = useSWRConfig();
+  const serversPollMs = usePollMs(5000);
   const { data, error: loadError, isLoading, mutate } = useSWR<
     ServerListResponse
   >("/api/servers", fetcher, {
-    refreshInterval: 5000,
+    refreshInterval: serversPollMs,
     revalidateOnFocus: true,
   });
 

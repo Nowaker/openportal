@@ -1,4 +1,5 @@
 import useSWR, { useSWRConfig } from "swr";
+import { usePollMs } from "@/hooks/use-opencode";
 
 const KEY = "/api/state/last-viewed";
 
@@ -9,10 +10,11 @@ const fetcher = async (url: string) => {
 };
 
 export function useLastViewed() {
+  const pollMs = usePollMs(5000);
   return useSWR<Record<string, number>>(KEY, fetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
-    refreshInterval: 5000,
+    refreshInterval: pollMs,
     keepPreviousData: true,
   });
 }

@@ -1,4 +1,5 @@
 import useSWR, { useSWRConfig } from "swr";
+import { usePollMs } from "@/hooks/use-opencode";
 
 const KEY = "/api/state/pinned";
 
@@ -13,10 +14,11 @@ const fetcher = async (url: string) => {
 };
 
 export function usePinnedSessions() {
+  const pollMs = usePollMs(5000);
   return useSWR<PinnedResponse>(KEY, fetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
-    refreshInterval: 5000,
+    refreshInterval: pollMs,
     keepPreviousData: true,
   });
 }
