@@ -2495,6 +2495,46 @@ function SessionPage() {
     setSessionError(sessionId, hasError, errorMessageId);
   }, [sessionId, loading, messages, setSessionError]);
 
+  // Mirror opencode's per-turn variant back into the local thinking store.
+  // opencode copies user.model.variant onto AssistantMessage.variant at
+  // turn creation (packages/opencode/src/session/prompt.ts), so when an
+  // ultrawork-mode hook elevates the user message's variant to "max" the
+  // elevation surfaces here through the assistant echo. Without this sync
+  // the ThinkingSelect widget would keep showing the user's last manual
+  // pick while opencode is actually thinking at a different level.
+  //
+  // One sync per assistant message: tracked via a (sessionId, messageId)
+  // ref so SWR revalidation re-running the effect with the same array
+  // contents doesn't keep overwriting the user's between-turn manual
+  // selections.
+  const lastVariantSyncRef = useRef<{
+    sessionId: string;
+    messageId: string;
+  } | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    if (!sessionId) return;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.info.role !== "assistant") continue;
+      const completed = (m.info as { time?: { completed?: number } }).time
+        ?.completed;
+      if (!completed) return;
+      if (
+        lastVariantSyncRef.current?.sessionId === sessionId &&
+        lastVariantSyncRef.current?.messageId === m.info.id
+      ) {
+        return;
+      }
+      lastVariantSyncRef.current = { sessionId, messageId: m.info.id };
+      const variant = (m.info as { variant?: string }).variant;
+      if (typeof variant === "string") {
+        useThinkingStore.getState().setForSession(sessionId, variant);
+      }
+      return;
+    }
+  }, [sessionId, loading, messages]);
+
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   const { data: sessionStatusMap } = useSessionStatus();
   const serverThinks = sessionStatusMap?.[sessionId];
