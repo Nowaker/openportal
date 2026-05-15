@@ -1,16 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type AccentColor =
-  | "blue"
-  | "zinc"
-  | "red"
-  | "orange"
-  | "amber"
-  | "yellow"
-  | "lime"
-  | "green"
-  | "emerald";
+export type AccentColor = string;
 
 interface AccentState {
   accentColor: AccentColor;

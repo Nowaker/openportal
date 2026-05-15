@@ -46,7 +46,26 @@ function applyTheme(theme: Theme) {
 }
 
 function applyAccentColor(accentColor: AccentColor) {
-  document.documentElement.setAttribute("data-accent", accentColor);
+  if (accentColor.startsWith("#")) {
+    document.documentElement.setAttribute("data-accent", "custom");
+    document.documentElement.style.setProperty("--accent", accentColor);
+    // Simple luminance check for foreground color
+    const hex = accentColor.replace("#", "");
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    const fg = yiq >= 128 ? "#000000" : "#ffffff";
+    document.documentElement.style.setProperty("--accent-fg", fg);
+    document.documentElement.style.setProperty("--sidebar-accent", accentColor);
+    document.documentElement.style.setProperty("--sidebar-accent-fg", fg);
+  } else {
+    document.documentElement.setAttribute("data-accent", accentColor);
+    document.documentElement.style.removeProperty("--accent");
+    document.documentElement.style.removeProperty("--accent-fg");
+    document.documentElement.style.removeProperty("--sidebar-accent");
+    document.documentElement.style.removeProperty("--sidebar-accent-fg");
+  }
 }
 
 function applyFontFamily(fontFamily: FontFamily) {
