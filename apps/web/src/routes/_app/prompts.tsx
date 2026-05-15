@@ -56,6 +56,9 @@ interface PromptRow {
   variant: string | null;
   source: "prompt" | "command";
   attachments_count: number;
+  status?: "pending" | "delivered" | "failed" | "sent";
+  attempts?: number;
+  last_error?: string | null;
 }
 
 interface ListResponse {
@@ -475,6 +478,30 @@ function PromptRowItem({
         {row.source === "command" && (
           <span className="rounded bg-muted/40 px-1 py-0.5 text-[10px] uppercase">
             cmd
+          </span>
+        )}
+        {row.status === "pending" && (
+          <span
+            className="rounded bg-warning-subtle/60 px-1 py-0.5 text-[10px] uppercase tracking-wide text-warning-subtle-fg"
+            title={
+              row.attempts && row.attempts > 0
+                ? `Openportal has the prompt but hasn't yet delivered it to opencode. ${row.attempts} delivery attempt(s).${row.last_error ? "\nLast error: " + row.last_error : ""}`
+                : "Openportal has the prompt but hasn't yet delivered it to opencode."
+            }
+          >
+            Waiting for opencode
+          </span>
+        )}
+        {row.status === "failed" && (
+          <span
+            className="rounded bg-danger-subtle/60 px-1 py-0.5 text-[10px] uppercase tracking-wide text-danger-subtle-fg"
+            title={
+              row.last_error
+                ? `Delivery to opencode gave up after retries. ${row.last_error}`
+                : "Delivery to opencode gave up after retries."
+            }
+          >
+            Failed
           </span>
         )}
         {row.model_id && (
