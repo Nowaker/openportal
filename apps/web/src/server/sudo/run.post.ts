@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { z } from "zod/v4";
 import { defineHandler } from "nitro/h3";
-import { detectClient } from "../lib/client-detection";
 import { parseBody } from "../lib/validation";
+import { isUserLocallyPresent } from "../lib/presence-tracker";
 import { registerPendingSudo, type PendingResolution } from "../lib/sudo-pending";
 
 const bodySchema = z.object({
@@ -130,9 +130,15 @@ function runRemoteWithPassword(command: string, password: string): Promise<SudoR
 
 export default defineHandler(async (event) => {
   const body = await parseBody(event, bodySchema);
-  const client = detectClient(event);
 
-  if (client.isLocal) {
+  // Use the presence tracker, NOT detectClient on this request.
+  // The MCP sidecar calls /api/sudo/run from this host's loopback,
+  // so detectClient would always say "local" regardless of where the
+  // user actually is. The presence tracker captures the LAST browser
+  // request's IP across the whole openportal process; that is the
+  // signal of where the user's eyes are, and what determines whether
+  // a GUI askpass dialog or a web modal is the right channel.
+  if (isUserLocallyPresent()) {
     return runLocalGui(body.command);
   }
 
