@@ -1,4 +1,4 @@
-import { defineHandler, getQuery } from "nitro/h3";
+import { defineHandler, getQuery, setResponseHeader } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
 import { stashDataUrl, hasCachedThumb } from "../../../../lib/blob-cache";
@@ -10,25 +10,43 @@ import {
 import { parseOmoBlocks } from "../../../../../lib/omo-injection";
 import { putOmoBody } from "../../../../lib/omo-strip-cache";
 import { getDecisionsForMessage } from "../../../../lib/permission-audit";
+import { getToolOutputMaxBytes } from "../../../../lib/instance-settings-state";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
 
-// Cache + since-aware messages handler. Three request modes:
+// Cache + since-aware messages handler. Modes:
 //
-//   ?since=<msgId>   - return only messages strictly newer than msgId
-//                      (incremental polling). If msgId not in cached
-//                      list, force a fresh full fetch and try again; if
-//                      still not found, treat as stale-since and return
-//                      everything (client should reconcile).
-//   ?limit=N         - return last N messages, default 50, "all"/"0"
-//                      means no limit
-//   no params        - same as ?limit=50
+//   ?id=<msgId>           - single-element array containing just that
+//                           message; empty array if not found. Sets the
+//                           X-Target-Found / X-Target-Index /
+//                           X-Messages-Total response headers so the
+//                           permalink loader knows where it sits.
+//   ?before=<msgId>&limit - up to `limit` messages strictly BEFORE
+//                           msgId (chronological order). Same target
+//                           headers.
+//   ?after=<msgId>&limit  - up to `limit` messages strictly AFTER
+//                           msgId (chronological order). Same target
+//                           headers.
+//   ?since=<msgId>        - all messages strictly newer than msgId
+//                           (incremental polling). If msgId not in
+//                           cached list, force a fresh full fetch and
+//                           try again; if still not found, treat as
+//                           stale-since and return everything (client
+//                           should reconcile).
+//   ?limit=N              - return last N messages, default 50,
+//                           "all"/"0" means no limit
+//   no params             - same as ?limit=50
 //
+// The ?id / ?before / ?after triplet underpins permalink-mode loading
+// in the route ($id.tsx): client fires four parallel fetches (target,
+// 10 before, 10 after, latest 10) so the requested message renders
+// first with spinners above/below until the surrounding windows land.
 // Cache hit: serve from memory (TTL 2s). Miss: fetch full list from
 // opencode (no limit), strip + cache, then slice for the request shape.
-// Storing the full list under one cache key lets every variant of
-// limit/since share the same memory entry.
+// Storing the full list under one cache key lets every variant share
+// the same memory entry, so all four permalink fetches typically cost
+// one upstream round-trip.
 export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
@@ -39,10 +57,53 @@ export default defineHandler(async (event) => {
     typeof query.since === "string" && query.since.length > 0
       ? query.since
       : null;
+  const targetId =
+    typeof query.id === "string" && query.id.length > 0 ? query.id : null;
+  const beforeId =
+    typeof query.before === "string" && query.before.length > 0
+      ? query.before
+      : null;
+  const afterId =
+    typeof query.after === "string" && query.after.length > 0
+      ? query.after
+      : null;
 
   let full = getCachedMessages(id);
   if (full === null) {
     full = await fetchAndCache(port, id);
+  }
+
+  // Permalink-mode lookups all hinge on the index of a specific msgId.
+  // When the cached list misses (e.g. cache went stale while the user
+  // sat on a permalink in another tab), we force a refresh so the
+  // permalink page never lies about "not found" purely because of TTL.
+  const permalinkAnchor = targetId ?? beforeId ?? afterId;
+  if (permalinkAnchor !== null) {
+    let idx = indexOfMessageId(full, permalinkAnchor);
+    if (idx < 0) {
+      full = await fetchAndCache(port, id);
+      idx = indexOfMessageId(full, permalinkAnchor);
+    }
+    setResponseHeader(event, "X-Messages-Total", String(full.length));
+    setResponseHeader(event, "X-Target-Found", idx >= 0 ? "true" : "false");
+    if (idx >= 0) {
+      setResponseHeader(event, "X-Target-Index", String(idx));
+    }
+    if (targetId !== null) {
+      return idx >= 0 ? [full[idx]] : [];
+    }
+    if (beforeId !== null) {
+      if (idx < 0) return [];
+      const n = parsePositiveLimit(query.limit, 10);
+      const start = Math.max(0, idx - n);
+      return full.slice(start, idx);
+    }
+    if (afterId !== null) {
+      if (idx < 0) return [];
+      const n = parsePositiveLimit(query.limit, 10);
+      const end = Math.min(full.length, idx + 1 + n);
+      return full.slice(idx + 1, end);
+    }
   }
 
   if (since) {
@@ -57,6 +118,22 @@ export default defineHandler(async (event) => {
   if (limit === undefined) return full;
   return full.slice(-limit);
 });
+
+function indexOfMessageId(messages: unknown[], msgId: string): number {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i] as { info?: { id?: string } } | undefined;
+    if (m?.info?.id === msgId) return i;
+  }
+  return -1;
+}
+
+function parsePositiveLimit(raw: unknown, fallback: number): number {
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  if (raw === "all" || raw === "0") return MAX_LIMIT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(Math.floor(n), MAX_LIMIT);
+}
 
 async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
   const client = await getOpencodeClient(port);

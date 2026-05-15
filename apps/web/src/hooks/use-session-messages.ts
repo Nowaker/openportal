@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import type {
   FilePart,
@@ -54,6 +55,7 @@ function usePort() {
 export interface UseSessionMessagesOptions {
   loadAll?: boolean;
   limit?: number;
+  enabled?: boolean;
 }
 
 export function useSessionMessages(
@@ -61,8 +63,9 @@ export function useSessionMessages(
   options: UseSessionMessagesOptions = {},
 ) {
   const port = usePort();
+  const enabled = options.enabled !== false;
   const key =
-    port && sessionId
+    enabled && port && sessionId
       ? getMessagesKey(port, sessionId, options.loadAll, options.limit)
       : null;
 
@@ -188,4 +191,205 @@ export function removeOptimisticMessage(
     },
     { revalidate: false },
   );
+}
+
+// Permalink-mode window loader.
+//
+// Drives a 4-fetch journey for the URL-fragment permalink feature: when
+// the page lands with `#msg-<id>`, this hook fires four independent
+// requests in parallel against the extended /messages endpoint:
+//
+//   1. target  -> ?id=<msgId>                  (single message)
+//   2. before  -> ?before=<msgId>&limit=10     (10 messages before)
+//   3. after   -> ?after=<msgId>&limit=10      (10 messages after)
+//   4. latest  -> ?limit=10                    (10 most recent)
+//
+// Each fetch updates state independently so the UI can render the
+// target as soon as it lands and surface spinners on the still-pending
+// windows. The hook owns NO SWR cache key for the merged view - it's
+// a one-shot loader. Once everything settles, the route can choose to
+// transition into normal polling mode by clearing `enabled` and
+// letting useSessionMessages take over.
+export interface PermalinkWindowState {
+  messages: MessageWithParts[];
+  loading: {
+    target: boolean;
+    before: boolean;
+    after: boolean;
+    latest: boolean;
+  };
+  targetFound: boolean | null;
+  targetIndex: number | null;
+  totalCount: number | null;
+  error: string | null;
+}
+
+async function fetchWindow(
+  url: string,
+): Promise<{
+  messages: MessageWithParts[];
+  total: number | null;
+  targetIndex: number | null;
+  targetFound: boolean | null;
+}> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
+  }
+  const data = (await res.json()) as MessageWithParts[] | null;
+  const totalHdr = res.headers.get("X-Messages-Total");
+  const idxHdr = res.headers.get("X-Target-Index");
+  const foundHdr = res.headers.get("X-Target-Found");
+  const total = totalHdr !== null ? Number(totalHdr) : null;
+  const targetIndex = idxHdr !== null ? Number(idxHdr) : null;
+  const targetFound =
+    foundHdr === "true" ? true : foundHdr === "false" ? false : null;
+  return {
+    messages: data ?? [],
+    total: Number.isFinite(total) ? total : null,
+    targetIndex: Number.isFinite(targetIndex) ? targetIndex : null,
+    targetFound,
+  };
+}
+
+function mergeByIdSorted(
+  buckets: MessageWithParts[][],
+): MessageWithParts[] {
+  const seen = new Map<string, MessageWithParts>();
+  for (const bucket of buckets) {
+    for (const m of bucket) {
+      if (!seen.has(m.info.id)) seen.set(m.info.id, m);
+    }
+  }
+  const all = Array.from(seen.values());
+  all.sort((a, b) => {
+    const ta = a.info.time?.created ?? 0;
+    const tb = b.info.time?.created ?? 0;
+    if (ta !== tb) return ta - tb;
+    return a.info.id < b.info.id ? -1 : a.info.id > b.info.id ? 1 : 0;
+  });
+  return all;
+}
+
+export function useSessionMessagesAround(
+  sessionId: string | undefined,
+  targetMessageId: string | null,
+  options: { windowSize?: number; latestSize?: number; enabled?: boolean } = {},
+): PermalinkWindowState {
+  const port = usePort();
+  const windowSize = options.windowSize ?? 10;
+  const latestSize = options.latestSize ?? 10;
+  const enabled = options.enabled !== false;
+
+  const [target, setTarget] = useState<MessageWithParts[]>([]);
+  const [before, setBefore] = useState<MessageWithParts[]>([]);
+  const [after, setAfter] = useState<MessageWithParts[]>([]);
+  const [latest, setLatest] = useState<MessageWithParts[]>([]);
+  const [loading, setLoading] = useState({
+    target: false,
+    before: false,
+    after: false,
+    latest: false,
+  });
+  const [targetIndex, setTargetIndex] = useState<number | null>(null);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [targetFound, setTargetFound] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const baseUrl = useMemo(() => {
+    if (!port || !sessionId) return null;
+    return `/api/opencode/${port}/session/${sessionId}/messages`;
+  }, [port, sessionId]);
+
+  const cancelTokenRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (!baseUrl) return;
+    if (!targetMessageId) return;
+    cancelTokenRef.current += 1;
+    const myToken = cancelTokenRef.current;
+    setTarget([]);
+    setBefore([]);
+    setAfter([]);
+    setLatest([]);
+    setTargetIndex(null);
+    setTotalCount(null);
+    setTargetFound(null);
+    setError(null);
+    setLoading({
+      target: true,
+      before: true,
+      after: true,
+      latest: true,
+    });
+
+    const enc = encodeURIComponent(targetMessageId);
+    const tasks: Array<() => Promise<void>> = [
+      async () => {
+        const r = await fetchWindow(`${baseUrl}?id=${enc}`);
+        if (myToken !== cancelTokenRef.current) return;
+        setTarget(r.messages);
+        if (r.targetIndex !== null) setTargetIndex(r.targetIndex);
+        if (r.total !== null) setTotalCount(r.total);
+        if (r.targetFound !== null) setTargetFound(r.targetFound);
+        setLoading((s) => ({ ...s, target: false }));
+      },
+      async () => {
+        const r = await fetchWindow(
+          `${baseUrl}?before=${enc}&limit=${windowSize}`,
+        );
+        if (myToken !== cancelTokenRef.current) return;
+        setBefore(r.messages);
+        if (r.targetIndex !== null) setTargetIndex(r.targetIndex);
+        if (r.total !== null) setTotalCount(r.total);
+        setLoading((s) => ({ ...s, before: false }));
+      },
+      async () => {
+        const r = await fetchWindow(
+          `${baseUrl}?after=${enc}&limit=${windowSize}`,
+        );
+        if (myToken !== cancelTokenRef.current) return;
+        setAfter(r.messages);
+        if (r.targetIndex !== null) setTargetIndex(r.targetIndex);
+        if (r.total !== null) setTotalCount(r.total);
+        setLoading((s) => ({ ...s, after: false }));
+      },
+      async () => {
+        const r = await fetchWindow(`${baseUrl}?limit=${latestSize}`);
+        if (myToken !== cancelTokenRef.current) return;
+        setLatest(r.messages);
+        setLoading((s) => ({ ...s, latest: false }));
+      },
+    ];
+
+    void Promise.allSettled(
+      tasks.map(async (t) => {
+        try {
+          await t();
+        } catch (err) {
+          if (myToken !== cancelTokenRef.current) return;
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      }),
+    );
+
+    return () => {
+      cancelTokenRef.current += 1;
+    };
+  }, [enabled, baseUrl, targetMessageId, windowSize, latestSize]);
+
+  const messages = useMemo(
+    () => mergeByIdSorted([before, target, after, latest]),
+    [before, target, after, latest],
+  );
+
+  return {
+    messages,
+    loading,
+    targetFound,
+    targetIndex,
+    totalCount,
+    error,
+  };
 }

@@ -94,6 +94,7 @@ import { usePullState } from "@/hooks/use-pull-to-refresh";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useSessionMessages,
+  useSessionMessagesAround,
   addOptimisticMessage,
   mutateSessionMessages,
   type MessageWithParts,
@@ -142,6 +143,19 @@ export interface PromptAttachment {
 // the server raises its limit, this only affects when the "Load earlier
 // messages" button stops appearing on otherwise-fully-loaded sessions.
 const INITIAL_MESSAGE_LIMIT = 50;
+
+function readPermalinkFromHash(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.location.hash;
+  if (!raw || !raw.startsWith("#msg-")) return null;
+  const id = raw.slice(5);
+  if (!id) return null;
+  try {
+    return decodeURIComponent(id);
+  } catch {
+    return id;
+  }
+}
 
 type PermissionReply = "once" | "always" | "reject";
 
@@ -1871,6 +1885,96 @@ function MessageMarkdown({
   );
 }
 
+// Top-of-list status bar shown in permalink mode. Surfaces the journey:
+// which buckets are still loading (target / before / after / latest),
+// whether the target was found, the target's position in the full
+// session, and an explicit exit affordance so the user can switch back
+// to the normal "load last 50 + live polling" view.
+function PermalinkLoaderBar({
+  target,
+  loading,
+  targetFound,
+  totalCount,
+  targetIndex,
+  error,
+  onExit,
+}: {
+  target: string | null;
+  loading: {
+    target: boolean;
+    before: boolean;
+    after: boolean;
+    latest: boolean;
+  };
+  targetFound: boolean | null;
+  totalCount: number | null;
+  targetIndex: number | null;
+  error: string | null;
+  onExit: () => void;
+}) {
+  const anyLoading =
+    loading.target || loading.before || loading.after || loading.latest;
+  const targetShort = target ? target.slice(0, 16) + (target.length > 16 ? "..." : "") : "";
+
+  return (
+    <div className="border-b border-border bg-muted/20 px-3 py-2 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 text-xs text-muted-fg">
+          {anyLoading && <Loader className="size-4" />}
+          <span>
+            Permalink view{" "}
+            <span className="font-mono">{targetShort}</span>
+            {targetFound === true && targetIndex !== null && totalCount !== null
+              ? ` (message ${targetIndex + 1} of ${totalCount})`
+              : ""}
+            {targetFound === false ? " - not found in session history" : ""}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onExit}
+          title="Clear the permalink and resume live polling"
+          className="rounded-md border border-border bg-bg px-2 py-0.5 text-[11px] text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+        >
+          Resume live view
+        </button>
+      </div>
+      {anyLoading && (
+        <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-fg/80">
+          <PermalinkPhasePill label="target" active={loading.target} />
+          <PermalinkPhasePill label="before" active={loading.before} />
+          <PermalinkPhasePill label="after" active={loading.after} />
+          <PermalinkPhasePill label="latest" active={loading.latest} />
+        </div>
+      )}
+      {error && (
+        <div className="text-[11px] text-danger">Error: {error}</div>
+      )}
+    </div>
+  );
+}
+
+function PermalinkPhasePill({
+  label,
+  active,
+}: {
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
+        active
+          ? "bg-warning/20 text-warning-fg"
+          : "bg-muted/40 text-muted-fg/60"
+      }`}
+    >
+      {active ? "..." : ""}
+      {label}
+    </span>
+  );
+}
+
 function ErrorAcknowledgeControl({
   sessionId,
   messageId,
@@ -2481,14 +2585,57 @@ function SessionPage() {
     scrollHeight: number;
   } | null>(null);
   const [onlyUserMessages, setOnlyUserMessages] = useState(false);
-  const {
-    messages,
-    isLoading: loading,
-    error: messagesError,
-  } = useSessionMessages(sessionId, {
+
+  // Permalink mode: when the URL carries `#msg-<id>` on mount (or via
+  // back/forward / hashchange), switch from the normal "load last 50,
+  // stick to bottom" path into a windowed loader that fetches the
+  // target message first plus 10 before / 10 after / 10 latest in
+  // parallel. Cleared by clicking "Resume live view" (clears the hash
+  // + lets useSessionMessages take over) or by sending a new message.
+  const [permalinkTarget, setPermalinkTarget] = useState<string | null>(
+    () => readPermalinkFromHash(),
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHash = () => setPermalinkTarget(readPermalinkFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  useEffect(() => {
+    setPermalinkTarget(readPermalinkFromHash());
+  }, [sessionId]);
+
+  const permalinkMode = permalinkTarget !== null;
+
+  const normal = useSessionMessages(sessionId, {
     loadAll: loadAllMessages,
     limit: messageLimit,
+    enabled: !permalinkMode,
   });
+  const permalinkWindow = useSessionMessagesAround(
+    sessionId,
+    permalinkTarget,
+    { enabled: permalinkMode },
+  );
+
+  const messages: MessageWithParts[] = permalinkMode
+    ? permalinkWindow.messages
+    : normal.messages;
+  const loading: boolean = permalinkMode
+    ? permalinkWindow.loading.target ||
+      permalinkWindow.loading.before ||
+      permalinkWindow.loading.after ||
+      permalinkWindow.loading.latest
+    : normal.isLoading;
+  const messagesError = permalinkMode ? permalinkWindow.error : normal.error;
+
+  const exitPermalinkMode = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.hash = "";
+    window.history.replaceState(null, "", url.toString());
+    setPermalinkTarget(null);
+  }, []);
 
   const todoSnapshot = useMemo(
     () => extractLatestTodos(messages),
@@ -3151,6 +3298,7 @@ function SessionPage() {
   }, [scrollToBottom]);
 
   useEffect(() => {
+    if (permalinkMode) return;
     if (!hasScrolledInitially && !loading && messages.length > 0) {
       setTimeout(() => {
         scrollToBottom();
@@ -3159,13 +3307,49 @@ function SessionPage() {
         setShowJumpToBottom(false);
       }, 100);
     }
-  }, [hasScrolledInitially, loading, messages.length, scrollToBottom]);
+  }, [permalinkMode, hasScrolledInitially, loading, messages.length, scrollToBottom]);
 
   useEffect(() => {
     setHasScrolledInitially(false);
     isStuckToBottomRef.current = true;
     setShowJumpToBottom(false);
   }, [sessionId]);
+
+  // In permalink mode, the target message wins the initial scroll - NOT
+  // the bottom of the chat. The target lands as soon as the ?id=<msgId>
+  // request resolves (typically before the surrounding windows); we
+  // scroll to its DOM node via the existing id="msg-<id>" anchor.
+  // useLayoutEffect runs before paint, so the user never sees a flash
+  // of "scrolled-to-bottom" before the target scroll. We also detach
+  // the stick-to-bottom magnet by setting isStuckToBottomRef=false, so
+  // the rest of the auto-scroll machinery (ResizeObserver,
+  // MutationObserver) won't fight the target scroll as the before /
+  // after / latest windows fill in.
+  const permalinkScrolledRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!permalinkMode) {
+      permalinkScrolledRef.current = null;
+      return;
+    }
+    if (!permalinkTarget) return;
+    if (permalinkScrolledRef.current === permalinkTarget) return;
+    const node = document.getElementById(`msg-${permalinkTarget}`);
+    if (!node) return;
+    permalinkScrolledRef.current = permalinkTarget;
+    isStuckToBottomRef.current = false;
+    setShowJumpToBottom(true);
+    const container = chatContainerRef.current;
+    if (!container) {
+      node.scrollIntoView({ block: "center" });
+      return;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const targetTop =
+      node.getBoundingClientRect().top -
+      containerRect.top +
+      container.scrollTop;
+    container.scrollTop = Math.max(0, targetTop - containerRect.height / 3);
+  }, [permalinkMode, permalinkTarget, messages.length]);
 
   const handleJumpToBottom = useCallback(() => {
     scrollToBottom();
@@ -3635,6 +3819,9 @@ function SessionPage() {
         },
       ],
     };
+    if (permalinkMode) {
+      exitPermalinkMode();
+    }
     addOptimisticMessage(port, sessionId, optimisticMessage);
     isStuckToBottomRef.current = true;
     setShowJumpToBottom(false);
@@ -3996,34 +4183,53 @@ function SessionPage() {
         )}
 
         <div ref={messagesListRef}>
+          {permalinkMode && (
+            <PermalinkLoaderBar
+              target={permalinkTarget}
+              loading={permalinkWindow.loading}
+              targetFound={permalinkWindow.targetFound}
+              totalCount={permalinkWindow.totalCount}
+              targetIndex={permalinkWindow.targetIndex}
+              error={permalinkWindow.error}
+              onExit={exitPermalinkMode}
+            />
+          )}
           {!loading && !error && (
             <>
-              {!loadAllMessages && messages.length >= messageLimit && (
-                <div className="px-3 py-3 flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const container = chatContainerRef.current;
-                      if (container) {
-                        loadMoreScrollAnchorRef.current = {
-                          scrollTop: container.scrollTop,
-                          scrollHeight: container.scrollHeight,
-                        };
-                      }
-                      setMessageLimit((n) => n + INITIAL_MESSAGE_LIMIT);
-                    }}
-                    className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
-                  >
-                    Load {INITIAL_MESSAGE_LIMIT} more
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLoadAllMessages(true)}
-                    title="Loading the entire history can take long on big sessions"
-                    className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
-                  >
-                    Load all (slow)
-                  </button>
+              {!permalinkMode &&
+                !loadAllMessages &&
+                messages.length >= messageLimit && (
+                  <div className="px-3 py-3 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const container = chatContainerRef.current;
+                        if (container) {
+                          loadMoreScrollAnchorRef.current = {
+                            scrollTop: container.scrollTop,
+                            scrollHeight: container.scrollHeight,
+                          };
+                        }
+                        setMessageLimit((n) => n + INITIAL_MESSAGE_LIMIT);
+                      }}
+                      className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                    >
+                      Load {INITIAL_MESSAGE_LIMIT} more
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLoadAllMessages(true)}
+                      title="Loading the entire history can take long on big sessions"
+                      className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors"
+                    >
+                      Load all (slow)
+                    </button>
+                  </div>
+                )}
+              {permalinkMode && permalinkWindow.loading.before && (
+                <div className="px-3 py-2 flex items-center justify-center gap-2 text-xs text-muted-fg">
+                  <Loader className="size-4" />
+                  <span>Loading messages before target...</span>
                 </div>
               )}
               {todoSnapshot && (
@@ -4034,6 +4240,18 @@ function SessionPage() {
             </>
           )}
           {messageNodes}
+          {permalinkMode && permalinkWindow.loading.after && (
+            <div className="px-3 py-2 flex items-center justify-center gap-2 text-xs text-muted-fg">
+              <Loader className="size-4" />
+              <span>Loading messages after target...</span>
+            </div>
+          )}
+          {permalinkMode && permalinkWindow.loading.latest && (
+            <div className="px-3 py-2 flex items-center justify-center gap-2 text-xs text-muted-fg">
+              <Loader className="size-4" />
+              <span>Loading latest messages...</span>
+            </div>
+          )}
           {unlinkedPermissions.length > 0 && (
             <div className="px-3 py-4 space-y-2 border-t border-dashed border-border">
               {unlinkedPermissions.map((permission) => (
