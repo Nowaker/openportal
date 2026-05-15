@@ -55,6 +55,13 @@ import {
   type ChatLinkBehavior,
 } from "@/stores/chat-link-store";
 import {
+  useChatDisplayStore,
+  ALL_ICONS,
+  ICON_LABELS,
+  type ChatIconId,
+  type ChatPlatform,
+} from "@/stores/chat-display-store";
+import {
   useInstanceSettings,
   setToolOutputMaxBytes,
 } from "@/stores/instance-settings-store";
@@ -243,6 +250,69 @@ function ChatLinkBehaviorSetting() {
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function ChatIconVisibilityGrid() {
+  const iconVisibility = useChatDisplayStore((s) => s.iconVisibility);
+  const setIconVisibility = useChatDisplayStore((s) => s.setIconVisibility);
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto">
+        <table className="text-xs">
+          <thead>
+            <tr className="text-muted-fg">
+              <th className="pr-3 pb-1 text-left font-medium">Icon</th>
+              <th className="px-3 pb-1 text-center font-medium">Desktop</th>
+              <th className="px-3 pb-1 text-center font-medium">Mobile</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ALL_ICONS.map((icon) => (
+              <tr key={icon} className="border-t border-border/40">
+                <td className="pr-3 py-1.5 text-fg">{ICON_LABELS[icon]}</td>
+                {(["desktop", "mobile"] as ChatPlatform[]).map((platform) => (
+                  <td
+                    key={platform}
+                    className="px-3 py-1.5 text-center align-middle"
+                  >
+                    <Checkbox
+                      isSelected={iconVisibility[platform][icon]}
+                      onChange={(v) => setIconVisibility(platform, icon, v)}
+                      aria-label={`${ICON_LABELS[icon]} on ${platform}`}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function HoverInfoSetting() {
+  const enabled = useChatDisplayStore((s) => s.hoverInfoEnabled);
+  const setEnabled = useChatDisplayStore((s) => s.setHoverInfoEnabled);
+
+  return (
+    <Checkbox isSelected={enabled} onChange={setEnabled}>
+      Show mode, model, and thinking effort on message hover (desktop)
+    </Checkbox>
+  );
+}
+
+function ShowInfoIconSetting() {
+  const showInfoIcon = useChatDisplayStore((s) => s.showInfoIcon);
+  const setShowInfoIcon = useChatDisplayStore((s) => s.setShowInfoIcon);
+
+  return (
+    <Checkbox isSelected={showInfoIcon} onChange={setShowInfoIcon}>
+      Show separate (i) info icon (full metadata modal) alongside the
+      expand icon (inline expansion)
+    </Checkbox>
   );
 }
 
@@ -1422,6 +1492,43 @@ function SettingsPage() {
                 </p>
               </div>
               <ChatLinkBehaviorSetting />
+            </section>
+
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">Per-icon visibility</h3>
+                <p className="text-xs text-muted-fg">
+                  Hide individual chat row icons on the platforms where they
+                  feel cluttered. Wire-up against MessageBubble + ToolCallItem
+                  pending - the store ships first so preferences survive the
+                  next build cycle.
+                </p>
+              </div>
+              <ChatIconVisibilityGrid />
+            </section>
+
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Hover info</h3>
+                <p className="text-xs text-muted-fg">
+                  On desktop, hovering a message reveals the mode, model, and
+                  thinking-effort the assistant used. Disable to keep the row
+                  perfectly stable on mouse-over.
+                </p>
+              </div>
+              <HoverInfoSetting />
+            </section>
+
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Info icon</h3>
+                <p className="text-xs text-muted-fg">
+                  The expand icon stays inline-expand-only. Turning this on
+                  adds a separate (i) icon that opens a modal with the full
+                  opencode message metadata (id, parts, raw event payload).
+                </p>
+              </div>
+              <ShowInfoIconSetting />
             </section>
 
             <section>
