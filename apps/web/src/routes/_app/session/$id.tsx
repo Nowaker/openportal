@@ -1182,6 +1182,7 @@ const ToolCallItem = memo(function ToolCallItem({
   isAssistantBusy,
   onAbort,
   messageTime,
+  messageId,
 }: {
   part: ToolPart;
   port: number;
@@ -1189,6 +1190,7 @@ const ToolCallItem = memo(function ToolCallItem({
   isAssistantBusy: boolean;
   onAbort: () => void;
   messageTime?: number;
+  messageId: string;
 }) {
   const { icon, label, details } = formatToolCall(part);
   const isQuestionTool = (part.tool || "").toLowerCase() === "question";
@@ -1247,12 +1249,12 @@ const ToolCallItem = memo(function ToolCallItem({
           {details && <span className="opacity-60 shrink-0">{details}</span>}
           {isPending && <span className="animate-pulse shrink-0">...</span>}
           {toolTimestamp && (
-            <span
+            <MessagePermalinkTimestamp
+              messageId={messageId}
+              display={toolTimestamp}
+              titleAt={toolTitleAt}
               className="hidden sm:inline ml-auto pl-2 shrink-0 text-[10px] text-muted-fg/70 tabular-nums"
-              title={toolTitleAt}
-            >
-              {toolTimestamp}
-            </span>
+            />
           )}
         </div>
 
@@ -1310,12 +1312,12 @@ const ToolCallItem = memo(function ToolCallItem({
           <ArrowsPointingInIcon className="size-3" />
         </button>
         {toolTimestamp && (
-          <span
+          <MessagePermalinkTimestamp
+            messageId={messageId}
+            display={toolTimestamp}
+            titleAt={toolTitleAt}
             className="hidden sm:inline shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums pl-1.5"
-            title={toolTitleAt}
-          >
-            {toolTimestamp}
-          </span>
+          />
         )}
       </div>
     );
@@ -1355,14 +1357,14 @@ const ToolCallItem = memo(function ToolCallItem({
         </button>
       )}
       {toolTimestamp && (
-        <span
+        <MessagePermalinkTimestamp
+          messageId={messageId}
+          display={toolTimestamp}
+          titleAt={toolTitleAt}
           className={`hidden sm:inline shrink-0 text-[10px] text-muted-fg/70 font-sans tabular-nums ${
             canExpand || canInlineExpand ? "pl-1.5" : "ml-auto pl-2"
           }`}
-          title={toolTitleAt}
-        >
-          {toolTimestamp}
-        </span>
+        />
       )}
       {canExpand && showInputModal && (
         <ToolInputModal
@@ -1687,6 +1689,69 @@ function CopyMarkdownButton({ text }: { text: string }) {
   );
 }
 
+// Per-message timestamp rendered as a permalink anchor. Click does two
+// things in one gesture (mirroring the user's spec: "copy + open in new
+// tab"):
+//   1. writeText() the absolute URL to the clipboard.
+//   2. window.open() the same URL in a new tab.
+// Both run from the same synchronous click handler so the popup blocker
+// still trusts the gesture. preventDefault() stops the default <a>
+// navigation in the current tab (which would scroll the current view
+// elsewhere and lose state). Right-click "Open in new tab" still works
+// natively because the href is a real URL.
+//
+// The href shape is always <current-pathname>#msg-<messageId>. The
+// route reads the hash in SessionPage and switches into permalink mode
+// (see useSessionMessagesAround in use-session-messages.ts).
+function MessagePermalinkTimestamp({
+  messageId,
+  display,
+  titleAt,
+  className,
+}: {
+  messageId: string;
+  display: string;
+  titleAt: string;
+  className: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    const hash = `#msg-${encodeURIComponent(messageId)}`;
+    let absolute = hash;
+    let openTarget = hash;
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.hash = hash;
+      absolute = url.toString();
+      openTarget = absolute;
+    }
+    void copyTextToClipboard(absolute).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+    if (typeof window !== "undefined") {
+      window.open(openTarget, "_blank", "noopener,noreferrer");
+    }
+  };
+  const titleSuffix = copied
+    ? " - link copied!"
+    : " - click to copy permalink and open in new tab";
+  return (
+    <a
+      href={`#msg-${encodeURIComponent(messageId)}`}
+      onClick={handleClick}
+      title={`${titleAt}${titleSuffix}`}
+      aria-label="Copy permalink to this message"
+      className={`${className} cursor-pointer hover:text-fg hover:underline decoration-dotted underline-offset-2 transition-colors`}
+    >
+      {copied ? "copied!" : display}
+    </a>
+  );
+}
+
 interface HastNode {
   type?: string;
   value?: string;
@@ -1917,6 +1982,7 @@ const MessageItem = memo(function MessageItem({
       }`}
       data-role={message.info.role}
       data-message-id={message.info.id}
+      id={`msg-${message.info.id}`}
     >
       {hasHeaderRow && (
         <div className="relative">
@@ -2002,12 +2068,12 @@ const MessageItem = memo(function MessageItem({
             </button>
             {textContent && <CopyMarkdownButton text={textContent} />}
             {messageTimestamp && (
-              <span
+              <MessagePermalinkTimestamp
+                messageId={message.info.id}
+                display={messageTimestamp}
+                titleAt={messageTitleAt}
                 className="font-mono tabular-nums whitespace-nowrap"
-                title={messageTitleAt}
-              >
-                {messageTimestamp}
-              </span>
+              />
             )}
           </div>
         </div>
@@ -2023,6 +2089,7 @@ const MessageItem = memo(function MessageItem({
               isAssistantBusy={isAssistantBusy}
               onAbort={onAbort}
               messageTime={message.info.time?.created}
+              messageId={message.info.id}
             />
           ))}
         </div>
