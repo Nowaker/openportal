@@ -15,18 +15,20 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+interface AssistantTokens {
+  total?: number;
+  input?: number;
+  output?: number;
+  reasoning?: number;
+  cache?: { read?: number; write?: number };
+}
+
 interface AssistantMessageInfo {
   id?: string;
   cost?: number;
   modelID?: string;
   providerID?: string;
-  tokens?: {
-    total?: number;
-    input?: number;
-    output?: number;
-    reasoning?: number;
-    cache?: { read?: number; write?: number };
-  };
+  tokens?: AssistantTokens;
   time?: { created?: number; completed?: number };
   finish?: string;
 }
@@ -218,7 +220,7 @@ function Body({
   const stats = useMemo(() => {
     let userCount = 0;
     let assistantCount = 0;
-    let totalCost = 0;
+    let totalCost: number | undefined = undefined;
     let lastAssistant: AssistantMessageInfo | null = null;
     let systemChars = 0;
     let userChars = 0;
@@ -236,7 +238,9 @@ function Body({
       } else if (role === "assistant") {
         assistantCount += 1;
         const a = m.info as AssistantMessageInfo;
-        if (typeof a.cost === "number") totalCost += a.cost;
+        if (typeof a.cost === "number") {
+          totalCost = (totalCost ?? 0) + a.cost;
+        }
         if (typeof m.info.system === "string") {
           systemChars += m.info.system.length;
         }
@@ -245,18 +249,32 @@ function Body({
           assistantChars += c.assistant;
           toolChars += c.tool;
         }
-        lastAssistant = a;
+        if (a.time?.completed) {
+          lastAssistant = a;
+        }
       }
     }
     // Per opencode: token totals come from the LAST assistant message,
     // not summed across the whole session. cost IS summed across all.
-    const inputSum = lastAssistant?.tokens?.input ?? 0;
-    const outputSum = lastAssistant?.tokens?.output ?? 0;
-    const reasoningSum = lastAssistant?.tokens?.reasoning ?? 0;
-    const cacheReadSum = lastAssistant?.tokens?.cache?.read ?? 0;
-    const cacheWriteSum = lastAssistant?.tokens?.cache?.write ?? 0;
+    // Leave undefined when opencode did not report a value so fmt()
+    // renders "—" instead of a misleading 0. The Field row distinguishes
+    // "we don't know" from "actually zero" for the operator.
+    const inputSum = lastAssistant?.tokens?.input;
+    const outputSum = lastAssistant?.tokens?.output;
+    const reasoningSum = lastAssistant?.tokens?.reasoning;
+    const cacheReadSum = lastAssistant?.tokens?.cache?.read;
+    const cacheWriteSum = lastAssistant?.tokens?.cache?.write;
+    const knownTokens = [
+      inputSum,
+      outputSum,
+      reasoningSum,
+      cacheReadSum,
+      cacheWriteSum,
+    ].filter((n): n is number => typeof n === "number");
     const totalTokens =
-      inputSum + outputSum + reasoningSum + cacheReadSum + cacheWriteSum;
+      knownTokens.length === 0
+        ? undefined
+        : knownTokens.reduce((sum, n) => sum + n, 0);
     return {
       messages: list.length,
       userCount,
@@ -390,7 +408,8 @@ function Body({
         )}
         {!isLoading && (
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-          <Field label="Session" value={session?.title ?? "—"} />
+          <Field label="Title" value={session?.title ?? "—"} />
+          <Field label="Session ID" value={sessionId} />
           <Field label="Messages" value={fmt(stats.messages)} />
           <Field label="Provider" value={modelInfo?.providerName ?? "—"} />
           <Field label="Model" value={modelInfo?.modelName ?? "—"} />
