@@ -82,6 +82,23 @@ function buildListUrl(q: string, cursor: number | null): string {
   return `/api/prompts?${params.toString()}`;
 }
 
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const idx = lower.indexOf(q);
+  if (idx < 0) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-amber-300/40 text-fg rounded-sm px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 function basename(path: string): string {
   const t = path.replace(/\/+$/g, "");
   const last = t.split("/").pop();
@@ -184,10 +201,15 @@ function PromptsPage() {
         {!isLoading && !error && rows.length > 0 && (
           <>
             {view === "flat" ? (
-              <FlatList rows={rows} onRefire={setRefireTargetId} />
+              <FlatList
+                rows={rows}
+                query={q}
+                onRefire={setRefireTargetId}
+              />
             ) : (
               <TreeView
                 rows={rows}
+                query={q}
                 focusSessionId={search.focus}
                 searchActive={q.trim().length > 0}
                 onRefire={setRefireTargetId}
@@ -213,9 +235,11 @@ function PromptsPage() {
 
 function FlatList({
   rows,
+  query,
   onRefire,
 }: {
   rows: PromptRow[];
+  query: string;
   onRefire: (id: string) => void;
 }) {
   return (
@@ -224,6 +248,7 @@ function FlatList({
         <li key={row.id} className="py-2">
           <PromptRowItem
             row={row}
+            query={query}
             onRefire={() => onRefire(row.id)}
           />
         </li>
@@ -267,11 +292,13 @@ function buildTree(rows: PromptRow[]): TreeGroup[] {
 
 function TreeView({
   rows,
+  query,
   focusSessionId,
   searchActive,
   onRefire,
 }: {
   rows: PromptRow[];
+  query: string;
   focusSessionId: string | undefined;
   searchActive: boolean;
   onRefire: (id: string) => void;
@@ -409,6 +436,7 @@ function TreeView({
                             <li key={row.id} className="py-2">
                               <PromptRowItem
                                 row={row}
+                                query={query}
                                 onRefire={() => onRefire(row.id)}
                                 compact
                               />
@@ -430,10 +458,12 @@ function TreeView({
 
 function PromptRowItem({
   row,
+  query,
   onRefire,
   compact,
 }: {
   row: PromptRow;
+  query: string;
   onRefire: () => void;
   compact?: boolean;
 }) {
@@ -511,7 +541,7 @@ function PromptRowItem({
         )}
       </div>
       <div className="whitespace-pre-wrap break-words text-sm">
-        {row.raw_text}
+        {highlightMatch(row.raw_text, query.trim())}
       </div>
       <div className="flex items-center gap-1 pt-1">
         <button
