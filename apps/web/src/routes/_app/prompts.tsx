@@ -23,10 +23,11 @@ import { PageTitle } from "@/components/ui/typography";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { toast } from "@/components/ui/toast";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
+import { useDateFormatStore } from "@/stores/date-format-store";
 import { useSessions } from "@/hooks/use-opencode";
 import {
   formatAbsoluteAndRelative,
-  formatRelativeTime,
+  formatMessageTime,
 } from "@/lib/format-time";
 import { useInstanceStore } from "@/stores/instance-store";
 
@@ -437,12 +438,24 @@ function PromptRowItem({
   compact?: boolean;
 }) {
   const navigate = useNavigate();
+  const dateFormat = useDateFormatStore((s) => s.format);
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-fg">
-        <span title={formatAbsoluteAndRelative(row.ts_ms)}>
-          {formatRelativeTime(row.ts_ms)}
-        </span>
+        <button
+          type="button"
+          onClick={() =>
+            void navigate({
+              to: "/session/$id",
+              params: { id: row.session_id },
+              search: (prev) => prev,
+            })
+          }
+          title={formatAbsoluteAndRelative(row.ts_ms)}
+          className="tabular-nums whitespace-nowrap hover:text-fg hover:underline"
+        >
+          {formatMessageTime(row.ts_ms, dateFormat)}
+        </button>
         {!compact && (
           <>
             <span className="text-muted-fg/60">·</span>
