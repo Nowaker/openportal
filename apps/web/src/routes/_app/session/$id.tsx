@@ -49,6 +49,7 @@ import IconSquareFeather from "@/components/icons/feather-icon";
 import SendIcon from "@/components/icons/send-icon";
 import {
   DocumentIcon,
+  InformationCircleIcon,
   PaperClipIcon,
   PhotoIcon,
   ClipboardDocumentIcon,
@@ -78,6 +79,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { StarMessageButton } from "@/components/star-message-button";
+import { useChatDisplayStore } from "@/stores/chat-display-store";
 import {
   useAutoApproveConfig,
   isEffectivelyEnabled,
@@ -2175,6 +2177,7 @@ const MessageItem = memo(function MessageItem({
   const isAssistant = message.info.role === "assistant";
   const pendingMeta = message.info._pending ?? null;
   const isPending = pendingMeta !== null;
+  const showInfoIcon = useChatDisplayStore((s) => s.showInfoIcon);
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
   const omoBlocks = useMemo(
@@ -2329,6 +2332,31 @@ const MessageItem = memo(function MessageItem({
               </>
             )}
             {textContent && <CopyMarkdownButton text={textContent} />}
+            {showInfoIcon && !isPending && (
+              <button
+                type="button"
+                onClick={() => {
+                  const json = JSON.stringify(
+                    { info: message.info, parts: message.parts },
+                    null,
+                    2,
+                  );
+                  void navigator.clipboard
+                    .writeText(json)
+                    .then(() =>
+                      toast.success("Message metadata copied to clipboard"),
+                    )
+                    .catch(() =>
+                      toast.error("Failed to copy message metadata"),
+                    );
+                }}
+                className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                aria-label="Copy message metadata to clipboard"
+                title={`Copy full message metadata (id, parts, raw payload) to clipboard. Message id: ${message.info.id}`}
+              >
+                <InformationCircleIcon className="size-3.5" />
+              </button>
+            )}
             {messageTimestamp && !isPending && (
               <MessagePermalinkTimestamp
                 messageId={message.info.id}
