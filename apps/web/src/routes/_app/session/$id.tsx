@@ -112,8 +112,8 @@ import {
   useSessionStatus,
   useAgents,
   useProviders,
-  usePollMs,
 } from "@/hooks/use-opencode";
+import { useIndicator } from "@/hooks/use-indicators";
 import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
 import useMediaQuery from "@/hooks/use-media-query";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
@@ -3321,23 +3321,21 @@ function SessionPage() {
 
   // Auto-approve firing lives in the server-side worker plugin
   // (apps/web/src/server/plugins/auto-approve-worker.ts) so it keeps
-  // running with no browser open. The chat keeps polling the pending-
-  // permission list because the local /messages cache settles on the
-  // approved state via opencode's SSE stream, but the reply itself is
-  // not driven from here anymore.
-
-  const permissionsPollMs = usePollMs(2000);
+  // running with no browser open. We refresh the local pending-
+  // permission list whenever the SSE indicator stream reports a change
+  // to this session's pendingPermissionIds - that's the read-side
+  // signal that opencode emitted permission.asked / permission.replied
+  // for us. The full PermissionRequest object (with .tool, .action,
+  // etc. used by the widget) is not carried in the indicator frame, so
+  // we still GET /api/opencode/{port}/permissions to materialise it,
+  // but only on a state-change edge instead of on a 2s recurring poll.
+  const sessionIndicator = useIndicator(instance?.id, sessionId);
+  const pendingPermissionKey = sessionIndicator
+    ? sessionIndicator.pendingPermissionIds.join(",")
+    : "";
   useEffect(() => {
     refreshPendingPermissions();
-
-    if (!port || !sessionId || permissionsPollMs === 0) return;
-
-    const interval = window.setInterval(
-      refreshPendingPermissions,
-      permissionsPollMs,
-    );
-    return () => window.clearInterval(interval);
-  }, [port, sessionId, refreshPendingPermissions, permissionsPollMs]);
+  }, [refreshPendingPermissions, pendingPermissionKey]);
 
   const visibleMessageIds = useMemo(
     () => new Set(messages.map((m) => m.info.id)),

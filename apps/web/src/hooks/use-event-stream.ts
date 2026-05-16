@@ -31,6 +31,15 @@ const CHUNKED_FLUSH_MS = 250;
 // a long-running session would otherwise refetch every SWR entry in the
 // app, including heavy /messages?limit=50 calls for sessions the user
 // isn't even looking at.
+//
+// Indicator-state events (session.status / session.idle / question.*
+// / permission.*) are intentionally NOT dispatched here as of Phase C
+// of the SSE indicator rework. The indicator-broadcaster plugin on the
+// server consumes those same events and fans them out via
+// /api/indicators/stream to useIndicators(); the SWR keys these used
+// to refresh (/session/status, /questions, /permissions) are no longer
+// populated by any hook. The cases below short-circuit explicitly so
+// the matrix is self-documenting next to the message branches.
 export function useEventStream(): void {
   const strategy = useActiveStrategy();
   const port = useInstanceStore((s) => s.instance?.port);
@@ -106,16 +115,11 @@ function dispatchEvent(
 
     case "session.status":
     case "session.idle":
-      void mutate(`/api/opencode/${port}/session/status`);
-      return;
     case "question.asked":
     case "question.replied":
     case "question.rejected":
-      void mutate(`/api/opencode/${port}/questions`);
-      return;
     case "permission.asked":
     case "permission.replied":
-      void mutate(`/api/opencode/${port}/permissions`);
       return;
     case "session.created":
     case "session.updated":

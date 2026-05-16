@@ -1052,23 +1052,18 @@ function PermissionsSettings() {
 
   return (
     <div className="space-y-10">
-      <div>
-        <h3 className="text-sm font-semibold">Permissions</h3>
-        <p className="text-xs text-muted-fg">
-          Auto-approve permission requests so the agent doesn&#39;t wait for a
-          manual reply. The OpenPortal server holds an SSE connection to
-          every configured OpenCode instance and fires replies independently
-          of any browser tab being open. Every auto-fired reply is recorded
-          in the chat audit trail with an &quot;auto&quot; badge.
-        </p>
-      </div>
-
       <section className="space-y-3">
         <div>
-          <h4 className="text-sm font-medium">Global default</h4>
+          <h3 className="text-sm font-semibold">
+            Auto-approve permissions globally
+          </h3>
           <p className="text-xs text-muted-fg">
-            Applied to every session that has no override below. The composer
-            shield toggle in each chat sets an override for that session.
+            Applied to every session that has no per-session override below.
+            The composer shield toggle in each chat sets an override for
+            that session. The OpenPortal server fires the auto-replies
+            itself - independent of any browser tab being open - and every
+            reply lands in the chat audit trail with an &quot;auto&quot;
+            badge.
           </p>
         </div>
         <Checkbox
@@ -1085,7 +1080,9 @@ function PermissionsSettings() {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h4 className="text-sm font-medium">Per-session overrides</h4>
+            <h3 className="text-sm font-semibold">
+              Per-session auto-approve overrides
+            </h3>
             <p className="text-xs text-muted-fg">
               Sessions where the shield toggle differs from the global
               default. Remove to fall back to the default.
