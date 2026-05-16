@@ -1222,6 +1222,12 @@ const ToolCallItem = memo(function ToolCallItem({
     part.state.status === "pending" || part.state.status === "running";
   const isEditTool = (part.tool || "").toLowerCase() === "edit";
   const dateFormat = useDateFormatStore((s) => s.format);
+  const iconVisibility = useChatDisplayStore((s) => s.iconVisibility);
+  const { isMobile: toolIsMobile } = useMediaQuery();
+  const toolPlatform = toolIsMobile ? "mobile" : "desktop";
+  const showCopyIcon = iconVisibility[toolPlatform].copy;
+  const showExpandIcon = iconVisibility[toolPlatform].expand;
+  const showTimestampIcon = iconVisibility[toolPlatform].timestamp;
   // Timestamp resilience: opencode sometimes puts time on `part.time`,
   // sometimes leaves it undefined for tool parts (the wrapping message
   // owns the canonical timestamp anyway). Walk the candidate paths and
@@ -1268,7 +1274,7 @@ const ToolCallItem = memo(function ToolCallItem({
           <span className="truncate">{label}</span>
           {details && <span className="opacity-60 shrink-0">{details}</span>}
           {isPending && <span className="animate-pulse shrink-0">...</span>}
-          {toolTimestamp && (
+          {showTimestampIcon && toolTimestamp && (
             <MessagePermalinkTimestamp
               messageId={messageId}
               display={toolTimestamp}
@@ -1319,19 +1325,23 @@ const ToolCallItem = memo(function ToolCallItem({
           )}
         </div>
         {isPending && <span className="animate-pulse shrink-0">...</span>}
-        <span className="shrink-0 text-muted-fg/60 hover:text-fg">
-          <CopyMarkdownButton text={bashCommand} />
-        </span>
-        <button
-          type="button"
-          onClick={() => setInlineExpanded(false)}
-          aria-label="Collapse"
-          title="Collapse"
-          className="shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
-        >
-          <ArrowsPointingInIcon className="size-3" />
-        </button>
-        {toolTimestamp && (
+        {showCopyIcon && (
+          <span className="shrink-0 text-muted-fg/60 hover:text-fg">
+            <CopyMarkdownButton text={bashCommand} />
+          </span>
+        )}
+        {showExpandIcon && (
+          <button
+            type="button"
+            onClick={() => setInlineExpanded(false)}
+            aria-label="Collapse"
+            title="Collapse"
+            className="shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
+          >
+            <ArrowsPointingInIcon className="size-3" />
+          </button>
+        )}
+        {showTimestampIcon && toolTimestamp && (
           <MessagePermalinkTimestamp
             messageId={messageId}
             display={toolTimestamp}
@@ -1349,12 +1359,12 @@ const ToolCallItem = memo(function ToolCallItem({
       <span className="truncate">{label}</span>
       {details && <span className="opacity-60 shrink-0">{details}</span>}
       {isPending && <span className="animate-pulse shrink-0">...</span>}
-      {canInlineExpand && (
+      {showCopyIcon && canInlineExpand && (
         <span className="ml-auto shrink-0 text-muted-fg/60 hover:text-fg">
           <CopyMarkdownButton text={bashCommand} />
         </span>
       )}
-      {canInlineExpand && (
+      {showExpandIcon && canInlineExpand && (
         <button
           type="button"
           onClick={() => setInlineExpanded(true)}
@@ -1365,7 +1375,7 @@ const ToolCallItem = memo(function ToolCallItem({
           <ArrowsPointingOutIcon className="size-3" />
         </button>
       )}
-      {canExpand && (
+      {showExpandIcon && canExpand && (
         <button
           type="button"
           onClick={() => setShowInputModal(true)}
@@ -1376,7 +1386,7 @@ const ToolCallItem = memo(function ToolCallItem({
           <ArrowsPointingOutIcon className="size-3" />
         </button>
       )}
-      {toolTimestamp && (
+      {showTimestampIcon && toolTimestamp && (
         <MessagePermalinkTimestamp
           messageId={messageId}
           display={toolTimestamp}
