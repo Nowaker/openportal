@@ -17,6 +17,7 @@ import useMediaQuery from "@/hooks/use-media-query";
 import { toast } from "@/components/ui/toast";
 import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
+import { useAgentStore } from "@/stores/agent-store";
 import { ModelSelect } from "@/components/model-select";
 import { ThinkingSelect } from "@/components/thinking-select";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ function NewSessionPage() {
   const clearStore = useVirtualSessionStore((s) => s.clear);
   const port = useInstanceStore((s) => s.instance?.port ?? null);
   const createSession = useCreateSession();
+  const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
   const { mutate: globalMutate } = useSWRConfig();
 
   const directory = directoryFromUrl || storeDir || null;
@@ -268,6 +270,7 @@ function NewSessionPage() {
           ...(pendingAttachments.length > 0
             ? { attachments: pendingAttachments }
             : {}),
+          ...(defaultAgentName ? { agent: defaultAgentName } : {}),
         };
 
         const res = await fetch(
@@ -311,6 +314,7 @@ function NewSessionPage() {
       clearStore,
       globalMutate,
       navigate,
+      defaultAgentName,
     ],
   );
 
