@@ -1,6 +1,9 @@
+import { useMemo } from "react";
+import { useMemo } from "react";
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
+import { useIndicators } from "@/hooks/use-indicators";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -15,10 +18,34 @@ function usePort() {
   return instance?.port ?? null;
 }
 
+function useServerId(): string | undefined {
+  const instance = useInstanceStore((s) => s.instance);
+  return instance?.id;
+}
+
 // Any non-polling strategy puts the SSE event bus in charge of these
-// SWR keys (status / questions / permissions / messages). Returning 0
-// disables SWR's timer-driven poll. SWR still refetches on focus + on
-// mutate() calls from useEventStream.
+// SWR keys (messages). Returning 0 disables SWR's timer-driven poll.
+// SWR still refetches on focus + on mutate() calls from useEventStream.
+//
+// Indicator state (busy/retry/idle, pending questions, pending
+// permissions) no longer flows through this knob: it is pushed via
+// /api/indicators/stream to useIndicators() regardless of strategy.
+export function usePollMs(intervalMs: number): number {
+  const strategy = useActiveStrategy();
+  return strategy === "polling" ? intervalMs : 0;
+}
+  return res.json();
+};
+
+function usePort() {
+  const instance = useInstanceStore((s) => s.instance);
+  return instance?.port ?? null;
+}
+
+// Legacy knob kept for hooks that haven't yet migrated to the SSE
+// indicator stream (chat /messages still uses SWR + event-stream
+// invalidation). The three indicator-source hooks below no longer
+// touch this - their polling is GONE, replaced by useIndicators().
 export function usePollMs(intervalMs: number): number {
   const strategy = useActiveStrategy();
   return strategy === "polling" ? intervalMs : 0;
@@ -81,25 +108,57 @@ export function useSession(id: string | null) {
   );
 }
 
-// opencode's GET /session/status returns a map of busy/retry sessions.
-// We use a short refresh interval because this is what powers the
-// 'Thinking...' indicator's TRUE-busy check - if the indicator is
-// telling the user 'still working' but the server says idle, the user
-// was misled by a dispatch-failure stuck state and we want to surface
-// that within a few seconds, not 60.
+// Phase C of the SSE indicator rework (engine: 8daa54c, backend:
+// e89f528). useSessionStatus used to poll
+// /api/opencode/<port>/session/status every 3s. That poll is GONE -
+// the busy/idle map is now derived from the singleton
+// /api/indicators/stream subscription via useIndicators().
+//
+// Return shape preserved: { data: SessionStatusMap } where each entry
+// has { type: "busy" | "retry" | "idle" }. Consumers in
+// app-sidebar.tsx, app-sidebar-nav.tsx, and routes/_app/session/$id.tsx
+// destructure { data: statusMap } and read `.type` - no callsite
+// changes needed.
+//
+// "retry" no longer surfaces: the indicator-state singleton on the
+// server doesn't classify retries separately (the legacy
+// /session/status endpoint did, by inspecting opencode's per-message
+// retry hints). For the indicator dot this is fine - "retry" was
+// always treated as a busy state by consumers, so collapsing it into
+// "busy" preserves the visible UI behavior.
 export type SessionStatusMap = Record<
   string,
   { type: "busy" | "retry" | "idle" }
 >;
 
-export function useSessionStatus() {
-  const port = usePort();
-  return useSWR<SessionStatusMap>(
-    port ? `/api/opencode/${port}/session/status` : null,
-    fetcher,
-    { refreshInterval: usePollMs(3000), revalidateOnFocus: true },
-  );
+function toStatus(s: SessionIndicatorState): { type: "busy" | "idle" } {
+  return { type: s.busy ? "busy" : "idle" };
 }
+
+export function useSessionStatus(): {
+  data: SessionStatusMap;
+  isLoading: boolean;
+  error: undefined;
+  mutate: typeof noopMutate;
+} {
+  const instance = useInstanceStore((s) => s.instance);
+  const serverId = instance?.id;
+  const states = useIndicators(serverId ? { serverId } : {});
+  const data = useMemo<SessionStatusMap>(() => {
+    if (!serverId) return {};
+    const out: SessionStatusMap = {};
+    for (const s of states) {
+      out[s.sessionId] = toStatus(s);
+    }
+    return out;
+  }, [states, serverId]);
+  return { data, isLoading: false, error: undefined, mutate: noopMutate };
+}
+
+// Shared no-op so callsites that destructure `.mutate()` get a
+// defined function. No SWR cache to revalidate - the SSE stream owns
+// the data.
+const noopMutate = async (): Promise<undefined> => undefined;
 
 export interface QuestionRequestSummary {
   id: string;
@@ -232,14 +291,45 @@ export function useGitDiff() {
   );
 }
 
-export function usePermissions() {
-  const port = usePort();
+// Phase C: permissions list comes from the indicator-state singleton,
+// not the 2s poll against /api/opencode/<port>/permissions. The
+// indicator-state stream carries `pendingPermissionIds: string[]` per
+// session; we flatten into the legacy `{ id, sessionID }[]` shape so
+// the two sidebar consumers (app-sidebar.tsx, app-sidebar-nav.tsx)
+// keep working unchanged.
+//
+// The full permission object (with action / call / metadata) is NOT
+// reconstructable from the indicator stream - only the IDs and their
+// owning sessionID are tracked. None of the current callsites read
+// any other field, so this is sufficient. If a future consumer needs
+// the full object, it should fetch /api/opencode/<port>/permissions
+// on-demand (one-shot, not polled) when the permission is selected
+// for display, not on every list render.
+export interface PermissionRequestSummary {
+  id: string;
+  sessionID: string;
+}
 
-  return useSWR(
-    port ? `/api/opencode/${port}/permissions` : null,
-    fetcher,
-    { refreshInterval: usePollMs(2000) },
-  );
+export function usePermissions(): {
+  data: PermissionRequestSummary[];
+  isLoading: boolean;
+  error: undefined;
+  mutate: typeof noopMutate;
+} {
+  const instance = useInstanceStore((s) => s.instance);
+  const serverId = instance?.id;
+  const states = useIndicators(serverId ? { serverId } : {});
+  const data = useMemo<PermissionRequestSummary[]>(() => {
+    if (!serverId) return [];
+    const out: PermissionRequestSummary[] = [];
+    for (const s of states) {
+      for (const id of s.pendingPermissionIds) {
+        out.push({ id, sessionID: s.sessionId });
+      }
+    }
+    return out;
+  }, [states, serverId]);
+  return { data, isLoading: false, error: undefined, mutate: noopMutate };
 }
 
 export function useReplyPermission() {
@@ -262,14 +352,30 @@ export function useReplyPermission() {
   };
 }
 
-export function useQuestions() {
-  const port = usePort();
-
-  return useSWR<QuestionRequestSummary[]>(
-    port ? `/api/opencode/${port}/questions` : null,
-    fetcher,
-    { refreshInterval: usePollMs(2000), revalidateOnFocus: true },
-  );
+// Phase C: question list comes from the indicator-state singleton,
+// not the 2s poll against /api/opencode/<port>/questions. Same
+// flattening pattern as usePermissions above. Consumers see
+// QuestionRequestSummary[] just like before.
+export function useQuestions(): {
+  data: QuestionRequestSummary[];
+  isLoading: boolean;
+  error: undefined;
+  mutate: typeof noopMutate;
+} {
+  const instance = useInstanceStore((s) => s.instance);
+  const serverId = instance?.id;
+  const states = useIndicators(serverId ? { serverId } : {});
+  const data = useMemo<QuestionRequestSummary[]>(() => {
+    if (!serverId) return [];
+    const out: QuestionRequestSummary[] = [];
+    for (const s of states) {
+      for (const id of s.pendingQuestionIds) {
+        out.push({ id, sessionID: s.sessionId });
+      }
+    }
+    return out;
+  }, [states, serverId]);
+  return { data, isLoading: false, error: undefined, mutate: noopMutate };
 }
 
 export function useReplyQuestion() {
