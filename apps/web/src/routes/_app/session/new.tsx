@@ -15,6 +15,7 @@ import { useSttModeStore } from "@/stores/stt-mode-store";
 import { useSttEngine } from "@/hooks/use-stt-engine";
 import useMediaQuery from "@/hooks/use-media-query";
 import { toast } from "@/components/ui/toast";
+import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
 import { ThinkingSelect } from "@/components/thinking-select";
@@ -147,6 +148,7 @@ function NewSessionPage() {
 
   const [text, setText] = useState(autoPrompt ?? composedAutoPrompt);
   const [sending, setSending] = useState(false);
+  const [sendingStatus, setSendingStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submittedRef = useRef(false);
@@ -254,10 +256,12 @@ function NewSessionPage() {
 
       setSending(true);
       setError(null);
+      setSendingStatus("Asking OpenCode to create a new session...");
 
       try {
         const session = await createSession({ directory });
         const sessionId = session.id;
+        setSendingStatus("Session created. Sending your prompt to OpenCode...");
 
         const body = {
           text: message,
@@ -278,6 +282,7 @@ function NewSessionPage() {
           throw new Error(`prompt failed: ${res.status}`);
         }
 
+        setSendingStatus("Prompt accepted. Opening the session...");
         submittedRef.current = true;
         setPendingAttachments([]);
         clearStore();
@@ -293,6 +298,7 @@ function NewSessionPage() {
           err instanceof Error ? err.message : "Failed to start session",
         );
         setSending(false);
+        setSendingStatus("");
       }
     },
     [
@@ -419,7 +425,7 @@ function NewSessionPage() {
     );
   }
 
-  const showTemplatePicker = !autoPrompt && order.length > 0;
+  const showTemplatePicker = !autoPrompt && order.length > 0 && !sending;
   const hasContent = text.trim().length > 0;
 
   return (
@@ -434,6 +440,28 @@ function NewSessionPage() {
             Type your first message. The session is created when you send.
           </p>
         </div>
+
+        {sending && (
+          <div className="w-full max-w-2xl rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3 shrink-0">
+            <div className="flex items-center gap-3">
+              <Loader className="size-5 text-primary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-fg">
+                  {sendingStatus || "Starting session..."}
+                </p>
+                <p className="text-xs text-muted-fg mt-0.5">
+                  Hang tight - OpenCode is processing this server-side. The
+                  chat view will open as soon as the session is ready.
+                </p>
+              </div>
+            </div>
+            {hasContent && (
+              <div className="rounded border border-border bg-bg/60 p-2 text-xs text-muted-fg max-h-32 overflow-y-auto whitespace-pre-wrap break-words">
+                {text.trim()}
+              </div>
+            )}
+          </div>
+        )}
 
         {showTemplatePicker && (
           <div className="w-full max-w-2xl rounded-lg border border-border bg-bg/60 p-3 space-y-2 shrink-0">

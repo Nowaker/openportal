@@ -251,6 +251,47 @@ Rules:
   (`keepPreviousData: true` in SWR) so the spinner only appears on
   cold load, not on every revalidation.
 
+### Async-action feedback (mandatory)
+
+Distinct from the read-side rule above. Any user-initiated action
+that awaits a server round-trip (Submit, Save, Send, anything
+that runs against opencode) MUST surface progress immediately and
+stay informative across multi-step flows. A frozen UI between
+"clicked Submit" and "page navigated" is unacceptable - the user
+has no idea whether the click registered, whether openportal is
+working on it, or whether opencode is the slow one.
+
+Rules:
+
+- The click MUST take effect within one paint. Disable the
+  triggering control, swap its label/affordance to a spinner-state
+  ("Sending..."), or hide the input area entirely if the next
+  state replaces it.
+- If the flow has multiple phases (e.g. createSession then POST
+  /prompt then navigate), the visible status text MUST update at
+  each phase so the user can tell which step is slow. Generic
+  "loading..." is not enough.
+- For new-session submit specifically: clear the template picker /
+  init UI on click, render a prominent loader + status text in
+  its place ("Asking OpenCode to create a new session..." ->
+  "Session created. Sending your prompt to OpenCode..." ->
+  "Prompt accepted. Opening the session..."), and show the user a
+  preview of what they actually submitted so they can confirm the
+  prompt landed correctly.
+- Error path: clear the loading state, restore the form, surface
+  the error inline. The user must be able to retry without
+  reloading the page.
+
+For multi-step flows that create new entities visible elsewhere in
+the UI (new sessions in the sidebar, new pinned items, new prompts
+in archive), open a virtual / placeholder entry the moment the
+flow starts so the user sees activity on the relevant surface. The
+placeholder carries a transient id; when the real id lands, swap.
+Sidebar entries for placeholders must visually mark themselves as
+"creating" (spinner + faded text) and forbid the items that
+require a real session id (Rename, Pin, Open in VSCode, Permalink,
+Fork, etc.) until promotion.
+
 ### Everything is a permalink (URL-driven UI state)
 
 Every non-trivial UI surface MUST round-trip through the URL: paste
