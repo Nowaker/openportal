@@ -4,8 +4,6 @@ import {
   ArrowUturnRightIcon,
   ChevronRightIcon,
   ClipboardDocumentIcon,
-  EyeIcon,
-  EyeSlashIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -95,9 +93,6 @@ function PromptsPage() {
   const [q, setQ] = useState("");
   const [view, setView] = useState<ViewMode>("tree");
   const [refireTargetId, setRefireTargetId] = useState<string | null>(null);
-  const [expandedRawIds, setExpandedRawIds] = useState<Set<string>>(
-    () => new Set(),
-  );
 
   useEffect(() => {
     setPageTitle("Prompt history");
@@ -111,15 +106,6 @@ function PromptsPage() {
   );
 
   const rows = data?.rows ?? [];
-
-  const toggleRaw = (id: string) => {
-    setExpandedRawIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   return (
     <div className="-m-4 flex h-full flex-col">
@@ -197,19 +183,12 @@ function PromptsPage() {
         {!isLoading && !error && rows.length > 0 && (
           <>
             {view === "flat" ? (
-              <FlatList
-                rows={rows}
-                expandedRawIds={expandedRawIds}
-                onToggleRaw={toggleRaw}
-                onRefire={setRefireTargetId}
-              />
+              <FlatList rows={rows} onRefire={setRefireTargetId} />
             ) : (
               <TreeView
                 rows={rows}
                 focusSessionId={search.focus}
                 searchActive={q.trim().length > 0}
-                expandedRawIds={expandedRawIds}
-                onToggleRaw={toggleRaw}
                 onRefire={setRefireTargetId}
               />
             )}
@@ -233,13 +212,9 @@ function PromptsPage() {
 
 function FlatList({
   rows,
-  expandedRawIds,
-  onToggleRaw,
   onRefire,
 }: {
   rows: PromptRow[];
-  expandedRawIds: Set<string>;
-  onToggleRaw: (id: string) => void;
   onRefire: (id: string) => void;
 }) {
   return (
@@ -248,8 +223,6 @@ function FlatList({
         <li key={row.id} className="py-2">
           <PromptRowItem
             row={row}
-            showRaw={expandedRawIds.has(row.id)}
-            onToggleRaw={() => onToggleRaw(row.id)}
             onRefire={() => onRefire(row.id)}
           />
         </li>
@@ -295,15 +268,11 @@ function TreeView({
   rows,
   focusSessionId,
   searchActive,
-  expandedRawIds,
-  onToggleRaw,
   onRefire,
 }: {
   rows: PromptRow[];
   focusSessionId: string | undefined;
   searchActive: boolean;
-  expandedRawIds: Set<string>;
-  onToggleRaw: (id: string) => void;
   onRefire: (id: string) => void;
 }) {
   const groups = useMemo(() => buildTree(rows), [rows]);
@@ -418,8 +387,6 @@ function TreeView({
                             <li key={row.id} className="py-2">
                               <PromptRowItem
                                 row={row}
-                                showRaw={expandedRawIds.has(row.id)}
-                                onToggleRaw={() => onToggleRaw(row.id)}
                                 onRefire={() => onRefire(row.id)}
                                 compact
                               />
@@ -441,14 +408,10 @@ function TreeView({
 
 function PromptRowItem({
   row,
-  showRaw,
-  onToggleRaw,
   onRefire,
   compact,
 }: {
   row: PromptRow;
-  showRaw: boolean;
-  onToggleRaw: () => void;
   onRefire: () => void;
   compact?: boolean;
 }) {
@@ -538,30 +501,7 @@ function PromptRowItem({
           <ClipboardDocumentIcon className="size-3" />
           Copy
         </button>
-        <button
-          type="button"
-          onClick={onToggleRaw}
-          title={showRaw ? "Hide unfiltered" : "Show unfiltered"}
-          className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 text-xs hover:bg-muted/30"
-        >
-          {showRaw ? (
-            <>
-              <EyeSlashIcon className="size-3" />
-              Hide raw
-            </>
-          ) : (
-            <>
-              <EyeIcon className="size-3" />
-              Show raw
-            </>
-          )}
-        </button>
       </div>
-      {showRaw && (
-        <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-border/40 bg-muted/20 p-2 text-xs">
-          {row.raw_text_unfiltered}
-        </pre>
-      )}
     </div>
   );
 }
