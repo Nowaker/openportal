@@ -288,7 +288,9 @@ function TreeView({
   // inside a session page), expand only the project + session that
   // contain it; collapse everything else. Without focus (sidebar
   // footer burger or direct nav), collapse all projects so the user
-  // starts from a clean overview.
+  // starts from a clean overview. Once seeded, scroll the focused
+  // session header into view + highlight it briefly so the user can
+  // see where they landed even on a long history page.
   const seededForRef = useRef<string | "none" | null>(null);
   useEffect(() => {
     if (groups.length === 0) return;
@@ -314,6 +316,21 @@ function TreeView({
     }
     setCollapsedSessions(sessions);
     seededForRef.current = seedKey;
+
+    if (focusSessionId && focusGroup) {
+      requestAnimationFrame(() => {
+        const el = document.querySelector(
+          `[data-prompts-session-id="${CSS.escape(focusSessionId)}"]`,
+        );
+        if (el instanceof HTMLElement) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-primary", "ring-offset-1");
+          setTimeout(() => {
+            el.classList.remove("ring-2", "ring-primary", "ring-offset-1");
+          }, 1800);
+        }
+      });
+    }
   }, [groups, focusSessionId]);
 
   const toggleProject = (path: string) => {
@@ -365,7 +382,11 @@ function TreeView({
                 {sessionEntries.map(([sessionId, sessionRows]) => {
                   const sessionCollapsed = !searchActive && collapsedSessions.has(sessionId);
                   return (
-                    <div key={sessionId}>
+                    <div
+                      key={sessionId}
+                      data-prompts-session-id={sessionId}
+                      className="rounded transition-shadow"
+                    >
                       <button
                         type="button"
                         onClick={() => toggleSession(sessionId)}
