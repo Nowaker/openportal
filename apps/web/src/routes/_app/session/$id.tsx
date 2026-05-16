@@ -77,6 +77,7 @@ import {
 import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { StarMessageButton } from "@/components/star-message-button";
 import {
   useAutoApproveConfig,
   isEffectivelyEnabled,
@@ -2215,6 +2216,12 @@ const MessageItem = memo(function MessageItem({
             </div>
           )}
           <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70">
+            <StarMessageButton
+              sessionId={sessionId}
+              messageId={message.info.id}
+              role={isAssistant ? "assistant" : "user"}
+              snippet={textContent}
+            />
             <button
               type="button"
               onClick={() => onForkRequest(message)}
