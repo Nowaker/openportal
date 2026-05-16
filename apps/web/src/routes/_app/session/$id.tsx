@@ -1720,6 +1720,20 @@ function CopyMarkdownButton({ text }: { text: string }) {
 // The href shape is always <current-pathname>#msg-<messageId>. The
 // route reads the hash in SessionPage and switches into permalink mode
 // (see useSessionMessagesAround in use-session-messages.ts).
+// Highlight a message in the current document by flashing a CSS class
+// on its container for a brief window. Works for both in-page jumps
+// (click on a permalink whose target is already in the rendered chat)
+// and fresh permalink-landing (the route entered with #msg-<id>).
+function flashMessageHighlight(messageId: string): void {
+  if (typeof document === "undefined") return;
+  const el = document.getElementById(`msg-${messageId}`);
+  if (!el) return;
+  el.classList.add("permalink-highlight");
+  window.setTimeout(() => {
+    el.classList.remove("permalink-highlight");
+  }, 2400);
+}
+
 function MessagePermalinkTimestamp({
   messageId,
   display,
@@ -1732,36 +1746,87 @@ function MessagePermalinkTimestamp({
   className: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const buildAbsoluteUrl = (): string => {
+    const hash = `#msg-${encodeURIComponent(messageId)}`;
+    if (typeof window === "undefined") return hash;
+    const url = new URL(window.location.href);
+    url.hash = hash;
+    return url.toString();
+  };
+  // Left click: open + scroll to the target in the same tab. If the
+  // target is already in the rendered chat (same session, message in
+  // current window), just highlight + scroll without navigation. The
+  // user wanted clicking on a permalink in chat to NOT navigate away -
+  // they already see the message, the click is just an emphasis gesture.
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    e.preventDefault();
-    const hash = `#msg-${encodeURIComponent(messageId)}`;
-    let absolute = hash;
-    let openTarget = hash;
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.hash = hash;
-      absolute = url.toString();
-      openTarget = absolute;
+    const inPage =
+      typeof document !== "undefined" &&
+      document.getElementById(`msg-${messageId}`) !== null;
+    if (inPage) {
+      e.preventDefault();
+      const el = document.getElementById(`msg-${messageId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (typeof window !== "undefined") {
+          const hash = `#msg-${encodeURIComponent(messageId)}`;
+          window.history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}${window.location.search}${hash}`,
+          );
+        }
+        flashMessageHighlight(messageId);
+      }
     }
-    void copyTextToClipboard(absolute).then((ok) => {
+    // not in page: let the browser navigate to the href (same tab,
+    // the route detects the #msg-<id> hash and switches into
+    // permalink-window mode).
+  };
+  // Right-click / long-press: copy the absolute URL. Native browser
+  // copy-link-address still works too, but this gives a friendlier
+  // path with toast confirmation.
+  const handleContextMenu = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    void copyTextToClipboard(buildAbsoluteUrl()).then((ok) => {
       if (!ok) return;
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     });
-    if (typeof window !== "undefined") {
-      window.open(openTarget, "_blank", "noopener,noreferrer");
+  };
+  const longPressTimerRef = useRef<number | null>(null);
+  const handleTouchStart = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+    }
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      void copyTextToClipboard(buildAbsoluteUrl()).then((ok) => {
+        if (!ok) return;
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      });
+    }, 600);
+  };
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
   };
   const titleSuffix = copied
     ? " - link copied!"
-    : " - click to copy permalink and open in new tab";
+    : " - click to jump, right-click / long-press to copy permalink";
   return (
     <a
       href={`#msg-${encodeURIComponent(messageId)}`}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
       title={`${titleAt}${titleSuffix}`}
-      aria-label="Copy permalink to this message"
+      aria-label="Jump to message (right-click / long-press copies permalink)"
       className={`${className} cursor-pointer hover:text-fg hover:underline decoration-dotted underline-offset-2 transition-colors`}
     >
       {copied ? "copied!" : display}
@@ -3443,6 +3508,7 @@ function SessionPage() {
     const container = chatContainerRef.current;
     if (!container) {
       node.scrollIntoView({ block: "center" });
+      flashMessageHighlight(permalinkTarget);
       return;
     }
     const containerRect = container.getBoundingClientRect();
@@ -3451,6 +3517,7 @@ function SessionPage() {
       containerRect.top +
       container.scrollTop;
     container.scrollTop = Math.max(0, targetTop - containerRect.height / 3);
+    flashMessageHighlight(permalinkTarget);
   }, [permalinkMode, permalinkTarget, messages.length]);
 
   const handleJumpToBottom = useCallback(() => {

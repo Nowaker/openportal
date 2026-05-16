@@ -1520,3 +1520,15 @@ body {
 .dark .diff-code-delete {
   background-color: oklch(0.577 0.245 27.325 / 0.1);
 }
+
+
+@keyframes permalink-pulse {
+  0%   { background-color: oklch(0.768 0.233 130 / 0); box-shadow: 0 0 0 0 oklch(0.768 0.233 130 / 0); }
+  10%  { background-color: oklch(0.768 0.233 130 / 0.22); box-shadow: 0 0 0 4px oklch(0.768 0.233 130 / 0.4); }
+  100% { background-color: oklch(0.768 0.233 130 / 0); box-shadow: 0 0 0 0 oklch(0.768 0.233 130 / 0); }
+}
+
+.permalink-highlight {
+  animation: permalink-pulse 2.4s ease-out;
+  border-radius: 0.5rem;
+}
