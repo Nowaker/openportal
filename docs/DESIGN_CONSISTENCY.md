@@ -1,0 +1,330 @@
+# OpenPortal design consistency
+
+Canonical reference for spacing, color, typography, link styling,
+button hierarchy, indicator palette, and modal/state-URL conventions
+across the openportal frontend.
+
+Synthesized from `apps/web/src/{components,routes,hooks}` after the
+2026-05 ULW pass. Treat this as the source of truth for new UI work.
+When the existing code conflicts with this doc, the EXISTING code
+wins on the first conflict (note the divergence here, then refactor
+toward the canonical pattern in a follow-up).
+
+## Source-of-truth files
+
+| Concern | File |
+|---|---|
+| Tailwind theme tokens | `apps/web/src/main.css` (oklch CSS variables) |
+| Tailwind v4 inline config | `apps/web/src/main.css` `@theme` block |
+| Icon set | `@heroicons/react/24/outline` (24px source, scaled via `size-N`) |
+| UI primitives | `apps/web/src/components/ui/*` (UILink, Button shell) |
+| Chat display tokens | `apps/web/src/stores/chat-display-store.ts` |
+| Date/time tokens | `apps/web/src/lib/format-time.ts`, `useDateFormatStore` |
+| Sidebar token | `apps/web/src/stores/sidebar-expand-store.ts` |
+
+Tailwind v4 is in use (Vite plugin, no `tailwind.config.*` file).
+Custom tokens live as CSS variables in `main.css` and surface as
+`bg-fg`, `text-muted-fg`, `border-border`, etc. through the
+`@theme` block.
+
+## Spacing
+
+Use Tailwind spacing scale verbatim. No bespoke gap values.
+
+| Token | Use case |
+|---|---|
+| `gap-1`, `gap-1.5` | Inline icon row inside a message/tool row |
+| `gap-2` | Form field stack |
+| `gap-3` | Section divider |
+| `gap-4`, `gap-6` | Layout columns |
+| `space-y-2` | Settings sub-section stack |
+| `p-0.5` | Icon button padding (matches `size-3.5` icons) |
+| `px-2 py-1` | Compact text button |
+| `px-3 py-2` | Standard panel padding |
+| `py-0.5` | Message-row vertical rhythm |
+| `pl-3 pr-3 py-0.5` | Sidebar row vertical rhythm |
+
+Arbitrary spacing values (`pl-[7px]`, `gap-[3px]`) are forbidden
+except for one-off pixel alignment that the spacing scale literally
+cannot express. Default to the scale.
+
+## Color tokens (semantic)
+
+OKLCH CSS variables in `main.css`. Always prefer semantic names over
+literal Tailwind colors.
+
+| Variable | Tailwind alias | Use case |
+|---|---|---|
+| `--color-fg` | `text-fg`, `bg-fg` | Primary foreground |
+| `--color-muted-fg` | `text-muted-fg` | Secondary text |
+| `--color-fg/90`, `/70`, `/60` | Same with opacity | De-emphasized variants |
+| `--color-bg` | `bg-bg` | Page background |
+| `--color-muted` | `bg-muted/N` | Subtle surfaces (`/20`, `/25`, `/40`, `/50`) |
+| `--color-border` | `border-border` | Standard separators |
+| `--color-primary` | `text-primary`, `bg-primary`, `ring-primary` | Accent (focus, highlights, "active" affordances) |
+| `--color-danger` | `text-danger`, `border-danger/N`, `bg-danger-subtle/N` | Errors, destructive actions |
+| `--color-warning` | `text-warning`, `border-warning/N`, `bg-warning/N` | In-flight / busy / needs-attention |
+| `--color-success` (if defined) | n/a yet | Reserved |
+| `bg-amber-300/40` | (raw) | Search highlight `<mark>` only — exception |
+
+NEVER use raw Tailwind palette names (`text-red-500`, `bg-blue-400`)
+outside of `<mark>` substring highlights or one-off
+diagnostic-screen surfaces.
+
+## Typography
+
+| Class | Use case |
+|---|---|
+| `text-[10px]` | Timestamp permalink (`MessagePermalinkTimestamp`) |
+| `text-xs` (12px) | Tool-call rows, sidebar metadata, secondary labels |
+| `text-sm` (14px) | Message rows, primary sidebar rows, form labels |
+| `text-md` (16px) | Section headings inside panels |
+| `text-lg` (18px) | Page sub-titles |
+| `text-2xl` | Settings tab title (`<h2>`) |
+| `font-mono` | Tool input/output, code, IDs |
+| `font-semibold` | `<h3>` section title, primary button label |
+| `font-medium` | Tool-call label, sidebar project header |
+| `font-normal italic` | Archived session row (de-emphasized) |
+| `tabular-nums` | Timestamps, counts, durations |
+| `whitespace-pre-wrap` | Tool output, pending-prompt body |
+| `whitespace-nowrap` | Compact timestamps |
+| `truncate` | Long titles in fixed-width slots |
+
+## Heading hierarchy
+
+Per `AGENTS.md > Settings UI structure`, every `<TabPanel>` has:
+
+- ONE `<h2>` for the tab title.
+- Each sub-section inside the panel uses `<h3 className="text-sm font-semibold">` plus a `<p className="text-xs text-muted-fg">` description.
+
+Never mix `<h2>` for tab + sub-section in the same panel — produces
+two competing top-level headings per panel. The `ac069c5` cleanup
+normalized everything; this is now a hard rule.
+
+When adding a sub-section to an existing tab:
+
+```tsx
+<section className="space-y-2">
+  <div>
+    <h3 className="text-sm font-semibold">Section title</h3>
+    <p className="text-xs text-muted-fg">
+      One-paragraph description of what this knob does and why.
+    </p>
+  </div>
+  <YourSettingComponent />
+</section>
+```
+
+## Link styling
+
+Two primitives:
+
+- **`UILink`** from `apps/web/src/components/ui/link.tsx` — wraps
+  tanstack-router `Link`, applies the global hover style, and is the
+  default for any internal navigation.
+- **`<a>`** (raw anchor) — external URLs only. Always include
+  `target="_blank" rel="noopener noreferrer"` for off-portal links.
+
+NEVER mix `<button onClick={() => navigate(...)}>` with link
+semantics. If it navigates, it's a link. The rule is paste-the-URL +
+hard-refresh → exact same view (see "Everything is a permalink" in
+AGENTS.md).
+
+Style: links inherit text color and underline on hover only:
+`hover:underline underline-offset-2`. No persistent underline. No
+color shift. The hover affordance is enough on its own.
+
+## Button hierarchy
+
+Three tiers. Each has a single canonical class set.
+
+### Tier 1 — primary action
+
+```tsx
+<Button intent="primary">Submit</Button>
+```
+
+Background `bg-primary`, foreground `text-bg`. Used for the single
+most-important action per surface (form submit, modal confirm).
+
+### Tier 2 — secondary action
+
+```tsx
+<Button intent="secondary">Cancel</Button>
+```
+
+Outline button, `border-border`. For the secondary affordance next
+to a primary.
+
+### Tier 3 — icon affordance (action row, sidebar, message header)
+
+```tsx
+<button
+  type="button"
+  onClick={...}
+  aria-label="..."
+  title="..."
+  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+>
+  <SomeIcon className="size-3.5" />
+</button>
+```
+
+`size-3.5` for inline action-row icons. `size-4` for sidebar
+expansion chevrons. `size-5` for top-level toolbar icons.
+
+EVERY interactive icon button MUST carry `aria-label` AND `title`,
+with the same text. Hover affordance via `hover:bg-muted/40`. No
+border. No box shadow.
+
+## Indicator palette
+
+`SessionStatusDot` + `aggregateNodeStatus` in
+`apps/web/src/components/app-sidebar.tsx` are the canonical
+producers.
+
+| State | Color | Class fragment |
+|---|---|---|
+| Busy (assistant running) | warning amber | `bg-warning` |
+| Has pending question or permission | red | `bg-danger` |
+| Has error | red | `bg-danger` |
+| Idle, has new content since last view | primary | `bg-primary` |
+| Idle, fully viewed | (no dot) | n/a |
+| Connection lost | gray | `bg-muted-fg/40` |
+
+Pulse animation: `animate-pulse` ONLY on busy/retry states. NEVER on
+attention states (we want a stable visual for "needs you").
+
+Sidebar status cascades through every tree level: a question on a
+subagent surfaces on its parent main session too. See
+`cascadeIdsToAncestors` in `app-sidebar.tsx`.
+
+## Modal / panel state in the URL
+
+Every non-trivial UI surface round-trips through the URL. Paste the
+URL into a fresh browser tab → exact same view. No exceptions.
+
+Hooks:
+
+- `useHashOpen(hashId)` (`apps/web/src/hooks/use-hash-open.ts`) for
+  boolean open/closed state. Hash format: `#info`, `#settings`.
+- `useHashValue<T>(prefix)` for parameterized state. Format:
+  `#mcp:redis`, `#files:/abs/path`. URL-encode values.
+- Search params (`?server=`, `?focus=`, `?onlyUser=`) for top-level
+  filters that survive routes.
+
+Routes that already follow this:
+
+- `/session/:id#msg-<id>` — message permalink
+- `/session/:id#info` — session info modal
+- `/settings#chat` — settings tab
+- `/prompts?focus=<sid>` — focus + flash a specific row
+
+## Loading + async feedback
+
+Per `AGENTS.md > UX preferences > Loading feedback`:
+
+- Components driven by SWR / useSWR: render `<Loader className="size-5" />` while `isLoading && !data`.
+- Components driven by ad-hoc fetch: track `loading` boolean.
+- Modals: cover body region with centered loader during initial fetch — never render fields with `?? "—"`.
+- Lists: spinner row until fetch resolves; "No results found" ONLY after empty response lands.
+
+Per `AGENTS.md > UX preferences > Async-action feedback`:
+
+- Clicks take effect within one paint (disable, swap label, hide input).
+- Multi-phase flows update status text per phase ("Asking OpenCode to create..." → "Session created. Sending prompt..." → "Prompt accepted. Opening...").
+- Error path restores form + inline error; retry without reload.
+
+## SSE / live state
+
+The single source of truth for indicator state is the SSE stream at
+`/api/indicators/stream`. Frontend consumers go through
+`useIndicators` / `useIndicator` from
+`apps/web/src/hooks/use-indicators.ts`.
+
+NEVER add a new polling SWR hook to read indicator state. NEVER hit
+opencode's `/session/status`, `/question`, or `/permission` from the
+browser. If you need a new indicator surface, extend
+`SessionIndicatorState` in
+`apps/web/src/server/lib/indicator-state.ts` and the
+`applyOpencodeEvent` handler, then read it via `useIndicator` in the
+frontend.
+
+## Per-platform chat icons
+
+`chat-display-store.ts` ships per-icon visibility settings keyed by
+platform (`desktop` | `mobile`). Each message / tool-row icon must
+gate on `iconVisibility[platform][icon]`:
+
+```tsx
+const iconVisibility = useChatDisplayStore((s) => s.iconVisibility);
+const { isMobile } = useMediaQuery();
+const platform = isMobile ? "mobile" : "desktop";
+const showCopyIcon = iconVisibility[platform].copy;
+
+{showCopyIcon && <CopyMarkdownButton text={text} />}
+```
+
+Wire-up complete for `MessageItem` (commit `9b2d11e`) and
+`ToolCallItem` (commit `ec16261`). New per-row icons MUST extend
+this pattern.
+
+## Date / time tokens
+
+The user picks the format in `/settings#chat`. Frontend renders via
+`formatMessageTime(ms, dateFormat)` from
+`apps/web/src/lib/format-time.ts`. NEVER call `toLocaleString()` /
+`toLocaleDateString()` directly in component code — that ignores
+the user's setting.
+
+Backend MUST emit dates as either:
+
+- A numeric epoch (ms or s, document which) for the frontend to
+  render; or
+- ISO-8601 via `new Date().toISOString()` for serialized log /
+  archive shapes.
+
+NEVER `toLocaleString()` on the server — the server locale isn't
+the user's. The `672e46b` cleanup removed the last violation in
+`apps/web/src/server/instances.ts`.
+
+## Comments policy
+
+Priority-3 only: explain non-obvious upstream invariants, security
+boundaries, performance optimizations, regex/math/algorithm
+intent. NEVER comment what the code obviously says. Use descriptive
+identifiers and small named helpers instead of explanatory
+comments.
+
+Hard exception: empty `catch {}` blocks MUST carry a comment
+explaining why they're empty (per personal AGENTS.md).
+
+## Window title
+
+`document.title` rules:
+
+- On `/session/:id`: `OP: <sessionTitle>` (short prefix, scannable).
+- Off-session: `OpenPortal`.
+
+## Browser support
+
+- Mobile target: Android Chrome. iOS auto-zoom is acceptable; do
+  not fight it with `font-size:16px` on inputs unless explicitly
+  asked.
+- Performance target: 1-minute intervals for periodic background
+  work on mobile; 10pct step size for any font-size or sizing
+  control.
+
+## Anti-patterns (BLOCK on review)
+
+- New `useSWR` with `refreshInterval > 0` to read indicator-state.
+- Server-side `toLocaleString()`.
+- `<button onClick={() => navigate}>` masquerading as a link.
+- Modal that doesn't round-trip through a URL hash.
+- New per-platform setting that doesn't extend `chat-display-store`.
+- Raw Tailwind palette colors (`text-red-500`, etc.) for semantic
+  intents.
+- Arbitrary spacing values when the scale would do.
+- Empty `catch {}` without an explaining comment.
+- Per-icon affordance without `aria-label` + `title`.
+- Comments narrating what the next line literally does.

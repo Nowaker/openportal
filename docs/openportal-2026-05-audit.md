@@ -81,14 +81,16 @@ Delivered:
   per-instance memory + the global-last-used fallback?" — then
   ship.
 
-- **5/7 archived sessions dropdown**
-  CONCRETE but substantive. Sidebar component
-  `apps/web/src/components/app-sidebar.tsx` (~1640 lines). Add an
-  expandable "Archived (N)" group at the bottom of each project
-  tree. Existing filter logic already segregates archived sessions;
-  reverse the filter for the new collapsed group. The hamburger
-  Archived view in `app-sidebar-nav.tsx` is the prior art for the
-  data fetch.
+- **5/7 archived sessions dropdown** — ALREADY DELIVERED in
+  `49d5a88` (predates this audit, was already in main-nowaker
+  when the audit was first written). `ProjectGroup` in
+  `apps/web/src/components/app-sidebar.tsx` (lines 145, 478-522)
+  ships a per-project collapsed "Archived (N)" group with:
+  per-group `archivedExpanded` state, "Show N more" pagination,
+  search auto-reveal, and data split via
+  `byDir.archivedSessions` at line 594/607/610. The
+  callsite at line 1164 passes `node.bin.archivedSessions`
+  per-project. No further action.
 
 - **7/7 prompt history filter container clip**
   AMBIGUOUS specifics. The filter row at top of `/prompts`
