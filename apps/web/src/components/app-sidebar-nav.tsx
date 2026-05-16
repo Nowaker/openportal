@@ -476,6 +476,14 @@ export function AppSidebarNav() {
               </MenuItem>
               <MenuItem
                 onAction={() => {
+                  void navigate({ to: "/pinned" });
+                }}
+              >
+                <StarIcon className="size-4" data-slot="icon" />
+                Pinned messages
+              </MenuItem>
+              <MenuItem
+                onAction={() => {
                   if (
                     typeof window !== "undefined" &&
                     window.matchMedia("(min-width: 768px)").matches
