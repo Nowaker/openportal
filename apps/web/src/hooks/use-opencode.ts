@@ -2,7 +2,10 @@ import { useMemo } from "react";
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
-import { useIndicators } from "@/hooks/use-indicators";
+import {
+  useIndicators,
+  type SessionIndicatorState,
+} from "@/hooks/use-indicators";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
