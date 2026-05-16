@@ -1,4 +1,5 @@
 import { getOpencodeClient } from "./opencode-client";
+import { getMergedSessionStatus } from "./session-status";
 
 // Detect stuck-from-restart: opencode DB shows an in-flight assistant
 // (time.completed=null AND finish=null) but /session/status reports no
@@ -22,8 +23,13 @@ export async function detectStuckFromRestart(
 
     let sessionBusy = false;
     try {
-      const statusResp = await client.session.status();
-      const status = (statusResp.data as Record<string, { type?: string }> | undefined)?.[sessionId];
+      // opencode's /session/status is scoped per-project; the SDK
+      // helper (and the bare endpoint) only sees sessions whose
+      // directory == opencode-serve CWD, so any session in a real
+      // worktree appears missing. Use the merged status helper which
+      // walks GET /project + per-directory fan-out.
+      const statusMap = await getMergedSessionStatus(port);
+      const status = statusMap[sessionId];
       sessionBusy = status?.type === "busy" || status?.type === "retry";
     } catch {
       // status unreachable - treat as not busy and let the message-tail check decide
