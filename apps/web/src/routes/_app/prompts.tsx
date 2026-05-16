@@ -111,6 +111,9 @@ function PromptsPage() {
   const [q, setQ] = useState("");
   const [view, setView] = useState<ViewMode>("tree");
   const [refireTargetId, setRefireTargetId] = useState<string | null>(null);
+  const [extraPages, setExtraPages] = useState<PromptRow[][]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     setPageTitle("Prompt history");
@@ -123,7 +126,35 @@ function PromptsPage() {
     { revalidateOnFocus: false },
   );
 
-  const rows = data?.rows ?? [];
+  // Reset accumulated pages whenever the search query changes - the
+  // first SWR page covers the new query result; subsequent load-more
+  // clicks fetch with cursor from that result onward.
+  useEffect(() => {
+    setExtraPages([]);
+    setNextCursor(data?.nextCursor ?? null);
+  }, [q, data?.nextCursor]);
+
+  const rows = useMemo(() => {
+    const first = data?.rows ?? [];
+    if (extraPages.length === 0) return first;
+    return [...first, ...extraPages.flat()];
+  }, [data?.rows, extraPages]);
+
+  const loadMore = async () => {
+    if (loadingMore || nextCursor === null) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetcher(buildListUrl(q, nextCursor)) as ListResponse;
+      setExtraPages((prev) => [...prev, res.rows]);
+      setNextCursor(res.nextCursor ?? null);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to load more prompts",
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   return (
     <div className="-m-4 flex h-full flex-col">
@@ -215,10 +246,27 @@ function PromptsPage() {
                 onRefire={setRefireTargetId}
               />
             )}
-            {data?.nextCursor !== null && data?.nextCursor !== undefined && (
-              <div className="py-3 text-center text-xs text-muted-fg">
-                Showing first {rows.length}; more rows exist. Refine the
-                search or load more (TODO).
+            {nextCursor !== null && (
+              <div className="flex flex-col items-center gap-2 py-4 text-xs text-muted-fg">
+                <span>
+                  Showing {rows.length} prompt
+                  {rows.length === 1 ? "" : "s"}; more rows exist.
+                </span>
+                <Button
+                  intent="secondary"
+                  size="sm"
+                  onPress={() => void loadMore()}
+                  isDisabled={loadingMore}
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader className="size-3" />
+                      Loading...
+                    </>
+                  ) : (
+                    "Load more"
+                  )}
+                </Button>
               </div>
             )}
           </>
