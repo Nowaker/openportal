@@ -31,16 +31,19 @@ export function TodoStrip({ snapshot }: Props) {
       type="button"
       onClick={toggle}
       aria-expanded={expanded}
-      aria-label={`Plan: ${done} of ${total} done`}
-      title={`Plan: ${done} of ${total} done${active > 0 ? `, ${active} in progress` : ""}${firstActiveContent ? `: ${firstActiveContent}` : ""}`}
+      aria-label={`Plan: ${done} done${active > 0 ? `, ${active} in progress` : ""}, ${total} total`}
+      title={`Plan: ${done} done${active > 0 ? ` + ${active} in progress` : ""} / ${total} total${firstActiveContent ? `: ${firstActiveContent}` : ""}`}
       className="min-w-0 inline-flex items-center gap-1.5 rounded-md border border-border px-1.5 py-1 text-xs text-muted-fg hover:text-fg hover:border-fg/40 transition-colors"
     >
       <ClipboardDocumentListIcon className="hidden sm:inline-block size-3.5 shrink-0" />
       <span className="tabular-nums min-w-0 inline-flex items-baseline gap-0">
-        <span className="sm:hidden">{done}/{total}</span>
+        <span className="sm:hidden">
+          {done}
+          {active > 0 ? `+${active}` : ""}/{total}
+        </span>
         <span className="hidden sm:inline whitespace-nowrap">
-          {done}/{total} done
-          {active > 0 ? `, ${active} in progress` : ""}
+          {done}
+          {active > 0 ? `+${active}` : ""}/{total}
         </span>
         {firstActiveContent && (
           <span className="hidden md:inline-flex items-baseline min-w-0 ml-0">
