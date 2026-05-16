@@ -23,7 +23,6 @@ export default defineHandler(async () => {
       instanceType: instance.instanceType,
       containerId: instance.containerId,
       state: "running" as const,
-      status: `Running since ${new Date(instance.startedAt).toLocaleString()}`,
     };
   });
 
