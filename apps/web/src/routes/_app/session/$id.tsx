@@ -2178,6 +2178,15 @@ const MessageItem = memo(function MessageItem({
   const pendingMeta = message.info._pending ?? null;
   const isPending = pendingMeta !== null;
   const showInfoIcon = useChatDisplayStore((s) => s.showInfoIcon);
+  const iconVisibility = useChatDisplayStore((s) => s.iconVisibility);
+  const { isMobile } = useMediaQuery();
+  const visibilityKey = isMobile ? "mobile" : "desktop";
+  const showFork = iconVisibility[visibilityKey].fork;
+  const showRevert = iconVisibility[visibilityKey].revert;
+  const showCopy = iconVisibility[visibilityKey].copy;
+  const showInfoIconRow =
+    showInfoIcon && iconVisibility[visibilityKey].info;
+  const showTimestamp = iconVisibility[visibilityKey].timestamp;
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
   const omoBlocks = useMemo(
@@ -2303,36 +2312,40 @@ const MessageItem = memo(function MessageItem({
                   role={isAssistant ? "assistant" : "user"}
                   snippet={textContent}
                 />
-                <button
-                  type="button"
-                  onClick={() => onForkRequest(message)}
-                  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                  aria-label="Fork to a new session from this message"
-                  title="Fork to a new session from this message"
-                >
-                  <ForkIcon className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRevertRequest(message, textContent)}
-                  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                  aria-label={
-                    isAssistant
-                      ? "Revert to right after this message"
-                      : "Revert to before this message"
-                  }
-                  title={
-                    isAssistant
-                      ? "Revert to right after this message"
-                      : "Revert to before this message"
-                  }
-                >
-                  <RevertIcon className="size-3.5" />
-                </button>
+                {showFork && (
+                  <button
+                    type="button"
+                    onClick={() => onForkRequest(message)}
+                    className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                    aria-label="Fork to a new session from this message"
+                    title="Fork to a new session from this message"
+                  >
+                    <ForkIcon className="size-3.5" />
+                  </button>
+                )}
+                {showRevert && (
+                  <button
+                    type="button"
+                    onClick={() => onRevertRequest(message, textContent)}
+                    className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                    aria-label={
+                      isAssistant
+                        ? "Revert to right after this message"
+                        : "Revert to before this message"
+                    }
+                    title={
+                      isAssistant
+                        ? "Revert to right after this message"
+                        : "Revert to before this message"
+                    }
+                  >
+                    <RevertIcon className="size-3.5" />
+                  </button>
+                )}
               </>
             )}
-            {textContent && <CopyMarkdownButton text={textContent} />}
-            {showInfoIcon && !isPending && (
+            {showCopy && textContent && <CopyMarkdownButton text={textContent} />}
+            {showInfoIconRow && !isPending && (
               <button
                 type="button"
                 onClick={() => {
@@ -2357,7 +2370,7 @@ const MessageItem = memo(function MessageItem({
                 <InformationCircleIcon className="size-3.5" />
               </button>
             )}
-            {messageTimestamp && !isPending && (
+            {showTimestamp && messageTimestamp && !isPending && (
               <MessagePermalinkTimestamp
                 messageId={message.info.id}
                 display={messageTimestamp}
