@@ -14,7 +14,10 @@
 # The dev portal uses TimeoutStopSec=2 (see ~/projekty/dotfiles/
 # dotfiles/systemd/user/openportal-dev.service) so the side-channel
 # verification adds ~5s. Prod keeps 30s for clean SSE drain on the
-# old bundle.
+# old bundle, which is why the prod probe budget (60s) is 4x the
+# dev probe budget (15s) - the systemd restart can spend 30s
+# SIGTERM-draining the previous prod instance before the new one
+# even binds the listening socket.
 #
 # Usage: bash scripts/deploy.sh
 #
@@ -43,8 +46,8 @@ probe() {
   local label="$1"
   local url="$2"
   local expected_hash="$3"
+  local max_tries="${4:-15}"
   local tries=0
-  local max_tries=15
   while [ "$tries" -lt "$max_tries" ]; do
     local html
     html="$(curl -sS --max-time 5 "$url" 2>/dev/null || true)"
@@ -77,7 +80,7 @@ echo "build entry: $current_entry"
 if [ "${DEPLOY_SKIP_DEV:-0}" != "1" ]; then
   echo "===== dev restart (serves apps/web/.output) ====="
   systemctl --user restart openportal-dev.service
-  probe "dev" "$DEV_URL" "$expected_hash"
+  probe "dev" "$DEV_URL" "$expected_hash" 15
 fi
 
 echo "===== promote .output -> .output-released ====="
@@ -97,7 +100,7 @@ echo "released entry: $released_entry"
 
 echo "===== prod restart (serves apps/web/.output-released) ====="
 systemctl --user restart openportal.service
-probe "prod" "$PROD_URL" "$expected_hash"
+probe "prod" "$PROD_URL" "$expected_hash" 60
 
 echo "===== deploy ok ====="
 echo "entry:    $current_entry"
