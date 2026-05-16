@@ -1300,9 +1300,6 @@ function SettingsPage() {
           <div className="space-y-6">
             <div>
               <h2 className="text-lg font-semibold">Appearance</h2>
-              <p className="text-sm text-muted-fg">
-                Customize the visual experience of the portal.
-              </p>
             </div>
 
             <div className="space-y-6">
@@ -1366,10 +1363,6 @@ function SettingsPage() {
           <div className="space-y-10">
             <div>
               <h2 className="text-lg font-semibold">Prompt</h2>
-              <p className="text-sm text-muted-fg">
-                Configure how you compose and dispatch prompts: the model and
-                agent that handle them, and how the composer behaves.
-              </p>
             </div>
 
             <section className="space-y-6">
@@ -1451,24 +1444,7 @@ function SettingsPage() {
         <TabPanel id="composer" className="pt-6">
           <div className="space-y-10">
             <div>
-              <h2 className="text-lg font-semibold">Composer</h2>
-              <p className="text-sm text-muted-fg">
-                Customize the message composer behaviour and auto-approve permissions.
-              </p>
-            </div>
-            <ComposerSettings />
-            <PermissionsSettings />
-          </div>
-        </TabPanel>
-
-        <TabPanel id="chat" className="pt-6">
-          <div className="space-y-10">
-            <div>
               <h2 className="text-lg font-semibold">Chat</h2>
-              <p className="text-sm text-muted-fg">
-                How chat messages render: markdown formatter, link opening
-                behavior, and timestamp formatting.
-              </p>
             </div>
 
             <section className="space-y-2">
@@ -1541,10 +1517,6 @@ function SettingsPage() {
           <div className="space-y-10">
             <div>
               <h2 className="text-lg font-semibold">Tools</h2>
-              <p className="text-sm text-muted-fg">
-                Customize which tools the agent has access to, edit their
-                prompts, or add your own custom tools.
-              </p>
             </div>
             <ToolsSettings />
           </div>
@@ -1554,12 +1526,6 @@ function SettingsPage() {
           <div className="space-y-10">
             <div>
               <h2 className="text-lg font-semibold">Performance</h2>
-              <p className="text-sm text-muted-fg">
-                Tune how OpenPortal stays in sync with OpenCode and how much
-                data crosses the wire. Live-update settings are per-device
-                (localStorage); the tool output cap is global to this
-                OpenPortal instance.
-              </p>
             </div>
             <LiveUpdatesSetting />
             <ToolOutputCapSetting />
