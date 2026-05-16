@@ -1,4 +1,5 @@
 import {
+  ArrowDownTrayIcon,
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   ArrowUturnRightIcon,
@@ -80,6 +81,15 @@ function buildListUrl(q: string, cursor: number | null): string {
   if (cursor !== null) params.set("cursor", String(cursor));
   params.set("limit", "100");
   return `/api/prompts?${params.toString()}`;
+}
+
+function buildExportUrl(q: string): string {
+  const params = new URLSearchParams();
+  if (q.trim().length > 0) params.set("q", q.trim());
+  const qs = params.toString();
+  return qs.length > 0
+    ? `/api/prompts/export?${qs}`
+    : "/api/prompts/export";
 }
 
 function highlightMatch(text: string, query: string): React.ReactNode {
@@ -207,6 +217,15 @@ function PromptsPage() {
         >
           <ArrowPathIcon className="size-4" />
         </Button>
+        <a
+          href={buildExportUrl(q)}
+          download
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1.5 text-xs hover:bg-muted/30"
+          title="Download every matching prompt as NDJSON"
+        >
+          <ArrowDownTrayIcon className="size-4" />
+          <span className="hidden sm:inline">Export</span>
+        </a>
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-2 sm:px-4">
