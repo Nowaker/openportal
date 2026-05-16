@@ -27,6 +27,12 @@
 
 import { useSyncExternalStore, useMemo } from "react";
 
+export interface IndicatorTodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  priority?: string;
+}
+
 export interface SessionIndicatorState {
   serverId: string;
   port: number;
@@ -38,6 +44,7 @@ export interface SessionIndicatorState {
   pendingQuestionIds: string[];
   pendingPermissionIds: string[];
   todoState: { pending: number; in_progress: number; completed: number } | null;
+  todos: IndicatorTodoItem[] | null;
   pendingPromptIds: string[];
   connected: boolean;
 }

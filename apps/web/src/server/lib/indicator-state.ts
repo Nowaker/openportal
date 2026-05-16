@@ -22,6 +22,12 @@
 // gets stored AND delivered to subscribers, so listeners may hold the
 // reference across React renders without separate snapshot semantics.
 
+export interface IndicatorTodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  priority?: string;
+}
+
 export interface SessionIndicatorState {
   serverId: string;
   port: number;
@@ -33,6 +39,7 @@ export interface SessionIndicatorState {
   pendingQuestionIds: string[];
   pendingPermissionIds: string[];
   todoState: { pending: number; in_progress: number; completed: number } | null;
+  todos: IndicatorTodoItem[] | null;
   pendingPromptIds: string[];
   connected: boolean;
 }
@@ -80,6 +87,7 @@ function emptyState(
     pendingQuestionIds: [],
     pendingPermissionIds: [],
     todoState: null,
+    todos: null,
     pendingPromptIds: [],
     connected: serverConnected.get(serverId) ?? true,
   };
@@ -250,15 +258,32 @@ export function applyOpencodeEvent(
       break;
     }
     case "todo.updated": {
-      const todos = props.info as Array<{ status?: string }> | undefined;
+      const todos = props.info as
+        | Array<{ content?: unknown; status?: unknown; priority?: unknown }>
+        | undefined;
       if (Array.isArray(todos)) {
         const counts = { pending: 0, in_progress: 0, completed: 0 };
+        const items: IndicatorTodoItem[] = [];
         for (const t of todos) {
-          if (t?.status === "pending") counts.pending++;
-          else if (t?.status === "in_progress") counts.in_progress++;
-          else if (t?.status === "completed") counts.completed++;
+          if (!t || typeof t !== "object") continue;
+          const content = typeof t.content === "string" ? t.content : "";
+          if (!content) continue;
+          const status =
+            t.status === "in_progress" ||
+            t.status === "completed" ||
+            t.status === "cancelled" ||
+            t.status === "pending"
+              ? t.status
+              : "pending";
+          const priority =
+            typeof t.priority === "string" ? t.priority : undefined;
+          items.push({ content, status, priority });
+          if (status === "pending") counts.pending++;
+          else if (status === "in_progress") counts.in_progress++;
+          else if (status === "completed") counts.completed++;
         }
         next.todoState = counts;
+        next.todos = items;
       }
       break;
     }
@@ -324,6 +349,28 @@ export function recordPendingPrompt(
     pendingPromptIds: [...cur.pendingPromptIds, promptId],
     busy: true,
     idle: false,
+    lastEventAt: Date.now(),
+  };
+  commit(next);
+}
+
+export function setTodos(
+  serverId: string,
+  port: number,
+  sessionId: string,
+  todos: IndicatorTodoItem[],
+): void {
+  const cur = ensureState(serverId, port, sessionId);
+  const counts = { pending: 0, in_progress: 0, completed: 0 };
+  for (const t of todos) {
+    if (t.status === "pending") counts.pending++;
+    else if (t.status === "in_progress") counts.in_progress++;
+    else if (t.status === "completed") counts.completed++;
+  }
+  const next: SessionIndicatorState = {
+    ...cur,
+    todos,
+    todoState: counts,
     lastEventAt: Date.now(),
   };
   commit(next);

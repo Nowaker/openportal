@@ -34,7 +34,7 @@ import {
   useCommands,
 } from "@/components/slash-command-popover";
 import { TodoStrip, TodoFloat } from "@/components/todo-strip";
-import { extractLatestTodos } from "@/lib/todos";
+
 import {
   formatMessageTime,
   formatAbsoluteAndRelative,
@@ -112,6 +112,7 @@ import {
 import {
   useSessions,
   useSessionStatus,
+  useTodos,
   useAgents,
   useProviders,
 } from "@/hooks/use-opencode";
@@ -2819,10 +2820,7 @@ function SessionPage() {
     setPermalinkTarget(null);
   }, []);
 
-  const todoSnapshot = useMemo(
-    () => extractLatestTodos(messages),
-    [messages],
-  );
+  const { data: todoSnapshot } = useTodos(sessionId);
 
   const setRefreshHandler = usePullState((s) => s.setRefreshHandler);
   useEffect(() => {

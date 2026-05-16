@@ -3,9 +3,12 @@ import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import {
+  useIndicator,
   useIndicators,
+  type IndicatorTodoItem,
   type SessionIndicatorState,
 } from "@/hooks/use-indicators";
+import type { TodoItem, TodoSnapshot, TodoStatus } from "@/lib/todos";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -142,6 +145,55 @@ export function useSessionStatus(): {
 // defined function. No SWR cache to revalidate - the SSE stream owns
 // the data.
 const noopMutate = async (): Promise<undefined> => undefined;
+
+// Replaces the legacy `extractLatestTodos(messages)` derivation, which
+// scanned the message stream for the latest todowrite tool-call and
+// broke once a session grew past the 50-message tail window (the part
+// drifted out of range, sidebar/strip went blank).
+//
+// Data flows: indicator-state.todos (live, SSE-pushed on
+// `todo.updated`) wins when present. On cold open of a session that
+// hasn't emitted `todo.updated` since the broadcaster started, SWR
+// fetches `/api/opencode/<port>/session/<id>/todo` once (no polling,
+// `refreshInterval: 0`); the proxy reads from opencode's TodoTable
+// SQLite directly, so even months-old idle sessions return their
+// canonical list.
+export function useTodos(sessionId: string | null): {
+  data: TodoSnapshot | null;
+  isLoading: boolean;
+} {
+  const port = usePort();
+  const serverId = useServerId();
+  const indicator = useIndicator(serverId, sessionId ?? undefined);
+  const indicatorTodos = indicator?.todos ?? null;
+
+  const swrKey =
+    port && sessionId && indicatorTodos === null
+      ? `/api/opencode/${port}/session/${sessionId}/todo`
+      : null;
+  const { data: fetched, isLoading } = useSWR<IndicatorTodoItem[]>(
+    swrKey,
+    fetcher,
+    { refreshInterval: 0, revalidateOnFocus: false },
+  );
+
+  const data = useMemo<TodoSnapshot | null>(() => {
+    const source = indicatorTodos ?? fetched ?? null;
+    if (!source || source.length === 0) return null;
+    const items: TodoItem[] = source.map((t, idx) => ({
+      id: `${idx}-${t.content}`,
+      content: t.content,
+      status: t.status as TodoStatus,
+    }));
+    return {
+      todos: items,
+      updatedAt: indicator?.lastEventAt ?? Date.now(),
+      toolPartId: "todotable",
+    };
+  }, [indicatorTodos, fetched, indicator?.lastEventAt]);
+
+  return { data, isLoading };
+}
 
 export interface QuestionRequestSummary {
   id: string;
