@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
 
 const PROBE_INTERVAL_MS = 10_000;
+const PROBE_INTERVAL_WHILE_DOWN_MS = 2_000;
 const PROBE_TIMEOUT_MS = 15_000;
 const PROBE_URL = "/api/instance/self";
 // Number of consecutive failed probes before flipping the banner to
@@ -169,7 +170,18 @@ export function useConnectionMonitor(): ConnectionStatus {
       }
     };
 
-    const interval = window.setInterval(() => void probe("interval"), PROBE_INTERVAL_MS);
+    let scheduledTimer: number | null = null;
+    const scheduleNext = () => {
+      if (cancelled) return;
+      const delay =
+        prev === "connected"
+          ? PROBE_INTERVAL_MS
+          : PROBE_INTERVAL_WHILE_DOWN_MS;
+      scheduledTimer = window.setTimeout(async () => {
+        await probe("interval");
+        scheduleNext();
+      }, delay);
+    };
     const onFocus = () => {
       void probe("focus");
     };
@@ -182,11 +194,14 @@ export function useConnectionMonitor(): ConnectionStatus {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("online", onOnline);
-    void probe("mount");
+    void (async () => {
+      await probe("mount");
+      scheduleNext();
+    })();
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      if (scheduledTimer !== null) window.clearTimeout(scheduledTimer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("online", onOnline);
