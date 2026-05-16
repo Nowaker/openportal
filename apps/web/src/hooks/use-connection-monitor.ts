@@ -59,15 +59,20 @@ export function useConnectionMonitor(): ConnectionStatus {
     let prev: ConnectionStatus = "connected";
     let consecutiveFailures = 0;
 
-    const probe = async () => {
+    const probe = async (trigger: string) => {
+      const t0 = performance.now();
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
       let probed: ConnectionStatus | null = null;
+      let probedReason = "";
+      let fetchError: unknown = null;
+      let httpStatus: number | null = null;
       try {
         const res = await fetch(PROBE_URL, {
           signal: ctrl.signal,
           cache: "no-store",
         });
+        httpStatus = res.status;
         if (res.ok) {
           try {
             const body = (await res.json()) as {
@@ -79,41 +84,84 @@ export function useConnectionMonitor(): ConnectionStatus {
             const opencodeHealth = body?.health?.opencode;
             if (opencodeHealth === "up") {
               probed = "connected";
+              probedReason = "health.opencode=up";
             } else if (opencodeHealth === "down") {
               if (body?.lastKnown) {
                 probed = "opencode-down";
+                probedReason = "health.opencode=down + lastKnown";
               } else {
                 probed = "connected";
+                probedReason = "health.opencode=down but no lastKnown";
               }
             } else if (body?.error === "active-server-unreachable") {
               probed = "opencode-down";
+              probedReason = `error=${body.error}`;
             } else {
               probed = "connected";
+              probedReason = `health.opencode=${opencodeHealth ?? "missing"} (defaulting connected)`;
             }
-          } catch {
+          } catch (parseErr) {
             probed = "connected";
+            probedReason = `json parse failed (${(parseErr as Error).message}) but http 2xx, treating connected`;
           }
+        } else {
+          probedReason = `http ${res.status} ${res.statusText}`;
         }
-      } catch {
-        // probed stays null - treat as failure (counter increments below)
+      } catch (err) {
+        fetchError = err;
       } finally {
         clearTimeout(timer);
       }
-      if (cancelled) return;
+      const elapsedMs = Math.round(performance.now() - t0);
+      if (cancelled) {
+        console.log(
+          `[connection-monitor] probe cancelled (trigger=${trigger}, ${elapsedMs}ms)`,
+        );
+        return;
+      }
       let next: ConnectionStatus;
       if (probed === null) {
         consecutiveFailures += 1;
+        const errMsg =
+          fetchError instanceof DOMException && fetchError.name === "AbortError"
+            ? `aborted after ${PROBE_TIMEOUT_MS}ms`
+            : fetchError instanceof Error
+              ? fetchError.message
+              : httpStatus !== null
+                ? `http ${httpStatus}`
+                : "unknown";
         if (consecutiveFailures >= FAILURE_THRESHOLD) {
           next = "openportal-down";
+          console.log(
+            `[connection-monitor] probe FAILED (trigger=${trigger}, ${elapsedMs}ms, reason=${errMsg}); ${consecutiveFailures} consecutive failures >= threshold ${FAILURE_THRESHOLD} → openportal-down`,
+          );
         } else {
           next = prev;
+          console.log(
+            `[connection-monitor] probe failed (trigger=${trigger}, ${elapsedMs}ms, reason=${errMsg}); ${consecutiveFailures}/${FAILURE_THRESHOLD} consecutive failures, staying ${prev}`,
+          );
         }
       } else {
+        if (consecutiveFailures > 0) {
+          console.log(
+            `[connection-monitor] probe recovered (trigger=${trigger}, ${elapsedMs}ms, reason=${probedReason}); resetting ${consecutiveFailures} consecutive failures`,
+          );
+        } else {
+          console.log(
+            `[connection-monitor] probe ok (trigger=${trigger}, ${elapsedMs}ms, ${probedReason})`,
+          );
+        }
         consecutiveFailures = 0;
         next = probed;
       }
       if (next !== prev) {
+        console.log(
+          `[connection-monitor] state transition: ${prev} → ${next}`,
+        );
         if (next === "connected" && prev !== "connected") {
+          console.log(
+            "[connection-monitor] firing global SWR mutate(() => true) to refetch all keys",
+          );
           void mutate(() => true);
         }
         prev = next;
@@ -121,20 +169,20 @@ export function useConnectionMonitor(): ConnectionStatus {
       }
     };
 
-    const interval = window.setInterval(probe, PROBE_INTERVAL_MS);
+    const interval = window.setInterval(() => void probe("interval"), PROBE_INTERVAL_MS);
     const onFocus = () => {
-      void probe();
+      void probe("focus");
     };
     const onVisibility = () => {
-      if (document.visibilityState === "visible") void probe();
+      if (document.visibilityState === "visible") void probe("visibility");
     };
     const onOnline = () => {
-      void probe();
+      void probe("online");
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("online", onOnline);
-    void probe();
+    void probe("mount");
 
     return () => {
       cancelled = true;
