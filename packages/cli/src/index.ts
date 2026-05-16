@@ -512,13 +512,23 @@ async function startOpenCodeServer(
 }
 
 async function startWebServer(port: number, hostname: string): Promise<number> {
-  console.log(`Starting Web UI server...`);
+  // Honor pre-existing OPENPORTAL_WEB_BUNDLE so an operator can point
+  // the runtime at a separate "released" bundle directory (e.g.
+  // apps/web/.output-released/server/index.mjs) instead of the default
+  // packages/cli/web/server/index.mjs symlink target. Lets prod stay
+  // on the last-known-green bundle while the build script churns the
+  // mutable .output/ dir.
+  const webBundle =
+    process.env.OPENPORTAL_WEB_BUNDLE && process.env.OPENPORTAL_WEB_BUNDLE.length > 0
+      ? process.env.OPENPORTAL_WEB_BUNDLE
+      : WEB_SERVER_PATH;
+  console.log(`Starting Web UI server (bundle=${webBundle})...`);
   const proc = Bun.spawn(["bun", "run", WEB_WRAPPER_PATH], {
-    cwd: dirname(WEB_SERVER_PATH),
+    cwd: dirname(webBundle),
     stdio: ["ignore", "inherit", "inherit"],
     env: {
       ...process.env,
-      OPENPORTAL_WEB_BUNDLE: WEB_SERVER_PATH,
+      OPENPORTAL_WEB_BUNDLE: webBundle,
       PORT: String(port),
       HOST: hostname,
       NITRO_PORT: String(port),

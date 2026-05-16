@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
-# Dev-first deploy. Builds once, restarts the dev sandbox first, verifies it
-# serves the freshly-built bundle, only then restarts prod. The dev portal
-# uses TimeoutStopSec=2 (see ~/projekty/dotfiles/dotfiles/systemd/user/
-# openportal-dev.service) so the side-channel verification adds ~5s, not
-# 30s. Prod keeps its 30s stop timeout for clean SSE drain.
+# Release-staging dev-first deploy. Two bundle directories:
 #
-# Verifying on dev first catches asset-pipeline regressions BEFORE they
-# touch prod. The user's open chat sessions on portal.desktop.ts.nowaker.net
-# only get bounced if dev came up green.
+#   apps/web/.output/           build target (mutable, rebuilt every cycle)
+#   apps/web/.output-released/  what prod serves from (atomic-promoted)
+#
+# Build writes .output. Dev portal serves .output (sees the new bundle
+# immediately). Only after dev probe comes up green do we rsync
+# .output -> .output-released and restart prod. A broken build leaves
+# .output corrupt but .output-released untouched, so prod stays on
+# the previous green release. No "I broke prod with a typo" failure
+# mode anymore.
+#
+# The dev portal uses TimeoutStopSec=2 (see ~/projekty/dotfiles/
+# dotfiles/systemd/user/openportal-dev.service) so the side-channel
+# verification adds ~5s. Prod keeps 30s for clean SSE drain on the
+# old bundle.
 #
 # Usage: bash scripts/deploy.sh
 #
-# Env knobs (override for special cases):
+# Env knobs:
 #   DEPLOY_DEV_URL    default http://100.105.229.19:5001/
 #   DEPLOY_PROD_URL   default http://100.105.229.19:5000/
-#   DEPLOY_SKIP_DEV   set to 1 to bypass dev verification (NOT RECOMMENDED).
+#   DEPLOY_SKIP_DEV   set to 1 to bypass dev verification (NOT
+#                     RECOMMENDED - drops the release-staging
+#                     safety net). The rsync still gates on a
+#                     successful build, but a build that "works"
+#                     by tsc + builds clean but is functionally
+#                     broken would now go straight to prod.
 
 set -euo pipefail
 
@@ -23,6 +35,9 @@ PROD_URL="${DEPLOY_PROD_URL:-http://100.105.229.19:5000/}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+
+OUTPUT_DIR="$repo_root/apps/web/.output"
+RELEASED_DIR="$repo_root/apps/web/.output-released"
 
 probe() {
   local label="$1"
@@ -51,7 +66,7 @@ probe() {
 echo "===== build ====="
 bash scripts/build.sh
 
-current_entry="$(grep -oE '/assets/index-[^"]+\.js' apps/web/.output/server/index.mjs | head -1)"
+current_entry="$(grep -oE '/assets/index-[^"]+\.js' "$OUTPUT_DIR/server/index.mjs" | head -1)"
 if [ -z "$current_entry" ]; then
   echo "FATAL: could not determine current entry from .output/server/index.mjs" >&2
   exit 1
@@ -60,16 +75,32 @@ expected_hash="$(printf '%s' "$current_entry" | grep -oE 'index-[A-Za-z0-9_-]+\.
 echo "build entry: $current_entry"
 
 if [ "${DEPLOY_SKIP_DEV:-0}" != "1" ]; then
-  echo "===== dev restart ====="
+  echo "===== dev restart (serves apps/web/.output) ====="
   systemctl --user restart openportal-dev.service
   probe "dev" "$DEV_URL" "$expected_hash"
 fi
 
-echo "===== prod restart ====="
+echo "===== promote .output -> .output-released ====="
+# rsync -a preserves perms/links/times. --delete drops files from
+# .output-released that are not in .output (so the released dir mirrors
+# the build exactly). Asset retention is layered INSIDE .output by
+# scripts/build.sh, so the rsync copies the retained files too -
+# .output-released ends up with every retained asset hash plus the
+# current ones.
+rsync -a --delete "$OUTPUT_DIR/" "$RELEASED_DIR/"
+released_entry="$(grep -oE '/assets/index-[^"]+\.js' "$RELEASED_DIR/server/index.mjs" | head -1)"
+if [ -z "$released_entry" ] || ! printf '%s' "$released_entry" | grep -qF "$expected_hash"; then
+  echo "FATAL: promote left .output-released with mismatched entry: $released_entry" >&2
+  exit 1
+fi
+echo "released entry: $released_entry"
+
+echo "===== prod restart (serves apps/web/.output-released) ====="
 systemctl --user restart openportal.service
 probe "prod" "$PROD_URL" "$expected_hash"
 
 echo "===== deploy ok ====="
-echo "entry: $current_entry"
-echo "dev:   $DEV_URL"
-echo "prod:  $PROD_URL"
+echo "entry:    $current_entry"
+echo "released: $released_entry"
+echo "dev:      $DEV_URL"
+echo "prod:     $PROD_URL"
