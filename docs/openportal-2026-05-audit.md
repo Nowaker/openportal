@@ -1,7 +1,13 @@
 # OpenPortal outstanding-work audit (2026-05)
 
-Snapshot taken after the ULW session ending at commit `300817f` on
-`main-nowaker`. Both remotes (gitlab `origin` + `github`) in sync.
+Last refreshed at local commit `672e46b` on `main-nowaker`.
+`9b2d11e` and prior pushed to both remotes (gitlab `origin` +
+`github`). Four local commits ahead pending explicit push auth:
+
+- `178edc2` todos: read from TodoTable endpoint, not windowed scan
+- `ec16261` ToolCallItem honors chat-display-store iconVisibility
+- `672e46b` instances: drop server-side toLocaleString() status
+- (`9b2d11e` MessageItem chat-display-store wire-up — pushed)
 
 This document satisfies the standing "Audit ALL PREVIOUS user requests
 + return incomplete to todo (user-mandated)" item. Every outstanding
@@ -117,7 +123,7 @@ Delivered:
 
 ### Prompt history set 2
 
-`apps/web/src/routes/_app/prompts.tsx`. 6 items, multiple ambiguous.
+`apps/web/src/routes/_app/prompts.tsx`. 3 items remaining out of 6.
 
 - **Flat-mode paddings** — AMBIGUOUS. Visual diff needed against
   grouped mode.
@@ -125,20 +131,19 @@ Delivered:
   `apps/web/src` for the literal string; only hits are in unrelated
   files (e.g. `server/instance/self.ts` health response key). Ask
   user for screenshot.
-- **Fix load-more TODO** — CONCRETE. The "Refine the search or load
-  more (TODO)." line at `apps/web/src/routes/_app/prompts.tsx:218`
-  signals an unimplemented pagination feature. `data.nextCursor` is
-  already on the response. Implement: `useState<PromptRow[][]>` for
-  accumulated pages + load-more button + fetch with cursor + reset
-  pages when query changes.
-- **Markdown formatting** — `row.raw_text` is currently rendered as
-  plain text inside `<div className="whitespace-pre-wrap">`. Switch
-  to the existing `MessageMarkdown` component used in the chat log.
-- **Export-all** — new "Download all" button + backend endpoint that
-  streams the SQLite contents as NDJSON.
+- **Fix load-more TODO** — DONE (`8dedb65`). Pagination via
+  `extraPages: PromptRow[][]` + nextCursor + Button; resets on
+  query change.
+- **Markdown formatting** — DONE (`96530bc`). `MarkdownRenderer`
+  when query is empty; `highlightMatch` plain text when query is
+  active (markdown wrap conflicts with `<mark>` substring
+  highlighting otherwise).
+- **Export-all** — DONE (`08a8f88`).
+  `GET /api/prompts/export?q=&project=&session=&from=&to=` streams
+  `application/x-ndjson` with
+  `Content-Disposition: attachment; filename="openportal-prompts-<stamp>.ndjson"`.
 - **Timestamps convention** — AMBIGUOUS. Likely overlaps with the
-  recently-shipped timestamp-link change (commit `a5ca342`); ask user
-  for specifics.
+  shipped timestamp-link change (`a5ca342`); ask user for specifics.
 
 ### Audit user requests
 This document.
@@ -161,31 +166,58 @@ session ID + browser console output + opencode log line) to diagnose.
 
 ### Low-pri deferred bundle
 
-4 remaining items out of 6.
+1 ambiguous item remaining out of 6.
 
-- **MessageBubble + ToolCallItem wire-up to chat-display-store**
-  The chat-display-store already ships per-icon visibility settings
-  (chat tab > per-icon visibility grid). Consumers in MessageBubble
-  + ToolCallItem need to read from the store and conditionally
-  render each icon.
+- **MessageBubble + ToolCallItem wire-up to chat-display-store** —
+  DONE. MessageItem in `9b2d11e`, ToolCallItem in `ec16261`. Eight
+  render points across three branches honor
+  `iconVisibility[platform][icon]`: copy + expand + timestamp on
+  tool rows; fork + revert + copy + info + timestamp on message
+  rows. Platform via `useMediaQuery().isMobile`.
 - **Timestamp polish** — AMBIGUOUS. Likely overlaps with the
-  shipped timestamp-link change.
-- **(i) info icon differentiation**
-  Settings tab > Chat > Info icon already ships a `ShowInfoIconSetting`
-  store + toggle. Need MessageItem + ToolCallItem to render a separate
-  `(i)` icon when the setting is enabled, opening a modal with the
-  full opencode message metadata (id, parts, raw event payload).
-- **Backend-stored date format**
-  Per AGENTS.md the canonical date format is ISO-8601 UTC. Audit
-  backend route handlers for places that emit
-  `Date.now()`/`toLocaleString()`/etc. instead of canonical
-  `new Date().toISOString()`. Likely candidates: prompt-archive
-  rows (`ts_ms` is fine as a number but human-readable serialized
-  shapes may not be).
-- **Year-aware timestamps** — ALREADY DELIVERED. Verified in
-  `apps/web/src/lib/format-time.ts:47`: when `sameYear === false`
-  the format renders `M/D/YYYY` instead of `M/D`. No further
-  action needed.
+  shipped timestamp-link change. Needs user specifics.
+- **(i) info icon differentiation** — DONE (`c2f82c1`).
+  InformationCircleIcon button in MessageItem action row when
+  `showInfoIcon === true` (and not pending); copies
+  `JSON.stringify({info, parts}, null, 2)` to clipboard with a
+  success/error toast. Modal viewer with rich rendering can layer
+  on later.
+- **Backend-stored date format** — DONE (`672e46b`). Audit found
+  one violation: `apps/web/src/server/instances.ts:26` emitted
+  `Running since ${new Date(startedAt).toLocaleString()}` (dead
+  field, no frontend consumers, uses server locale not user's).
+  Removed. All other backend `Date.toX` callsites already use
+  `toISOString()` or numeric epoch.
+- **Year-aware timestamps** — ALREADY DELIVERED in
+  `apps/web/src/lib/format-time.ts:47`.
+
+### Todo strip drift — DONE (`178edc2`)
+
+Symptom: openportal's todo strip/float went blank on long-running
+sessions even with intact plans in opencode. Root cause:
+`extractLatestTodos(messages)` scanned the message stream for the
+latest `todowrite` tool part; the messages endpoint is windowed at
+50 (`DEFAULT_INITIAL_LIMIT` in
+`apps/web/src/server/opencode/[port]/session/[id]/messages.ts:20`),
+so once the latest todowrite drifted past the tail the scan
+returned null. Live proof against
+`ses_019de0d38c6euLKwWoRhFZdgzg`: 71 messages after the last
+todowrite vs a 50-message window.
+
+Fix: switch to opencode's dedicated `GET /session/:id/todo` (reads
+from TodoTable SQLite directly, no window dependency). New proxy
+route at `apps/web/src/server/opencode/[port]/session/[id]/todo.ts`
+forwards `?directory=`; helper at
+`apps/web/src/server/lib/session-todo.ts` iterates known worktrees
+when no directory hint is given (per-session keying makes worktree
+collisions impossible). Frontend hook
+`useTodos(sessionId)` in `apps/web/src/hooks/use-opencode.ts`
+is two-layer: SWR with `refreshInterval: 0` for cold-load seed,
+`useIndicator` for live SSE updates. `SessionIndicatorState`
+gained a `todos: IndicatorTodoItem[] | null` field alongside the
+existing counts triple; `applyOpencodeEvent`'s `todo.updated`
+handler populates both. `extractLatestTodos` stays in
+`lib/todos.ts` for backwards compat but has no callers.
 
 ## Blocked on user input
 
