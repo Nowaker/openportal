@@ -2686,27 +2686,35 @@ function PendingPromptsBanner({ sessionId }: { sessionId: string | null }) {
   const rows = data?.rows ?? [];
   if (rows.length === 0) return null;
   return (
-    <div className="border-t border-border bg-warning-subtle/40 px-3 py-2 text-xs flex flex-col gap-1">
+    <>
       {rows.map((row) => {
-        const preview = row.raw_text.replace(/\s+/g, " ").slice(0, 200);
         const ageMs = Date.now() - row.ts_ms;
-        const ageLabel = ageMs < 5000 ? "just now" : `${Math.floor(ageMs / 1000)}s ago`;
+        const ageLabel =
+          ageMs < 5000 ? "just now" : `${Math.floor(ageMs / 1000)}s ago`;
         return (
-          <div key={row.id} className="flex items-baseline gap-2">
-            <span className="shrink-0 font-mono uppercase tracking-wide text-[10px] text-warning-subtle-fg">
-              Waiting for OpenCode
-            </span>
-            <span className="text-muted-fg truncate flex-1" title={row.raw_text}>
-              {preview}
-            </span>
-            <span className="shrink-0 text-muted-fg/70">
-              {row.attempts > 0 ? `${row.attempts} attempts · ` : ""}
-              {ageLabel}
-            </span>
+          <div
+            key={row.id}
+            data-role="user"
+            data-pending-prompt-id={row.id}
+            className="relative px-3 py-3 border-t border-b border-primary/50 [[data-role=user]+&]:border-t-0"
+          >
+            <div className="relative">
+              <Badge intent="warning" className="mb-1">
+                <Loader className="size-3 mr-1" />
+                Waiting for OpenCode
+                {row.attempts > 0 ? ` - ${row.attempts} attempt${row.attempts === 1 ? "" : "s"}` : ""}
+              </Badge>
+              <div className="prose prose-sm dark:prose-invert max-w-none break-words pr-20 whitespace-pre-wrap">
+                {row.raw_text}
+              </div>
+              <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70 font-mono tabular-nums whitespace-nowrap">
+                {ageLabel}
+              </div>
+            </div>
           </div>
         );
       })}
-    </div>
+    </>
   );
 }
 
