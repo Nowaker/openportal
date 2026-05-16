@@ -24,6 +24,7 @@ import { PageTitle } from "@/components/ui/typography";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { toast } from "@/components/ui/toast";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
+import { MarkdownRenderer } from "@/lib/markdown-renderer";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useSessions } from "@/hooks/use-opencode";
 import {
@@ -607,9 +608,16 @@ function PromptRowItem({
           <span className="text-[10px] text-muted-fg/80">{row.model_id}</span>
         )}
       </div>
-      <div className="whitespace-pre-wrap break-words text-sm">
-        {highlightMatch(row.raw_text, query.trim())}
-      </div>
+      {query.trim().length > 0 ? (
+        <div className="whitespace-pre-wrap break-words text-sm">
+          {highlightMatch(row.raw_text, query.trim())}
+        </div>
+      ) : (
+        <MarkdownRenderer
+          source={row.raw_text}
+          className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]"
+        />
+      )}
       <div className="flex items-center gap-1 pt-1">
         <button
           type="button"
