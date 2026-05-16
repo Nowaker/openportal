@@ -120,7 +120,7 @@ import type { Session } from "@opencode-ai/sdk";
 
 const sessionSearchSchema = z.object({
   focus: z.literal("composer").optional(),
-  prompts: z.literal("1").optional(),
+  prompts: z.union([z.literal("1"), z.literal(1), z.literal(true)]).optional(),
 });
 
 export const Route = createFileRoute("/_app/session/$id")({
@@ -2657,7 +2657,7 @@ function SessionPage() {
     scrollHeight: number;
   } | null>(null);
   const promptsSearchParam = Route.useSearch({
-    select: (s) => s.prompts === "1",
+    select: (s) => s.prompts != null && s.prompts !== false,
   });
   const [onlyUserMessages, setOnlyUserMessages] = useState(promptsSearchParam);
   useEffect(() => {
