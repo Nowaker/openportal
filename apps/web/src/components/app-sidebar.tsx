@@ -915,6 +915,7 @@ function PinnedSection({
                   void navigate({
                     to: "/session/$id",
                     params: { id: session.id },
+                    search: (prev) => prev,
                   });
                 }}
                 className="flex-1 min-w-0 truncate text-left text-xs sm:text-sm text-sidebar-fg hover:text-fg"
@@ -1350,7 +1351,11 @@ export default function AppSidebar(
       toast.success(
         directory ? `Session created in ${directory}` : "Session created",
       );
-      navigate({ to: "/session/$id", params: { id: session.id } });
+      navigate({
+        to: "/session/$id",
+        params: { id: session.id },
+        search: (prev) => prev,
+      });
     } catch (error) {
       console.error("Failed to create session:", error);
       toast.error(
@@ -1376,7 +1381,11 @@ export default function AppSidebar(
     statusMap,
     questionSessionIds,
     onSelect: (id) => {
-      void navigate({ to: "/session/$id", params: { id } });
+      void navigate({
+        to: "/session/$id",
+        params: { id },
+        search: (prev) => prev,
+      });
     },
   });
 
@@ -1428,7 +1437,11 @@ export default function AppSidebar(
             currentSessionId={currentSessionId}
             onOpenDirectory={() => setBrowserOpen(true)}
             onSelectSession={(id) =>
-              navigate({ to: "/session/$id", params: { id } })
+              navigate({
+                to: "/session/$id",
+                params: { id },
+                search: (prev) => prev,
+              })
             }
           />
         ) : (
@@ -1508,7 +1521,7 @@ export default function AppSidebar(
                   setVirtualDirectory(dir);
                   navigate({
                     to: "/session/new",
-                    search: { directory: dir },
+                    search: (prev) => ({ ...prev, directory: dir }),
                   });
                 }}
               />
@@ -1564,7 +1577,7 @@ export default function AppSidebar(
             <MenuItem
               onAction={() => {
                 setIsOpenOnMobile(false);
-                navigate({ to: "/prompts" });
+                navigate({ to: "/prompts", search: (prev) => prev });
               }}
             >
               <ArchiveBoxIcon />
@@ -1598,7 +1611,7 @@ export default function AppSidebar(
             <MenuItem
               onAction={() => {
                 setIsOpenOnMobile(false);
-                navigate({ to: "/settings" });
+                navigate({ to: "/settings", search: (prev) => prev });
               }}
             >
               <Cog6ToothIcon />
@@ -1616,9 +1629,10 @@ export default function AppSidebar(
           setVirtualDirectory(picked);
           navigate({
             to: "/session/new",
-            search: autoPrompt
-              ? { directory: picked, autoPrompt }
-              : { directory: picked },
+            search: (prev) =>
+              autoPrompt
+                ? { ...prev, directory: picked, autoPrompt }
+                : { ...prev, directory: picked },
           });
         }}
       />

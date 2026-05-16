@@ -406,6 +406,7 @@ export function AppSidebarNav() {
                             void navigate({
                               to: "/session/$id",
                               params: { id: parentSession.id },
+                              search: (prev) => prev,
                             });
                           }}
                           className="text-muted-fg hover:text-fg hover:underline underline-offset-2"
@@ -467,7 +468,8 @@ export function AppSidebarNav() {
                 onAction={() => {
                   void navigate({
                     to: "/prompts",
-                    search: sessionId ? { focus: sessionId } : {},
+                    search: (prev) =>
+                      sessionId ? { ...prev, focus: sessionId } : { ...prev },
                   });
                 }}
               >
@@ -476,7 +478,7 @@ export function AppSidebarNav() {
               </MenuItem>
               <MenuItem
                 onAction={() => {
-                  void navigate({ to: "/pinned" });
+                  void navigate({ to: "/pinned", search: (prev) => prev });
                 }}
               >
                 <StarIcon className="size-4" data-slot="icon" />
@@ -869,7 +871,11 @@ export function PinnedTabStrip() {
           hasQuestion={hasQuestion}
           hasError={hasError}
           onNavigate={() =>
-            void navigate({ to: "/session/$id", params: { id } })
+            void navigate({
+              to: "/session/$id",
+              params: { id },
+              search: (prev) => prev,
+            })
           }
           onUnpin={() => void togglePin(id, "unpin")}
         />
