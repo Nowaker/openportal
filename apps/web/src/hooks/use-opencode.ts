@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { useMemo } from "react";
 import useSWR from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
@@ -21,25 +20,6 @@ function usePort() {
 function useServerId(): string | undefined {
   const instance = useInstanceStore((s) => s.instance);
   return instance?.id;
-}
-
-// Any non-polling strategy puts the SSE event bus in charge of these
-// SWR keys (messages). Returning 0 disables SWR's timer-driven poll.
-// SWR still refetches on focus + on mutate() calls from useEventStream.
-//
-// Indicator state (busy/retry/idle, pending questions, pending
-// permissions) no longer flows through this knob: it is pushed via
-// /api/indicators/stream to useIndicators() regardless of strategy.
-export function usePollMs(intervalMs: number): number {
-  const strategy = useActiveStrategy();
-  return strategy === "polling" ? intervalMs : 0;
-}
-  return res.json();
-};
-
-function usePort() {
-  const instance = useInstanceStore((s) => s.instance);
-  return instance?.port ?? null;
 }
 
 // Legacy knob kept for hooks that haven't yet migrated to the SSE
