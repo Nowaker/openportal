@@ -51,7 +51,7 @@ function ConnectionStatusBanner() {
             aria-hidden="true"
           />
           <span className="flex-1 text-warning-subtle-fg">
-            Opencode is unreachable. Showing cached data - retrying every 10s...
+            OpenCode is unreachable. Showing cached data - retrying every 10s...
           </span>
           <Link
             to="/servers"
@@ -62,8 +62,8 @@ function ConnectionStatusBanner() {
           </Link>
         </div>
         <span className="pl-6 text-xs text-warning-subtle-fg/80">
-          Openportal-owned features (prompts archive, server list, settings)
-          keep working. Live opencode reads will resume automatically.
+          OpenPortal-owned features (prompts archive, server list, settings)
+          keep working. Live OpenCode reads will resume automatically.
         </span>
       </div>
     );

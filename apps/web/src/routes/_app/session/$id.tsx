@@ -2622,7 +2622,7 @@ function PendingPromptsBanner({ sessionId }: { sessionId: string | null }) {
         return (
           <div key={row.id} className="flex items-baseline gap-2">
             <span className="shrink-0 font-mono uppercase tracking-wide text-[10px] text-warning-subtle-fg">
-              Waiting for opencode
+              Waiting for OpenCode
             </span>
             <span className="text-muted-fg truncate flex-1" title={row.raw_text}>
               {preview}
@@ -4298,10 +4298,10 @@ function SessionPage() {
         {!loading && !error && opencodeUnreachable && (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="text-base font-medium text-fg">
-              Opencode is unreachable
+              OpenCode is unreachable
             </div>
             <p className="max-w-md text-sm text-muted-fg">
-              Live session messages can't load until opencode is back. The
+              Live session messages can't load until OpenCode is back. The
               connection monitor is retrying every 10 seconds. Prompts
               archive, settings, and the server list still work in the
               meantime.
@@ -4477,13 +4477,13 @@ function SessionPage() {
           <div className="py-3 px-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm text-warning-subtle-fg">
-                Session may be wedged - opencode reports busy but no streaming progress.
+                Session may be wedged - OpenCode reports busy but no streaming progress.
               </span>
               <button
                 type="button"
                 onClick={() => handleAbortAndRetry()}
                 className="text-xs underline underline-offset-2 text-fg hover:text-primary"
-                title="Cancel the in-flight turn on opencode, then re-submit the last user prompt"
+                title="Cancel the in-flight turn on OpenCode, then re-submit the last user prompt"
               >
                 Abort + retry
               </button>

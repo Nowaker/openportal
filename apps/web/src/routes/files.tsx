@@ -98,8 +98,8 @@ function FilesPage() {
 
   useEffect(() => {
     document.title = search.file
-      ? `${search.file} - openportal files`
-      : "openportal files";
+      ? `${search.file} - OpenPortal files`
+      : "OpenPortal files";
   }, [search.file]);
 
   const goTo = (path: string, file?: string) => {

@@ -105,7 +105,7 @@ function InstancesPage() {
           )}
         </div>
         <p className="text-sm text-muted-fg">
-          Each Portal is bound to its own opencode. Click to open another in a
+          Each Portal is bound to its own OpenCode. Click to open another in a
           new tab.
         </p>
       </div>

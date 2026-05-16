@@ -248,7 +248,7 @@ function NewSessionPage() {
       const message = (override ?? text).trim();
       if (!message && pendingAttachments.length === 0) return;
       if (!port) {
-        setError("Portal not bound to opencode.");
+        setError("Portal not bound to OpenCode.");
         return;
       }
 

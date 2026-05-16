@@ -283,7 +283,7 @@ export function CompanionTelemetryPanel() {
           Companion telemetry
         </h3>
         <p>
-          Install the openportal companion plugin to see live runtime telemetry.
+          Install the OpenPortal companion plugin to see live runtime telemetry.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -308,7 +308,7 @@ export function CompanionTelemetryPanel() {
         <p className="text-[11px]">
           "Install" just writes the file:// entry into{" "}
           <code>~/.opencode/opencode.json</code>. "Install &amp; restart"
-          additionally detects which systemd unit serves the active opencode
+          additionally detects which systemd unit serves the active OpenCode
           and restarts it via <code>systemctl --user</code>. System-scope
           services prompt for your sudo password (piped to{" "}
           <code>sudo -S</code> over stdin, never logged or stored).
@@ -316,7 +316,7 @@ export function CompanionTelemetryPanel() {
         {otherInstances.length > 0 && (
           <div className="space-y-1">
             <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted-fg/70">
-              Other opencode instances detected on this host
+              Other OpenCode instances detected on this host
             </h4>
             <ul className="font-mono text-[11px] space-y-0.5">
               {otherInstances.map((inst) => (
@@ -333,8 +333,8 @@ export function CompanionTelemetryPanel() {
               ))}
             </ul>
             <p className="text-[10px] text-muted-fg/70">
-              Bind openportal to any of these from /servers; the plugin entry
-              applies to every opencode that loads <code>~/.opencode/opencode.json</code>,
+              Bind OpenPortal to any of these from /servers; the plugin entry
+              applies to every OpenCode that loads <code>~/.opencode/opencode.json</code>,
               but each needs its own restart to pick it up.
             </p>
           </div>

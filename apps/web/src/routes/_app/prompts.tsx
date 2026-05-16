@@ -124,8 +124,8 @@ function PromptsPage() {
   return (
     <div className="-m-4 flex h-full flex-col">
       <StaleDataBanner
-        headline="Showing cached prompt history - opencode is unreachable."
-        hint="The archive is served from openportal's local SQLite. Re-firing a prompt into a session will fail until opencode is back."
+        headline="Showing cached prompt history - OpenCode is unreachable."
+        hint="The archive is served from OpenPortal's local SQLite. Re-firing a prompt into a session will fail until OpenCode is back."
       />
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <div className="relative flex flex-1 items-center">
@@ -490,11 +490,11 @@ function PromptRowItem({
             className="rounded bg-warning-subtle/60 px-1 py-0.5 text-[10px] uppercase tracking-wide text-warning-subtle-fg"
             title={
               row.attempts && row.attempts > 0
-                ? `Openportal has the prompt but hasn't yet delivered it to opencode. ${row.attempts} delivery attempt(s).${row.last_error ? "\nLast error: " + row.last_error : ""}`
-                : "Openportal has the prompt but hasn't yet delivered it to opencode."
+                ? `OpenPortal has the prompt but hasn't yet delivered it to OpenCode. ${row.attempts} delivery attempt(s).${row.last_error ? "\nLast error: " + row.last_error : ""}`
+                : "OpenPortal has the prompt but hasn't yet delivered it to OpenCode."
             }
           >
-            Waiting for opencode
+            Waiting for OpenCode
           </span>
         )}
         {row.status === "failed" && (
@@ -502,8 +502,8 @@ function PromptRowItem({
             className="rounded bg-danger-subtle/60 px-1 py-0.5 text-[10px] uppercase tracking-wide text-danger-subtle-fg"
             title={
               row.last_error
-                ? `Delivery to opencode gave up after retries. ${row.last_error}`
-                : "Delivery to opencode gave up after retries."
+                ? `Delivery to OpenCode gave up after retries. ${row.last_error}`
+                : "Delivery to OpenCode gave up after retries."
             }
           >
             Failed

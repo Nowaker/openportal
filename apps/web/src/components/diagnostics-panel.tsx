@@ -194,7 +194,7 @@ export function DiagnosticsPanel() {
         <PageTitle as="h2">Diagnostics</PageTitle>
         <p className="text-sm text-muted-fg">
           Read-only snapshot of this Portal, its workspace, the connected
-          opencode instance, and your client.
+          OpenCode instance, and your client.
         </p>
       </div>
 
@@ -203,7 +203,7 @@ export function DiagnosticsPanel() {
         <Row label="Instance ID">{selfInstance?.id ?? "—"}</Row>
         <Row label="Name">{selfInstance?.name ?? "—"}</Row>
         <Row label="Web port">{selfInstance?.port ?? "—"}</Row>
-        <Row label="opencode port">{selfInstance?.port ?? "—"}</Row>
+        <Row label="OpenCode port">{selfInstance?.port ?? "—"}</Row>
         <Row label="Hostname">
           {selfInstance?.hostname ?? diagnostics.data?.os.hostname ?? "—"}
         </Row>
@@ -270,7 +270,7 @@ export function DiagnosticsPanel() {
           </Row>
         )}
 
-        <SectionHeader title="opencode" />
+        <SectionHeader title="OpenCode" />
         <Row label="Providers">
           {providers.isLoading ? "loading…" : providerList.length}
         </Row>

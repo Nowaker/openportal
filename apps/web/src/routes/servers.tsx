@@ -411,7 +411,7 @@ function ServersPage() {
       <div className="space-y-2">
         <PageTitle>Servers</PageTitle>
         <p className="text-sm text-muted-fg">
-          Pick an opencode server to bind this Portal UI to. Configured
+          Pick an OpenCode server to bind this Portal UI to. Configured
           servers persist; discovered servers come and go with the
           processes they run in.
         </p>
@@ -1303,7 +1303,7 @@ function ManualAddCard({
           </div>
           {inspectResult.findings.length === 0 ? (
             <div className="rounded border border-dashed border-border/40 bg-bg/40 p-3 text-xs text-muted-fg">
-              No opencode processes found on {inspectResult.host}. You
+              No OpenCode processes found on {inspectResult.host}. You
               can still add a specific host:port manually above.
             </div>
           ) : (
@@ -1684,7 +1684,7 @@ function AuthModalBody({
 
       <form className="space-y-3" onSubmit={submitManual}>
         <label className="block text-sm">
-          <div className="text-muted-fg mb-1">opencode username</div>
+          <div className="text-muted-fg mb-1">OpenCode username</div>
           <input
             type="text"
             value={username}
@@ -1696,7 +1696,7 @@ function AuthModalBody({
           />
         </label>
         <label className="block text-sm">
-          <div className="text-muted-fg mb-1">opencode password</div>
+          <div className="text-muted-fg mb-1">OpenCode password</div>
           <input
             type="password"
             value={password}
@@ -1757,7 +1757,7 @@ function AuthModalBody({
               <code className="font-mono">{target.host}</code> using your
               SSH client config (key auth only — set up{" "}
               <code className="font-mono">ssh-copy-id</code> first if it
-              isn't already). It harvests the opencode credentials from the
+              isn't already). It harvests the OpenCode credentials from the
               running server's environment, validates them, and stores them
               encrypted to{" "}
               <code className="font-mono">~/.openportal/openportal-auth.json</code>

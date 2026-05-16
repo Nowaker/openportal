@@ -31,10 +31,10 @@ export function StaleDataBanner({ headline, hint }: StaleDataBannerProps) {
   const status = useConnectionMonitor();
   if (status !== "opencode-down") return null;
   const head =
-    headline ?? "Showing cached data - opencode is unreachable.";
+    headline ?? "Showing cached data - OpenCode is unreachable.";
   const body =
     hint ??
-    "Openportal-owned views (prompts, settings, server list) keep working. Live opencode reads will resume automatically once it's back.";
+    "OpenPortal-owned views (prompts, settings, server list) keep working. Live OpenCode reads will resume automatically once it's back.";
   return (
     <div className="flex items-start gap-2 border-b border-warning/40 bg-warning-subtle px-3 py-2 text-sm">
       <ExclamationTriangleIcon

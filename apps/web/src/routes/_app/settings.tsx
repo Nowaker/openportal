@@ -554,7 +554,7 @@ const updateStrategyOptions: {
     id: "snapshot",
     title: "Streaming - snapshot",
     description:
-      "Persistent SSE event bus, but message rerenders only when opencode emits a full snapshot (message create + finalize). Activity indicators (status, questions, permissions) still update instantly.",
+      "Persistent SSE event bus, but message rerenders only when OpenCode emits a full snapshot (message create + finalize). Activity indicators (status, questions, permissions) still update instantly.",
   },
   {
     id: "chunked",
@@ -566,7 +566,7 @@ const updateStrategyOptions: {
     id: "asap",
     title: "Streaming - ASAP (desktop default)",
     description:
-      "Every event invalidates the cache immediately. Lowest possible latency between opencode emitting a token and the UI showing it. Resource intensive; not recommended on mobile.",
+      "Every event invalidates the cache immediately. Lowest possible latency between OpenCode emitting a token and the UI showing it. Resource intensive; not recommended on mobile.",
   },
 ];
 
@@ -850,12 +850,12 @@ function ToolOutputCapSetting() {
     <div className="space-y-2">
       <h3 className="text-sm font-semibold">Tool output byte cap</h3>
       <p className="text-xs text-muted-fg">
-        How much tool output (kilobytes) openportal sends to your browser
+        How much tool output (kilobytes) OpenPortal sends to your browser
         per tool call. Large outputs (e.g. <code>find</code>,{" "}
         <code>grep</code> across a giant repo) are truncated server-side so
         the chat does not stall while your phone re-renders megabytes.
         Leave blank for no cap (forwards full output). Applies to every
-        session on this openportal instance.
+        session on this OpenPortal instance.
       </p>
       <div className="flex items-center gap-2">
         <Input
@@ -901,7 +901,7 @@ function LiveUpdatesSetting() {
       <div>
         <h3 className="text-sm font-semibold">Live updates</h3>
         <p className="text-xs text-muted-fg">
-          How openportal stays in sync with opencode while a session runs. Each
+          How OpenPortal stays in sync with OpenCode while a session runs. Each
           platform has its own strategy because mobile devices benefit from
           throttling whereas desktops generally don't. Preferences are per-
           device (localStorage), not synced across machines.
@@ -1056,8 +1056,8 @@ function PermissionsSettings() {
         <h3 className="text-sm font-semibold">Permissions</h3>
         <p className="text-xs text-muted-fg">
           Auto-approve permission requests so the agent doesn&#39;t wait for a
-          manual reply. The openportal server holds an SSE connection to
-          every configured opencode instance and fires replies independently
+          manual reply. The OpenPortal server holds an SSE connection to
+          every configured OpenCode instance and fires replies independently
           of any browser tab being open. Every auto-fired reply is recorded
           in the chat audit trail with an &quot;auto&quot; badge.
         </p>
@@ -1525,7 +1525,7 @@ function SettingsPage() {
                 <p className="text-xs text-muted-fg">
                   The expand icon stays inline-expand-only. Turning this on
                   adds a separate (i) icon that opens a modal with the full
-                  opencode message metadata (id, parts, raw event payload).
+                  OpenCode message metadata (id, parts, raw event payload).
                 </p>
               </div>
               <ShowInfoIconSetting />
@@ -1555,10 +1555,10 @@ function SettingsPage() {
             <div>
               <h2 className="text-lg font-semibold">Performance</h2>
               <p className="text-sm text-muted-fg">
-                Tune how openportal stays in sync with opencode and how much
+                Tune how OpenPortal stays in sync with OpenCode and how much
                 data crosses the wire. Live-update settings are per-device
                 (localStorage); the tool output cap is global to this
-                openportal instance.
+                OpenPortal instance.
               </p>
             </div>
             <LiveUpdatesSetting />
