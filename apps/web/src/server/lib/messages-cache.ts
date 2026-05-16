@@ -57,6 +57,17 @@ export function invalidateMessagesCache(sessionId: string): void {
   cache.delete(sessionId);
 }
 
+// Stale-mode read: returns the cache entry IGNORING TTL. Used as the
+// fallback when a fresh fetch from opencode fails (opencode down /
+// network blip) so the messages handler can still serve the
+// last-known-good list rather than 5xx. Caller is responsible for
+// surfacing the staleness to the client (X-OpenPortal-OpenCode-Down
+// response header).
+export function getStaleMessages(sessionId: string): unknown[] | null {
+  const entry = cache.get(sessionId);
+  return entry ? entry.messages : null;
+}
+
 // Slice messages strictly AFTER the given message id (exclusive). Returns
 // null when the marker isn't found in the list - the caller should treat
 // that as a stale-since signal and fall back to a full fetch with a

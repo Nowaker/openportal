@@ -2173,6 +2173,8 @@ const MessageItem = memo(function MessageItem({
 }) {
   const textContent = getMessageContent(message.parts);
   const isAssistant = message.info.role === "assistant";
+  const pendingMeta = message.info._pending ?? null;
+  const isPending = pendingMeta !== null;
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
   const omoBlocks = useMemo(
@@ -2227,7 +2229,16 @@ const MessageItem = memo(function MessageItem({
     >
       {hasHeaderRow && (
         <div className="relative">
-          {!isAssistant && message.isQueued && (
+          {!isAssistant && isPending && pendingMeta && (
+            <Badge intent="warning" className="mb-1">
+              <Loader className="size-3 mr-1" />
+              Waiting for OpenCode
+              {pendingMeta.attempts > 0
+                ? ` - ${pendingMeta.attempts} attempt${pendingMeta.attempts === 1 ? "" : "s"}`
+                : ""}
+            </Badge>
+          )}
+          {!isAssistant && !isPending && message.isQueued && (
             <Badge intent="warning" className="mb-1">
               {isQuestionBlocked
                 ? "Queued - blocked on question above"
@@ -2281,46 +2292,58 @@ const MessageItem = memo(function MessageItem({
             </div>
           )}
           <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70">
-            <StarMessageButton
-              sessionId={sessionId}
-              messageId={message.info.id}
-              role={isAssistant ? "assistant" : "user"}
-              snippet={textContent}
-            />
-            <button
-              type="button"
-              onClick={() => onForkRequest(message)}
-              className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-              aria-label="Fork to a new session from this message"
-              title="Fork to a new session from this message"
-            >
-              <ForkIcon className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onRevertRequest(message, textContent)}
-              className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-              aria-label={
-                isAssistant
-                  ? "Revert to right after this message"
-                  : "Revert to before this message"
-              }
-              title={
-                isAssistant
-                  ? "Revert to right after this message"
-                  : "Revert to before this message"
-              }
-            >
-              <RevertIcon className="size-3.5" />
-            </button>
+            {!isPending && (
+              <>
+                <StarMessageButton
+                  sessionId={sessionId}
+                  messageId={message.info.id}
+                  role={isAssistant ? "assistant" : "user"}
+                  snippet={textContent}
+                />
+                <button
+                  type="button"
+                  onClick={() => onForkRequest(message)}
+                  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                  aria-label="Fork to a new session from this message"
+                  title="Fork to a new session from this message"
+                >
+                  <ForkIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRevertRequest(message, textContent)}
+                  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                  aria-label={
+                    isAssistant
+                      ? "Revert to right after this message"
+                      : "Revert to before this message"
+                  }
+                  title={
+                    isAssistant
+                      ? "Revert to right after this message"
+                      : "Revert to before this message"
+                  }
+                >
+                  <RevertIcon className="size-3.5" />
+                </button>
+              </>
+            )}
             {textContent && <CopyMarkdownButton text={textContent} />}
-            {messageTimestamp && (
+            {messageTimestamp && !isPending && (
               <MessagePermalinkTimestamp
                 messageId={message.info.id}
                 display={messageTimestamp}
                 titleAt={messageTitleAt}
                 className="font-mono tabular-nums whitespace-nowrap"
               />
+            )}
+            {messageTimestamp && isPending && (
+              <span
+                className="font-mono tabular-nums whitespace-nowrap"
+                title={messageTitleAt}
+              >
+                {messageTimestamp}
+              </span>
             )}
           </div>
         </div>
@@ -2663,59 +2686,6 @@ function useComposerMaxHeight(): number {
   }, []);
 
   return maxPx;
-}
-
-interface PendingPromptRow {
-  id: string;
-  ts_ms: number;
-  raw_text: string;
-  attempts: number;
-  last_attempt_at: number | null;
-  last_error: string | null;
-}
-
-function PendingPromptsBanner({ sessionId }: { sessionId: string | null }) {
-  const pendingPromptsPollMs = usePollMs(2000);
-  const { data } = useSWR<{ rows: PendingPromptRow[] }>(
-    sessionId
-      ? `/api/prompts/pending?session=${encodeURIComponent(sessionId)}`
-      : null,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { refreshInterval: pendingPromptsPollMs, revalidateOnFocus: false },
-  );
-  const rows = data?.rows ?? [];
-  if (rows.length === 0) return null;
-  return (
-    <>
-      {rows.map((row) => {
-        const ageMs = Date.now() - row.ts_ms;
-        const ageLabel =
-          ageMs < 5000 ? "just now" : `${Math.floor(ageMs / 1000)}s ago`;
-        return (
-          <div
-            key={row.id}
-            data-role="user"
-            data-pending-prompt-id={row.id}
-            className="relative px-3 py-3 border-t border-b border-primary/50 [[data-role=user]+&]:border-t-0"
-          >
-            <div className="relative">
-              <Badge intent="warning" className="mb-1">
-                <Loader className="size-3 mr-1" />
-                Waiting for OpenCode
-                {row.attempts > 0 ? ` - ${row.attempts} attempt${row.attempts === 1 ? "" : "s"}` : ""}
-              </Badge>
-              <div className="prose prose-sm dark:prose-invert max-w-none break-words pr-20 whitespace-pre-wrap">
-                {row.raw_text}
-              </div>
-              <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70 font-mono tabular-nums whitespace-nowrap">
-                {ageLabel}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </>
-  );
 }
 
 function SessionPage() {
@@ -4660,8 +4630,6 @@ function SessionPage() {
           </div>
         )}
       </div>
-
-      <PendingPromptsBanner sessionId={sessionId} />
 
       {!composerCollapsed && (
         <div

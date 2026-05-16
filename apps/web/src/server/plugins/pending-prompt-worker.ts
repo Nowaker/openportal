@@ -4,8 +4,15 @@
 // INSERT a row in `prompts` with status='pending' + the full opencode
 // payload as JSON, then return 202 to the browser. This worker drains
 // pending rows in the background, transitioning them to 'delivered'
-// once opencode acknowledges (its promptAsync is itself near-instant)
-// or 'failed' after MAX_DELIVERY_ATTEMPTS retries.
+// once opencode acknowledges (its promptAsync is itself near-instant).
+//
+// Retry policy: hunt opencode forever (per user mandate). The worker
+// retries pending deliveries indefinitely with exponential backoff
+// capped at 60s. There is NO retry count limit - a prompt sits in
+// pending state until opencode accepts it, or until the user
+// explicitly cancels it. Rows only transition to 'failed' on
+// structural problems we can never recover from (missing port,
+// invalid payload_json) - never on transient opencode unreachability.
 //
 // Key reliability guarantee: every pending row survives openportal
 // restart. On boot the worker resumes the queue automatically; nothing
@@ -25,7 +32,6 @@ import {
   markPromptDelivered,
   markPromptFailed,
   recordDeliveryAttempt,
-  MAX_DELIVERY_ATTEMPTS,
   type PromptRow,
   type PendingPayload,
 } from "../lib/prompt-archive";
@@ -66,9 +72,6 @@ async function deliverOne(row: PromptRow): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     recordDeliveryAttempt(row.id, msg);
-    if (row.attempts + 1 >= MAX_DELIVERY_ATTEMPTS) {
-      markPromptFailed(row.id, `max attempts reached: ${msg}`);
-    }
   }
 }
 

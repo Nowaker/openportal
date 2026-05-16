@@ -5,12 +5,17 @@ import { stashDataUrl, hasCachedThumb } from "../../../../lib/blob-cache";
 import {
   getCachedMessages,
   setCachedMessages,
+  getStaleMessages,
   messagesAfter,
 } from "../../../../lib/messages-cache";
 import { parseOmoBlocks } from "../../../../../lib/omo-injection";
 import { putOmoBody } from "../../../../lib/omo-strip-cache";
 import { getDecisionsForMessage } from "../../../../lib/permission-audit";
 import { getToolOutputMaxBytes } from "../../../../lib/instance-settings-state";
+import {
+  listPendingPromptsForSession,
+  type PromptRow,
+} from "../../../../lib/prompt-archive";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -79,24 +84,15 @@ export default defineHandler(async (event) => {
     query.onlyUser === "true" ||
     query.onlyUser === "yes";
 
-  let full = getCachedMessages(id);
-  if (full === null) {
-    full = await fetchAndCache(port, id);
-  }
+  let full = await loadFullMessages(port, id, event, /*forceRefresh*/ false);
   let view = onlyUser ? full.filter(isUserMessage) : full;
-  // Always report the FULL session size so the client can show "N
-  // messages skipped" affordances even in user-only view.
   setResponseHeader(event, "X-Messages-Total-Raw", String(full.length));
 
-  // Permalink-mode lookups all hinge on the index of a specific msgId.
-  // When the cached list misses (e.g. cache went stale while the user
-  // sat on a permalink in another tab), we force a refresh so the
-  // permalink page never lies about "not found" purely because of TTL.
   const permalinkAnchor = targetId ?? beforeId ?? afterId;
   if (permalinkAnchor !== null) {
     let idx = indexOfMessageId(view, permalinkAnchor);
     if (idx < 0) {
-      full = await fetchAndCache(port, id);
+      full = await loadFullMessages(port, id, event, /*forceRefresh*/ true);
       view = onlyUser ? full.filter(isUserMessage) : full;
       idx = indexOfMessageId(view, permalinkAnchor);
       setResponseHeader(event, "X-Messages-Total-Raw", String(full.length));
@@ -124,14 +120,9 @@ export default defineHandler(async (event) => {
   }
 
   if (since) {
-    // since=<msgId> is incremental polling - resolved against the raw
-    // list so the client gets every new message (incl. assistant/tool
-    // events) and can apply onlyUser filtering after the fact. The
-    // onlyUser filter is still honoured on the response so live updates
-    // in user-only view stay clean.
     let after = messagesAfter(full, since);
     if (after === null) {
-      full = await fetchAndCache(port, id);
+      full = await loadFullMessages(port, id, event, /*forceRefresh*/ true);
       after = messagesAfter(full, since);
       view = onlyUser ? full.filter(isUserMessage) : full;
     }
@@ -143,6 +134,77 @@ export default defineHandler(async (event) => {
   if (limit === undefined) return view;
   return view.slice(-limit);
 });
+
+type EventLike = Parameters<Parameters<typeof defineHandler>[0]>[0];
+
+// Single entry point that combines real opencode messages with
+// virtual pending-prompt messages and degrades gracefully when
+// opencode is unreachable:
+//
+//   1. Try memory cache (fresh, TTL-checked).
+//   2. On miss, fetch from opencode + cache the result.
+//   3. If the fetch throws (opencode down / network blip), fall back
+//      to the stale memory cache (ignore TTL) and set
+//      `X-OpenPortal-OpenCode-Down: true` so the client can render an
+//      "offline" indicator.
+//   4. If even the stale cache is empty, return [] for the real list
+//      so the user still sees their pending submissions below.
+//   5. Append virtual user-role messages built from every pending
+//      prompt row for this session - so pending prompts render
+//      inline in the chat instead of in a separate banner, AND they
+//      keep rendering even when opencode is down.
+//
+// forceRefresh=true bypasses the fresh cache check (permalink-miss
+// and since-marker-miss paths) but does NOT change the stale-fallback
+// behaviour.
+async function loadFullMessages(
+  port: number,
+  id: string,
+  event: EventLike,
+  forceRefresh: boolean,
+): Promise<unknown[]> {
+  let real: unknown[] | null = forceRefresh ? null : getCachedMessages(id);
+  if (real === null) {
+    try {
+      real = await fetchAndCache(port, id);
+    } catch {
+      real = getStaleMessages(id) ?? [];
+      setResponseHeader(event, "X-OpenPortal-OpenCode-Down", "true");
+    }
+  }
+  const pending = listPendingPromptsForSession(id).map(toVirtualUserMessage);
+  return pending.length === 0 ? real : [...real, ...pending];
+}
+
+// Promote a pending-prompt SQLite row into a synthetic chat-message
+// shape. The frontend treats it like any other user message but
+// also reads the `_pending` flag on info to render the
+// "Waiting for OpenCode" badge + retry/age affordance.
+//
+// id prefix `pending::` makes virtuals identifiable without
+// inspecting `_pending`, which matters for the star/permalink/since
+// paths (they key off `info.id`).
+function toVirtualUserMessage(row: PromptRow): unknown {
+  return {
+    info: {
+      id: `pending::${row.id}`,
+      role: "user",
+      time: { created: row.ts_ms, completed: null },
+      _pending: {
+        attempts: row.attempts,
+        lastAttemptAt: row.last_attempt_at,
+        lastError: row.last_error,
+        archiveId: row.id,
+      },
+    },
+    parts: [
+      {
+        type: "text",
+        text: row.raw_text,
+      },
+    ],
+  };
+}
 
 function isUserMessage(msg: unknown): boolean {
   if (!msg || typeof msg !== "object") return false;

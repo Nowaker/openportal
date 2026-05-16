@@ -32,8 +32,15 @@ export type {
   QuestionRequest,
 };
 
+export interface PendingPromptMeta {
+  attempts: number;
+  lastAttemptAt: number | null;
+  lastError: string | null;
+  archiveId: string;
+}
+
 export interface MessageWithParts {
-  info: Message;
+  info: Message & { _pending?: PendingPromptMeta };
   parts: Part[];
   isQueued?: boolean;
 }
