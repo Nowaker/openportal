@@ -22,28 +22,53 @@ self-heals on each start because runner.sh is the only writer.
 
 ### Build -> restart -> commit cycle
 
-1. Edit source under `~/projekty/webapps/portal/`.
-2. Run `bash scripts/build.sh` from the repo root. This wraps the
-   raw `bun run build`:
-   - Snapshots current `.output/public/assets/` to a /tmp dir
-     BEFORE the wipe.
-   - Wipes `.output` AND every `.turbo/` cache in the monorepo
-     (turbo's content-hash cache otherwise hands back a stale
-     bundle when source matches a prior input).
-   - Builds.
-   - Re-layers the snapshot assets back into the fresh
-     `.output/public/assets/` so prior builds' hashes coexist with
-     the new ones. The asset-fallback middleware (below) serves
-     anything on disk, so a browser tab still referencing an older
-     hash gets its file - it does NOT crash on MIME mismatch.
-   - Prunes retained assets older than 14 days.
-3. Restart Portal via the systemd cycle above.
-4. Verify the new asset hash is in the served HTML AND returns 200.
-5. Commit (atomic). Push to BOTH remotes (github + origin gitlab).
+The canonical full cycle is one command: `bash scripts/deploy.sh`.
+It wraps `scripts/build.sh` plus the dev-first sequence:
+
+1. Build the bundle via `scripts/build.sh` (see below for what it
+   guarantees on its own).
+2. Restart `openportal-dev.service` (port 5001, isolated DB/config).
+3. Probe `http://100.105.229.19:5001/` until it serves the new
+   asset hash (max 15s).
+4. ONLY if dev came up green, restart `openportal.service` (port
+   5000) and probe `http://100.105.229.19:5000/` for the same
+   hash.
+5. Exit non-zero (and leave prod untouched) if any probe fails.
+
+This catches asset-pipeline regressions on the side channel before
+they bounce the user's prod chat sessions. The dev portal has
+`TimeoutStopSec=2` so the side-channel hop only costs ~5s; prod
+keeps its 30s for clean SSE drain. Override knobs:
+`DEPLOY_SKIP_DEV=1` (NOT RECOMMENDED) bypasses the dev probe;
+`DEPLOY_DEV_URL` / `DEPLOY_PROD_URL` retarget the probes.
+
+Then: 6. Verify in the browser. 7. Commit (atomic). 8. Push to
+BOTH remotes (`origin` gitlab + `github`).
+
+`scripts/build.sh` itself (called by `deploy.sh`, but also fine to
+invoke directly when only building):
+
+- Snapshots current `.output/public/assets/` to a /tmp dir BEFORE
+  the wipe.
+- Wipes `.output` AND every `.turbo/` cache in the monorepo
+  (turbo's content-hash cache otherwise hands back a stale bundle
+  when source matches a prior input).
+- Builds.
+- Re-layers the snapshot assets back into the fresh
+  `.output/public/assets/` so prior builds' hashes coexist with the
+  new ones. The asset-fallback middleware (below) serves anything
+  on disk, so a browser tab still referencing an older hash gets
+  its file - it does NOT crash on MIME mismatch.
+- Prunes retained assets older than 14 days.
 
 NEVER call `bun run build` directly outside the wrapper - it wipes
 old assets without retention and breaks any browser tab that hasn't
-yet refetched the new `index.html`. The wrapper is the only path.
+yet refetched the new `index.html`. Outside of an explicit one-off
+"just build, don't deploy" need, `scripts/deploy.sh` is the canonical
+path.
+
+NEVER restart `openportal.service` standalone for code changes -
+that defeats the dev-first guarantee. Use `scripts/deploy.sh`.
 
 ### Stale asset 500s are impossible by construction
 
