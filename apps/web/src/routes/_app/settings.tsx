@@ -424,8 +424,7 @@ function AgentSettings() {
   const instance = useInstanceStore((s) => s.instance);
   const instanceId = instance?.id ?? null;
 
-  const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
-  const setDefaultAgentName = useAgentStore((s) => s.setDefaultAgentName);
+
   const lastUsedAgentGlobal = useAgentStore((s) => s.lastUsedAgentGlobal);
   const setLastUsedAgentGlobal = useAgentStore((s) => s.setLastUsedAgentGlobal);
   const lastUsedAgentForInstance = useAgentStore((s) =>
@@ -438,7 +437,8 @@ function AgentSettings() {
       <div>
         <h3 className="text-sm font-semibold">Default agent</h3>
         <p className="text-xs text-muted-fg">
-          Choose how Portal picks the agent for a new session. New sessions resolve in this order: this server &rarr; any server &rarr; default.
+          New sessions resolve in this order: this server &rarr; any server.
+          Leave both unset to let opencode pick its own default.
         </p>
       </div>
 
@@ -479,35 +479,14 @@ function AgentSettings() {
           >
             <SelectTrigger className="max-w-sm" />
             <SelectContent>
-              <SelectItem id="none" textValue="None (inherit default)">
-                None (inherit default)
+              <SelectItem id="none" textValue="None">
+                None (opencode picks)
               </SelectItem>
               {agents.map((agent) => (
                 <SelectItem key={agent.name} id={agent.name} textValue={agent.name}>
                   {agent.name}
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Default agent</p>
-          <Select
-            selectedKey={defaultAgentName}
-            onSelectionChange={(key) => {
-              if (key) setDefaultAgentName(String(key));
-            }}
-            placeholder={isLoading ? "Loading agents..." : "Select an agent"}
-            aria-label="Default agent"
-          >
-            <SelectTrigger className="max-w-sm" />
-            <SelectContent items={agents}>
-              {(agent) => (
-                <SelectItem id={agent.name} textValue={agent.name}>
-                  {agent.name}
-                </SelectItem>
-              )}
             </SelectContent>
           </Select>
         </div>

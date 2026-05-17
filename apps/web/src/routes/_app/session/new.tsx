@@ -74,7 +74,8 @@ function NewSessionPage() {
   const clearStore = useVirtualSessionStore((s) => s.clear);
   const port = useInstanceStore((s) => s.instance?.port ?? null);
   const createSession = useCreateSession();
-  const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
+  const instanceId = useInstanceStore((s) => s.instance?.id ?? null);
+  const resolveDefaultAgent = useAgentStore((s) => s.resolveDefaultAgent);
   const { mutate: globalMutate } = useSWRConfig();
 
   const directory = directoryFromUrl || storeDir || null;
@@ -270,7 +271,9 @@ function NewSessionPage() {
           ...(pendingAttachments.length > 0
             ? { attachments: pendingAttachments }
             : {}),
-          ...(defaultAgentName ? { agent: defaultAgentName } : {}),
+          ...(resolveDefaultAgent(instanceId)
+            ? { agent: resolveDefaultAgent(instanceId)! }
+            : {}),
         };
 
         const res = await fetch(
@@ -314,7 +317,8 @@ function NewSessionPage() {
       clearStore,
       globalMutate,
       navigate,
-      defaultAgentName,
+      instanceId,
+      resolveDefaultAgent,
     ],
   );
 

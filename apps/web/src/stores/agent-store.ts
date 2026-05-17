@@ -10,7 +10,6 @@ interface AgentState {
   // Most-recent agent picked across any instance ever, last-resort fallback
   // for the layered default-agent strategy.
   lastUsedAgentGlobal: string | null;
-  defaultAgentName: string;
   setSelectedAgent: (
     sessionId: string,
     agent: string,
@@ -22,6 +21,10 @@ interface AgentState {
   getLastUsedAgentForInstance: (instanceId: string | null | undefined) => string | null;
   setLastUsedAgentForInstance: (instanceId: string | null | undefined, agent: string | null) => void;
   setLastUsedAgentGlobal: (agent: string | null) => void;
+  // Resolved agent for a NEW session on a given instance: per-server override
+  // first, then global default. Returns null if neither is set (opencode
+  // picks its own default).
+  resolveDefaultAgent: (instanceId: string | null | undefined) => string | null;
 }
 
 export const useAgentStore = create<AgentState>()(
@@ -30,7 +33,6 @@ export const useAgentStore = create<AgentState>()(
       selectedAgents: {},
       lastUsedAgentByInstance: {},
       lastUsedAgentGlobal: null,
-      defaultAgentName: "plan",
       setSelectedAgent: (sessionId, agent, instanceId) =>
         set((state) => ({
           selectedAgents: { ...state.selectedAgents, [sessionId]: agent },
@@ -60,14 +62,19 @@ export const useAgentStore = create<AgentState>()(
         });
       },
       setLastUsedAgentGlobal: (agent) => set({ lastUsedAgentGlobal: agent }),
-      setDefaultAgentName: (name) => set({ defaultAgentName: name }),
+      resolveDefaultAgent: (instanceId) => {
+        const state = get();
+        const perServer = instanceId
+          ? state.lastUsedAgentByInstance[instanceId]
+          : undefined;
+        return perServer ?? state.lastUsedAgentGlobal ?? null;
+      },
     }),
     {
       name: "portal-agent",
       partialize: (state) => ({
         lastUsedAgentByInstance: state.lastUsedAgentByInstance,
         lastUsedAgentGlobal: state.lastUsedAgentGlobal,
-        defaultAgentName: state.defaultAgentName,
       }),
     },
   ),
