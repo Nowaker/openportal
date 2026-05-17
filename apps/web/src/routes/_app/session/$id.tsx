@@ -4203,11 +4203,18 @@ function SessionPage() {
         const baseIdx = ctx.baseVisible.findIndex(
           (m) => m.info.id === message.info.id,
         );
+        // A user message is "answered" iff there's an assistant message
+        // SOMEWHERE after it. opencode batches multiple consecutive user
+        // prompts under a single assistant response (the user can press
+        // Submit several times before opencode starts generating), so an
+        // intermediate user message MUST NOT short-circuit this scan or
+        // the older messages get incorrectly marked queued while the
+        // newest one (which sees the assistant directly) does not -
+        // exactly the "Queued out-of-order" symptom the user reported.
         let answered = false;
         for (let j = baseIdx + 1; j < ctx.baseVisible.length; j++) {
           const next = ctx.baseVisible[j];
           if (!next) break;
-          if (next.info.role === "user") break;
           if (next.info.role === "assistant") {
             answered = true;
             break;
