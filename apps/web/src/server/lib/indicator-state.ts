@@ -42,6 +42,16 @@ export interface SessionIndicatorState {
   todos: IndicatorTodoItem[] | null;
   pendingPromptIds: string[];
   connected: boolean;
+  // mode + tool tracking for title-bar status badges. mode === "compaction"
+  // when the in-flight assistant is a compaction turn (opencode signals
+  // via info.mode === "compaction" on message.created). currentToolName
+  // is the name of the running tool when latest in-flight part is
+  // a tool part with state.status === "running". inFlightAssistantId
+  // anchors both — they only apply to THIS assistant message and clear
+  // when it finalizes.
+  mode: string | null;
+  currentToolName: string | null;
+  inFlightAssistantId: string | null;
 }
 
 export type SubscriberPayload =
@@ -90,6 +100,9 @@ function emptyState(
     todos: null,
     pendingPromptIds: [],
     connected: serverConnected.get(serverId) ?? true,
+    mode: null,
+    currentToolName: null,
+    inFlightAssistantId: null,
   };
 }
 
@@ -287,8 +300,77 @@ export function applyOpencodeEvent(
       }
       break;
     }
-    case "message.updated":
-    case "message.part.updated":
+    case "message.created": {
+      const info = props.info as
+        | {
+            id?: string;
+            role?: string;
+            mode?: string;
+            time?: { completed?: number | null };
+          }
+        | undefined;
+      if (info?.role === "assistant" && typeof info.id === "string") {
+        const completed = info.time?.completed;
+        const inFlight =
+          completed === null || completed === undefined || completed === 0;
+        if (inFlight) {
+          next.inFlightAssistantId = info.id;
+          next.mode = typeof info.mode === "string" ? info.mode : null;
+          next.currentToolName = null;
+        }
+      }
+      break;
+    }
+    case "message.updated": {
+      const info = props.info as
+        | {
+            id?: string;
+            role?: string;
+            time?: { completed?: number | null };
+          }
+        | undefined;
+      if (
+        info?.role === "assistant" &&
+        typeof info.id === "string" &&
+        info.id === next.inFlightAssistantId
+      ) {
+        const completed = info.time?.completed;
+        if (completed !== null && completed !== undefined && completed !== 0) {
+          next.inFlightAssistantId = null;
+          next.mode = null;
+          next.currentToolName = null;
+        }
+      }
+      break;
+    }
+    case "message.part.updated": {
+      const part = props.part as
+        | {
+            type?: string;
+            tool?: string;
+            state?: { status?: string };
+            messageID?: string;
+          }
+        | undefined;
+      if (
+        part?.type === "tool" &&
+        part.messageID === next.inFlightAssistantId
+      ) {
+        const status = part.state?.status;
+        if (status === "running" || status === "pending") {
+          next.currentToolName =
+            typeof part.tool === "string" ? part.tool : null;
+        } else if (status === "completed" || status === "error") {
+          if (
+            typeof part.tool === "string" &&
+            next.currentToolName === part.tool
+          ) {
+            next.currentToolName = null;
+          }
+        }
+      }
+      break;
+    }
     case "message.part.delta":
     case "message.part.removed":
     case "message.removed":

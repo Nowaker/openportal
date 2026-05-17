@@ -47,6 +47,9 @@ export interface SessionIndicatorState {
   todos: IndicatorTodoItem[] | null;
   pendingPromptIds: string[];
   connected: boolean;
+  mode: string | null;
+  currentToolName: string | null;
+  inFlightAssistantId: string | null;
 }
 
 type StreamPayload =
