@@ -438,7 +438,7 @@ function AgentSettings() {
         <h3 className="text-sm font-semibold">Default agent</h3>
         <p className="text-xs text-muted-fg">
           New sessions resolve in this order: this server &rarr; any server.
-          Leave both unset to let opencode pick its own default.
+          Leave both unset to let OpenCode pick its own default.
         </p>
       </div>
 
@@ -480,7 +480,7 @@ function AgentSettings() {
             <SelectTrigger className="max-w-sm" />
             <SelectContent>
               <SelectItem id="none" textValue="None">
-                None (opencode picks)
+                None (OpenCode picks)
               </SelectItem>
               {agents.map((agent) => (
                 <SelectItem key={agent.name} id={agent.name} textValue={agent.name}>

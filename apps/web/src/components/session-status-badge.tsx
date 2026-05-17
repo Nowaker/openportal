@@ -67,7 +67,7 @@ function pickBadge(state: SessionIndicatorState | null): BadgeRender | null {
       kind: "compacting",
       label: "COMPACTING",
       className: "bg-violet-500 text-white animate-pulse",
-      title: "opencode is summarising older history",
+      title: "OpenCode is summarising older history",
     };
   }
 
