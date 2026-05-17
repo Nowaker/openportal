@@ -179,6 +179,52 @@ border. No box shadow.
 
 ## Indicator palette
 
+### Pending-prompt badges (per-message, two distinct states)
+
+Two semantically-different badges that the user must be able to tell
+apart. Different code paths. Never unify:
+
+| Badge | When | Source | Meaning |
+|---|---|---|---|
+| `Waiting for OpenCode` (spinner + attempts count) | `info._pending !== null` | Virtual user message synthesized by `toVirtualUserMessage` in `apps/web/src/server/opencode/[port]/session/[id]/messages.ts` from rows in the pending-prompt archive (`apps/web/src/server/lib/prompt-archive.ts`). | Portal accepted the prompt and stored it durably; the worker hasn't yet handed it to opencode. Typically <1s, longer if opencode is unreachable. |
+| `Queued` (or `Queued - blocked on question above`) | `message.isQueued && !isPending && !isAssistant` | `renderMessage`'s computed flag in `apps/web/src/routes/_app/session/$id.tsx`. | The user message is a REAL row from opencode's stream, but no assistant response follows it yet. opencode has the prompt; it's queued behind earlier turns. |
+
+The `Queued` answered-detection scans forward past intermediate user
+messages — opencode batches multiple consecutive user prompts under
+a single assistant response (`db2ae95` fix). Never break the scan
+on a sibling user message.
+
+### Session status badge (title bar)
+
+`apps/web/src/components/session-status-badge.tsx` renders ONE badge
+at a time based on the unified indicator state from `useIndicator`.
+Priority chain (first match wins):
+
+| Priority | Badge | When | Color | Pulse |
+|---|---|---|---|---|
+| 1 | `ERROR` | `state.lastError !== null` | danger | no |
+| 2 | `QUESTION` | `pendingQuestionIds.length > 0` | sky-500 | yes |
+| 3 | `PERMISSION` | `pendingPermissionIds.length > 0` | sky-500 | yes |
+| 4 | `COMPACTING` | `state.mode === "compaction"` | violet-500 | yes |
+| 5 | `TOOL: <name>` | `currentToolName !== null && busy` | warning | yes |
+| 6 | `THINKING` | `state.busy` | warning | yes |
+| 7 | `QUEUED` | `pendingPromptIds.length > 0` | muted | no |
+| — | (no badge) | otherwise | — | — |
+
+`COMPACTING` and `TOOL` source from `info.mode === "compaction"` and
+the latest in-flight tool part respectively (see `applyOpencodeEvent`
+in `apps/web/src/server/lib/indicator-state.ts`). Both anchor on
+`inFlightAssistantId` and clear when that assistant finalizes.
+
+Late-subscriber gap: if openportal restarts mid-compaction or
+mid-tool-call, the broadcaster has no event to source `mode` or
+`currentToolName` from until the next opencode event. A snapshot
+fetch of `GET /session/:id/message` on connect would close this;
+not implemented in v1. New work emerging during the user's session
+surfaces the badge within SSE round-trip latency (~50ms).
+
+### Sidebar dot palette
+
 `SessionStatusDot` + `aggregateNodeStatus` in
 `apps/web/src/components/app-sidebar.tsx` are the canonical
 producers.

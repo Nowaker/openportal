@@ -2252,6 +2252,31 @@ const MessageItem = memo(function MessageItem({
     >
       {hasHeaderRow && (
         <div className="relative">
+          {/*
+            Two distinct pending states, never both at once on the
+            same message:
+
+            - "Waiting for OpenCode": message is a virtual user row
+              from openportal's pending-prompt store
+              (info._pending !== null). Portal accepted the prompt
+              and stored it durably; the worker hasn't yet handed it
+              to opencode (typically <1s, but can be longer if
+              opencode is unreachable). Shipped via
+              `toVirtualUserMessage` in messages.ts.
+
+            - "Queued": message is a REAL user row from opencode's
+              own message stream, but the assistant hasn't yet
+              produced a response after it. opencode has the prompt;
+              it's just queued behind earlier turns or an in-flight
+              tool call. Computed in renderMessage's `isQueued`
+              flag (see db2ae95 for the answered-detection fix).
+
+            The two flow through different code paths because they
+            represent different stages of the dispatch lifecycle.
+            Don't unify - the user wants to distinguish "portal
+            still has it" from "opencode has it but isn't working
+            on it yet".
+          */}
           {!isAssistant && isPending && pendingMeta && (
             <Badge intent="warning" className="mb-1">
               <Loader className="size-3 mr-1" />
