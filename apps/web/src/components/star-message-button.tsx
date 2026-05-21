@@ -53,6 +53,7 @@ export function StarMessageButton({
       type="button"
       onClick={onClick}
       aria-pressed={isStarred}
+      data-test="portal-msg-star"
       className={`rounded p-0.5 transition-colors ${
         isStarred
           ? "text-warning hover:bg-warning-subtle/40"
