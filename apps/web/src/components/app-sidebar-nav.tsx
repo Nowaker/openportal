@@ -937,6 +937,7 @@ function SortablePinnedTab({
   if (!sortable) {
     return (
       <NonSortablePinnedTab
+        tabId={id}
         active={active}
         title={title}
         hasAnyIndicator={hasAnyIndicator}
@@ -969,10 +970,11 @@ function SortablePinnedTab({
 
 type TabVisualProps = Omit<SortablePinnedTabProps, "id" | "sortable">;
 
-function NonSortablePinnedTab(props: TabVisualProps) {
+function NonSortablePinnedTab({ tabId, ...props }: TabVisualProps & { tabId?: string }) {
   return (
     <PinnedTabContent
       {...props}
+      tabId={tabId}
       className={`group relative flex items-center gap-0 -mb-px border-b-2 pl-0 pr-0 py-1 text-xs transition-colors shrink-0 ${
         props.active
           ? "border-primary bg-bg text-fg"
@@ -996,6 +998,7 @@ function SortableTabInner({ id, ...visual }: { id: string } & TabVisualProps) {
       style={style}
       {...attributes}
       {...listeners}
+      data-test={`portal-pinnedtab-${id}`}
       className={`group relative flex items-center gap-0 -mb-px border-b-2 pl-0 pr-0 py-1 text-xs transition-colors shrink-0 cursor-grab active:cursor-grabbing touch-none ${
         visual.active
           ? "border-primary bg-bg text-fg"
@@ -1009,10 +1012,11 @@ function SortableTabInner({ id, ...visual }: { id: string } & TabVisualProps) {
 
 function PinnedTabContent({
   className,
+  tabId,
   ...visual
-}: TabVisualProps & { className: string }) {
+}: TabVisualProps & { className: string; tabId?: string }) {
   return (
-    <div className={className}>
+    <div className={className} data-test={tabId ? `portal-pinnedtab-${tabId}` : undefined}>
       <PinnedTabInner {...visual} />
     </div>
   );

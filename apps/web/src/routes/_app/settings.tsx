@@ -852,6 +852,7 @@ function ToolOutputCapSetting() {
         <span className="text-xs text-muted-fg">KB</span>
         <Button
           size="sm"
+          data-test="portal-settings-save-tooloutputcap"
           onPress={() => {
             void handleSave();
           }}
@@ -1242,31 +1243,31 @@ function SettingsPage() {
         onSelectionChange={(key) => setSettingsTab(String(key))}
       >
         <TabList className="flex overflow-x-auto scrollbar-none !border-b-0 [&_*[data-slot=selected-indicator]]:hidden">
-          <Tab id="appearance">
+          <Tab id="appearance" data-test="portal-settings-tab-appearance">
             <SwatchIcon className="size-4" data-slot="icon" />
             Appearance
           </Tab>
-          <Tab id="prompt">
+          <Tab id="prompt" data-test="portal-settings-tab-prompt">
             <PencilSquareIcon className="size-4" data-slot="icon" />
             Prompt
           </Tab>
-          <Tab id="composer">
+          <Tab id="composer" data-test="portal-settings-tab-composer">
             <ChatBubbleLeftEllipsisIcon className="size-4" data-slot="icon" />
             Composer
           </Tab>
-          <Tab id="chat">
+          <Tab id="chat" data-test="portal-settings-tab-chat">
             <ChatBubbleLeftRightIcon className="size-4" data-slot="icon" />
             Chat
           </Tab>
-          <Tab id="tools">
+          <Tab id="tools" data-test="portal-settings-tab-tools">
             <WrenchScrewdriverIcon className="size-4" data-slot="icon" />
             Tools
           </Tab>
-          <Tab id="performance">
+          <Tab id="performance" data-test="portal-settings-tab-performance">
             <BoltIcon className="size-4" data-slot="icon" />
             Performance
           </Tab>
-          <Tab id="diagnostics">
+          <Tab id="diagnostics" data-test="portal-settings-tab-diagnostics">
             <InformationCircleIcon className="size-4" data-slot="icon" />
             Diagnostics
           </Tab>

@@ -311,6 +311,7 @@ function ProjectGroup({
             e.stopPropagation();
             onNewSessionInProject();
           }}
+          data-test="portal-sidebar-newsession"
           title={`New session in ${directory}`}
           aria-label={`New session in ${projectName}`}
           className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
@@ -370,6 +371,7 @@ function ProjectGroup({
               className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-3" : "pl-3 pr-3"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
               style={depth > 0 ? sessionRowStyle : undefined}
               data-current-session={isCurrent || undefined}
+              data-test={`portal-sidebar-session-${session.id}`}
             >
               {hasChildren ? (
                 <button
@@ -1575,6 +1577,7 @@ export default function AppSidebar(
               </MenuItem>
             )}
             <MenuItem
+              data-test="portal-sidebar-prompts"
               onAction={() => {
                 setIsOpenOnMobile(false);
                 navigate({ to: "/prompts", search: (prev) => prev });
@@ -1584,6 +1587,7 @@ export default function AppSidebar(
               Prompt history
             </MenuItem>
             <MenuItem
+              data-test="portal-sidebar-files"
               onAction={() => {
                 setIsOpenOnMobile(false);
                 if (
@@ -1600,6 +1604,7 @@ export default function AppSidebar(
               File browser (root)
             </MenuItem>
             <MenuItem
+              data-test="portal-sidebar-servers"
               onAction={() => {
                 setIsOpenOnMobile(false);
                 navigate({ to: "/servers" });
@@ -1609,6 +1614,7 @@ export default function AppSidebar(
               Server list
             </MenuItem>
             <MenuItem
+              data-test="portal-sidebar-settings"
               onAction={() => {
                 setIsOpenOnMobile(false);
                 navigate({ to: "/settings", search: (prev) => prev });

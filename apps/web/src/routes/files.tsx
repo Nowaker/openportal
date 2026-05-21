@@ -238,6 +238,7 @@ function TopBar({
         type="button"
         onClick={onGoUp}
         disabled={!parent}
+        data-test="portal-files-up"
         title="Parent directory"
         className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
       >
@@ -247,6 +248,7 @@ function TopBar({
         type="button"
         onClick={onGoHome}
         disabled={!home}
+        data-test="portal-files-home"
         title="Home directory"
         className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:opacity-30"
       >
@@ -260,12 +262,14 @@ function TopBar({
           onSubmit={onPathSubmit}
           entries={entries}
           placeholder="path"
+          data-test="portal-files-pathinput"
           className="w-full rounded-md border border-border bg-muted/20 px-2 py-1 text-xs font-mono outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
         />
       </div>
       <button
         type="button"
         onClick={onRefresh}
+        data-test="portal-files-refresh"
         title="Refresh"
         className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
       >
@@ -275,6 +279,7 @@ function TopBar({
         <button
           type="button"
           onClick={closePanel}
+          data-test="portal-files-close"
           title="Close file browser"
           aria-label="Close file browser"
           className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
@@ -315,6 +320,7 @@ function FileTree({
             <button
               type="button"
               onClick={() => (e.isDir ? onSelectDir(e.name) : onSelectFile(e.name))}
+              data-test={`portal-files-entry-${e.name}`}
               className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/30 ${
                 isSelected ? "bg-primary/10 text-primary" : ""
               }`}
@@ -712,6 +718,7 @@ function FileHeader({
           <button
             type="button"
             onClick={onCopy}
+            data-test="portal-files-copy"
             className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30"
           >
             <ClipboardDocumentIcon className="size-3" />
@@ -722,6 +729,7 @@ function FileHeader({
           href={rawUrl}
           target="_blank"
           rel="noreferrer"
+          data-test="portal-files-raw"
           className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30"
           title="Open raw file in a new tab"
         >
@@ -730,6 +738,7 @@ function FileHeader({
         </a>
         <a
           href={`${rawUrl}&download=1`}
+          data-test="portal-files-download"
           className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30"
           title="Download file"
         >

@@ -935,6 +935,7 @@ function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
         enabled ? "Disable auto-approve permissions" : "Enable auto-approve permissions"
       }
       aria-pressed={enabled}
+      data-test="portal-composer-autoapprove"
       className={`shrink-0 rounded-md border p-1 sm:p-1.5 transition-colors ${
         enabled
           ? "border-accent/40 bg-accent/15 text-accent hover:bg-accent/25"
@@ -1261,6 +1262,7 @@ const ToolCallItem = memo(function ToolCallItem({
   if (hasQuestions) {
     return (
       <div
+        data-test={`portal-toolcall-${part.tool ?? "unknown"}`}
         className={`rounded-md border px-3 py-2 text-xs ${
           isError
             ? "border-danger/40 bg-danger-subtle/30"
@@ -1316,7 +1318,7 @@ const ToolCallItem = memo(function ToolCallItem({
 
   if (canInlineExpand && inlineExpanded) {
     return (
-      <div className={`font-mono text-xs flex items-start gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
+      <div data-test={`portal-toolcall-${part.tool ?? "unknown"}`} className={`font-mono text-xs flex items-start gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
         <span className="opacity-60 shrink-0">$</span>
         <div className="flex-1 min-w-0">
           <pre className="m-0 whitespace-pre-wrap break-all">{bashCommand}</pre>
@@ -1354,7 +1356,7 @@ const ToolCallItem = memo(function ToolCallItem({
   }
 
   return (
-    <div className={`font-mono text-xs flex items-center gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
+    <div data-test={`portal-toolcall-${part.tool ?? "unknown"}`} className={`font-mono text-xs flex items-center gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
       <span className="opacity-60 shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
       {details && <span className="opacity-60 shrink-0">{details}</span>}
@@ -1706,6 +1708,7 @@ function CopyMarkdownButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handle}
+      data-test="portal-msg-copy"
       title={copied ? "Copied!" : "Copy message markdown"}
       aria-label="Copy message markdown"
       className="inline-flex items-center hover:text-fg transition-colors"
@@ -2248,6 +2251,7 @@ const MessageItem = memo(function MessageItem({
       }`}
       data-role={message.info.role}
       data-message-id={message.info.id}
+      data-test={`portal-msg-${message.info.id}`}
       id={`msg-${message.info.id}`}
     >
       {hasHeaderRow && (
@@ -2352,6 +2356,7 @@ const MessageItem = memo(function MessageItem({
                   <button
                     type="button"
                     onClick={() => onForkRequest(message)}
+                    data-test="portal-msg-fork"
                     className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
                     aria-label="Fork to a new session from this message"
                     title="Fork to a new session from this message"
@@ -2363,6 +2368,7 @@ const MessageItem = memo(function MessageItem({
                   <button
                     type="button"
                     onClick={() => onRevertRequest(message, textContent)}
+                    data-test="portal-msg-revert"
                     className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
                     aria-label={
                       isAssistant
@@ -4659,6 +4665,7 @@ function SessionPage() {
           <button
             type="button"
             onClick={() => setComposerCollapsed(false)}
+            data-test="portal-composer-show"
             className="absolute bottom-5 right-16 z-30 rounded-md border border-border bg-bg/95 p-1.5 text-muted-fg shadow-sm hover:bg-muted hover:text-fg transition-colors"
             aria-label="Show composer"
             title="Show composer"
@@ -4672,6 +4679,7 @@ function SessionPage() {
               <button
                 type="button"
                 onClick={() => handleJumpUserPrompt("previous")}
+                data-test="portal-chat-prevuser"
                 className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
                 aria-label="Previous user message"
                 title="Previous user message"
@@ -4682,6 +4690,7 @@ function SessionPage() {
             <button
               type="button"
               onClick={togglePromptsOnly}
+              data-test="portal-chat-promptsonly"
               aria-pressed={onlyUserMessages}
               className={`flex size-10 items-center justify-center rounded-full border bg-bg/95 shadow-lg transition-colors ${
                 onlyUserMessages
@@ -4705,6 +4714,7 @@ function SessionPage() {
               <button
                 type="button"
                 onClick={() => handleJumpUserPrompt("next")}
+                data-test="portal-chat-nextuser"
                 className="flex size-10 items-center justify-center rounded-full border border-border bg-bg/95 text-fg shadow-lg hover:bg-muted transition-colors"
                 aria-label="Next user message"
                 title="Next user message"
@@ -4721,6 +4731,7 @@ function SessionPage() {
             <button
               type="button"
               onClick={handleJumpToBottom}
+              data-test="portal-chat-jumptobottom"
               aria-label="Jump to bottom"
               aria-hidden={!showJumpToBottom}
               tabIndex={showJumpToBottom ? 0 : -1}
@@ -4742,26 +4753,27 @@ function SessionPage() {
         >
           <>
             <div className="flex items-center gap-0.5 sm:gap-1 px-1 py-1 text-[10px] sm:text-sm [&_button[data-slot=control]]:py-0.5 sm:[&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:px-1.5 sm:[&_button[data-slot=control]]:px-2.5 [&_button[data-slot=control]]:text-[10px] sm:[&_button[data-slot=control]]:text-sm">
-              <div className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
+              <div data-test="portal-composer-agent" className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
                 <AgentSelect sessionId={sessionId} />
               </div>
-              <div className="flex-1 min-w-0 sm:flex-none sm:shrink sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
+              <div data-test="portal-composer-model" className="flex-1 min-w-0 sm:flex-none sm:shrink sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
                 <ModelOverrideControl
                   isOverriding={isOverridingDefault()}
                   sessionId={sessionId}
                   instanceId={instanceId}
                 />
               </div>
-              <div className="shrink-0 w-fit [&>*]:!w-auto">
+              <div data-test="portal-composer-effort" className="shrink-0 w-fit [&>*]:!w-auto">
                 <ThinkingSelect sessionId={sessionId} />
               </div>
-              <div className="sm:ml-auto shrink-0">
+              <div data-test="portal-composer-todostrip" className="sm:ml-auto shrink-0">
                 <TodoStrip snapshot={todoSnapshot} />
               </div>
               <AutoApproveToggle sessionId={sessionId} />
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}
+                data-test="portal-composer-attach-photo"
                 className="md:hidden shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 title="Attach photo"
                 aria-label="Attach photo"
@@ -4771,6 +4783,7 @@ function SessionPage() {
               <button
                 type="button"
                 onClick={() => anyFileAttachInputRef.current?.click()}
+                data-test="portal-composer-attach-any"
                 className="shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 title="Attach any file"
                 aria-label="Attach any file"
@@ -4790,6 +4803,7 @@ function SessionPage() {
                   }
                   setComposerCollapsed(true);
                 }}
+                data-test="portal-composer-collapse"
                 className="shrink-0 rounded-md p-0.5 sm:p-1.5 text-muted-fg hover:bg-muted hover:text-fg transition-colors"
                 aria-label="Hide composer"
                 title="Hide composer"
@@ -4938,6 +4952,7 @@ function SessionPage() {
                 <div className="min-w-0 flex-1 flex flex-col">
                   <Textarea
                     ref={textareaRef}
+                    data-test="portal-composer-textarea"
                     inputMode="text"
                     autoCapitalize="sentences"
                     autoCorrect="on"
@@ -5138,6 +5153,7 @@ function SessionPage() {
                   ) : null}
                   <Button
                     type="submit"
+                    data-test="portal-composer-submit"
                     isDisabled={
                       !hasContent && pendingAttachments.length === 0
                     }
