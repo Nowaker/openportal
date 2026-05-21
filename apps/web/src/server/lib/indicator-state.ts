@@ -271,7 +271,13 @@ export function applyOpencodeEvent(
       break;
     }
     case "todo.updated": {
-      const todos = props.info as
+      // opencode's todo.updated event has shape
+      //   { sessionID: string, todos: TodoInfo[] }
+      // (see opencode/packages/opencode/src/session/todo.ts).
+      // Earlier versions used a different shape and we read
+      // properties.info; that path is dead now and would silently
+      // drop every todo update. Read properties.todos.
+      const todos = (props.todos ?? props.info) as
         | Array<{ content?: unknown; status?: unknown; priority?: unknown }>
         | undefined;
       if (Array.isArray(todos)) {
