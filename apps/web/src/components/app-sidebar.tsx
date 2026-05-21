@@ -79,6 +79,7 @@ import {
 import { useInstanceStore } from "@/stores/instance-store";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { VSCodeLink } from "@/components/vscode-link";
+import { SidebarSystemStats } from "@/components/sidebar-system-stats";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
@@ -1532,6 +1533,7 @@ export default function AppSidebar(
         )}
       </SidebarContent>
 
+      <SidebarSystemStats />
       <SidebarFooter className="flex flex-row justify-between gap-4 group-data-[state=collapsed]:flex-col">
         <Menu>
           <MenuTrigger
