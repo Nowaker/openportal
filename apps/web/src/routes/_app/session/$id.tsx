@@ -1157,6 +1157,7 @@ function ToolInputModal({
   onClose: () => void;
 }) {
   const [view, setView] = useState<"formatted" | "json">("formatted");
+  const [section, setSection] = useState<"input" | "output">("input");
   const { data, error, isLoading } = useSWR<{
     id: string | null;
     callId: string | null;
@@ -1172,13 +1173,17 @@ function ToolInputModal({
     { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
   const input = (data?.input ?? null) as unknown;
+  const output = (data?.output ?? null) as unknown;
+  const currentValue = section === "input" ? input : output;
   const jsonText = useMemo(() => {
     try {
-      return JSON.stringify(input, null, 2);
+      return JSON.stringify(currentValue, null, 2);
     } catch {
-      return String(input);
+      return String(currentValue);
     }
-  }, [input]);
+  }, [currentValue]);
+  const hasOutput =
+    output !== null && output !== undefined && output !== "";
   return (
     <ModalOverlay
       isOpen
@@ -1196,6 +1201,38 @@ function ToolInputModal({
                 <h2 className="flex-1 min-w-0 truncate text-sm font-semibold font-mono">
                   {toolName}
                 </h2>
+                <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSection("input")}
+                    className={`rounded px-2 py-0.5 ${
+                      section === "input"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-fg hover:text-fg"
+                    }`}
+                    data-test="portal-tool-modal-input"
+                  >
+                    Input
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSection("output")}
+                    disabled={!hasOutput}
+                    className={`rounded px-2 py-0.5 disabled:opacity-40 disabled:cursor-not-allowed ${
+                      section === "output"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-fg hover:text-fg"
+                    }`}
+                    data-test="portal-tool-modal-output"
+                    title={
+                      hasOutput
+                        ? "Show tool output"
+                        : "No output yet (tool still running or empty result)"
+                    }
+                  >
+                    Output
+                  </button>
+                </div>
                 <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
                   <button
                     type="button"
@@ -1236,10 +1273,10 @@ function ToolInputModal({
                   </div>
                 ) : error ? (
                   <div className="text-danger-subtle-fg text-xs">
-                    Failed to load tool input.
+                    Failed to load tool {section}.
                   </div>
                 ) : view === "formatted" ? (
-                  <FormattedValue value={input} />
+                  <FormattedValue value={currentValue} />
                 ) : (
                   <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 rounded p-3">
                     {jsonText}
