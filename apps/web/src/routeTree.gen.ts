@@ -18,6 +18,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppPromptsRouteImport } from './routes/_app/prompts'
 import { Route as AppPinnedRouteImport } from './routes/_app/pinned'
+import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
 import { Route as AppDiffRouteImport } from './routes/_app/diff'
 import { Route as AppSessionNewRouteImport } from './routes/_app/session/new'
 import { Route as AppSessionIdRouteImport } from './routes/_app/session/$id'
@@ -66,6 +67,11 @@ const AppPinnedRoute = AppPinnedRouteImport.update({
   path: '/pinned',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPerformanceRoute = AppPerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDiffRoute = AppDiffRouteImport.update({
   id: '/diff',
   path: '/diff',
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/instances': typeof InstancesRoute
   '/servers': typeof ServersRoute
   '/diff': typeof AppDiffRoute
+  '/performance': typeof AppPerformanceRoute
   '/pinned': typeof AppPinnedRoute
   '/prompts': typeof AppPromptsRoute
   '/settings': typeof AppSettingsRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/instances': typeof InstancesRoute
   '/servers': typeof ServersRoute
   '/diff': typeof AppDiffRoute
+  '/performance': typeof AppPerformanceRoute
   '/pinned': typeof AppPinnedRoute
   '/prompts': typeof AppPromptsRoute
   '/settings': typeof AppSettingsRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/instances': typeof InstancesRoute
   '/servers': typeof ServersRoute
   '/_app/diff': typeof AppDiffRoute
+  '/_app/performance': typeof AppPerformanceRoute
   '/_app/pinned': typeof AppPinnedRoute
   '/_app/prompts': typeof AppPromptsRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/instances'
     | '/servers'
     | '/diff'
+    | '/performance'
     | '/pinned'
     | '/prompts'
     | '/settings'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/instances'
     | '/servers'
     | '/diff'
+    | '/performance'
     | '/pinned'
     | '/prompts'
     | '/settings'
@@ -158,6 +169,7 @@ export interface FileRouteTypes {
     | '/instances'
     | '/servers'
     | '/_app/diff'
+    | '/_app/performance'
     | '/_app/pinned'
     | '/_app/prompts'
     | '/_app/settings'
@@ -239,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPinnedRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/performance': {
+      id: '/_app/performance'
+      path: '/performance'
+      fullPath: '/performance'
+      preLoaderRoute: typeof AppPerformanceRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/diff': {
       id: '/_app/diff'
       path: '/diff'
@@ -265,6 +284,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppDiffRoute: typeof AppDiffRoute
+  AppPerformanceRoute: typeof AppPerformanceRoute
   AppPinnedRoute: typeof AppPinnedRoute
   AppPromptsRoute: typeof AppPromptsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -275,6 +295,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppDiffRoute: AppDiffRoute,
+  AppPerformanceRoute: AppPerformanceRoute,
   AppPinnedRoute: AppPinnedRoute,
   AppPromptsRoute: AppPromptsRoute,
   AppSettingsRoute: AppSettingsRoute,
