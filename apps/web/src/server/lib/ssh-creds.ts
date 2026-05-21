@@ -429,7 +429,7 @@ export async function probeSshForCreds(
       ok: false,
       step: "no-creds",
       message:
-        "Connected over SSH, but couldn't find opencode credentials in env or config files. Is opencode running on the remote host?",
+        "Connected over SSH, but couldn't find OpenCode credentials in env or config files. Is OpenCode running on the remote host?",
       elapsedMs,
     };
   }
@@ -538,7 +538,7 @@ export async function probeSshForAllInstances(
       ok: true,
       step: "no-instances",
       message:
-        "Connected over SSH but no opencode processes are running on this host.",
+        "Connected over SSH but no OpenCode processes are running on this host.",
       instances: [],
       elapsedMs,
     };

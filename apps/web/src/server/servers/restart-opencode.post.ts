@@ -17,7 +17,7 @@ export default defineHandler(async (event) => {
     return {
       ok: false,
       reason: "no-active-server",
-      message: "No active opencode server selected.",
+      message: "No active OpenCode server selected.",
     };
   }
 

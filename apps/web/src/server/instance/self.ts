@@ -57,8 +57,8 @@ export default defineHandler(async (event) => {
     const live = await resolveLiveEndpoint(active);
     if (!live) {
       const reason = active.ephemeral
-        ? "Active opencode is no longer running (ephemeral) and could not be re-discovered."
-        : "Active opencode is no longer reachable at its configured endpoint.";
+        ? "Active OpenCode is no longer running (ephemeral) and could not be re-discovered."
+        : "Active OpenCode is no longer reachable at its configured endpoint.";
       const health: HealthShape = {
         openportal: "up",
         opencode: "down",
@@ -85,7 +85,7 @@ export default defineHandler(async (event) => {
       const ok = await probeOpencode(live.host, live.port, live.auth);
       if (!ok) {
         const reason =
-          "Active opencode did not respond (server stopped, credentials rejected, or port in use by something else).";
+          "Active OpenCode did not respond (server stopped, credentials rejected, or port in use by something else).";
         const health: HealthShape = {
           openportal: "up",
           opencode: "down",

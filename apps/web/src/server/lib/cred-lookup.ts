@@ -166,14 +166,14 @@ async function runProbe(
       return set(host, port, {
         state: "failed",
         step: "unreachable",
-        message: `Server at ${host}:${port} is unreachable. Is opencode running there? Skipping SSH credential probe.`,
+        message: `Server at ${host}:${port} is unreachable. Is OpenCode running there? Skipping SSH credential probe.`,
       });
     }
     if (result.reason === "other") {
       return set(host, port, {
         state: "failed",
         step: "unreachable",
-        message: `Server at ${host}:${port} returned HTTP ${result.status} (expected 200 or 401). Not running opencode? Skipping SSH credential probe.`,
+        message: `Server at ${host}:${port} returned HTTP ${result.status} (expected 200 or 401). Not running OpenCode? Skipping SSH credential probe.`,
       });
     }
     // Falls through to SSH only for auth-required (401/403).

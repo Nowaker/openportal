@@ -9,7 +9,7 @@ export default defineHandler(() => {
     return {
       ok: false,
       reason: "no-active-server",
-      message: "No active opencode server selected.",
+      message: "No active OpenCode server selected.",
       candidates: [],
       recommended: null,
     };

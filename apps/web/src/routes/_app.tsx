@@ -153,7 +153,7 @@ function RestartOpencodeButton() {
         setResult(
           data.message ??
             data.output ??
-            "Restart failed - see openportal logs for details.",
+            "Restart failed - see OpenPortal logs for details.",
         );
       }
     } catch (err) {
@@ -170,7 +170,7 @@ function RestartOpencodeButton() {
         onClick={() => void startDetect()}
         className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
         data-test="portal-restart-opencode"
-        title="Detect and restart the opencode systemd unit"
+        title="Detect and restart the OpenCode systemd unit"
       >
         <ArrowPathIcon className="size-3.5" />
         Restart OpenCode

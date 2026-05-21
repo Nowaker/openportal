@@ -60,6 +60,6 @@ export default defineHandler((event) => {
     pluginPath: PLUGIN_PATH,
     service: svc,
     restart: { ok: false, output: "unit not detected" },
-    note: `Plugin ${install.changed ? "added" : "already present"}; opencode is not running under a recognised systemd unit. Restart it however you started it (terminal, pid ${svc.opencodePid ?? "?"}).`,
+    note: `Plugin ${install.changed ? "added" : "already present"}; OpenCode is not running under a recognised systemd unit. Restart it however you started it (terminal, pid ${svc.opencodePid ?? "?"}).`,
   };
 });
