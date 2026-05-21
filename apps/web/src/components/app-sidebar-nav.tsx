@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/menu";
 import { SessionInfoModal } from "@/components/session-info-modal";
 import { SessionStatusBadge } from "@/components/session-status-badge";
+import { SessionContextDial } from "@/components/session-context-dial";
 import { McpInfoModal } from "@/components/mcp-info-modal";
 import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
@@ -456,6 +457,7 @@ export function AppSidebarNav() {
         )}
       </span>
       <span className="flex items-center gap-x-2 ml-auto shrink-0">
+        {sessionId && <SessionContextDial sessionId={sessionId} />}
         {!isMobile && sessionId && <PinTopbarButton sessionId={sessionId} />}
         <Menu>
           <MenuTrigger aria-label="Open menu">
