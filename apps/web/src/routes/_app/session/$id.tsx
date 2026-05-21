@@ -935,13 +935,13 @@ function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
         enabled ? "Disable auto-approve permissions" : "Enable auto-approve permissions"
       }
       aria-pressed={enabled}
-      className={`shrink-0 rounded-md p-0.5 sm:p-1.5 transition-colors ${
+      className={`shrink-0 rounded-md border p-1 sm:p-1.5 transition-colors ${
         enabled
-          ? "text-accent hover:bg-accent/15"
-          : "text-muted-fg hover:bg-muted hover:text-fg"
+          ? "border-accent/40 bg-accent/15 text-accent hover:bg-accent/25"
+          : "border-transparent text-muted-fg hover:bg-muted hover:text-fg"
       }`}
     >
-      <Icon className="size-4" />
+      <Icon className="size-5" />
     </button>
   );
 }
