@@ -188,12 +188,24 @@ export default function EmptyState() {
           Select an existing session from the left panel or create a new one to
           get started
         </p>
-        <div className="text-sm text-muted-fg">
-          Press{" "}
-          <Keyboard className="inline-flex px-1.5 py-0.5 rounded bg-secondary text-secondary-fg text-xs font-mono">
-            Shift + Enter
-          </Keyboard>{" "}
-          to start a new session
+        <div className="space-y-1.5 text-sm text-muted-fg">
+          <div>
+            Press{" "}
+            <Keyboard className="inline-flex px-1.5 py-0.5 rounded bg-secondary text-secondary-fg text-xs font-mono">
+              Shift + Enter
+            </Keyboard>{" "}
+            to start a new session
+          </div>
+          <div>
+            Or press{" "}
+            <Keyboard className="inline-flex px-1.5 py-0.5 rounded bg-secondary text-secondary-fg text-xs font-mono">
+              {typeof navigator !== "undefined" &&
+              /Mac|iPhone|iPad/.test(navigator.platform)
+                ? "⌘ K"
+                : "Ctrl + K"}
+            </Keyboard>{" "}
+            for the command palette
+          </div>
         </div>
       </div>
     </div>

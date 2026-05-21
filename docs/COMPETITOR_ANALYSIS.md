@@ -143,9 +143,11 @@ integration.
 If openportal were to absorb features from these four, ranked by
 "value delta per implementation hour":
 
-1. **Global command palette (Cmd-K)** [CodeNomad] - 1-2 days,
-   massive navigation win. Hook into existing session list, prompts
-   archive, settings tabs, file browser.
+1. ~~**Global command palette (Cmd-K)** [CodeNomad]~~ - **ALREADY
+   SHIPPED**. apps/web/src/components/cmd.tsx + Cmd-K binding via
+   the CommandMenu primitive's `shortcut="k"` prop in __root.tsx.
+   Searches sessions / themes / new-session entries. Action: add
+   the binding hint to the welcome screen so users discover it.
 
 2. **Schedules / recurring prompt jobs** [OpenCode-Manager] - 2-3 days,
    genuinely novel. Existing prompt archive + a cron worker + a
