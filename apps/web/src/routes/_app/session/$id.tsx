@@ -3514,6 +3514,31 @@ function SessionPage() {
     return () => observer.disconnect();
   }, [scrollToBottom]);
 
+  // External-chrome safety net: banners rendered ABOVE chatContainerRef in
+  // the outer flex tree (ConnectionStatusBanner, BuildMismatchBanner,
+  // NotificationPermissionBanner in _app.tsx, plus the sidebar title bar
+  // changing height) shrink the chat container's clientHeight without
+  // mutating any DOM inside it. MutationObserver above doesn't catch this;
+  // neither does the scroll event handler (the browser doesn't fire scroll
+  // for clientHeight changes that don't move scrollTop). Without this
+  // observer, the moment a banner appears the user falls off the bottom by
+  // the banner's height. ResizeObserver on the container itself catches
+  // every resize - banner appear, banner disappear, window resize, sidebar
+  // expand/collapse - and re-pins.
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (!isStuckToBottomRef.current) return;
+      scrollToBottom();
+      requestAnimationFrame(() => {
+        if (isStuckToBottomRef.current) scrollToBottom();
+      });
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
+
   useEffect(() => {
     if (permalinkMode) return;
     if (!hasScrolledInitially && !loading && messages.length > 0) {
