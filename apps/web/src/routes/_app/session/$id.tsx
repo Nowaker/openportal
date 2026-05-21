@@ -150,6 +150,62 @@ export interface PromptAttachment {
 // messages" button stops appearing on otherwise-fully-loaded sessions.
 const INITIAL_MESSAGE_LIMIT = 50;
 
+// Smart post-submit clear. The user can already be typing the next prompt
+// in the same textarea by the time the network round-trip finishes;
+// wiping the textarea unconditionally trashes those in-flight keystrokes.
+//
+//   submitted="blah" + textarea="blah bleh"        -> " bleh"  (prefix strip)
+//   submitted="blah" + textarea="bleh blah bleh"   -> no change
+//          (short content matching as a substring is too risky)
+//   submitted="<long block>" + textarea contains it -> strip the first
+//          occurrence (long enough that an accidental substring match is
+//          astronomically unlikely)
+//   submitted="blah" + textarea="bleh"             -> no change (diverged)
+//
+// Cursor/selection is preserved across the splice.
+const SMART_CLEAR_SUBSTRING_MIN = 40;
+
+function smartPostSubmitClear(
+  textarea: HTMLTextAreaElement,
+  submitted: string,
+): { newValue: string; cleared: boolean } {
+  const current = textarea.value;
+  if (!submitted) return { newValue: current, cleared: false };
+  if (current === submitted) {
+    textarea.value = "";
+    textarea.setSelectionRange(0, 0);
+    return { newValue: "", cleared: true };
+  }
+  if (current.startsWith(submitted)) {
+    const remainder = current.slice(submitted.length);
+    const selStart = textarea.selectionStart;
+    const selEnd = textarea.selectionEnd;
+    textarea.value = remainder;
+    textarea.setSelectionRange(
+      Math.max(0, selStart - submitted.length),
+      Math.max(0, selEnd - submitted.length),
+    );
+    return { newValue: remainder, cleared: true };
+  }
+  if (submitted.length >= SMART_CLEAR_SUBSTRING_MIN) {
+    const idx = current.indexOf(submitted);
+    if (idx >= 0) {
+      const merged = current.slice(0, idx) + current.slice(idx + submitted.length);
+      const selStart = textarea.selectionStart;
+      const selEnd = textarea.selectionEnd;
+      textarea.value = merged;
+      const adjust = (pos: number) => {
+        if (pos <= idx) return pos;
+        if (pos >= idx + submitted.length) return pos - submitted.length;
+        return idx;
+      };
+      textarea.setSelectionRange(adjust(selStart), adjust(selEnd));
+      return { newValue: merged, cleared: true };
+    }
+  }
+  return { newValue: current, cleared: false };
+}
+
 function readPermalinkFromHash(): string | null {
   if (typeof window === "undefined") return null;
   const raw = window.location.hash;
@@ -3739,17 +3795,15 @@ function SessionPage() {
       if (msg.sessionId !== sessionId) return;
       const ta = textareaRef.current;
       if (!ta) return;
-      const current = ta.value;
-      if (!current) return;
-      if (msg.content.includes(current)) {
-        ta.value = "";
-        setHasContent(false);
-        if (draftSaveTimerRef.current != null) {
-          window.clearTimeout(draftSaveTimerRef.current);
-          draftSaveTimerRef.current = null;
-        }
-        writeDraft(sessionId, "");
+      if (!ta.value) return;
+      const result = smartPostSubmitClear(ta, msg.content);
+      if (!result.cleared) return;
+      setHasContent(result.newValue.length > 0);
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
       }
+      writeDraft(sessionId, result.newValue);
     };
     channel.addEventListener("message", handler);
     return () => {
@@ -3983,6 +4037,7 @@ function SessionPage() {
     e.preventDefault();
     if (!sessionId || !port) return;
     const rawValue = textareaRef.current?.value ?? "";
+    const submittedSnapshot = rawValue;
     let messageText = rawValue.trim();
     if (!messageText && pendingAttachments.length === 0) return;
 
@@ -4204,20 +4259,25 @@ function SessionPage() {
           "Recovered: this session was stuck from a previous restart.",
         );
       }
+      let postClearValue = "";
       if (textareaRef.current) {
-        textareaRef.current.value = "";
+        const result = smartPostSubmitClear(
+          textareaRef.current,
+          submittedSnapshot,
+        );
+        postClearValue = result.newValue;
       }
-      setHasContent(false);
+      setHasContent(postClearValue.length > 0);
       if (draftSaveTimerRef.current != null) {
         window.clearTimeout(draftSaveTimerRef.current);
         draftSaveTimerRef.current = null;
       }
-      writeDraft(sessionId, "");
+      writeDraft(sessionId, postClearValue);
       try {
         composerChannelRef.current?.postMessage({
           kind: "draft-submitted",
           sessionId,
-          content: messageText,
+          content: submittedSnapshot,
         } satisfies ComposerSyncMessage);
       } catch {
         /* channel closed or unavailable - cross-tab sync is best-effort */
