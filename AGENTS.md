@@ -142,8 +142,11 @@ first and verify there. Three systemd units make this safe:
 
 Public access via Caddy: `https://dev-portal.desktop.ts.nowaker.net:8443/`
 (reverse-proxies to `:5001`). The caddy block lives in
-`~/projekty/webapps/caddy/Caddyfile` (user-scope caddy, reload via
-`systemctl --user reload caddy.service` - no sudo).
+`~/projekty/dotfiles/dotfiles/caddy/Caddyfile` (user-scope caddy, reload
+via `systemctl --user reload caddy.service` - no sudo). The
+`~/projekty/webapps/caddy/Caddyfile` path is a leftover from the
+single-port era; the running unit reads the dotfiles copy (verify with
+`ps -ef | grep caddy` - the `--config` argument is authoritative).
 
 Build cycle for dev (or prod - both share the same `.output`):
 
