@@ -476,14 +476,31 @@ export function AppSidebarNav() {
                   void (async () => {
                     toast.info("Compacting session...");
                     try {
+                      const selectedModel = resolveModel(sessionId, instanceId);
                       const r = await fetch(
                         `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/compact`,
-                        { method: "POST" },
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            providerID: selectedModel.providerID,
+                            modelID: selectedModel.modelID,
+                          }),
+                        },
                       );
                       if (r.ok) {
                         toast.success("Session compacted.");
                       } else {
-                        toast.error(`Compaction failed (HTTP ${r.status}).`);
+                        const errBody = (await r
+                          .json()
+                          .catch(() => null)) as
+                          | { error?: string; body?: { message?: string } }
+                          | null;
+                        toast.error(
+                          errBody?.body?.message ??
+                            errBody?.error ??
+                            `Compaction failed (HTTP ${r.status}).`,
+                        );
                       }
                     } catch (err) {
                       toast.error(
@@ -604,18 +621,37 @@ export function AppSidebarNav() {
                       void (async () => {
                         toast.info("Compacting session...");
                         try {
+                          const selectedModel = resolveModel(
+                            sessionId,
+                            instanceId,
+                          );
                           const r = await fetch(
                             `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/compact`,
-                            { method: "POST" },
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                providerID: selectedModel.providerID,
+                                modelID: selectedModel.modelID,
+                              }),
+                            },
                           );
                           if (r.ok) {
                             toast.success("Session compacted.");
                           } else {
                             const body = (await r
                               .json()
-                              .catch(() => null)) as { body?: { message?: string } } | null;
+                              .catch(() => null)) as
+                              | {
+                                  error?: string;
+                                  body?: { message?: string };
+                                }
+                              | null;
                             toast.error(
                               body?.body?.message ??
+                                body?.error ??
                                 `Compaction failed (HTTP ${r.status}).`,
                             );
                           }
