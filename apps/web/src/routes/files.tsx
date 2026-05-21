@@ -71,10 +71,23 @@ export const Route = createFileRoute("/files")({
   component: FilesPage,
 });
 
+const FETCH_TIMEOUT_MS = 10_000;
+
 const fetcher = async (url: string) => {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { signal: controller.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 function FilesPage() {
@@ -82,8 +95,13 @@ function FilesPage() {
   const navigate = useNavigate();
 
   const browseUrl = `/api/fs/browse${search.path ? `?path=${encodeURIComponent(search.path)}` : ""}`;
-  const { data: browse, mutate: mutateBrowse, isLoading: browseLoading } =
-    useSWR<BrowseResponse>(browseUrl, fetcher);
+  const {
+    data: browse,
+    mutate: mutateBrowse,
+    isLoading: browseLoading,
+    isValidating: browseValidating,
+    error: browseError,
+  } = useSWR<BrowseResponse>(browseUrl, fetcher);
 
   const fileFullPath =
     search.file && browse?.path
@@ -92,10 +110,13 @@ function FilesPage() {
   const fileUrl = fileFullPath
     ? `/api/fs/read?path=${encodeURIComponent(fileFullPath)}`
     : null;
-  const { data: file, isLoading: fileLoading } = useSWR<FileResponse>(
-    fileUrl,
-    fetcher,
-  );
+  const {
+    data: file,
+    isLoading: fileLoading,
+    isValidating: fileValidating,
+    error: fileError,
+    mutate: mutateFile,
+  } = useSWR<FileResponse>(fileUrl, fetcher);
 
   useEffect(() => {
     document.title = search.file
@@ -139,10 +160,28 @@ function FilesPage() {
         inPanel={search.panel === 1}
       />
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
-        <aside className="border-b border-border md:w-72 md:shrink-0 md:overflow-auto md:border-b-0 md:border-r">
+        <aside className="relative border-b border-border md:w-72 md:shrink-0 md:overflow-auto md:border-b-0 md:border-r">
+          {browseValidating && (
+            <div className="absolute right-2 top-2 z-10 rounded-md border border-border bg-bg/95 p-1 shadow-sm">
+              <Loader className="size-3.5" />
+            </div>
+          )}
           {browseLoading && !browse && (
             <div className="flex items-center justify-center p-6">
               <Loader className="size-5" />
+            </div>
+          )}
+          {browseError && !browse && (
+            <div className="m-2 space-y-2 rounded border border-danger/40 bg-danger-subtle/30 p-3 text-xs text-danger-subtle-fg">
+              <p>{browseError.message || "Failed to load directory."}</p>
+              <button
+                type="button"
+                onClick={() => void mutateBrowse()}
+                className="rounded border border-border bg-bg px-2 py-1 text-fg hover:bg-muted"
+                data-test="portal-files-retry-browse"
+              >
+                Retry
+              </button>
             </div>
           )}
           {browse?.error && (
@@ -166,15 +205,33 @@ function FilesPage() {
             />
           )}
         </aside>
-        <main className="min-h-0 flex-1 overflow-auto">
+        <main className="relative min-h-0 flex-1 overflow-auto">
+          {search.file && fileValidating && file && (
+            <div className="absolute right-3 top-3 z-10 rounded-md border border-border bg-bg/95 p-1 shadow-sm">
+              <Loader className="size-3.5" />
+            </div>
+          )}
           {!search.file && (
             <div className="flex h-full items-center justify-center text-sm text-muted-fg">
               Pick a file from the list.
             </div>
           )}
-          {search.file && fileLoading && (
+          {search.file && fileLoading && !file && (
             <div className="flex h-full items-center justify-center">
               <Loader className="size-5" />
+            </div>
+          )}
+          {search.file && fileError && !file && (
+            <div className="m-4 space-y-2 rounded border border-danger/40 bg-danger-subtle/30 p-3 text-sm text-danger-subtle-fg">
+              <p>{fileError.message || "Failed to load file."}</p>
+              <button
+                type="button"
+                onClick={() => void mutateFile()}
+                className="rounded border border-border bg-bg px-2 py-1 text-fg hover:bg-muted"
+                data-test="portal-files-retry-file"
+              >
+                Retry
+              </button>
             </div>
           )}
           {search.file && file && (
