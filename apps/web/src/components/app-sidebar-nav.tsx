@@ -22,6 +22,7 @@ import {
   ArrowPathRoundedSquareIcon,
   BoltIcon,
   CheckIcon,
+  CodeBracketIcon,
   EllipsisVerticalIcon,
   FolderOpenIcon,
   InformationCircleIcon,
@@ -51,6 +52,7 @@ import { toast } from "@/components/ui/toast";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useTitleBarActionsStore } from "@/stores/title-bar-actions-store";
+import { useVscodeOpener } from "@/components/vscode-link";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { useModelStore } from "@/stores/model-store";
 import {
@@ -100,6 +102,7 @@ export function AppSidebarNav() {
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
   const titleBarPlacements = useTitleBarActionsStore((s) => s.placements);
+  const { open: openInVscode, modalElement: vscodeModal } = useVscodeOpener();
   const instanceId = instance?.id ?? null;
   const resolveModel = useModelStore((s) => s.resolveModel);
   const { setIsOpenOnMobile } = useSidebar();
@@ -558,13 +561,17 @@ export function AppSidebarNav() {
               </MenuItem>
               <MenuItem
                 onAction={() => {
+                  const startDir = currentSession?.directory ?? null;
                   if (
                     typeof window !== "undefined" &&
                     window.matchMedia("(min-width: 768px)").matches
                   ) {
-                    useFileBrowserPanelStore.getState().toggle(null);
+                    useFileBrowserPanelStore.getState().toggle(startDir);
                   } else {
-                    window.open("/files", "_blank", "noopener");
+                    const qs = startDir
+                      ? `?path=${encodeURIComponent(startDir)}`
+                      : "";
+                    window.open(`/files${qs}`, "_blank", "noopener");
                   }
                 }}
               >
@@ -582,6 +589,18 @@ export function AppSidebarNav() {
                     />
                     Session info
                   </MenuItem>
+                  {currentSession?.directory && (
+                    <MenuItem
+                      onAction={() => openInVscode(currentSession.directory)}
+                      data-test="portal-hamburger-open-vscode"
+                    >
+                      <CodeBracketIcon
+                        className="size-4"
+                        data-slot="icon"
+                      />
+                      Open in VS Code
+                    </MenuItem>
+                  )}
                   <MenuItem
                     onAction={() => {
                       if (!port || !sessionId) return;
@@ -835,6 +854,7 @@ export function AppSidebarNav() {
           if (!open) setPluginInfoSpec(null);
         }}
       />
+      {vscodeModal}
     </SidebarNav>
   );
 }

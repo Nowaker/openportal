@@ -12,11 +12,69 @@ import { Loader } from "@/components/ui/loader";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { toast } from "@/components/ui/toast";
 
-interface VSCodeInfoResponse {
+export interface VSCodeInfoResponse {
   requestor: string;
   isLocal: boolean;
   workspaceDirs: string[];
   mapping: Record<string, string>;
+}
+
+export function buildVscodeFolderHref(absPath: string): string {
+  return buildVscodeHref(absPath);
+}
+
+export function applyVscodeMapping(
+  absPath: string,
+  mapping: Record<string, string>,
+): string {
+  return applyMapping(absPath, mapping);
+}
+
+export function useVscodeOpener(): {
+  ready: boolean;
+  open: (directory: string) => void;
+  modalElement: React.ReactNode;
+} {
+  const { data, mutate } = useSWR<VSCodeInfoResponse>(
+    "/api/vscode/mapping",
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const [pendingDir, setPendingDir] = useState<string | null>(null);
+
+  const launch = (mapped: string) => {
+    window.location.href = buildVscodeHref(mapped);
+  };
+
+  const open = (directory: string) => {
+    if (!data) return;
+    if (data.isLocal) {
+      launch(directory);
+      return;
+    }
+    if (Object.keys(data.mapping).length > 0) {
+      launch(applyMapping(directory, data.mapping));
+      return;
+    }
+    setPendingDir(directory);
+  };
+
+  const modalElement =
+    pendingDir !== null && data && !data.isLocal ? (
+      <VSCodeMappingModal
+        info={data}
+        previewPath={pendingDir}
+        onSaved={(mapping) => {
+          void mutate({ ...data, mapping }, { revalidate: false });
+          const dir = pendingDir;
+          setPendingDir(null);
+          launch(applyMapping(dir, mapping));
+        }}
+        onClose={() => setPendingDir(null)}
+      />
+    ) : null;
+
+  return { ready: data !== undefined, open, modalElement };
 }
 
 const fetcher = async (url: string): Promise<VSCodeInfoResponse> => {
