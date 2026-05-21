@@ -1230,6 +1230,42 @@ function SubagentJumpButtons({
   };
   const baseClass =
     "shrink-0 inline-flex items-center gap-1 rounded-md border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-500/20 dark:text-violet-300";
+
+  const doFork = async (
+    targetSessionID: string,
+    messageID: string | null,
+    label: string,
+  ) => {
+    toast.info(`Forking: ${label}...`);
+    try {
+      const r = await fetch(
+        `/api/opencode/${port}/session/${encodeURIComponent(targetSessionID)}/fork`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(messageID ? { messageID } : {}),
+        },
+      );
+      if (!r.ok) {
+        toast.error(`Fork failed: HTTP ${r.status}`);
+        return;
+      }
+      const body = (await r.json()) as { id?: string };
+      if (body?.id) {
+        toast.success(`Forked to ${body.id}`);
+        void navigate({
+          to: "/session/$id",
+          params: { id: body.id },
+          search: (prev) => prev,
+        });
+      } else {
+        toast.success("Forked");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Fork request failed.");
+    }
+  };
+
   return (
     <>
       <button
@@ -1260,6 +1296,51 @@ function SubagentJumpButtons({
           Resumed
         </button>
       )}
+      <Menu>
+        <MenuTrigger
+          aria-label="Fork options"
+          className={baseClass}
+          data-test="portal-fork-subagent-menu"
+        >
+          Fork...
+        </MenuTrigger>
+        <MenuContent placement="bottom end" className="min-w-72">
+          <MenuItem
+            onAction={() => void doFork(childID, null, "this subagent session")}
+            data-test="portal-fork-subagent"
+          >
+            Fork this subagent session (from end)
+          </MenuItem>
+          {data?.spawnMessageID && (
+            <MenuItem
+              onAction={() =>
+                void doFork(
+                  parentSessionID,
+                  data.spawnMessageID,
+                  "parent at spawn point",
+                )
+              }
+              data-test="portal-fork-parent-spawn"
+            >
+              Fork parent at spawn point
+            </MenuItem>
+          )}
+          {data?.finishMessageID && (
+            <MenuItem
+              onAction={() =>
+                void doFork(
+                  parentSessionID,
+                  data.finishMessageID,
+                  "parent at resumed point",
+                )
+              }
+              data-test="portal-fork-parent-finish"
+            >
+              Fork parent at resumed point
+            </MenuItem>
+          )}
+        </MenuContent>
+      </Menu>
     </>
   );
 }
