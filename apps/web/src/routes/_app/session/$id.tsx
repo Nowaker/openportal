@@ -3309,6 +3309,15 @@ function SessionPage() {
       ta.selectionEnd = ta.selectionStart;
       setHasContent(next.length > 0);
       scheduleDraftSave(next);
+      const active = document.activeElement;
+      const onComposerSurface =
+        active === ta ||
+        active === document.body ||
+        active === null ||
+        active === document.documentElement;
+      if (onComposerSurface) {
+        ta.focus({ preventScroll: true });
+      }
     },
     onError: (err) => {
       toast.error(`Voice input: ${err}`);

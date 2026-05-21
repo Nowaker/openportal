@@ -372,9 +372,18 @@ function NewSessionPage() {
       const next = before + insert + after;
       setText(next);
       setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.selectionStart = start + insert.length - sepAfter.length;
-          textareaRef.current.selectionEnd = textareaRef.current.selectionStart;
+        const ref = textareaRef.current;
+        if (!ref) return;
+        ref.selectionStart = start + insert.length - sepAfter.length;
+        ref.selectionEnd = ref.selectionStart;
+        const active = document.activeElement;
+        const onComposerSurface =
+          active === ref ||
+          active === document.body ||
+          active === null ||
+          active === document.documentElement;
+        if (onComposerSurface) {
+          ref.focus({ preventScroll: true });
         }
       }, 0);
       hasUserEditedRef.current = true;
