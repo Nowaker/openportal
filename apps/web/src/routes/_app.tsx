@@ -10,6 +10,7 @@ import {
 import AppSidebar from "@/components/app-sidebar";
 import { AppSidebarNav, PinnedTabStrip } from "@/components/app-sidebar-nav";
 import { FileBrowserPanel } from "@/components/file-browser-panel";
+import { OpencodeUpdateBanner } from "@/components/opencode-update-banner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -535,6 +536,7 @@ function AppLayout() {
             <AppSidebarNav />
             <BuildMismatchBanner />
             <NotificationPermissionBanner />
+            <OpencodeUpdateBanner />
             <ConnectionStatusBanner />
             <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
               <Outlet />
