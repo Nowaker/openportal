@@ -16,6 +16,10 @@ export default defineConfig({
       route: "/assets/**",
       handler: "./src/middleware/asset-fallback.ts",
     },
+    {
+      route: "/opencode/**",
+      handler: "./src/middleware/opencode-compat.ts",
+    },
   ],
   errorHandler: "./src/server/error.ts",
   routeRules: {
