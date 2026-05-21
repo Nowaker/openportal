@@ -13,6 +13,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   HomeIcon,
+  PencilSquareIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
@@ -267,6 +268,10 @@ function FilesPage() {
               onResolveLink={(target) => {
                 const resolved = resolveLinkInDir(browse?.path ?? "", target);
                 if (resolved) goTo(resolved.dir, resolved.file);
+              }}
+              onFileSaved={() => {
+                void mutateFile();
+                toast.success("Saved");
               }}
             />
           )}
@@ -720,10 +725,12 @@ function FileViewer({
   file,
   currentDir,
   onResolveLink,
+  onFileSaved,
 }: {
   file: FileResponse;
   currentDir: string;
   onResolveLink: (target: string) => void;
+  onFileSaved?: () => void;
 }) {
   const renderableKind = detectRenderableKind(
     file.filename ?? "",
@@ -731,6 +738,53 @@ function FileViewer({
   );
   const [viewMode, setViewMode] = useState<ViewMode>("rendered");
   const [languageOverride, setLanguageOverride] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedText, setEditedText] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  const editable =
+    file.kind === "text" &&
+    typeof file.path === "string" &&
+    file.path.length > 0;
+  useEffect(() => {
+    setIsEditing(false);
+    setSaving(false);
+  }, [file.path]);
+  const startEdit = () => {
+    setEditedText(file.content ?? "");
+    setIsEditing(true);
+  };
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditedText("");
+  };
+  const saveEdit = async () => {
+    if (!editable) return;
+    setSaving(true);
+    try {
+      const r = await fetch("/api/fs/write", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: file.path, content: editedText }),
+      });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(
+          body?.error ?? `Save failed (HTTP ${r.status})`,
+        );
+      }
+      setIsEditing(false);
+      setEditedText("");
+      onFileSaved?.();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Save failed";
+      window.alert(message);
+    } finally {
+      setSaving(false);
+    }
+  };
   const detectedLanguage = useMemo(() => {
     const serverLang = file.language ?? "text";
     if (serverLang !== "text") return serverLang;
@@ -895,7 +949,17 @@ function FileViewer({
       )
       : null;
 
-  const sourcePane = (
+  const sourcePane = isEditing ? (
+    <textarea
+      value={editedText}
+      onChange={(e) => setEditedText(e.target.value)}
+      data-test="portal-files-editor"
+      className="h-full w-full resize-none border-0 bg-bg p-3 font-mono text-xs leading-relaxed outline-none focus:ring-0"
+      spellCheck={false}
+      autoCorrect="off"
+      autoCapitalize="off"
+    />
+  ) : (
     <ShikiCodeBlock content={text} language={effectiveLanguage} />
   );
 
@@ -905,12 +969,18 @@ function FileViewer({
         filename={file.filename ?? ""}
         size={file.size}
         language={effectiveLanguage}
-        onLanguageChange={(lang) => setLanguageOverride(lang)}
-        renderableKind={renderableKind}
+        onLanguageChange={isEditing ? null : (lang) => setLanguageOverride(lang)}
+        renderableKind={isEditing ? null : renderableKind}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        onCopy={onCopy}
+        onCopy={isEditing ? null : onCopy}
         rawUrl={rawUrl}
+        editable={editable}
+        isEditing={isEditing}
+        isSaving={saving}
+        onStartEdit={startEdit}
+        onSave={() => void saveEdit()}
+        onCancel={cancelEdit}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
         {renderableKind && viewMode === "rendered" && (
@@ -960,6 +1030,12 @@ function FileHeader({
   setViewMode,
   onCopy,
   rawUrl,
+  editable = false,
+  isEditing = false,
+  isSaving = false,
+  onStartEdit,
+  onSave,
+  onCancel,
 }: {
   filename: string;
   size: number | undefined;
@@ -970,6 +1046,12 @@ function FileHeader({
   setViewMode: (v: ViewMode) => void;
   onCopy: (() => void) | null;
   rawUrl: string;
+  editable?: boolean;
+  isEditing?: boolean;
+  isSaving?: boolean;
+  onStartEdit?: () => void;
+  onSave?: () => void;
+  onCancel?: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
@@ -1026,7 +1108,7 @@ function FileHeader({
             </ViewModeButton>
           </div>
         )}
-        {onCopy && (
+        {!isEditing && onCopy && (
           <button
             type="button"
             onClick={onCopy}
@@ -1036,6 +1118,43 @@ function FileHeader({
             <ClipboardDocumentIcon className="size-3" />
             Copy
           </button>
+        )}
+        {!isEditing && editable && onStartEdit && (
+          <button
+            type="button"
+            onClick={onStartEdit}
+            data-test="portal-files-edit"
+            title="Edit file in place"
+            className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30"
+          >
+            <PencilSquareIcon className="size-3" />
+            Edit
+          </button>
+        )}
+        {isEditing && (
+          <>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={isSaving}
+              data-test="portal-files-save"
+              title="Save file (writes to disk, sandboxed)"
+              className="inline-flex items-center gap-1 rounded border border-primary bg-primary/10 px-2 py-1 text-primary hover:bg-primary/20 disabled:opacity-50"
+            >
+              <CheckIcon className="size-3" />
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isSaving}
+              data-test="portal-files-cancel"
+              className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30 disabled:opacity-50"
+            >
+              <XMarkIcon className="size-3" />
+              Cancel
+            </button>
+          </>
         )}
         <a
           href={rawUrl}
