@@ -3481,7 +3481,15 @@ function SessionPage() {
         .slice(0, 50)
         .map((m) => ({ ...m, source: "model" as const }));
     }
-    return (commandsData ?? []).filter((c) =>
+    const builtin = [
+      {
+        name: "btw",
+        description:
+          "Side question - one short answer, no tools. Claude-Code parity.",
+      },
+    ];
+    const merged = [...builtin, ...(commandsData ?? [])];
+    return merged.filter((c) =>
       c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
     );
   }, [
@@ -4137,6 +4145,16 @@ function SessionPage() {
     const submittedSnapshot = rawValue;
     let messageText = rawValue.trim();
     if (!messageText && pendingAttachments.length === 0) return;
+
+    // /btw <question> wraps the question with a system-prompt hint so
+    // the model answers in a single short turn without firing tools.
+    // The user gets Claude-Code-style "side question" semantics without
+    // a separate session-forking pipeline.
+    const btwMatch = messageText.match(/^\/btw\s+([\s\S]+)$/);
+    if (btwMatch) {
+      const question = btwMatch[1].trim();
+      messageText = `[BTW: side question - answer briefly in ONE response, do not call any tools, do not promise follow-up actions]\n\n${question}`;
+    }
 
     // Phase 5 of slash UX: /agent <name> [prompt] and /model <name> [prompt]
     // are NOT opencode commands - they are inline overrides for the current
