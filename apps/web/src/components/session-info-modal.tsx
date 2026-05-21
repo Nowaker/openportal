@@ -4,9 +4,13 @@ import {
   ModalOverlay,
   Dialog as PrimitiveDialog,
 } from "react-aria-components";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowDownTrayIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions, useProviders } from "@/hooks/use-opencode";
+import { useInstanceStore } from "@/stores/instance-store";
 import { Loader } from "@/components/ui/loader";
 
 interface Props {
@@ -480,8 +484,46 @@ function Body({
             </div>
           </div>
         )}
+        {!isLoading && <ExportSection sessionId={sessionId} />}
       </div>
     </>
+  );
+}
+
+function ExportSection({ sessionId }: { sessionId: string }) {
+  const port = useInstanceStore((s) => s.instance?.port ?? null);
+  if (!port) return null;
+  const base = `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/export`;
+  const links = [
+    { label: "All messages", kind: "all" },
+    { label: "User prompts only", kind: "prompts" },
+    { label: "Last 50 messages", kind: "all", limit: 50 },
+  ] as const;
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-fg">
+        Export as Markdown
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {links.map((l) => {
+          const params = new URLSearchParams({ kind: l.kind });
+          if ("limit" in l && l.limit) params.set("limit", String(l.limit));
+          const href = `${base}?${params.toString()}`;
+          return (
+            <a
+              key={l.label}
+              href={href}
+              download
+              data-test={`portal-session-export-${l.kind}${"limit" in l && l.limit ? `-${l.limit}` : ""}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs hover:bg-muted/40 hover:text-fg"
+            >
+              <ArrowDownTrayIcon className="size-3.5" />
+              {l.label}
+            </a>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
