@@ -81,6 +81,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { StarMessageButton } from "@/components/star-message-button";
+import { TextSelectionMenu } from "@/components/text-selection-menu";
 import { useChatDisplayStore } from "@/stores/chat-display-store";
 import {
   useAutoApproveConfig,
@@ -4610,6 +4611,11 @@ function SessionPage() {
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <div className="relative flex-1 min-h-0">
+      <TextSelectionMenu
+        containerRef={messagesListRef}
+        textareaRef={textareaRef}
+        setHasContent={setHasContent}
+      />
       <div
         className="absolute inset-0 overflow-auto overflow-x-hidden"
         ref={chatContainerRef}
