@@ -18,9 +18,26 @@ export function OpencodeUpdateBanner() {
     }
   };
 
+  const src = info.installSource;
+  const methodLabel = src
+    ? src.method === "pacman"
+      ? `Arch (pacman) ${src.package ? `package "${src.package}"` : ""}`
+      : src.method === "aur"
+        ? `AUR ${src.package ? `package "${src.package}"` : ""}`
+        : src.method === "homebrew"
+          ? "Homebrew"
+          : src.method === "npm-global"
+            ? "npm global"
+            : src.method === "bun-global"
+              ? "bun global"
+              : src.method === "direct"
+                ? "Direct binary (~/.local/bin)"
+                : "Unknown"
+    : null;
+
   return (
     <div
-      className="flex flex-col gap-0.5 border-b border-info/40 bg-info-subtle/40 px-3 py-2 text-sm"
+      className="flex flex-col gap-1 border-b border-info/40 bg-info-subtle/40 px-3 py-2 text-sm"
       data-test="portal-opencode-update-banner"
     >
       <div className="flex items-center gap-2">
@@ -49,6 +66,19 @@ export function OpencodeUpdateBanner() {
           Dismiss
         </button>
       </div>
+      {src && (methodLabel || src.updateCommand) && (
+        <div className="pl-6 text-xs text-info-subtle-fg/80">
+          {methodLabel && <>Install method: {methodLabel}. </>}
+          {src.updateCommand && (
+            <>
+              Update command:{" "}
+              <code className="rounded bg-bg/60 px-1 font-mono">
+                {src.updateCommand}
+              </code>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

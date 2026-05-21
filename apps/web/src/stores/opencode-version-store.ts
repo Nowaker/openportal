@@ -2,16 +2,34 @@ import useSWR, { mutate as globalMutate } from "swr";
 
 const KEY = "/api/opencode-version";
 
+export type InstallMethod =
+  | "pacman"
+  | "aur"
+  | "homebrew"
+  | "npm-global"
+  | "bun-global"
+  | "direct"
+  | "unknown";
+
+export interface InstallSource {
+  method: InstallMethod;
+  package?: string;
+  binaryPath: string;
+  updateCommand?: string;
+}
+
 export interface OpencodeVersionInfo {
   installed: string | null;
   lastAcknowledgedVersion: string | null;
   updated: boolean;
+  installSource: InstallSource | null;
 }
 
 const EMPTY: OpencodeVersionInfo = {
   installed: null,
   lastAcknowledgedVersion: null,
   updated: false,
+  installSource: null,
 };
 
 async function fetcher(url: string): Promise<OpencodeVersionInfo> {
@@ -25,6 +43,10 @@ async function fetcher(url: string): Promise<OpencodeVersionInfo> {
         ? raw.lastAcknowledgedVersion
         : null,
     updated: raw.updated === true,
+    installSource:
+      raw.installSource && typeof raw.installSource === "object"
+        ? (raw.installSource as InstallSource)
+        : null,
   };
 }
 
