@@ -1,4 +1,5 @@
 import Markdown from "react-markdown";
+import { MermaidBlock } from "@/components/mermaid-block";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkGithubBlockquoteAlert from "remark-github-blockquote-alert";
@@ -122,6 +123,21 @@ export function MarkdownRenderer({
 
   const componentsOverride: Components = {
     ...(components ?? {}),
+    code: (props) => {
+      const { className, children, ...rest } = props as {
+        className?: string;
+        children?: React.ReactNode;
+      } & Record<string, unknown>;
+      if (className === "language-mermaid" || className === "lang-mermaid") {
+        const source = typeof children === "string"
+          ? children
+          : Array.isArray(children)
+            ? children.join("")
+            : String(children ?? "");
+        return <MermaidBlock source={source} />;
+      }
+      return <code className={className} {...rest}>{children}</code>;
+    },
     a: (props) => {
       const { href, children, ...rest } = props as {
         href?: string;
