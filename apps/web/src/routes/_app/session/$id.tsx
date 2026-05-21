@@ -25,6 +25,7 @@ import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
 import { OmoBlockView } from "@/components/omo-block-view";
 import { ThinkingSelect } from "@/components/thinking-select";
+import { MessageInfoModal } from "@/components/message-info-modal";
 import { parseOmoBlocks } from "@/lib/omo-injection";
 import {
   FileMentionPopover,
@@ -2300,6 +2301,7 @@ const MessageItem = memo(function MessageItem({
     showInfoIcon && iconVisibility[visibilityKey].info;
   const showTimestamp = iconVisibility[visibilityKey].timestamp;
   const showStar = iconVisibility[visibilityKey].star;
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
   const omoBlocks = useMemo(
@@ -2511,24 +2513,11 @@ const MessageItem = memo(function MessageItem({
             {showInfoIconRow && !isPending && (
               <button
                 type="button"
-                onClick={() => {
-                  const json = JSON.stringify(
-                    { info: message.info, parts: message.parts },
-                    null,
-                    2,
-                  );
-                  void navigator.clipboard
-                    .writeText(json)
-                    .then(() =>
-                      toast.success("Message metadata copied to clipboard"),
-                    )
-                    .catch(() =>
-                      toast.error("Failed to copy message metadata"),
-                    );
-                }}
+                onClick={() => setShowInfoModal(true)}
+                data-test="portal-msg-info"
                 className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                aria-label="Copy message metadata to clipboard"
-                title={`Copy full message metadata (id, parts, raw payload) to clipboard. Message id: ${message.info.id}`}
+                aria-label="Open message metadata modal"
+                title={`Open message metadata modal (id, parts, raw payload). Message id: ${message.info.id}`}
               >
                 <InformationCircleIcon className="size-3.5" />
               </button>
@@ -2616,6 +2605,13 @@ const MessageItem = memo(function MessageItem({
           )}
         </div>
       )}
+      <MessageInfoModal
+        isOpen={showInfoModal}
+        onOpenChange={setShowInfoModal}
+        messageInfo={message.info}
+        messageParts={message.parts}
+        messageId={message.info.id}
+      />
     </div>
   );
 });
