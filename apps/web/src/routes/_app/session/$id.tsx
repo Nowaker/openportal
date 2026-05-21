@@ -2299,6 +2299,7 @@ const MessageItem = memo(function MessageItem({
   const showInfoIconRow =
     showInfoIcon && iconVisibility[visibilityKey].info;
   const showTimestamp = iconVisibility[visibilityKey].timestamp;
+  const showStar = iconVisibility[visibilityKey].star;
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
   const omoBlocks = useMemo(
@@ -2464,12 +2465,14 @@ const MessageItem = memo(function MessageItem({
           <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70">
             {!isPending && (
               <>
-                <StarMessageButton
-                  sessionId={sessionId}
-                  messageId={message.info.id}
-                  role={isAssistant ? "assistant" : "user"}
-                  snippet={textContent}
-                />
+                {showStar && (
+                  <StarMessageButton
+                    sessionId={sessionId}
+                    messageId={message.info.id}
+                    role={isAssistant ? "assistant" : "user"}
+                    snippet={textContent}
+                  />
+                )}
                 {showFork && (
                   <button
                     type="button"

@@ -7,7 +7,8 @@ export type ChatIconId =
   | "copy"
   | "expand"
   | "info"
-  | "timestamp";
+  | "timestamp"
+  | "star";
 
 export type ChatPlatform = "desktop" | "mobile";
 
@@ -18,6 +19,7 @@ export const ALL_ICONS: ChatIconId[] = [
   "expand",
   "info",
   "timestamp",
+  "star",
 ];
 
 export const ICON_LABELS: Record<ChatIconId, string> = {
@@ -27,6 +29,7 @@ export const ICON_LABELS: Record<ChatIconId, string> = {
   expand: "Expand tool call inline",
   info: "Show full info (modal)",
   timestamp: "Permalink timestamp",
+  star: "Star message",
 };
 
 interface ChatDisplayState {
@@ -50,6 +53,7 @@ const defaultVisibility = (): Record<ChatPlatform, Record<ChatIconId, boolean>> 
     expand: true,
     info: false,
     timestamp: true,
+    star: true,
   },
   mobile: {
     fork: true,
@@ -58,6 +62,7 @@ const defaultVisibility = (): Record<ChatPlatform, Record<ChatIconId, boolean>> 
     expand: true,
     info: false,
     timestamp: true,
+    star: true,
   },
 });
 
@@ -82,12 +87,25 @@ export const useChatDisplayStore = create<ChatDisplayState>()(
     }),
     {
       name: "openportal-chat-display",
-      version: 1,
+      version: 2,
       migrate: (persisted, version) => {
-        if (version === 0 && persisted && typeof persisted === "object") {
-          return { ...defaultVisibility(), ...persisted };
+        const obj =
+          persisted && typeof persisted === "object"
+            ? (persisted as Partial<ChatDisplayState>)
+            : null;
+        if (version < 2 && obj?.iconVisibility) {
+          const fallback = defaultVisibility();
+          for (const platform of ["desktop", "mobile"] as ChatPlatform[]) {
+            const existing = obj.iconVisibility[platform] as
+              | Partial<Record<ChatIconId, boolean>>
+              | undefined;
+            obj.iconVisibility[platform] = {
+              ...fallback[platform],
+              ...(existing ?? {}),
+            };
+          }
         }
-        return persisted as ChatDisplayState;
+        return obj as ChatDisplayState;
       },
     },
   ),
