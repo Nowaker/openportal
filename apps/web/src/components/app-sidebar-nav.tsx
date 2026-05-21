@@ -442,6 +442,25 @@ export function AppSidebarNav() {
                 className="shrink-0"
               />
             )}
+            {parentSession && (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigate({
+                    to: "/session/$id",
+                    params: { id: parentSession.id },
+                    search: (prev) => prev,
+                  });
+                }}
+                aria-label="Jump to parent session"
+                title={`Jump to parent session: ${parentSession.title ?? parentSession.id}`}
+                data-test="portal-jump-to-parent"
+                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-500/20 dark:text-violet-300"
+              >
+                <ArrowLeftIcon className="size-3.5" />
+                Parent
+              </button>
+            )}
             {!isMobile && sessionId && sessionTitle && (
               <button
                 type="button"
