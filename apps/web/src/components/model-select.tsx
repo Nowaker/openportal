@@ -166,7 +166,10 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
         }
       }}
     >
-      <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm">
+      <SelectTrigger
+        className="w-full min-w-0 text-xs sm:text-sm"
+        title={isOverridingDefault && resolvedKey ? `Model: ${resolvedKey}` : "Use default model"}
+      >
         <SelectValue
           data-slot="select-value"
           className="truncate text-start text-sm/6 data-placeholder:text-muted-fg [&_[slot=description]]:hidden"

@@ -92,7 +92,10 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
         }
       }}
     >
-      <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm" />
+      <SelectTrigger
+        className="w-full min-w-0 text-xs sm:text-sm"
+        title={selectedAgent ? `Agent: ${selectedAgent}` : "Select agent"}
+      />
       <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(50vh,24rem)] min-w-(--trigger-width) w-screen max-w-[calc(100vw-1.5rem)] sm:max-w-md entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
         <Dialog aria-label="Agent">
           <Autocomplete>
