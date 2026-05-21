@@ -19,6 +19,8 @@ interface ThemeContextType {
   setAccentColor: (color: AccentColor) => void;
   fontFamily: FontFamily;
   setFontFamily: (font: FontFamily) => void;
+  ligatures: boolean;
+  setLigatures: (on: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -102,6 +104,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const fontFamily = useFontStore((state) => state.fontFamily);
   const setFontFamily = useFontStore((state) => state.setFontFamily);
+  const ligatures = useFontStore((state) => state.ligatures);
+  const setLigatures = useFontStore((state) => state.setLigatures);
 
   const fontSizeScale = useFontSizeStore((state) => state.scale);
 
@@ -124,6 +128,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyFontFamily(fontFamily);
   }, [fontFamily]);
+
+  useEffect(() => {
+    // Programming-font ligatures (calt/liga). On by default - keeps
+    // -> rendered as a single arrow, == as a single equals-equals,
+    // etc. for fonts that ship those features. Off for users who want
+    // raw ASCII so '-' and '>' render as two distinct glyphs.
+    if (typeof document === "undefined") return;
+    if (ligatures) {
+      document.documentElement.style.removeProperty("font-feature-settings");
+    } else {
+      document.documentElement.style.setProperty(
+        "font-feature-settings",
+        '"liga" 0, "calt" 0',
+      );
+    }
+  }, [ligatures]);
 
   useEffect(() => {
     applyFontSizeScale(fontSizeScale);
@@ -152,6 +172,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setAccentColor,
         fontFamily,
         setFontFamily,
+        ligatures,
+        setLigatures,
       }}
     >
       {children}

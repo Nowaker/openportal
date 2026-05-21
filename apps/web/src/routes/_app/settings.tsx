@@ -1148,7 +1148,7 @@ function PermissionsSettings() {
 }
 
 function SettingsPage() {
-  const { fontFamily, setFontFamily } = useTheme();
+  const { fontFamily, setFontFamily, ligatures, setLigatures } = useTheme();
   const { setPageTitle } = useBreadcrumb();
   const { data: rawProviders, isLoading: providersLoading } = useProviders();
   const instance = useInstanceStore((s) => s.instance);
@@ -1323,6 +1323,23 @@ function SettingsPage() {
                   Scale the entire interface up or down. 100% is the default.
                 </p>
                 <FontSizeSetting />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Programming Ligatures</p>
+                <p className="text-xs text-muted-fg">
+                  Fonts that ship OpenType `calt` / `liga` features render
+                  two-character sequences like `-&gt;`, `==`, `!=`, `&gt;=`,
+                  `&lt;=` as single fused glyphs. Underlying text is
+                  unchanged - this is purely visual.
+                </p>
+                <Checkbox
+                  isSelected={ligatures}
+                  onChange={(value) => setLigatures(Boolean(value))}
+                  data-test="portal-settings-ligatures"
+                >
+                  Enable programming ligatures
+                </Checkbox>
               </div>
 
               <div className="space-y-2">

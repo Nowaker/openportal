@@ -6,6 +6,8 @@ export type FontFamily = "inter" | "geist-sans" | "geist-mono" | "system";
 interface FontState {
   fontFamily: FontFamily;
   setFontFamily: (font: FontFamily) => void;
+  ligatures: boolean;
+  setLigatures: (on: boolean) => void;
 }
 
 export const useFontStore = create<FontState>()(
@@ -13,6 +15,8 @@ export const useFontStore = create<FontState>()(
     (set) => ({
       fontFamily: "inter",
       setFontFamily: (font) => set({ fontFamily: font }),
+      ligatures: true,
+      setLigatures: (on) => set({ ligatures: on }),
     }),
     {
       name: "opencode-font-family",
