@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MinusIcon, PlusIcon } from "@heroicons/react/24/outline";
 import type { OmoSegment } from "@/lib/omo-injection";
+import { FileLinks } from "@/lib/render-file-links";
 
 interface Props {
   header: string;
@@ -94,7 +95,7 @@ export function OmoBlockView({
               Could not load OMO body: {fetchError}. Refresh the session to retry.
             </span>
           )}
-          {!loading && !fetchError && body}
+          {!loading && !fetchError && <FileLinks text={body} />}
         </pre>
       )}
     </div>

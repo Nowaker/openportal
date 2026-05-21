@@ -12,6 +12,7 @@ import {
 import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { remarkFileLinks } from "@/lib/remark-file-links";
 import useSWR from "swr";
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
@@ -2019,7 +2020,7 @@ function MessageMarkdown({
   );
 
   return (
-    <Markdown remarkPlugins={remarkPlugins} components={components}>
+    <Markdown remarkPlugins={[...remarkPlugins, remarkFileLinks]} components={components}>
       {text}
     </Markdown>
   );
