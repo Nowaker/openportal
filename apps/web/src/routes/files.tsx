@@ -4,11 +4,14 @@ import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   ArrowUpIcon,
+  CheckIcon,
   ClipboardDocumentIcon,
   DocumentIcon,
+  DocumentPlusIcon,
   EyeIcon,
   EyeSlashIcon,
   FolderIcon,
+  FolderPlusIcon,
   HomeIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -174,6 +177,15 @@ function FilesPage() {
       />
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         <aside className="relative border-b border-border md:w-72 md:shrink-0 md:overflow-auto md:border-b-0 md:border-r">
+          {browse?.entries && browse?.path && (
+            <NewEntryToolbar
+              currentPath={browse.path}
+              onCreated={(kind, name) => {
+                void mutateBrowse();
+                if (kind === "file") goTo(browse.path ?? "", name);
+              }}
+            />
+          )}
           {browseValidating && (
             <div className="absolute right-2 top-2 z-10 rounded-md border border-border bg-bg/95 p-1 shadow-sm">
               <Loader className="size-3.5" />
@@ -366,6 +378,153 @@ function formatBytes(n: number | undefined): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function NewEntryToolbar({
+  currentPath,
+  onCreated,
+}: {
+  currentPath: string;
+  onCreated: (kind: "dir" | "file", name: string) => void;
+}) {
+  const [mode, setMode] = useState<"idle" | "dir" | "file">("idle");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startDir = () => {
+    setMode("dir");
+    setName("Untitled folder");
+    setError(null);
+  };
+  const startFile = () => {
+    setMode("file");
+    setName("Untitled.txt");
+    setError(null);
+  };
+  const cancel = () => {
+    setMode("idle");
+    setName("");
+    setError(null);
+  };
+
+  const submit = async () => {
+    if (busy) return;
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
+      setError("Name cannot be empty.");
+      return;
+    }
+    if (trimmed.includes("/") || trimmed.includes("\0")) {
+      setError("Name cannot contain slashes or null bytes.");
+      return;
+    }
+    const sep = currentPath.endsWith("/") ? "" : "/";
+    const path = `${currentPath}${sep}${trimmed}`;
+    const endpoint = mode === "dir" ? "/api/fs/mkdir" : "/api/fs/touch";
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setError(body?.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      const kind = mode === "dir" ? "dir" : "file";
+      cancel();
+      onCreated(kind, trimmed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mode === "idle") {
+    return (
+      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 text-xs">
+        <button
+          type="button"
+          onClick={startDir}
+          className="inline-flex items-center gap-1 rounded border border-border bg-bg px-1.5 py-1 hover:bg-muted/40"
+          data-test="portal-files-newfolder"
+          title="New folder in this directory"
+        >
+          <FolderPlusIcon className="size-3.5" />
+          New folder
+        </button>
+        <button
+          type="button"
+          onClick={startFile}
+          className="inline-flex items-center gap-1 rounded border border-border bg-bg px-1.5 py-1 hover:bg-muted/40"
+          data-test="portal-files-newfile"
+          title="New file in this directory"
+        >
+          <DocumentPlusIcon className="size-3.5" />
+          New file
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-border px-2 py-1.5 space-y-1.5">
+      <div className="flex items-center gap-1 text-xs">
+        {mode === "dir" ? (
+          <FolderPlusIcon className="size-3.5 shrink-0 text-muted-fg" />
+        ) : (
+          <DocumentPlusIcon className="size-3.5 shrink-0 text-muted-fg" />
+        )}
+        <input
+          type="text"
+          value={name}
+          autoFocus
+          disabled={busy}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void submit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+          }}
+          className="flex-1 min-w-0 rounded border border-border bg-bg px-1.5 py-1 text-xs focus:border-primary focus:outline-none disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={busy}
+          aria-label="Create"
+          className="rounded border border-primary/40 bg-primary/10 p-1 text-primary hover:bg-primary/20 disabled:opacity-50"
+          data-test="portal-files-new-submit"
+        >
+          <CheckIcon className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={cancel}
+          disabled={busy}
+          aria-label="Cancel"
+          className="rounded border border-border bg-bg p-1 text-muted-fg hover:bg-muted/40 disabled:opacity-50"
+          data-test="portal-files-new-cancel"
+        >
+          <XMarkIcon className="size-3.5" />
+        </button>
+      </div>
+      {error && (
+        <div className="text-xs text-danger-subtle-fg">{error}</div>
+      )}
+    </div>
+  );
 }
 
 function FileTree({
