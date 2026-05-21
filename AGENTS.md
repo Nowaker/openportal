@@ -673,6 +673,44 @@ User reports an issue -> my flow:
    on theirs.
 5. Restart Portal (always, per the lifecycle rule).
 
+## Optimizations must not break core features
+
+Wire-size and bandwidth optimizations are routine in this codebase
+(OMO body strip, image data-URL stashing, diagnostics field drop,
+heavy-input-field replacement, output truncation, etc.). They are
+welcome - and they have ONE hard constraint:
+
+> **No optimization may degrade or break a feature the user is
+> already using. If a transfer-reduction patch turns a live-updating
+> control into something the user has to click to load, that patch
+> is a regression. Roll it back or design around it. Never ship
+> "optimized but worse".**
+
+Concrete trip-wires:
+
+- Live indicators (todo strip counts, in-progress tool name,
+  compaction badge, queued badge, attention dots) must stay
+  push-driven via the SSE indicator stream. Stripping the source
+  fields from `/messages` to save bytes is fine; relying on a
+  separate lazy AJAX fetch to repopulate them on each render is
+  not.
+- Inline content (markdown text, tool input/details, todo bodies
+  shown in the strip overlay) must render with no extra round-trip
+  after the chat list is loaded. Expand-to-fetch is acceptable
+  for genuinely heavy bodies (full tool stdout, huge file reads)
+  and must be marked explicitly as expand-on-click in the UI.
+- Cross-tab sync (BroadcastChannel composer, indicator state)
+  must keep working even when one tab paid the optimization tax.
+  Don't gate cross-tab payloads on cache state that may be empty
+  on the receiver.
+- Sticky-bottom semantics, scroll position preservation, selection
+  retention - none of these may regress when the underlying data
+  is fetched in a smaller/lazier shape.
+
+When in doubt: ship the feature first, then look for the win. If
+both can land, both land. If only the optimization can land, it
+doesn't land.
+
 ## Codebase environment
 
 - OS: Arch Linux. Bun runtime. Tailscale networking.
