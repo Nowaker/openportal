@@ -4,6 +4,19 @@ Operational rules that apply only to the openportal codebase + its
 runtime on this user's machine. Cross-cutting personal rules live in
 `~/projekty/ai-workspace/AGENTS.md`; this file is the openportal half.
 
+## Project-specific rule overrides
+
+These statements OVERRIDE the global personal rules in
+`~/.config/opencode/AGENTS.md` for this repository only:
+
+- **Push freely. The global "Never push without explicit instruction"
+  rule does NOT apply to openportal.** Push to both `origin` (gitlab)
+  and `github` after each commit, same way you commit freely without
+  asking. The user maintains openportal solo + iterates fast; waiting
+  for push permission adds friction without protecting anything.
+  Force-push only on feature branches as the global rule still says,
+  never on `main-nowaker` or other protected branches.
+
 ## Operational patterns
 
 ### Portal restart cycle (I do this, not the user)
