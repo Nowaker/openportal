@@ -428,13 +428,7 @@ export function AppSidebarNav() {
                   )}
                 </>
               ) : showPageTitle ? (
-                <>
-                  <span className="text-muted-fg">
-                    {instance?.name ?? "OpenPortal"}
-                  </span>
-                  <span className="text-muted-fg">: </span>
-                  <span>{pageTitle}</span>
-                </>
+                <span>{pageTitle}</span>
               ) : (
                 <span className="text-muted-fg">
                   {instance?.name ?? "OpenPortal"}
