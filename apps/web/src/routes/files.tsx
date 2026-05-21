@@ -183,7 +183,7 @@ function FilesPage() {
         inPanel={search.panel === 1}
       />
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
-        <aside className="relative border-b border-border md:w-72 md:shrink-0 md:overflow-auto md:border-b-0 md:border-r">
+        <aside className="relative max-h-[50vh] overflow-y-auto overscroll-contain border-b border-border md:max-h-none md:w-72 md:shrink-0 md:overflow-auto md:border-b-0 md:border-r">
           {browse?.entries && browse?.path && (
             <NewEntryToolbar
               currentPath={browse.path}

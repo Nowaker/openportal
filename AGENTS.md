@@ -17,6 +17,40 @@ These statements OVERRIDE the global personal rules in
   Force-push only on feature branches as the global rule still says,
   never on `main-nowaker` or other protected branches.
 
+## Analysis / deep-explanation requests
+
+When the user asks for an analysis, a deep explanation, or a survey
+of how something works (anywhere in this repo or its sibling
+projects), follow this protocol:
+
+1. **Persist the analysis to `ai-analysis-requests/<TOPIC>.md`** in
+   this repo. One file per inquiry. Filenames are `SCREAMING_SNAKE_CASE`
+   topic names — `SLASH_COMMANDS.md`, `FEATURE_VALIDATION_REPORT.md`,
+   `MESSAGE_ACTIONS_AUDIT.md`, etc. The doc captures the FULL
+   investigation: file paths, line numbers, code excerpts, design
+   tradeoffs, open questions.
+
+2. **Add a todo item with `status: "done"` and
+   `description: "User Review"`.** The todo tracks that the user
+   still needs to read + approve the doc. Never delete completed
+   todos of this kind unless the user explicitly tells you to —
+   they form a session-spanning audit trail.
+
+3. **In the final assistant message, give a SHORT summary** (one
+   paragraph or a few bullets) of the analysis's conclusion, plus a
+   project-relative markdown link to the full doc. The link MUST be
+   relative to the current opencode workspace root (which may not be
+   this repo - e.g. when the session originates from
+   `~/projekty/ai-workspace`, the link from there should be
+   `webapps/portal/ai-analysis-requests/SLASH_COMMANDS.md`). When in
+   doubt, build the link by resolving from the opencode session's
+   `directory` field.
+
+4. **Older analyses get the same treatment**. If the user references
+   an earlier inquiry in the same session, the persisted doc IS the
+   reference - update it in place rather than re-writing the
+   explanation inline. Treat the directory as the canonical record.
+
 ## Operational patterns
 
 ### Portal restart cycle (I do this, not the user)
