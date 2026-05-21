@@ -35,7 +35,7 @@ function DiffPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex flex-1 min-h-0 items-center justify-center">
         <Loader className="size-8" />
       </div>
     );
@@ -43,7 +43,7 @@ function DiffPage() {
 
   if (error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4">
+      <div className="flex flex-1 flex-col min-h-0 items-center justify-center gap-4">
         <div className="text-danger">Error loading diff: {error.message}</div>
         <Button onPress={() => mutate()}>
           <ArrowPathIcon className="size-4" />
@@ -55,7 +55,7 @@ function DiffPage() {
 
   if (!data?.diff || files.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4">
+      <div className="flex flex-1 flex-col min-h-0 items-center justify-center gap-4">
         <div className="text-muted-fg">No changes detected</div>
         <Button onPress={() => mutate()}>
           <ArrowPathIcon className="size-4" />
@@ -66,7 +66,7 @@ function DiffPage() {
   }
 
   return (
-    <div className="-m-4 flex h-full flex-col">
+    <div className="-m-4 flex flex-1 flex-col min-h-0">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <PageTitle>Git Diff</PageTitle>
         <Button intent="secondary" size="sm" onPress={() => mutate()}>

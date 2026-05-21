@@ -427,7 +427,7 @@ function NewSessionPage() {
 
   if (!directory) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-fg">
+      <div className="flex flex-1 min-h-0 items-center justify-center text-muted-fg">
         No directory chosen. Use Open directory in the sidebar.
       </div>
     );
@@ -437,7 +437,7 @@ function NewSessionPage() {
   const hasContent = text.trim().length > 0;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 flex-col min-h-0">
       <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 flex flex-col items-center gap-4">
         <div className="text-center max-w-2xl space-y-1 shrink-0">
           <p className="text-xs uppercase tracking-wide text-muted-fg">

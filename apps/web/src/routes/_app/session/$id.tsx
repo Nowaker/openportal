@@ -4510,7 +4510,7 @@ function SessionPage() {
   }, []);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 flex-col min-h-0">
       <div className="relative flex-1 min-h-0">
       <div
         className="absolute inset-0 overflow-auto overflow-x-hidden"

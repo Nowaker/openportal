@@ -355,7 +355,7 @@ function AppLayout() {
             <BuildMismatchBanner />
             <NotificationPermissionBanner />
             <ConnectionStatusBanner />
-            <div className="flex-1 overflow-hidden">
+            <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
               <Outlet />
             </div>
           </SidebarInset>

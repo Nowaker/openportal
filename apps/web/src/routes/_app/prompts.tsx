@@ -168,7 +168,7 @@ function PromptsPage() {
   };
 
   return (
-    <div className="-m-4 flex h-full flex-col">
+    <div className="-m-4 flex flex-1 flex-col min-h-0">
       <StaleDataBanner
         headline="Showing cached prompt history - OpenCode is unreachable."
         hint="The archive is served from OpenPortal's local SQLite. Re-firing a prompt into a session will fail until OpenCode is back."
@@ -231,7 +231,7 @@ function PromptsPage() {
 
       <div className="flex-1 overflow-auto px-2 py-2 sm:px-4">
         {isLoading && (
-          <div className="flex h-full items-center justify-center">
+          <div className="flex flex-1 min-h-0 items-center justify-center">
             <Loader className="size-6" />
           </div>
         )}
@@ -241,7 +241,7 @@ function PromptsPage() {
           </div>
         )}
         {!isLoading && !error && rows.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-fg">
+          <div className="flex flex-1 flex-col min-h-0 items-center justify-center gap-2 text-center text-sm text-muted-fg">
             <p>No prompts archived yet.</p>
             <p className="text-xs">
               Submissions to /prompt and /command capture into this archive

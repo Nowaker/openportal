@@ -1234,7 +1234,7 @@ function SettingsPage() {
   }, []);
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain">
+    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
       <div className="container mx-auto space-y-8 px-4 py-6">
       <Tabs
         aria-label="Settings"

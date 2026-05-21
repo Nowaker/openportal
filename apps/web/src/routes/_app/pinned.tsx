@@ -81,7 +81,7 @@ function PinnedMessagesPage() {
     });
   };
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 flex-col min-h-0">
       <div className="border-b border-border px-4 py-3 flex flex-col gap-2 shrink-0">
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
           <PageTitle as="h2">Pinned messages</PageTitle>
