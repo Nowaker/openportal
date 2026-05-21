@@ -2243,7 +2243,7 @@ const MessageItem = memo(function MessageItem({
     <div
       className={`${decoration} relative px-3 py-3 ${
         !isAssistant && hasHeaderRow
-          ? "border-t border-b border-primary/50 [[data-role=user]+&]:border-t-0"
+          ? "bg-accent/10 border-t border-b border-accent/40 [[data-role=user]+&]:border-t-0"
           : ""
       }`}
       data-role={message.info.role}
