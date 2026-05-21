@@ -361,6 +361,96 @@ explaining why they're empty (per personal AGENTS.md).
   work on mobile; 10pct step size for any font-size or sizing
   control.
 
+## Per-prompt state badge (composer)
+
+The optimistic chat row carries `_pending.phase` until the real
+opencode message replaces it. The badge cycles through a blue
+progression deliberately distinct from session-level dot indicators:
+
+| Phase | Border | Background | Text | Label |
+|---|---|---|---|---|
+| `submitting` | `border-blue-300/40` | `bg-blue-300/15` | `text-blue-600` (light: blue-200 in dark) | Submitting |
+| `opencode-accepted` | `border-blue-500/40` | `bg-blue-500/15` | `text-blue-700` (light: blue-300 in dark) | Sent to OpenCode |
+| (real message lands) | — | — | — | no badge |
+
+Blue lives in the "this is about THIS PROMPT" lane. Session-status
+dots stay yellow (queued / paused), red (stuck-busy / error), green
+(completed / done), violet (subsession active). Do not reuse any of
+those colors for prompt-journey states.
+
+## Context-usage dial (title bar)
+
+`SessionContextDial` renders a 16px circular progress ring next to
+the session title. Math: `r=7, circumference=2*pi*r=43.9823,
+stroke-dashoffset = circumference * (1 - tokens/contextLimit)`.
+
+Color tone by saturation:
+
+| Usage | Class |
+|---|---|
+| `< 0.85` | `text-muted-fg` |
+| `>= 0.85` | `text-warning` |
+| `>= 0.95` | `text-danger` |
+
+Hidden entirely when there's no active session, no completed
+assistant turn, or no declared model context limit.
+
+## Subagent linkage
+
+Subagent sessions (`session.parentID != null`) carry a violet
+"Parent" button next to the session-status badge. Violet matches
+the existing subsession purple in the Cmd palette; do not use blue
+or warning here.
+
+Tone scale for parent button:
+- Default: `border-violet-500/40 bg-violet-500/10 text-violet-700`
+  (`dark:text-violet-300`).
+- Hover: `bg-violet-500/20`.
+
+## Hover affordance on composer selectors
+
+AgentSelect, ModelSelect, ThinkingSelect carry both `aria-label`
+AND a native `title=""` so the value shows up on desktop hover.
+Mobile ignores title attrs - we don't gate on `isMobile`.
+
+| Selector | title content |
+|---|---|
+| Agent | `Agent: <name>` or `Select agent` |
+| Model | `Model: <id>` (override) or `Use default model` |
+| Thinking | `Thinking effort: <variantDisplayLabel(current)>` |
+
+## File-icon palette
+
+`apps/web/src/lib/file-icons.ts getFileIcon(filename, isDir)`
+returns `{ Icon, color }` where color is a Tailwind text-* class.
+Six icon shapes (Folder, Document, DocumentText, CodeBracket,
+CommandLine, Photo/Film/Music, Archive, TableCells, BookOpen,
+Cog) with per-extension tint:
+
+| Family | Color band |
+|---|---|
+| TS/JS | blue / yellow |
+| Python | blue |
+| Go | cyan |
+| Rust | orange |
+| Ruby | red |
+| CSS / pink | pink |
+| HTML / orange | orange |
+| YAML/conf | muted/red |
+| Image | violet (svg yellow) |
+| Video | purple |
+| Audio | pink |
+| Archive | amber |
+| Spreadsheet/SQL | green/emerald/pink |
+| LICENSE/COPYING | amber |
+| README/CHANGELOG | blue/emerald |
+| AGENTS.md | purple |
+| Dockerfile | cyan |
+| PKGBUILD | blue (Arch) |
+
+Resolution order: directory-by-name -> exact-filename ->
+extension -> default DocumentIcon muted-fg.
+
 ## Anti-patterns (BLOCK on review)
 
 - New `useSWR` with `refreshInterval > 0` to read indicator-state.
