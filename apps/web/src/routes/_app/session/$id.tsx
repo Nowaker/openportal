@@ -4317,29 +4317,39 @@ function SessionPage() {
       }
       let isQueued = false;
       if (message.info.role === "user") {
-        const baseIdx = ctx.baseVisible.findIndex(
-          (m) => m.info.id === message.info.id,
-        );
-        // A user message is "answered" iff there's an assistant message
-        // SOMEWHERE after it. opencode batches multiple consecutive user
-        // prompts under a single assistant response (the user can press
-        // Submit several times before opencode starts generating), so an
-        // intermediate user message MUST NOT short-circuit this scan or
-        // the older messages get incorrectly marked queued while the
-        // newest one (which sees the assistant directly) does not -
-        // exactly the "Queued out-of-order" symptom the user reported.
-        let answered = false;
-        for (let j = baseIdx + 1; j < ctx.baseVisible.length; j++) {
-          const next = ctx.baseVisible[j];
-          if (!next) break;
-          if (next.info.role === "assistant") {
-            answered = true;
-            break;
+        // In onlyUserMessages mode the backend strips assistants from
+        // the response (apps/web/src/server/.../messages.ts ?onlyUser=1),
+        // so the "find next assistant" scan below would mark every
+        // historic user prompt as queued - even though they ALL got
+        // answered when they were submitted. The queued badge is only
+        // meaningful in the full chat view; in user-only mode trust the
+        // _pending sentinel on the optimistic message to surface the
+        // single truly-pending submission and skip the scan.
+        if (!onlyUserMessages) {
+          const baseIdx = ctx.baseVisible.findIndex(
+            (m) => m.info.id === message.info.id,
+          );
+          // A user message is "answered" iff there's an assistant message
+          // SOMEWHERE after it. opencode batches multiple consecutive user
+          // prompts under a single assistant response (the user can press
+          // Submit several times before opencode starts generating), so an
+          // intermediate user message MUST NOT short-circuit this scan or
+          // the older messages get incorrectly marked queued while the
+          // newest one (which sees the assistant directly) does not -
+          // exactly the "Queued out-of-order" symptom the user reported.
+          let answered = false;
+          for (let j = baseIdx + 1; j < ctx.baseVisible.length; j++) {
+            const next = ctx.baseVisible[j];
+            if (!next) break;
+            if (next.info.role === "assistant") {
+              answered = true;
+              break;
+            }
           }
+          const isLastInBase =
+            baseIdx >= 0 && baseIdx === ctx.baseVisible.length - 1;
+          isQueued = !answered && !(isLastInBase && isServerBusy);
         }
-        const isLastInBase =
-          baseIdx >= 0 && baseIdx === ctx.baseVisible.length - 1;
-        isQueued = !answered && !(isLastInBase && isServerBusy);
       }
       const messageWithQueueFlag = isQueued
         ? { ...message, isQueued: true }
