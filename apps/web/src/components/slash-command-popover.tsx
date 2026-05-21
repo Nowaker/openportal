@@ -430,10 +430,18 @@ export function useSlashCommand(): UseSlashCommandResult {
       close();
       return;
     }
+    // Detection looks at the FIRST LINE only. Content past a newline
+    // is treated as command arguments / message body and must not
+    // close the popover. Without this, a textarea that starts with
+    // `/foo\nsome question` collapsed the popover the moment the
+    // user hit Enter to add the argument body - even though the
+    // slash command was perfectly valid (handleSubmit's slash
+    // dispatcher accepts `\s*([\s\S]*)$` as the arguments tail).
+    const firstLine = value.split("\n", 1)[0];
     // Sub-picker detection: /agent <q> and /model <q> stay open after the
     // first space and switch into a different item list. Regex captures
     // the rest-after-space as the query.
-    const subMatch = value.match(/^\/(agent|model)\s+(\S*)$/);
+    const subMatch = firstLine.match(/^\/(agent|model)\s+(\S*)$/);
     if (subMatch) {
       const sub = subMatch[1] as "agent" | "model";
       const query = subMatch[2] ?? "";
@@ -444,9 +452,10 @@ export function useSlashCommand(): UseSlashCommandResult {
       setIsOpen(true);
       return;
     }
-    const afterSlash = value.slice(1);
-    const firstSpace = afterSlash.search(/[\s]/);
-    const query = firstSpace === -1 ? afterSlash : afterSlash.slice(0, firstSpace);
+    const afterSlash = firstLine.slice(1);
+    const firstSpace = afterSlash.search(/\s/);
+    const query =
+      firstSpace === -1 ? afterSlash : afterSlash.slice(0, firstSpace);
     if (firstSpace === -1) {
       setMode("command");
       setSearchQuery(query);
