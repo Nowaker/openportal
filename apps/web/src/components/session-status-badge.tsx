@@ -32,7 +32,7 @@ interface BadgeRender {
   title: string;
 }
 
-function pickBadge(state: SessionIndicatorState | null): BadgeRender | null {
+export function pickBadge(state: SessionIndicatorState | null): BadgeRender | null {
   if (!state) return null;
 
   if (state.lastError) {
