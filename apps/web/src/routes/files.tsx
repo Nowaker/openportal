@@ -124,6 +124,19 @@ function FilesPage() {
       : "OpenPortal files";
   }, [search.file]);
 
+  // When the files page is mounted as the iframe inside the side panel
+  // (FileBrowserPanel passes ?panel=1 in the iframe src), report every
+  // navigation back to the parent so the panel can update its store and
+  // the URL hash. The parent listens for { type: "fb-nav", path, file }.
+  useEffect(() => {
+    if (search.panel && typeof window !== "undefined" && window.parent !== window) {
+      window.parent.postMessage(
+        { type: "fb-nav", path: search.path, file: search.file },
+        "*",
+      );
+    }
+  }, [search.path, search.file, search.panel]);
+
   const goTo = (path: string, file?: string) => {
     void navigate({
       to: "/files",

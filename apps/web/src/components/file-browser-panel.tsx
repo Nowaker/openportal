@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
+import { useHashValue } from "@/hooks/use-hash-open";
 
 const MIN_WIDTH = 360;
 const MAX_WIDTH = 1200;
@@ -28,28 +29,75 @@ function persistWidth(value: number): void {
   }
 }
 
+function parseHashValue(val: string | null): { path: string | null; file: string | null } {
+  if (!val) return { path: null, file: null };
+  const idx = val.indexOf("?file=");
+  if (idx !== -1) {
+    return { path: val.slice(0, idx), file: val.slice(idx + 6) };
+  }
+  return { path: val, file: null };
+}
+
+function stringifyHashValue(path: string | null, file: string | null): string | null {
+  if (!path) return null;
+  if (file) return `${path}?file=${file}`;
+  return path;
+}
+
 export function FileBrowserPanel() {
-  const { isOpen, initialPath, close } = useFileBrowserPanelStore();
+  const { isOpen, initialPath, initialFile, currentPath, currentFile, close, open, navigated } = useFileBrowserPanelStore();
   const [width, setWidth] = useState<number>(readPersistedWidth);
   const [dragging, setDragging] = useState(false);
   const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(
     null,
   );
+  const [hashValue, setHashValue] = useHashValue("files");
+
+  useEffect(() => {
+    if (hashValue !== null) {
+      const { path, file } = parseHashValue(hashValue);
+      if (!isOpen || currentPath !== path || currentFile !== file) {
+        open(path, file);
+      }
+    } else if (isOpen) {
+      close();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hashValue]);
+
+  useEffect(() => {
+    if (isOpen && currentPath) {
+      const desired = stringifyHashValue(currentPath, currentFile);
+      if (hashValue !== desired) {
+        setHashValue(desired);
+      }
+    } else if (!isOpen && hashValue !== null) {
+      setHashValue(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentPath, currentFile]);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      const data = e.data as { type?: string } | null;
+      const data = e.data as { type?: string; path?: string; file?: string } | null;
       if (data?.type === "fb-close") close();
+      if (data?.type === "fb-nav") {
+        navigated(data.path || null, data.file || null);
+      }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [close]);
+  }, [close, navigated]);
 
   if (!isOpen) return null;
 
-  const src = initialPath
-    ? `/files?panel=1&path=${encodeURIComponent(initialPath)}`
-    : "/files?panel=1";
+  let src = "/files?panel=1";
+  if (initialPath) {
+    src += `&path=${encodeURIComponent(initialPath)}`;
+  }
+  if (initialFile) {
+    src += `&file=${encodeURIComponent(initialFile)}`;
+  }
 
   // Pointer capture binds every move + up event to the handle until
   // release - critical for an iframe-adjacent resizer. Without it, the
