@@ -17,6 +17,7 @@ import {
 import { CSS as DndCSS } from "@dnd-kit/utilities";
 import {
   ArchiveBoxIcon,
+  ArrowDownTrayIcon,
   ArrowLeftIcon,
   ArrowPathRoundedSquareIcon,
   BoltIcon,
@@ -49,6 +50,7 @@ import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useTitleBarActionsStore } from "@/stores/title-bar-actions-store";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { useModelStore } from "@/stores/model-store";
 import {
@@ -97,6 +99,7 @@ function projectLabelFromDirectory(directory?: string): string | null {
 export function AppSidebarNav() {
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
+  const titleBarPlacements = useTitleBarActionsStore((s) => s.placements);
   const instanceId = instance?.id ?? null;
   const resolveModel = useModelStore((s) => s.resolveModel);
   const { setIsOpenOnMobile } = useSidebar();
@@ -472,6 +475,52 @@ export function AppSidebarNav() {
               >
                 <PencilSquareIcon className="size-4" />
               </button>
+            )}
+            {sessionId && port && titleBarPlacements.compact === "both" && (
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    toast.info("Compacting session...");
+                    try {
+                      const r = await fetch(
+                        `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/compact`,
+                        { method: "POST" },
+                      );
+                      if (r.ok) {
+                        toast.success("Session compacted.");
+                      } else {
+                        toast.error(`Compaction failed (HTTP ${r.status}).`);
+                      }
+                    } catch (err) {
+                      toast.error(
+                        err instanceof Error
+                          ? err.message
+                          : "Compaction request failed.",
+                      );
+                    }
+                  })();
+                }}
+                aria-label="Compact session"
+                title="Compact session - summarise older history"
+                data-test="portal-titlebar-compact"
+                className="shrink-0 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+              >
+                <ArrowPathRoundedSquareIcon className="size-4" />
+              </button>
+            )}
+            {sessionId && port && titleBarPlacements.export === "both" && (
+              <a
+                href={`/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/export`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Export session as Markdown"
+                title="Download full chat as Markdown"
+                data-test="portal-titlebar-export"
+                className="shrink-0 inline-flex items-center justify-center rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+              >
+                <ArrowDownTrayIcon className="size-4" />
+              </a>
             )}
           </>
         )}

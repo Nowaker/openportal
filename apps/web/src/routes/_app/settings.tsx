@@ -61,6 +61,12 @@ import {
   stopSpeaking,
 } from "@/stores/tts-store";
 import {
+  useTitleBarActionsStore,
+  SESSION_ACTIONS,
+  type ActionPlacement,
+  type SessionActionId,
+} from "@/stores/title-bar-actions-store";
+import {
   useChatLinkStore,
   type ChatLinkBehavior,
 } from "@/stores/chat-link-store";
@@ -868,6 +874,69 @@ function NotificationSoundSetting() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function TitleBarActionsSetting() {
+  const placements = useTitleBarActionsStore((s) => s.placements);
+  const setPlacement = useTitleBarActionsStore((s) => s.setPlacement);
+  const reset = useTitleBarActionsStore((s) => s.reset);
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">
+          Title-bar action shortcuts
+        </h3>
+        <p className="text-xs text-muted-fg">
+          Choose whether each session action lives only in the
+          hamburger menu, or appears as a shortcut button on the
+          session title bar AS WELL (the hamburger entry stays
+          available in both modes). Per-action so you can clutter
+          only what you actually use.
+        </p>
+      </div>
+      <div className="space-y-3">
+        {SESSION_ACTIONS.map((action) => {
+          const current = placements[action.id];
+          return (
+            <div key={action.id} className="space-y-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-sm font-medium">{action.label}</span>
+              </div>
+              <p className="text-xs text-muted-fg">{action.description}</p>
+              <div className="flex gap-1">
+                {(["hamburger", "both"] as ActionPlacement[]).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() =>
+                      setPlacement(action.id as SessionActionId, opt)
+                    }
+                    className={`rounded-md border px-2 py-1 text-xs ${
+                      current === opt
+                        ? "border-accent bg-accent/10 text-fg"
+                        : "border-border bg-bg text-muted-fg hover:bg-muted"
+                    }`}
+                    data-test={`portal-settings-titlebar-${action.id}-${opt}`}
+                  >
+                    {opt === "hamburger" ? "Hamburger only" : "Title bar + hamburger"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        onClick={() => reset()}
+        className="rounded-md border border-border bg-bg px-2 py-1 text-xs text-muted-fg hover:bg-muted"
+        data-test="portal-settings-titlebar-reset"
+      >
+        Reset to defaults
+      </button>
     </div>
   );
 }
@@ -1716,6 +1785,10 @@ function SettingsPage() {
 
             <section>
               <MarkdownSetting />
+            </section>
+
+            <section>
+              <TitleBarActionsSetting />
             </section>
           </div>
         </TabPanel>
