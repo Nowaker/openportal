@@ -18,6 +18,7 @@ import { CSS as DndCSS } from "@dnd-kit/utilities";
 import {
   ArchiveBoxIcon,
   ArrowLeftIcon,
+  ArrowPathRoundedSquareIcon,
   BoltIcon,
   CheckIcon,
   EllipsisVerticalIcon,
@@ -531,6 +532,43 @@ export function AppSidebarNav() {
                       data-slot="icon"
                     />
                     Session info
+                  </MenuItem>
+                  <MenuItem
+                    onAction={() => {
+                      if (!port || !sessionId) return;
+                      void (async () => {
+                        toast.info("Compacting session...");
+                        try {
+                          const r = await fetch(
+                            `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/compact`,
+                            { method: "POST" },
+                          );
+                          if (r.ok) {
+                            toast.success("Session compacted.");
+                          } else {
+                            const body = (await r
+                              .json()
+                              .catch(() => null)) as { body?: { message?: string } } | null;
+                            toast.error(
+                              body?.body?.message ??
+                                `Compaction failed (HTTP ${r.status}).`,
+                            );
+                          }
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error
+                              ? err.message
+                              : "Compaction request failed.",
+                          );
+                        }
+                      })();
+                    }}
+                  >
+                    <ArrowPathRoundedSquareIcon
+                      className="size-4"
+                      data-slot="icon"
+                    />
+                    Compact session
                   </MenuItem>
                   {isMobile && sessionTitle && (
                     <MenuItem onAction={startEditTitle}>
