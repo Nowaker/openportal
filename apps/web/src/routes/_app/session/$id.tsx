@@ -999,7 +999,7 @@ function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
       data-test="portal-composer-autoapprove"
       className={`shrink-0 rounded-md border p-1 sm:p-1.5 transition-colors ${
         enabled
-          ? "border-accent/40 bg-accent/15 text-accent hover:bg-accent/25"
+          ? "border-accent bg-accent text-accent-fg shadow-sm hover:bg-accent/90"
           : "border-transparent text-muted-fg hover:bg-muted hover:text-fg"
       }`}
     >

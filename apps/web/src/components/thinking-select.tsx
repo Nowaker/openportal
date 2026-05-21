@@ -84,7 +84,7 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
         aria-label={`Thinking effort: ${variantDisplayLabel(current)}`}
         title={`Thinking effort: ${variantDisplayLabel(current)}`}
         data-slot="control"
-        className="shrink-0 min-h-0 rounded-lg border border-input gap-x-1 sm:gap-x-2 sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)] sm:text-sm/6 [&_svg]:!size-4"
+        className="shrink-0 min-h-0 rounded-lg border border-input gap-x-1 sm:gap-x-2 sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)] sm:text-sm/6 font-normal [&_svg]:!size-4"
       >
         {variantIcon(current, "")}
         <span className="hidden sm:inline text-sm/6">
