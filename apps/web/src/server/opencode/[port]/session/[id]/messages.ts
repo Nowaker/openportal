@@ -1,5 +1,8 @@
 import { defineHandler, getQuery, setResponseHeader } from "nitro/h3";
-import { fetchOpencode } from "../../../../lib/opencode-client";
+import {
+  fetchOpencode,
+  getOpencodeClient,
+} from "../../../../lib/opencode-client";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
 import { stashDataUrl, hasCachedThumb } from "../../../../lib/blob-cache";
 import {
@@ -280,38 +283,54 @@ function parsePositiveLimit(raw: unknown, fallback: number): number {
   return Math.min(Math.floor(n), MAX_LIMIT);
 }
 
-// Upstream cap for the GET /session/{id}/message call. Opencode rejects
-// the WHOLE response with HTTP 400 if any message in the returned slice
-// fails its zod schema (a real failure mode for sessions whose history
-// was touched by external tooling - e.g. the stuck-compaction-fixer
-// injecting synthetic user-role recovery messages without info.agent).
-// Requesting the latest N messages avoids the broken older entries: as
-// long as N is small enough that the bad message falls off the tail,
-// opencode happily serves the slice. 1000 matches the portal's own
-// MAX_LIMIT and covers the overwhelming majority of sessions. For longer
-// sessions older messages just aren't cached - the alternative is the
-// entire session rendering as "No messages yet", which is what was
-// happening before this change.
-const UPSTREAM_FETCH_LIMIT = 1000;
+// SDK-first with a raw-fetch fallback for defense in depth.
+//
+// Background: at one point opencode itself returned HTTP 400 for the
+// entire /session/{id}/message response when even one message in the
+// session failed its effect-schema validation (the stuck-compaction-
+// fixer was emitting synthetic recovery messages without info.agent /
+// info.model / info.summary - the validation tripped on those and
+// rejected the whole array). That blank-screened the recovered
+// sessions in any SDK consumer.
+//
+// The upstream issue has been fixed (opencode-tools commit 39f98fb +
+// in-place DB backfill of the four affected rows). Reverted to the
+// SDK call as the default path because it's the canonical client and
+// the most surface for any future schema changes opencode adds. The
+// raw-fetch fallback kicks in iff the SDK returns an error envelope
+// (the SDK doesn't throw on schema mismatch - it sets result.error
+// instead) AND the raw endpoint accepts a limit cap that excludes
+// whatever the SDK is choking on. Defense in depth.
+const FALLBACK_FETCH_LIMIT = 1000;
 
 async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
-  // Bypass @opencode-ai/sdk's strict zod validation; hit the raw HTTP
-  // endpoint via fetchOpencode and hand the array to the strip pipeline.
-  // The SDK's `client.session.messages({path: {id}})` blanket-rejects the
-  // WHOLE response on any single bad message, turning a recoverable
-  // session into a blank screen. Direct fetch + JSON parse is lenient
-  // and lets the bad-message-tolerant browser UI take over.
-  const res = await fetchOpencode(
-    port,
-    `/session/${encodeURIComponent(id)}/message?limit=${UPSTREAM_FETCH_LIMIT}`,
-  );
-  if (!res.ok) {
-    throw new Error(
-      `opencode /session/${id}/message returned ${res.status} ${res.statusText}`,
+  const client = await getOpencodeClient(port);
+  const result = await client.session.messages({ path: { id } });
+  const data = (result as { data?: unknown }).data;
+  let raw: unknown[];
+  if (Array.isArray(data)) {
+    raw = data;
+  } else {
+    const err = (result as { error?: { name?: string; data?: unknown } }).error;
+    const status = (result as { response?: { status?: number } }).response
+      ?.status;
+    console.warn(
+      `[messages] SDK rejected /session/${id}/message ` +
+        `(status=${status ?? "?"} error=${err?.name ?? "unknown"}); ` +
+        `falling back to raw fetch with limit=${FALLBACK_FETCH_LIMIT}`,
     );
+    const res = await fetchOpencode(
+      port,
+      `/session/${encodeURIComponent(id)}/message?limit=${FALLBACK_FETCH_LIMIT}`,
+    );
+    if (!res.ok) {
+      throw new Error(
+        `opencode /session/${id}/message fallback returned ${res.status} ${res.statusText}`,
+      );
+    }
+    const body = (await res.json().catch(() => null)) as unknown;
+    raw = Array.isArray(body) ? body : [];
   }
-  const body = (await res.json().catch(() => null)) as unknown;
-  const raw = Array.isArray(body) ? body : [];
 
   const stripped = stripDiagnosticFixes(raw);
   stripUserMessageSummary(stripped);
