@@ -368,42 +368,125 @@ function FileTree({
   onSelectDir: (name: string) => void;
   onSelectFile: (name: string) => void;
 }) {
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    entry: BrowseEntry;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    document.addEventListener("click", handleClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent, entry: BrowseEntry) => {
+    e.preventDefault();
+    
+    const menuWidth = 160;
+    const menuHeight = 40;
+    
+    let x = e.clientX;
+    let y = e.clientY;
+    
+    if (x + menuWidth > window.innerWidth) {
+      x = window.innerWidth - menuWidth - 8;
+    }
+    if (y + menuHeight > window.innerHeight) {
+      y = window.innerHeight - menuHeight - 8;
+    }
+    
+    setContextMenu({ x, y, entry });
+  };
+
+  const handleCopyUrl = () => {
+    if (!contextMenu) return;
+    const { entry } = contextMenu;
+    const url = new URL(window.location.origin + "/files");
+    
+    if (entry.isDir) {
+      const nextPath = currentPath === "/" ? `/${entry.name}` : `${currentPath}/${entry.name}`;
+      url.searchParams.set("path", nextPath);
+    } else {
+      if (currentPath) {
+        url.searchParams.set("path", currentPath);
+      }
+      url.searchParams.set("file", entry.name);
+    }
+    
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has("panel")) {
+      url.searchParams.set("panel", currentUrl.searchParams.get("panel")!);
+    }
+    
+    void navigator.clipboard.writeText(url.toString());
+    toast.success("Link copied");
+    setContextMenu(null);
+  };
+
   return (
-    <ul className="text-sm">
-      {entries.map((e) => {
-        const isSelected = !e.isDir && e.name === selectedFile;
-        return (
-          <li key={e.name}>
-            <button
-              type="button"
-              onClick={() => (e.isDir ? onSelectDir(e.name) : onSelectFile(e.name))}
-              data-test={`portal-files-entry-${e.name}`}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/30 ${
-                isSelected ? "bg-primary/10 text-primary" : ""
-              }`}
-              title={`${currentPath === "/" ? "" : currentPath}/${e.name}`}
-            >
-              {e.isDir ? (
-                <FolderIcon className="size-4 shrink-0 text-amber-500" />
-              ) : (
-                <DocumentIcon className="size-4 shrink-0 text-muted-fg" />
-              )}
-              <span className="truncate">{e.name}</span>
-              {!e.isDir && typeof e.size === "number" && (
-                <span className="ml-auto shrink-0 text-xs text-muted-fg">
-                  {formatBytes(e.size)}
-                </span>
-              )}
-            </button>
+    <>
+      <ul className="text-sm">
+        {entries.map((e) => {
+          const isSelected = !e.isDir && e.name === selectedFile;
+          return (
+            <li key={e.name}>
+              <button
+                type="button"
+                onClick={() => (e.isDir ? onSelectDir(e.name) : onSelectFile(e.name))}
+                onContextMenu={(ev) => handleContextMenu(ev, e)}
+                data-test={`portal-files-entry-${e.name}`}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/30 ${
+                  isSelected ? "bg-primary/10 text-primary" : ""
+                }`}
+                title={`${currentPath === "/" ? "" : currentPath}/${e.name}`}
+              >
+                {e.isDir ? (
+                  <FolderIcon className="size-4 shrink-0 text-amber-500" />
+                ) : (
+                  <DocumentIcon className="size-4 shrink-0 text-muted-fg" />
+                )}
+                <span className="truncate">{e.name}</span>
+                {!e.isDir && typeof e.size === "number" && (
+                  <span className="ml-auto shrink-0 text-xs text-muted-fg">
+                    {formatBytes(e.size)}
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+        {entries.length === 0 && (
+          <li className="px-3 py-4 text-center text-xs text-muted-fg">
+            (empty directory)
           </li>
-        );
-      })}
-      {entries.length === 0 && (
-        <li className="px-3 py-4 text-center text-xs text-muted-fg">
-          (empty directory)
-        </li>
+        )}
+      </ul>
+      
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-32 overflow-hidden rounded-md border border-border bg-bg p-1 shadow-md"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={handleCopyUrl}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-fg"
+          >
+            <ClipboardDocumentIcon className="size-4" />
+            Copy URL
+          </button>
+        </div>
       )}
-    </ul>
+    </>
   );
 }
 
