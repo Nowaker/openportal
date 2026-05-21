@@ -16,6 +16,7 @@ import { useDateFormatStore } from "@/stores/date-format-store";
 import { useFontSizeStore } from "@/stores/font-size-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useComposerStore } from "@/stores/composer-store";
+import { useSystemStats } from "@/stores/system-stats-store";
 import type { Session } from "@opencode-ai/sdk";
 
 const fetcher = async (url: string) => {
@@ -79,6 +80,46 @@ function formatBytes(bytes: number | null): string {
 // section, so labels in adjacent sections stack on the same x-coordinate.
 // Using one grid + col-span-2 headers is simpler than per-section subgrid
 // and works in every modern browser.
+function formatRss(kb: number): string {
+  if (kb >= 1024 * 1024) return `${(kb / 1024 / 1024).toFixed(2)} GB`;
+  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`;
+  return `${kb} kB`;
+}
+
+function SystemStatsRows() {
+  const { stats, isLoading } = useSystemStats();
+  if (isLoading && !stats.load) {
+    return (
+      <Row label="System">
+        <span className="text-muted-fg">loading…</span>
+      </Row>
+    );
+  }
+  return (
+    <>
+      <Row label="Load avg">
+        {stats.load
+          ? `${stats.load.one.toFixed(2)}  ${stats.load.five.toFixed(2)}  ${stats.load.fifteen.toFixed(2)}`
+          : "—"}
+      </Row>
+      <Row label="Memory">
+        {stats.memory
+          ? `${stats.memory.usedPercent}% used (${formatRss(stats.memory.usedKb)} / ${formatRss(stats.memory.totalKb)})`
+          : "—"}
+      </Row>
+      {stats.opencodeProcesses.length === 0 ? (
+        <Row label="OpenCode procs">none</Row>
+      ) : (
+        stats.opencodeProcesses.map((p) => (
+          <Row key={p.pid} label={`pid ${p.pid}`}>
+            {formatRss(p.rssKb)} RSS, {p.cpuPercent.toFixed(1)}% CPU
+          </Row>
+        ))
+      )}
+    </>
+  );
+}
+
 function SectionHeader({ title }: { title: string }) {
   return (
     <SectionTitle as="h3" className="col-span-2 pt-4 first:pt-0">
@@ -297,6 +338,9 @@ export function DiagnosticsPanel() {
             ))}
           </>
         )}
+
+        <SectionHeader title="Host" />
+        <SystemStatsRows />
 
         <SectionHeader title="State files" />
         {Object.entries(stateFiles).map(([key, info]) => (
