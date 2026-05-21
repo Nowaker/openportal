@@ -2906,6 +2906,7 @@ function SessionPage() {
     scrollTop: number;
     scrollHeight: number;
   } | null>(null);
+  const loadMoreSelectionRef = useRef<Range | null>(null);
   const promptsSearchParam = Route.useSearch({
     select: (s) => s.prompts != null && s.prompts !== false,
   });
@@ -3019,6 +3020,19 @@ function SessionPage() {
     if (delta > 0) {
       container.scrollTop = anchor.scrollTop + delta;
       loadMoreScrollAnchorRef.current = null;
+      const savedRange = loadMoreSelectionRef.current;
+      if (savedRange) {
+        try {
+          const sel = window.getSelection();
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(savedRange);
+          }
+        } catch {
+          /* range nodes detached - original selection gone, ignore */
+        }
+        loadMoreSelectionRef.current = null;
+      }
     }
   }, [messages.length]);
 
@@ -4682,6 +4696,15 @@ function SessionPage() {
                   <div className="px-3 py-3 flex items-center justify-center gap-2">
                     <button
                       type="button"
+                      onMouseDown={(e) => {
+                        const sel = window.getSelection();
+                        if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+                          loadMoreSelectionRef.current = sel
+                            .getRangeAt(0)
+                            .cloneRange();
+                          e.preventDefault();
+                        }
+                      }}
                       onClick={() => {
                         const container = chatContainerRef.current;
                         if (container) {
