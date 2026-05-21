@@ -22,6 +22,15 @@ import { ModelSelect } from "@/components/model-select";
 import { ThinkingSelect } from "@/components/thinking-select";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  FileMentionPopover,
+  useFileMention,
+} from "@/components/file-mention-popover";
+import {
+  SlashCommandPopover,
+  useSlashCommand,
+  useCommands,
+} from "@/components/slash-command-popover";
 import { useSWRConfig } from "swr";
 import { mutate as mutateSWR } from "swr";
 import {
@@ -161,6 +170,16 @@ function NewSessionPage() {
   const [pendingAttachments, setPendingAttachments] = useState<
     PromptAttachment[]
   >([]);
+
+  const fileMention = useFileMention();
+  const slashCommand = useSlashCommand();
+  const { data: commandsData } = useCommands();
+  const [, setFileResults] = useState<{ path: string; name: string }[]>([]);
+  const filteredCommands = useMemo(() => {
+    return (commandsData ?? []).filter((c) =>
+      c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
+    );
+  }, [commandsData, slashCommand.searchQuery]);
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
   const anyFileAttachInputRef = useRef<HTMLInputElement>(null);
 
@@ -676,6 +695,48 @@ function NewSessionPage() {
               {error}
             </div>
           )}
+          <FileMentionPopover
+            isOpen={fileMention.isOpen}
+            searchQuery={fileMention.searchQuery}
+            textareaRef={textareaRef}
+            mentionStart={fileMention.mentionStart}
+            selectedIndex={fileMention.selectedIndex}
+            onSelectedIndexChange={fileMention.setSelectedIndex}
+            onFilesChange={setFileResults}
+            onClose={fileMention.close}
+            onSelect={(filePath) => {
+              const current = textareaRef.current?.value ?? "";
+              const newValue = fileMention.handleSelect(filePath, current);
+              if (textareaRef.current) {
+                textareaRef.current.value = newValue;
+                setText(newValue);
+              }
+            }}
+          />
+          <SlashCommandPopover
+            isOpen={slashCommand.isOpen}
+            searchQuery={slashCommand.searchQuery}
+            mode={slashCommand.mode}
+            textareaRef={textareaRef}
+            slashStart={slashCommand.slashStart}
+            selectedIndex={slashCommand.selectedIndex}
+            onSelectedIndexChange={slashCommand.setSelectedIndex}
+            onClose={slashCommand.close}
+            onSelect={(commandName) => {
+              const current = textareaRef.current?.value ?? "";
+              const newValue = slashCommand.handleSelect(
+                commandName,
+                current,
+              );
+              if (textareaRef.current) {
+                textareaRef.current.value = newValue;
+                setText(newValue);
+                textareaRef.current.focus();
+                const cursorPos = newValue.length;
+                textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+              }
+            }}
+          />
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -707,15 +768,41 @@ function NewSessionPage() {
                   }}
                   onChange={(e) => {
                     hasUserEditedRef.current = true;
-                    setText(e.target.value);
+                    const value = e.target.value;
+                    setText(value);
                     if (sttTimeoutProgress !== null) {
                       cancelSttTimeout();
                       if (speechRecognition.isListening) {
                         speechRecognition.stop();
                       }
                     }
+                    const cursorPos =
+                      e.target.selectionStart ?? value.length;
+                    if (fileMention.isOpen || value.includes("@")) {
+                      fileMention.handleInputChange(value, cursorPos);
+                    }
+                    if (slashCommand.isOpen || value.startsWith("/")) {
+                      slashCommand.handleInputChange(value, cursorPos);
+                    }
                   }}
-                  onKeyDown={onKeyDown}
+                  onSelect={(e) => {
+                    if (!fileMention.isOpen) return;
+                    const target = e.target as HTMLTextAreaElement;
+                    const value = target.value;
+                    const cursorPos =
+                      target.selectionStart ?? value.length;
+                    fileMention.handleInputChange(value, cursorPos);
+                  }}
+                  onKeyDown={(e) => {
+                    const slashHandled = slashCommand.handleKeyDown(
+                      e,
+                      filteredCommands.length,
+                    );
+                    if (slashHandled) return;
+                    const mentionHandled = fileMention.handleKeyDown(e);
+                    if (mentionHandled) return;
+                    onKeyDown(e);
+                  }}
                   placeholder="What do you want to do?"
                   className="resize-none overflow-y-auto text-sm min-h-[120px]"
                   disabled={sending}
