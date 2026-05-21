@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
 import { DiagnosticsPanel } from "@/components/diagnostics-panel";
@@ -54,6 +55,11 @@ import {
   useNotificationSoundStore,
   playNotificationSound,
 } from "@/stores/notification-sound-store";
+import {
+  useTtsStore,
+  speakText,
+  stopSpeaking,
+} from "@/stores/tts-store";
 import {
   useChatLinkStore,
   type ChatLinkBehavior,
@@ -866,6 +872,130 @@ function NotificationSoundSetting() {
   );
 }
 
+function TtsSetting() {
+  const enabled = useTtsStore((s) => s.enabled);
+  const setEnabled = useTtsStore((s) => s.setEnabled);
+  const rate = useTtsStore((s) => s.rate);
+  const setRate = useTtsStore((s) => s.setRate);
+  const pitch = useTtsStore((s) => s.pitch);
+  const setPitch = useTtsStore((s) => s.setPitch);
+  const voiceName = useTtsStore((s) => s.voice);
+  const setVoice = useTtsStore((s) => s.setVoice);
+
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("speechSynthesis" in window)) return;
+    const refresh = () => setVoices(window.speechSynthesis.getVoices());
+    refresh();
+    window.speechSynthesis.addEventListener("voiceschanged", refresh);
+    return () =>
+      window.speechSynthesis.removeEventListener("voiceschanged", refresh);
+  }, []);
+
+  const supported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">
+          Text-to-speech (assistant replies)
+        </h3>
+        <p className="text-xs text-muted-fg">
+          Read assistant responses aloud as they finish, using your
+          browser's built-in speech synthesis. Markdown formatting is
+          stripped before speaking; code blocks read as
+          &ldquo;[code block]&rdquo;.
+        </p>
+      </div>
+      {!supported ? (
+        <p className="text-xs text-danger-subtle-fg">
+          Your browser does not support the Web Speech Synthesis API.
+        </p>
+      ) : (
+        <>
+          <Checkbox
+            isSelected={enabled}
+            onChange={(v) => setEnabled(Boolean(v))}
+            data-test="portal-settings-tts-enabled"
+          >
+            Enable text-to-speech for assistant replies
+          </Checkbox>
+          {enabled && (
+            <div className="space-y-3">
+              <label className="block text-xs text-muted-fg">
+                Voice
+                <select
+                  className="mt-1 block w-full rounded-md border border-border bg-bg px-2 py-1 text-sm"
+                  value={voiceName ?? ""}
+                  onChange={(e) => setVoice(e.target.value || null)}
+                  data-test="portal-settings-tts-voice"
+                >
+                  <option value="">System default</option>
+                  {voices.map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name} ({v.lang})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs text-muted-fg">
+                Rate: {rate.toFixed(1)}x
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                  value={rate}
+                  onChange={(e) => setRate(parseFloat(e.target.value))}
+                  className="mt-1 block w-full"
+                  data-test="portal-settings-tts-rate"
+                />
+              </label>
+              <label className="block text-xs text-muted-fg">
+                Pitch: {pitch.toFixed(1)}
+                <input
+                  type="range"
+                  min={0}
+                  max={2.0}
+                  step={0.1}
+                  value={pitch}
+                  onChange={(e) => setPitch(parseFloat(e.target.value))}
+                  className="mt-1 block w-full"
+                  data-test="portal-settings-tts-pitch"
+                />
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    speakText(
+                      "This is a test of the openportal text to speech feature.",
+                    )
+                  }
+                  className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
+                  data-test="portal-settings-tts-test"
+                >
+                  Test voice
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stopSpeaking()}
+                  className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
+                  data-test="portal-settings-tts-stop"
+                >
+                  Stop
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ToolOutputCapSetting() {
   const { settings, isLoading } = useInstanceSettings();
   const current = settings.toolOutputMaxBytes;
@@ -1510,6 +1640,10 @@ function SettingsPage() {
 
             <section>
               <NotificationSoundSetting />
+            </section>
+
+            <section>
+              <TtsSetting />
             </section>
           </div>
         </TabPanel>
