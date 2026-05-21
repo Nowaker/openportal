@@ -3266,6 +3266,19 @@ function SessionPage() {
   const sttTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sttIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Visible "5..1" digit on the submit button during STT grace window.
+  // Clamped at 1 so the button never shows 0 - auto-submit happens AT 0.
+  const sttCountdownDigit =
+    sttTimeoutProgress !== null && sttEndOfStreamTimeoutMs > 0
+      ? Math.max(
+          1,
+          Math.ceil(
+            ((100 - sttTimeoutProgress) / 100) *
+              (sttEndOfStreamTimeoutMs / 1000),
+          ),
+        )
+      : null;
+
   const cancelSttTimeout = useCallback(() => {
     if (sttTimeoutRef.current) clearTimeout(sttTimeoutRef.current);
     if (sttIntervalRef.current) clearInterval(sttIntervalRef.current);
@@ -5131,6 +5144,12 @@ function SessionPage() {
                       const ne = value.length > 0;
                       if (ne !== hasContent) setHasContent(ne);
                       scheduleDraftSave(value);
+                      if (sttTimeoutProgress !== null) {
+                        cancelSttTimeout();
+                        if (speechRecognition.isListening) {
+                          speechRecognition.stop();
+                        }
+                      }
                       const cursorPos =
                         e.target.selectionStart ?? value.length;
                       if (fileMention.isOpen || value.includes("@")) {
@@ -5313,12 +5332,27 @@ function SessionPage() {
                     isDisabled={
                       !hasContent && pendingAttachments.length === 0
                     }
-                    className="size-12 !p-0"
+                    className={`size-12 !p-0 ${
+                      sttCountdownDigit !== null ? "animate-pulse" : ""
+                    }`}
                     aria-label={
-                      isAssistantBusy ? "Queue message" : "Send"
+                      sttCountdownDigit !== null
+                        ? `Auto-submit in ${sttCountdownDigit}`
+                        : isAssistantBusy
+                          ? "Queue message"
+                          : "Send"
                     }
                   >
-                    <PlayIcon className="size-6" />
+                    {sttCountdownDigit !== null ? (
+                      <span
+                        className="text-2xl font-bold tabular-nums"
+                        data-test="portal-composer-stt-countdown"
+                      >
+                        {sttCountdownDigit}
+                      </span>
+                    ) : (
+                      <PlayIcon className="size-6" />
+                    )}
                   </Button>
                 </div>
               </div>
