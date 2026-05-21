@@ -53,6 +53,7 @@ import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useTitleBarActionsStore } from "@/stores/title-bar-actions-store";
 import { useVscodeOpener } from "@/components/vscode-link";
+import useSWR from "swr";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { useModelStore } from "@/stores/model-store";
 import {
@@ -450,23 +451,12 @@ export function AppSidebarNav() {
               />
             )}
             {parentSession && (
-              <button
-                type="button"
-                onClick={() => {
-                  void navigate({
-                    to: "/session/$id",
-                    params: { id: parentSession.id },
-                    search: (prev) => prev,
-                  });
-                }}
-                aria-label="Jump to parent session"
-                title={`Jump to parent session: ${parentSession.title ?? parentSession.id}`}
-                data-test="portal-jump-to-parent"
-                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-500/20 dark:text-violet-300"
-              >
-                <ArrowLeftIcon className="size-3.5" />
-                Parent
-              </button>
+              <SubagentJumpButtons
+                childID={sessionId}
+                port={port}
+                parentSessionID={parentSession.id}
+                parentTitle={parentSession.title ?? parentSession.id}
+              />
             )}
             {!isMobile && sessionId && sessionTitle && (
               <button
@@ -1194,6 +1184,82 @@ function PinnedTabInner(visual: TabVisualProps) {
       >
         <XMarkIcon className="size-3" />
       </button>
+    </>
+  );
+}
+
+interface SpawnInfo {
+  childID: string;
+  parentSessionID: string | null;
+  spawnMessageID: string | null;
+  spawnToolPartID: string | null;
+  finishMessageID: string | null;
+}
+
+function SubagentJumpButtons({
+  childID,
+  port,
+  parentSessionID,
+  parentTitle,
+}: {
+  childID: string;
+  port: number;
+  parentSessionID: string;
+  parentTitle: string;
+}) {
+  const navigate = useNavigate();
+  const spawnUrl =
+    port && childID
+      ? `/api/opencode/${port}/session/${encodeURIComponent(childID)}/spawn-info`
+      : null;
+  const { data } = useSWR<SpawnInfo>(spawnUrl, async (url: string) => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`spawn-info HTTP ${r.status}`);
+    return r.json();
+  });
+  const go = (msgID: string | null) => {
+    if (typeof window !== "undefined" && msgID) {
+      window.location.hash = `msg-${msgID}`;
+    }
+    void navigate({
+      to: "/session/$id",
+      params: { id: parentSessionID },
+      search: (prev) => prev,
+      hash: msgID ? `msg-${msgID}` : undefined,
+    });
+  };
+  const baseClass =
+    "shrink-0 inline-flex items-center gap-1 rounded-md border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-500/20 dark:text-violet-300";
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => go(data?.spawnMessageID ?? null)}
+        aria-label="Jump to where parent spawned this subagent"
+        title={
+          data?.spawnMessageID
+            ? `Jump to parent message that spawned this subagent (${parentTitle})`
+            : `Jump to parent session: ${parentTitle}`
+        }
+        data-test="portal-jump-to-parent-spawn"
+        className={baseClass}
+      >
+        <ArrowLeftIcon className="size-3.5" />
+        Spawn
+      </button>
+      {data?.finishMessageID && (
+        <button
+          type="button"
+          onClick={() => go(data.finishMessageID)}
+          aria-label="Jump to where parent resumed after this subagent finished"
+          title={`Jump to parent's next message after this subagent finished (${parentTitle})`}
+          data-test="portal-jump-to-parent-finish"
+          className={baseClass}
+        >
+          <ArrowLeftIcon className="size-3.5" />
+          Resumed
+        </button>
+      )}
     </>
   );
 }
