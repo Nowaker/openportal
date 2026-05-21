@@ -88,6 +88,72 @@ function formatRss(kb: number): string {
   return `${kb} kB`;
 }
 
+interface StuckSummary {
+  reachable: boolean;
+  workerCount?: number;
+  workers?: Array<{ workerID: string; instanceUrl: string; lastSeen: number }>;
+  sessionsTracked?: number;
+  healthyCount?: number;
+  stuckCount?: number;
+  stuckSessions?: Array<{
+    sessionID: string;
+    stuck_cause?: string | null;
+    directory?: string;
+    idle_seconds?: number;
+  }>;
+  error?: string;
+}
+
+function StuckDetectorRows() {
+  const { data, isLoading } = useSWR<StuckSummary>(
+    "/api/stuck-detector",
+    fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: false, keepPreviousData: true },
+  );
+  if (isLoading && !data) {
+    return (
+      <Row label="Plugin">
+        <span className="text-muted-fg">loading…</span>
+      </Row>
+    );
+  }
+  if (!data || !data.reachable) {
+    return (
+      <Row label="Plugin">
+        <span className="text-muted-fg">unreachable - {data?.error ?? "no response"}</span>
+      </Row>
+    );
+  }
+  return (
+    <>
+      <Row label="Workers">
+        {data.workerCount} registered
+      </Row>
+      <Row label="Sessions tracked">
+        {data.sessionsTracked} (
+        <span className="text-warning-subtle-fg">{data.stuckCount} stuck</span>
+        {", "}
+        <span>{data.healthyCount} healthy</span>)
+      </Row>
+      {data.workers?.map((w) => (
+        <Row key={w.workerID} label={`Worker`}>
+          <code className="font-mono text-xs">{w.workerID}</code>{" "}
+          <span className="text-muted-fg">
+            ({w.instanceUrl}, last seen {formatRelativeTime(w.lastSeen)})
+          </span>
+        </Row>
+      ))}
+    </>
+  );
+}
+
+function formatRelativeTime(ms: number): string {
+  const ago = Date.now() - ms;
+  if (ago < 60_000) return `${Math.round(ago / 1000)}s ago`;
+  if (ago < 3_600_000) return `${Math.round(ago / 60_000)}m ago`;
+  return `${Math.round(ago / 3_600_000)}h ago`;
+}
+
 function SystemStatsRows() {
   const { stats, isLoading } = useSystemStats();
   if (isLoading && !stats.load) {
@@ -350,6 +416,9 @@ export function DiagnosticsPanel() {
 
         <SectionHeader title="Host" />
         <SystemStatsRows />
+
+        <SectionHeader title="Stuck-detector plugin" />
+        <StuckDetectorRows />
 
         <SectionHeader title="State files" />
         {Object.entries(stateFiles).map(([key, info]) => (
