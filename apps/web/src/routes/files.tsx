@@ -32,6 +32,7 @@ import {
 } from "@/components/code-block-shiki";
 import { fromTildeDisplay, toTildeDisplay } from "@/lib/path-utils";
 import { getFileIcon } from "@/lib/file-icons";
+import { FileEditor } from "@/components/file-editor";
 
 interface BrowseEntry {
   name: string;
@@ -977,14 +978,11 @@ function FileViewer({
       : null;
 
   const sourcePane = isEditing ? (
-    <textarea
+    <FileEditor
       value={editedText}
-      onChange={(e) => setEditedText(e.target.value)}
-      data-test="portal-files-editor"
-      className="h-full w-full resize-none border-0 bg-bg p-3 font-mono text-xs leading-relaxed outline-none focus:ring-0"
-      spellCheck={false}
-      autoCorrect="off"
-      autoCapitalize="off"
+      onChange={setEditedText}
+      onSave={() => void saveEdit()}
+      wordWrap={true}
     />
   ) : (
     <ShikiCodeBlock content={text} language={effectiveLanguage} />
