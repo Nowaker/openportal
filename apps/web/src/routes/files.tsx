@@ -1,4 +1,5 @@
 import {
+  ArrowDownTrayIcon,
   ArrowLeftIcon,
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
@@ -416,8 +417,8 @@ function FileViewer({
     const serverLang = file.language ?? "text";
     if (serverLang !== "text") return serverLang;
     if (file.kind !== "text" || !file.content) return "text";
-    return detectLanguageFromContent(file.content);
-  }, [file.language, file.content, file.kind]);
+    return detectLanguageFromContent(file.content, file.filename);
+  }, [file.language, file.content, file.kind, file.filename]);
   const effectiveLanguage = languageOverride ?? detectedLanguage;
   useEffect(() => {
     setViewMode(renderableKind ? "rendered" : "source");
@@ -448,18 +449,36 @@ function FileViewer({
     );
   }
   if (file.kind === "too_large") {
+    const filename = file.filename ?? "";
+    const rawUrl = `/api/fs/raw?path=${encodeURIComponent(file.path ?? "")}`;
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-fg">
-        <p>File too large to render in-page ({formatBytes(file.size)}).</p>
-        <a
-          href={`/api/fs/raw?path=${encodeURIComponent(file.path ?? "")}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-primary hover:underline"
-        >
-          <ArrowTopRightOnSquareIcon className="size-4" />
-          Open raw
-        </a>
+      <div className="flex h-full flex-col">
+        <FileHeader
+          filename={filename}
+          size={file.size}
+          language={file.language ?? "text"}
+          onLanguageChange={null}
+          renderableKind={null}
+          viewMode="source"
+          setViewMode={() => {}}
+          onCopy={null}
+          rawUrl={rawUrl}
+        />
+        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-fg">
+          <div className="space-y-2">
+            <p>File too large to render in-page.</p>
+            <p className="text-xs">
+              {formatBytes(file.size)} (cap{" "}
+              {typeof file.maxBytes === "number"
+                ? formatBytes(file.maxBytes)
+                : "?"}
+              )
+            </p>
+            <p className="text-xs text-muted-fg/70">
+              Use Raw or Download in the header above.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -488,8 +507,13 @@ function FileViewer({
               className="mx-auto max-h-full max-w-full"
             />
           ) : (
-            <div className="text-sm text-muted-fg">
-              Binary file ({formatBytes(file.size)}). Use the download link.
+            <div className="flex h-full items-center justify-center text-center text-sm text-muted-fg">
+              <div className="space-y-2">
+                <p>Binary file ({formatBytes(file.size)}).</p>
+                <p className="text-xs text-muted-fg/70">
+                  Use Raw or Download in the header above.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -631,7 +655,7 @@ function FileHeader({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
-      <span className="truncate font-mono text-sm font-medium">{filename}</span>
+      <span className="truncate text-sm font-medium">{filename}</span>
       {onLanguageChange ? (
         <select
           value={language}
@@ -703,6 +727,14 @@ function FileHeader({
         >
           <ArrowTopRightOnSquareIcon className="size-3" />
           Raw
+        </a>
+        <a
+          href={`${rawUrl}&download=1`}
+          className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30"
+          title="Download file"
+        >
+          <ArrowDownTrayIcon className="size-3" />
+          Download
         </a>
       </div>
     </div>

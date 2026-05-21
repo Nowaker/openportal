@@ -1,5 +1,5 @@
 import { defineHandler, getQuery } from "nitro/h3";
-import { readFile, lstat } from "node:fs/promises";
+import { readFile, lstat, stat as statFollow } from "node:fs/promises";
 
 import { resolveScopedPath } from "../lib/fs-security";
 
@@ -120,6 +120,25 @@ export default defineHandler(async (event) => {
   }
   if (!stat.isFile() && !stat.isSymbolicLink()) {
     return { error: "Not a regular file", path };
+  }
+  if (stat.isSymbolicLink()) {
+    try {
+      const followed = await statFollow(path);
+      if (followed.isDirectory()) {
+        return { error: "Is a directory, not a file (symlink)", path };
+      }
+      if (!followed.isFile()) {
+        return { error: "Symlink target is not a regular file", path };
+      }
+      stat = followed;
+    } catch (e) {
+      return {
+        error: e instanceof Error
+          ? `Symlink target not accessible: ${e.message}`
+          : "Symlink target not accessible",
+        path,
+      };
+    }
   }
 
   const filename = path.split("/").pop() ?? "";

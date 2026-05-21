@@ -41,7 +41,64 @@ function normalizeForShiki(rawLang: string): string {
   return "text";
 }
 
-export function detectLanguageFromContent(content: string): string {
+// Filename-based language overrides. Applied BEFORE flourite content
+// detection so canonical filenames map to the right grammar even when
+// the content sniffer guesses wrong (e.g. LICENSE → flourite says SQL;
+// PKGBUILD → Ruby). Match by exact basename first; an extension table
+// can layer on later if needed.
+const FILENAME_TO_LANG: Record<string, string> = {
+  LICENSE: "text",
+  "LICENSE.txt": "text",
+  "LICENSE.md": "markdown",
+  COPYING: "text",
+  NOTICE: "text",
+  AUTHORS: "text",
+  CONTRIBUTORS: "text",
+  README: "text",
+  "README.md": "markdown",
+  CHANGELOG: "text",
+  "CHANGELOG.md": "markdown",
+  PKGBUILD: "bash",
+  ".SRCINFO": "ini",
+  Dockerfile: "docker",
+  "Dockerfile.dev": "docker",
+  Makefile: "makefile",
+  "Makefile.am": "makefile",
+  "Makefile.in": "makefile",
+  GNUmakefile: "makefile",
+  Procfile: "yaml",
+  Gemfile: "ruby",
+  Rakefile: "ruby",
+  Vagrantfile: "ruby",
+  ".gitignore": "ignore",
+  ".dockerignore": "ignore",
+  ".npmignore": "ignore",
+  ".prettierignore": "ignore",
+  ".eslintignore": "ignore",
+  ".editorconfig": "ini",
+  ".envrc": "bash",
+  ".bashrc": "bash",
+  ".bash_profile": "bash",
+  ".zshrc": "bash",
+  ".profile": "bash",
+};
+
+export function languageFromFilename(filename: string): string | null {
+  if (!filename) return null;
+  const base = filename.split("/").pop() ?? filename;
+  const hit = FILENAME_TO_LANG[base];
+  if (hit) return normalizeForShiki(hit);
+  return null;
+}
+
+export function detectLanguageFromContent(
+  content: string,
+  filename?: string,
+): string {
+  if (filename) {
+    const byName = languageFromFilename(filename);
+    if (byName) return byName;
+  }
   const sample = content.slice(0, 16 * 1024);
   const out = detectLanguage(sample);
   return normalizeForShiki(out.language || "text");
