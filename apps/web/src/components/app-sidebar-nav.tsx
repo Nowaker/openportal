@@ -558,10 +558,17 @@ export function AppSidebarNav() {
                   ) {
                     useFileBrowserPanelStore.getState().toggle(startDir);
                   } else {
-                    const qs = startDir
-                      ? `?path=${encodeURIComponent(startDir)}`
-                      : "";
-                    window.open(`/files${qs}`, "_blank", "noopener");
+                    const params = new URLSearchParams();
+                    if (startDir) {
+                      params.set("path", startDir);
+                      params.set("project", startDir);
+                    }
+                    const qs = params.toString();
+                    window.open(
+                      `/files${qs ? `?${qs}` : ""}`,
+                      "_blank",
+                      "noopener",
+                    );
                   }
                 }}
               >

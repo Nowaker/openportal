@@ -998,10 +998,10 @@ function AutoApproveToggle({ sessionId }: { sessionId: string | null }) {
       }
       aria-pressed={enabled}
       data-test="portal-composer-autoapprove"
-      className={`shrink-0 rounded-md border p-1 sm:p-1.5 transition-colors ${
+      className={`shrink-0 rounded-md p-1 sm:p-1.5 transition-colors ${
         enabled
-          ? "border-accent bg-accent text-accent-fg shadow-sm hover:bg-accent/90"
-          : "border-transparent text-muted-fg hover:bg-muted hover:text-fg"
+          ? "text-accent hover:bg-muted"
+          : "text-muted-fg hover:bg-muted hover:text-fg"
       }`}
     >
       <Icon className="size-5" />

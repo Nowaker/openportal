@@ -12,6 +12,7 @@ import {
   EyeSlashIcon,
   FolderIcon,
   FolderPlusIcon,
+  HashtagIcon,
   HomeIcon,
   PencilSquareIcon,
   XMarkIcon,
@@ -62,6 +63,7 @@ interface FilesSearch {
   path?: string;
   file?: string;
   panel?: 1;
+  project?: string;
 }
 
 export const Route = createFileRoute("/files")({
@@ -72,6 +74,7 @@ export const Route = createFileRoute("/files")({
       search.panel === 1 || search.panel === "1" || search.panel === true
         ? 1
         : undefined,
+    project: typeof search.project === "string" ? search.project : undefined,
   }),
   component: FilesPage,
 });
@@ -168,12 +171,14 @@ function FilesPage() {
         onPathSubmit={submitPath}
         entries={browse?.entries ?? []}
         home={browse?.home}
+        project={search.project}
         parent={browse?.parent ?? null}
         onRefresh={() => void mutateBrowse()}
         onGoBack={() => {
           if (window.history.length > 1) window.history.back();
         }}
         onGoHome={() => browse?.home && goTo(browse.home)}
+        onGoProject={() => search.project && goTo(search.project)}
         onGoUp={() => browse?.parent && goTo(browse.parent)}
         inPanel={search.panel === 1}
       />
@@ -293,16 +298,20 @@ function TopBar({
   onGoHome,
   onGoUp,
   inPanel,
+  project,
+  onGoProject,
 }: {
   pathInput: string;
   onPathInputChange: (next: string) => void;
   onPathSubmit: () => void;
   entries: BrowseEntry[];
   home: string | undefined;
+  project: string | undefined;
   parent: string | null;
   onRefresh: () => void;
   onGoBack: () => void;
   onGoHome: () => void;
+  onGoProject: () => void;
   onGoUp: () => void;
   inPanel: boolean;
 }) {
@@ -337,11 +346,22 @@ function TopBar({
         onClick={onGoHome}
         disabled={!home}
         data-test="portal-files-home"
-        title="Home directory"
+        title={`Your home directory${home ? ` (${home})` : ""}`}
         className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:opacity-30"
       >
-        <HomeIcon className="size-4" />
+        <HashtagIcon className="size-4" />
       </button>
+      {project && (
+        <button
+          type="button"
+          onClick={onGoProject}
+          data-test="portal-files-project"
+          title={`Project directory (${project})`}
+          className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+        >
+          <HomeIcon className="size-4" />
+        </button>
+      )}
       <div className="flex-1 min-w-0">
         <PathInput
           ref={pathInputRef}

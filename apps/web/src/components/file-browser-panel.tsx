@@ -94,6 +94,7 @@ export function FileBrowserPanel() {
   let src = "/files?panel=1";
   if (initialPath) {
     src += `&path=${encodeURIComponent(initialPath)}`;
+    src += `&project=${encodeURIComponent(initialPath)}`;
   }
   if (initialFile) {
     src += `&file=${encodeURIComponent(initialFile)}`;
