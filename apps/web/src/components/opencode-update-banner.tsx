@@ -37,7 +37,7 @@ export function OpencodeUpdateBanner() {
 
   return (
     <div
-      className="flex flex-col gap-1 border-b border-info/40 bg-info-subtle/40 px-3 py-2 text-sm"
+      className="flex flex-col gap-1 border-b-2 border-info bg-info px-3 py-2.5 text-sm font-medium text-info-fg shadow-sm"
       data-test="portal-opencode-update-banner"
     >
       <div className="flex items-center gap-2">

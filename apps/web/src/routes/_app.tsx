@@ -45,13 +45,13 @@ function ConnectionStatusBanner() {
   if (status === "connected") return null;
   if (status === "opencode-down") {
     return (
-      <div className="flex flex-col gap-0.5 border-b border-warning/40 bg-warning-subtle px-3 py-2 text-sm">
+      <div className="flex flex-col gap-1 border-b-2 border-warning bg-warning px-3 py-2.5 text-sm font-medium text-warning-fg shadow-sm">
         <div className="flex items-center gap-2">
           <ExclamationTriangleIcon
-            className="size-4 shrink-0 text-warning-subtle-fg"
+            className="size-5 shrink-0 animate-pulse"
             aria-hidden="true"
           />
-          <span className="flex-1 text-warning-subtle-fg">
+          <span className="flex-1">
             OpenCode is unreachable. Showing cached data - retrying every 10s...
           </span>
           <RestartOpencodeButton />
@@ -63,7 +63,7 @@ function ConnectionStatusBanner() {
             Server list
           </Link>
         </div>
-        <span className="pl-6 text-xs text-warning-subtle-fg/80">
+        <span className="pl-7 text-xs text-warning-fg/90">
           OpenPortal-owned features (prompts archive, server list, settings)
           keep working. Live OpenCode reads will resume automatically.
         </span>
@@ -71,10 +71,10 @@ function ConnectionStatusBanner() {
     );
   }
   return (
-    <div className="flex flex-col gap-0.5 border-b border-danger/40 bg-danger-subtle/40 px-3 py-2 text-sm">
+    <div className="flex flex-col gap-1 border-b-2 border-danger bg-danger px-3 py-2.5 text-sm font-medium text-danger-fg shadow-sm">
       <div className="flex items-center gap-2">
-        <ArrowPathIcon className="size-4 shrink-0 animate-spin text-danger" />
-        <span className="flex-1 text-fg">
+        <ArrowPathIcon className="size-5 shrink-0 animate-spin" />
+        <span className="flex-1">
           Lost connection to OpenPortal. Reconnecting...
         </span>
         <Link
@@ -85,7 +85,7 @@ function ConnectionStatusBanner() {
           Server list
         </Link>
       </div>
-      <span className="pl-6 text-xs text-muted-fg">
+      <span className="pl-7 text-xs text-danger-fg/90">
         Your prompt drafts and pasted images are saved locally - nothing
         will be lost.
       </span>
@@ -278,9 +278,9 @@ function BuildMismatchBanner() {
   const [reloading, setReloading] = useState(false);
   if (!mismatched) return null;
   return (
-    <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-      <ArrowPathIcon className="size-4 shrink-0 text-warning" />
-      <span className="text-fg">
+    <div className="flex items-center gap-2 border-b-2 border-warning bg-warning px-3 py-2.5 text-sm font-medium text-warning-fg shadow-sm">
+      <ArrowPathIcon className="size-5 shrink-0 animate-pulse" />
+      <span className="flex-1">
         OpenPortal was updated. Reload the page to get the latest version.
       </span>
       <button
@@ -335,9 +335,9 @@ function NotificationPermissionBanner() {
 
   if (mode === "denied") {
     return (
-      <div className="flex items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-        <BellAlertIcon className="size-4 shrink-0 text-warning" />
-        <span className="flex-1 text-fg">
+      <div className="flex items-center gap-2 border-b-2 border-warning bg-warning px-3 py-2.5 text-sm font-medium text-warning-fg shadow-sm">
+        <BellAlertIcon className="size-5 shrink-0" />
+        <span className="flex-1">
           Notifications are blocked at the browser level. Click the lock /
           tune icon in the address bar → Site settings → Notifications →
           Allow, then reload.
@@ -345,7 +345,7 @@ function NotificationPermissionBanner() {
         <button
           type="button"
           onClick={dismiss}
-          className="rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+          className="rounded-md p-1 text-warning-fg/80 hover:bg-warning-fg/10 hover:text-warning-fg"
           aria-label="Dismiss"
         >
           <XMarkIcon className="size-4" />
