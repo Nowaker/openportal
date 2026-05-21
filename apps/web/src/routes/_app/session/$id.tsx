@@ -102,6 +102,7 @@ import {
   useSessionMessagesAround,
   addOptimisticMessage,
   mutateSessionMessages,
+  updateOptimisticMessage,
   type MessageWithParts,
   type Part,
   type ToolPart,
@@ -2377,13 +2378,33 @@ const MessageItem = memo(function MessageItem({
             on it yet".
           */}
           {!isAssistant && isPending && pendingMeta && (
-            <Badge intent="warning" className="mb-1">
-              <Loader className="size-3 mr-1" />
-              Waiting for OpenCode
-              {pendingMeta.attempts > 0
-                ? ` - ${pendingMeta.attempts} attempt${pendingMeta.attempts === 1 ? "" : "s"}`
-                : ""}
-            </Badge>
+            (() => {
+              // Submission state-journey badge. The optimistic row carries
+              // a `_pending.phase` that walks through "submitting" -> "opencode-
+              // accepted" -> (real message replaces it). Each phase picks a
+              // shade in a blue progression - distinct from the warning yellow
+              // and danger red dot-indicators the sidebar uses for session
+              // status, so the user can tell at a glance the badge is about
+              // THIS prompt (not the session as a whole).
+              const phase = pendingMeta.phase ?? "submitting";
+              const cls =
+                phase === "opencode-accepted"
+                  ? "mb-1 inline-flex items-center rounded-md border border-blue-500/40 bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300"
+                  : "mb-1 inline-flex items-center rounded-md border border-blue-300/40 bg-blue-300/15 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-200";
+              const label =
+                phase === "opencode-accepted"
+                  ? "Sent to OpenCode"
+                  : "Submitting";
+              return (
+                <span className={cls}>
+                  <Loader className="size-3 mr-1" />
+                  {label}
+                  {pendingMeta.attempts > 0
+                    ? ` - ${pendingMeta.attempts} attempt${pendingMeta.attempts === 1 ? "" : "s"}`
+                    : ""}
+                </span>
+              );
+            })()
           )}
           {!isAssistant && !isPending && message.isQueued && (
             <Badge intent="warning" className="mb-1">
@@ -4143,6 +4164,13 @@ function SessionPage() {
         time: { created: Date.now() },
         agent: "user",
         model: { providerID: "", modelID: "" },
+        _pending: {
+          attempts: 0,
+          lastAttemptAt: Date.now(),
+          lastError: null,
+          archiveId: messageId,
+          phase: "submitting",
+        },
       },
       parts: [
         ...attachmentsForMessage.map((a, i) => ({
@@ -4290,6 +4318,25 @@ function SessionPage() {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
+      // Phase transition: portal accepted -> opencode received it. The
+      // badge color advances from light blue (submitting) to medium blue
+      // (sent-to-opencode). The optimistic row will get replaced by the
+      // real opencode message via the upcoming mutateSessionMessages, at
+      // which point the badge disappears entirely.
+      updateOptimisticMessage(port, sessionId, messageId, {
+        info: {
+          ...optimisticMessage.info,
+          _pending: {
+            ...(optimisticMessage.info._pending ?? {
+              attempts: 0,
+              lastAttemptAt: Date.now(),
+              lastError: null,
+              archiveId: messageId,
+            }),
+            phase: "opencode-accepted",
+          },
+        },
+      });
       const promptResult = (await response
         .json()
         .catch(() => null)) as { recoveredFromRestart?: boolean } | null;

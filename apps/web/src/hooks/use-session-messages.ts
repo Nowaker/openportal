@@ -37,6 +37,7 @@ export interface PendingPromptMeta {
   lastAttemptAt: number | null;
   lastError: string | null;
   archiveId: string;
+  phase?: "submitting" | "opencode-accepted";
 }
 
 export interface MessageWithParts {
