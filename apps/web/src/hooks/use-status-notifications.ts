@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { Session } from "@opencode-ai/sdk";
 import type { SessionStatusMap } from "@/hooks/use-opencode";
+import {
+  playNotificationSound,
+  type SoundKind,
+} from "@/stores/notification-sound-store";
 
 interface Args {
   sessions: Session[];
@@ -30,7 +34,9 @@ function spawnNotification(
   body: string,
   tagSuffix: string,
   onSelect: (sessionId: string) => void,
+  sound: SoundKind,
 ) {
+  playNotificationSound(sound);
   if (typeof window === "undefined") return;
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
@@ -93,6 +99,7 @@ export function useStatusNotifications({
         session?.directory || "",
         "done",
         onSelect,
+        "turn-complete",
       );
     }
     prevStatusRef.current = next;
@@ -114,6 +121,7 @@ export function useStatusNotifications({
         "AI is asking for input",
         "question",
         onSelect,
+        "attention",
       );
     }
     prevQuestionsRef.current = new Set(questionSessionIds);

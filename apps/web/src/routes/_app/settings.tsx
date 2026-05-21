@@ -51,6 +51,10 @@ import {
 } from "@/stores/stt-mode-store";
 import { useMarkdownModeStore } from "@/stores/markdown-mode-store";
 import {
+  useNotificationSoundStore,
+  playNotificationSound,
+} from "@/stores/notification-sound-store";
+import {
   useChatLinkStore,
   type ChatLinkBehavior,
 } from "@/stores/chat-link-store";
@@ -791,6 +795,77 @@ function VoiceInputSetting() {
   );
 }
 
+function NotificationSoundSetting() {
+  const enabled = useNotificationSoundStore((s) => s.enabled);
+  const setEnabled = useNotificationSoundStore((s) => s.setEnabled);
+  const volume = useNotificationSoundStore((s) => s.volume);
+  const setVolume = useNotificationSoundStore((s) => s.setVolume);
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">Notification sounds</h3>
+        <p className="text-xs text-muted-fg">
+          Play short audio cues alongside browser notifications. One sound
+          when a session completes a turn, another when the AI asks a
+          question and needs your attention. Browsers may suppress
+          autoplay until you have interacted with the page at least once.
+        </p>
+      </div>
+      <Checkbox
+        isSelected={enabled}
+        onChange={(v) => setEnabled(Boolean(v))}
+        data-test="portal-settings-notification-sound-enabled"
+      >
+        Enable notification sounds
+      </Checkbox>
+      {enabled && (
+        <div className="space-y-2">
+          <label className="block text-xs text-muted-fg">
+            Volume: {Math.round(volume * 100)}%
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(volume * 100)}
+              onChange={(e) => setVolume(parseInt(e.target.value, 10) / 100)}
+              className="mt-1 block w-full"
+              data-test="portal-settings-notification-sound-volume"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => playNotificationSound("turn-complete")}
+              className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
+              data-test="portal-settings-notification-sound-test-complete"
+            >
+              Test: turn complete
+            </button>
+            <button
+              type="button"
+              onClick={() => playNotificationSound("attention")}
+              className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
+              data-test="portal-settings-notification-sound-test-attention"
+            >
+              Test: needs attention
+            </button>
+            <button
+              type="button"
+              onClick={() => playNotificationSound("error")}
+              className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
+              data-test="portal-settings-notification-sound-test-error"
+            >
+              Test: error
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToolOutputCapSetting() {
   const { settings, isLoading } = useInstanceSettings();
   const current = settings.toolOutputMaxBytes;
@@ -1431,6 +1506,10 @@ function SettingsPage() {
 
             <section>
               <VoiceInputSetting />
+            </section>
+
+            <section>
+              <NotificationSoundSetting />
             </section>
           </div>
         </TabPanel>
