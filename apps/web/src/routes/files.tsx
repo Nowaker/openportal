@@ -29,6 +29,7 @@ import {
   detectLanguageFromContent,
 } from "@/components/code-block-shiki";
 import { fromTildeDisplay, toTildeDisplay } from "@/lib/path-utils";
+import { getFileIcon } from "@/lib/file-icons";
 
 interface BrowseEntry {
   name: string;
@@ -620,11 +621,10 @@ function FileTree({
                 }`}
                 title={`${currentPath === "/" ? "" : currentPath}/${e.name}`}
               >
-                {e.isDir ? (
-                  <FolderIcon className="size-4 shrink-0 text-amber-500" />
-                ) : (
-                  <DocumentIcon className="size-4 shrink-0 text-muted-fg" />
-                )}
+                {(() => {
+                  const { Icon, color } = getFileIcon(e.name, e.isDir);
+                  return <Icon className={`size-4 shrink-0 ${color}`} />;
+                })()}
                 <span className="truncate">{e.name}</span>
                 {!e.isDir && typeof e.size === "number" && (
                   <span className="ml-auto shrink-0 text-xs text-muted-fg">
