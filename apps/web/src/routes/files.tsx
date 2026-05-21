@@ -741,6 +741,7 @@ function FileViewer({
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [forceShowBinaryAsText, setForceShowBinaryAsText] = useState(false);
   const editable =
     file.kind === "text" &&
     typeof file.path === "string" &&
@@ -748,6 +749,7 @@ function FileViewer({
   useEffect(() => {
     setIsEditing(false);
     setSaving(false);
+    setForceShowBinaryAsText(false);
   }, [file.path]);
   const startEdit = () => {
     setEditedText(file.content ?? "");
@@ -854,7 +856,7 @@ function FileViewer({
       </div>
     );
   }
-  if (file.kind === "binary") {
+  if (file.kind === "binary" && !forceShowBinaryAsText) {
     const filename = file.filename ?? "";
     const isImage = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i.test(filename);
     const rawUrl = `/api/fs/raw?path=${encodeURIComponent(file.path ?? "")}`;
@@ -880,11 +882,16 @@ function FileViewer({
             />
           ) : (
             <div className="flex h-full items-center justify-center text-center text-sm text-muted-fg">
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p>Binary file ({formatBytes(file.size)}).</p>
-                <p className="text-xs text-muted-fg/70">
-                  Use Raw or Download in the header above.
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setForceShowBinaryAsText(true)}
+                  data-test="portal-files-show-as-text"
+                  className="inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 text-xs hover:bg-muted/30"
+                >
+                  Show as text anyway
+                </button>
               </div>
             </div>
           )}
