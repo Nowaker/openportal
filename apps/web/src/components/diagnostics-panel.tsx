@@ -19,6 +19,8 @@ import { useComposerStore } from "@/stores/composer-store";
 import { useSystemStats } from "@/stores/system-stats-store";
 import type { Session } from "@opencode-ai/sdk";
 
+declare const __OPENPORTAL_BUILD_ID__: string;
+
 const fetcher = async (url: string) => {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status}`);
@@ -241,6 +243,13 @@ export function DiagnosticsPanel() {
 
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm">
         <SectionHeader title="This Portal" />
+        <Row label="Build">
+          <code className="font-mono text-xs">
+            {typeof __OPENPORTAL_BUILD_ID__ === "string"
+              ? __OPENPORTAL_BUILD_ID__
+              : "—"}
+          </code>
+        </Row>
         <Row label="Instance ID">{selfInstance?.id ?? "—"}</Row>
         <Row label="Name">{selfInstance?.name ?? "—"}</Row>
         <Row label="Web port">{selfInstance?.port ?? "—"}</Row>
