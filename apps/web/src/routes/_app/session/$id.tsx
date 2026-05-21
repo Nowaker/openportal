@@ -82,6 +82,7 @@ import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { StarMessageButton } from "@/components/star-message-button";
 import { TextSelectionMenu } from "@/components/text-selection-menu";
+import { speakText, useTtsStore } from "@/stores/tts-store";
 import { useChatDisplayStore } from "@/stores/chat-display-store";
 import {
   useAutoApproveConfig,
@@ -2963,6 +2964,43 @@ function SessionPage() {
   const messages: MessageWithParts[] = permalinkMode
     ? permalinkWindow.messages
     : normal.messages;
+
+  const lastSpokenAssistantIdRef = useRef<string | null>(null);
+  const ttsEnabled = useTtsStore((s) => s.enabled);
+  useEffect(() => {
+    if (!ttsEnabled) return;
+    if (messages.length === 0) return;
+    if (lastSpokenAssistantIdRef.current === null) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].info.role === "assistant") {
+          lastSpokenAssistantIdRef.current = messages[i].info.id;
+          break;
+        }
+      }
+      return;
+    }
+    let completed: MessageWithParts | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (
+        m.info.role === "assistant" &&
+        m.info.time?.completed &&
+        m.info.id !== lastSpokenAssistantIdRef.current
+      ) {
+        completed = m;
+        break;
+      }
+    }
+    if (!completed) return;
+    const text = completed.parts
+      .map((p) => (p as { text?: string }).text)
+      .filter((t): t is string => typeof t === "string" && t.length > 0)
+      .join(" ");
+    if (text) {
+      speakText(text);
+      lastSpokenAssistantIdRef.current = completed.info.id;
+    }
+  }, [messages, ttsEnabled]);
   const loading: boolean = permalinkMode
     ? permalinkWindow.loading.target ||
       permalinkWindow.loading.before ||
