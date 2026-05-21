@@ -1477,11 +1477,11 @@ const ToolCallItem = memo(function ToolCallItem({
         <button
           type="button"
           onClick={() => setShowInputModal(true)}
-          aria-label="Show full tool input"
-          title="Show full tool input"
+          aria-label="Show full tool input / output"
+          title="Show full tool input / output"
           className="ml-auto shrink-0 rounded p-0.5 text-muted-fg/60 hover:text-fg hover:bg-muted/40"
         >
-          <ArrowsPointingOutIcon className="size-3" />
+          <InformationCircleIcon className="size-3.5" />
         </button>
       )}
       {showTimestampIcon && toolTimestamp && (
