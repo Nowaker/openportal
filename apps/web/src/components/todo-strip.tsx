@@ -102,7 +102,10 @@ export function TodoFloat({ snapshot }: FloatProps) {
   if (!expanded || !snapshot || snapshot.todos.length === 0) return null;
 
   return (
-    <div className="fixed right-3 top-16 z-[100] w-[min(20rem,calc(100vw-1.5rem))] rounded-md border border-border bg-bg shadow-xl">
+    <div
+      className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-[20rem] rounded-md border border-border bg-bg shadow-xl sm:inset-x-auto sm:right-3 sm:bottom-24 sm:w-[20rem]"
+      data-test="portal-todo-float"
+    >
       <div className="flex items-center justify-between border-b border-border/60 px-2 py-1">
         <span className="flex items-center gap-1.5 text-xs text-muted-fg">
           <ClipboardDocumentListIcon className="size-3.5" />
