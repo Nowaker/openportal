@@ -11,7 +11,10 @@ import {
 } from "@heroicons/react/24/outline";
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions, useProviders } from "@/hooks/use-opencode";
+import { useMcpStatus, useToggleMcp } from "@/hooks/use-mcp";
+import { useHashValue } from "@/hooks/use-hash-open";
 import { useInstanceStore } from "@/stores/instance-store";
+import { McpRow } from "@/components/app-sidebar-nav";
 import { Loader } from "@/components/ui/loader";
 
 interface Props {
@@ -485,9 +488,38 @@ function Body({
             </div>
           </div>
         )}
+        {!isLoading && <McpSection />}
         {!isLoading && <ExportSection sessionId={sessionId} />}
       </div>
     </>
+  );
+}
+
+function McpSection() {
+  const { data: status } = useMcpStatus();
+  const toggleMcp = useToggleMcp();
+  const setMcpInfoName = useHashValue("mcp")[1];
+  if (!status) return null;
+  const entries = Object.entries(status);
+  if (entries.length === 0) return null;
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-fg">
+        MCP servers
+      </div>
+      <ul className="space-y-1.5">
+        {entries.map(([name, s]) => (
+          <li key={name} className="px-1">
+            <McpRow
+              name={name}
+              kind={s.status}
+              onToggle={toggleMcp}
+              onOpenInfo={() => setMcpInfoName(name)}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

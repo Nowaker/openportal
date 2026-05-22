@@ -21,6 +21,7 @@ import {
   ArrowLeftIcon,
   ArrowPathRoundedSquareIcon,
   BoltIcon,
+  BoltSlashIcon,
   CheckIcon,
   CodeBracketIcon,
   EllipsisVerticalIcon,
@@ -734,86 +735,20 @@ export function AppSidebarNav() {
                 (sessionId || enabledTools.length > 0) && <MenuSeparator />}
               {mcpEntries.length > 0 && (
                 <MenuSection label="MCP servers">
-                  {mcpEntries.map(([name, status]) => {
-                    const kind = status.status;
-                    const isOn = kind !== "disabled";
-                    const tooltip =
-                      kind === "connected"
-                        ? "Connected"
-                        : kind === "disabled"
-                          ? "Disabled"
-                          : kind === "failed"
-                            ? "Failed"
-                            : kind === "needsAuth"
-                              ? "Needs auth - click for details"
-                              : kind === "needsClientRegistration"
-                                ? "Needs client registration"
-                                : "Unknown";
-                    const iconColor =
-                      kind === "connected"
-                        ? "text-emerald-500"
-                        : kind === "disabled"
-                          ? "text-muted-fg/40"
-                          : kind === "failed"
-                            ? "text-red-500"
-                            : kind === "needsAuth"
-                              ? "text-amber-500"
-                              : kind === "needsClientRegistration"
-                                ? "text-red-600"
-                                : "text-muted-fg";
-                    return (
-                      <MenuItem
-                        key={name}
-                        textValue={name}
-                        onAction={() => setMcpInfoName(name)}
-                      >
-                        <div
-                          className="flex w-full items-center gap-2 min-w-0"
-                          title={`${name} \u2014 ${tooltip}`}
-                        >
-                          <BoltIcon
-                            className={`size-4 shrink-0 ${iconColor}`}
-                          />
-                          <span className="min-w-0 flex-1 truncate text-left">
-                            {name}
-                          </span>
-                          <button
-                            type="button"
-                            aria-label={
-                              isOn ? `Disable ${name}` : `Enable ${name}`
-                            }
-                            title={isOn ? "On (click to disable)" : "Off (click to enable)"}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void toggleMcp(
-                                name,
-                                isOn ? "disconnect" : "connect",
-                              );
-                            }}
-                            className={`shrink-0 inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                              isOn ? "bg-emerald-500" : "bg-muted-fg/30"
-                            }`}
-                          >
-                            <span
-                              aria-hidden
-                              className={`size-3 rounded-full bg-white transition-transform ${
-                                isOn ? "translate-x-3.5" : "translate-x-0.5"
-                              }`}
-                            />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`MCP info: ${name}`}
-                            title="Show details"
-                            className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg pointer-events-none"
-                          >
-                            <QuestionMarkCircleIcon className="size-4" />
-                          </button>
-                        </div>
-                      </MenuItem>
-                    );
-                  })}
+                  {mcpEntries.map(([name, status]) => (
+                    <MenuItem
+                      key={name}
+                      textValue={name}
+                      onAction={() => setMcpInfoName(name)}
+                    >
+                      <McpRow
+                        name={name}
+                        kind={status.status}
+                        onToggle={toggleMcp}
+                        onOpenInfo={() => setMcpInfoName(name)}
+                      />
+                    </MenuItem>
+                  ))}
                 </MenuSection>
               )}
               {lspEntries.length > 0 &&
@@ -957,6 +892,104 @@ function PinTopbarButton({ sessionId }: { sessionId: string }) {
 // the live sessions list are silently skipped so transient opencode
 // disconnects don't lose pins. The active session highlights; click
 // navigates; the X button calls unpin without affecting the session
+// 5-state MCP row used in the hamburger MCP list AND the Session Info
+// modal. State drives both the icon (BoltIcon vs BoltSlashIcon for
+// failed) and the slider fill color (green=on, orange=needs-auth,
+// muted=disabled). Clicking the slider in 'needsAuth' state opens
+// the info modal where the handshake form lives rather than calling
+// toggleMcp (which would just bounce back to 'needsAuth' anyway).
+export function McpRow({
+  name,
+  kind,
+  onToggle,
+  onOpenInfo,
+}: {
+  name: string;
+  kind: string;
+  onToggle: (name: string, action: "connect" | "disconnect") => Promise<void>;
+  onOpenInfo: () => void;
+}) {
+  const isOn = kind === "connected";
+  const needsAuth = kind === "needsAuth";
+  const failed = kind === "failed" || kind === "needsClientRegistration";
+  const tooltip =
+    kind === "connected"
+      ? "Connected"
+      : kind === "disabled"
+        ? "Disabled"
+        : kind === "failed"
+          ? "Failed - click for details"
+          : kind === "needsAuth"
+            ? "Needs auth - flip switch to start handshake"
+            : kind === "needsClientRegistration"
+              ? "Needs client registration"
+              : "Unknown";
+  const iconColor = isOn
+    ? "text-emerald-500"
+    : kind === "disabled"
+      ? "text-muted-fg/40"
+      : needsAuth
+        ? "text-amber-500"
+        : failed
+          ? "text-red-500"
+          : "text-muted-fg";
+  const Icon = failed ? BoltSlashIcon : BoltIcon;
+  const sliderTrack = isOn
+    ? "bg-emerald-500"
+    : needsAuth
+      ? "bg-amber-500"
+      : "bg-muted-fg/30";
+  const sliderKnobX = isOn ? "translate-x-3.5" : "translate-x-0.5";
+  const sliderLabel = isOn
+    ? `Disable ${name}`
+    : needsAuth
+      ? `Start auth for ${name}`
+      : `Enable ${name}`;
+  const sliderHint = isOn
+    ? "On (click to disable)"
+    : needsAuth
+      ? "Click to start OAuth handshake"
+      : "Off (click to enable)";
+
+  return (
+    <div
+      className="flex w-full items-center gap-2 min-w-0"
+      title={`${name} \u2014 ${tooltip}`}
+    >
+      <Icon className={`size-4 shrink-0 ${iconColor}`} />
+      <span className="min-w-0 flex-1 truncate text-left">{name}</span>
+      <button
+        type="button"
+        aria-label={sliderLabel}
+        title={sliderHint}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (needsAuth) {
+            onOpenInfo();
+            return;
+          }
+          void onToggle(name, isOn ? "disconnect" : "connect");
+        }}
+        className={`shrink-0 inline-flex h-4 w-7 items-center rounded-full transition-colors ${sliderTrack}`}
+      >
+        <span
+          aria-hidden
+          className={`size-3 rounded-full bg-white transition-transform ${sliderKnobX}`}
+        />
+      </button>
+      <button
+        type="button"
+        aria-label={`MCP info: ${name}`}
+        title="Show details"
+        className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg pointer-events-none"
+      >
+        <QuestionMarkCircleIcon className="size-4" />
+      </button>
+    </div>
+  );
+}
+
 // itself (don't conflate "remove from quick-access" with "delete").
 //
 // Mounted at the very top of the SidebarInset (below only the global
