@@ -230,6 +230,7 @@ function NewSessionPage() {
 
   const sttMode = useSttModeStore((s) => s.mode);
   const sttEndOfStreamTimeoutMs = useSttModeStore((s) => s.endOfStreamTimeoutMs);
+  const sttAutoSubmitOnEnd = useSttModeStore((s) => s.autoSubmitOnEnd);
   const sttSubmitOnEndRef = useRef(false);
   const sttTranscriptArrivedRef = useRef(false);
   const [sttTimeoutProgress, setSttTimeoutProgress] = useState<number | null>(null);
@@ -392,9 +393,11 @@ function NewSessionPage() {
       if (sttMode === "push-to-talk" && sttSubmitOnEndRef.current) {
         sttSubmitOnEndRef.current = false;
         cancelSttTimeout();
-        if (sttTranscriptArrivedRef.current) {
+        if (sttTranscriptArrivedRef.current && sttAutoSubmitOnEnd) {
           sttTranscriptArrivedRef.current = false;
           void handleSubmit();
+        } else {
+          sttTranscriptArrivedRef.current = false;
         }
       } else if (sttMode === "push-to-talk" && sttEndOfStreamTimeoutMs > 0) {
         const startTime = Date.now();
@@ -408,11 +411,17 @@ function NewSessionPage() {
 
         sttTimeoutRef.current = setTimeout(() => {
           cancelSttTimeout();
-          sttSubmitOnEndRef.current = true;
-          speechRecognition.stop();
-          if (sttTranscriptArrivedRef.current) {
-            sttTranscriptArrivedRef.current = false;
-            void handleSubmit();
+          if (speechRecognition.isListening) {
+            sttSubmitOnEndRef.current = true;
+            speechRecognition.stop();
+          } else {
+            sttSubmitOnEndRef.current = false;
+            if (sttTranscriptArrivedRef.current && sttAutoSubmitOnEnd) {
+              sttTranscriptArrivedRef.current = false;
+              void handleSubmit();
+            } else {
+              sttTranscriptArrivedRef.current = false;
+            }
           }
         }, sttEndOfStreamTimeoutMs);
 
@@ -430,9 +439,11 @@ function NewSessionPage() {
       sttSubmitOnEndRef.current = sttMode === "push-to-talk";
       cancelSttTimeout();
       void speechRecognition.stop();
-      if (sttTranscriptArrivedRef.current) {
+      if (sttTranscriptArrivedRef.current && sttAutoSubmitOnEnd) {
         sttTranscriptArrivedRef.current = false;
         void handleSubmit();
+      } else {
+        sttTranscriptArrivedRef.current = false;
       }
     } else {
       sttSubmitOnEndRef.current = false;
@@ -876,7 +887,9 @@ function NewSessionPage() {
                   }`}
                   aria-label={
                     sttCountdownDigit !== null
-                      ? `Auto-submit in ${sttCountdownDigit}`
+                      ? sttAutoSubmitOnEnd
+                        ? `Auto-submit in ${sttCountdownDigit}`
+                        : `Voice grace ${sttCountdownDigit}`
                       : sending
                         ? "Starting…"
                         : "Send"

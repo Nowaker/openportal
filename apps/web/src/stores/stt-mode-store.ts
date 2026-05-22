@@ -23,10 +23,12 @@ interface SttModeState {
   backend: SttBackend;
   sidecarUrl: string;
   endOfStreamTimeoutMs: number;
+  autoSubmitOnEnd: boolean;
   setMode: (mode: SttMode) => void;
   setBackend: (backend: SttBackend) => void;
   setSidecarUrl: (url: string) => void;
   setEndOfStreamTimeoutMs: (ms: number) => void;
+  setAutoSubmitOnEnd: (autoSubmit: boolean) => void;
 }
 
 export const useSttModeStore = create<SttModeState>()(
@@ -36,10 +38,12 @@ export const useSttModeStore = create<SttModeState>()(
       backend: "web-speech",
       sidecarUrl: "http://127.0.0.1:4150",
       endOfStreamTimeoutMs: 5000,
+      autoSubmitOnEnd: false,
       setMode: (mode) => set({ mode }),
       setBackend: (backend) => set({ backend }),
       setSidecarUrl: (sidecarUrl) => set({ sidecarUrl }),
       setEndOfStreamTimeoutMs: (endOfStreamTimeoutMs) => set({ endOfStreamTimeoutMs }),
+      setAutoSubmitOnEnd: (autoSubmitOnEnd) => set({ autoSubmitOnEnd }),
     }),
     { name: "openportal-stt-mode" },
   ),

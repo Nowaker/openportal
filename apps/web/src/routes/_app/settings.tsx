@@ -700,6 +700,8 @@ function VoiceInputSetting() {
   const setSidecarUrl = useSttModeStore((s) => s.setSidecarUrl);
   const endOfStreamTimeoutMs = useSttModeStore((s) => s.endOfStreamTimeoutMs);
   const setEndOfStreamTimeoutMs = useSttModeStore((s) => s.setEndOfStreamTimeoutMs);
+  const autoSubmitOnEnd = useSttModeStore((s) => s.autoSubmitOnEnd);
+  const setAutoSubmitOnEnd = useSttModeStore((s) => s.setAutoSubmitOnEnd);
 
   return (
     <div className="space-y-6">
@@ -799,8 +801,35 @@ function VoiceInputSetting() {
             step={100}
           />
           <p className="text-xs text-muted-fg">
-            How long to wait after you stop talking before automatically submitting the prompt.
+            Silence grace window after the recognition stops detecting speech.
+            With auto-submit on, the prompt is sent when this expires; with
+            auto-submit off, the transcript stays in the composer.
           </p>
+        </div>
+      )}
+
+      {mode !== "off" && (
+        <div className="space-y-2">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoSubmitOnEnd}
+              onChange={(e) => setAutoSubmitOnEnd(e.target.checked)}
+              className="mt-0.5 size-4 accent-accent"
+              aria-label="Auto-submit after voice ends"
+            />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                Auto-submit after voice ends
+              </p>
+              <p className="text-xs text-muted-fg">
+                When ON: the prompt is automatically submitted once the
+                grace window expires (current behavior). When OFF (default):
+                the transcribed text stays in the composer so you can edit
+                or add to it before submitting manually.
+              </p>
+            </div>
+          </label>
         </div>
       )}
     </div>

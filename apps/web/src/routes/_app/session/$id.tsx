@@ -3312,6 +3312,7 @@ function SessionPage() {
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const sttMode = useSttModeStore((s) => s.mode);
   const sttEndOfStreamTimeoutMs = useSttModeStore((s) => s.endOfStreamTimeoutMs);
+  const sttAutoSubmitOnEnd = useSttModeStore((s) => s.autoSubmitOnEnd);
   const sttSubmitOnEndRef = useRef(false);
   const sttTranscriptArrivedRef = useRef(false);
   const [sttTimeoutProgress, setSttTimeoutProgress] = useState<number | null>(null);
@@ -3377,9 +3378,11 @@ function SessionPage() {
       if (sttSubmitOnEndRef.current) {
         sttSubmitOnEndRef.current = false;
         cancelSttTimeout();
-        if (sttTranscriptArrivedRef.current) {
+        if (sttTranscriptArrivedRef.current && sttAutoSubmitOnEnd) {
           sttTranscriptArrivedRef.current = false;
           textareaRef.current?.form?.requestSubmit();
+        } else {
+          sttTranscriptArrivedRef.current = false;
         }
       } else if (sttMode === "push-to-talk" && sttEndOfStreamTimeoutMs > 0) {
         const startTime = Date.now();
@@ -3393,11 +3396,17 @@ function SessionPage() {
 
         sttTimeoutRef.current = setTimeout(() => {
           cancelSttTimeout();
-          sttSubmitOnEndRef.current = true;
-          speechRecognition.stop();
-          if (sttTranscriptArrivedRef.current) {
-            sttTranscriptArrivedRef.current = false;
-            textareaRef.current?.form?.requestSubmit();
+          if (speechRecognition.isListening) {
+            sttSubmitOnEndRef.current = true;
+            speechRecognition.stop();
+          } else {
+            sttSubmitOnEndRef.current = false;
+            if (sttTranscriptArrivedRef.current && sttAutoSubmitOnEnd) {
+              sttTranscriptArrivedRef.current = false;
+              textareaRef.current?.form?.requestSubmit();
+            } else {
+              sttTranscriptArrivedRef.current = false;
+            }
           }
         }, sttEndOfStreamTimeoutMs);
 
@@ -3414,11 +3423,20 @@ function SessionPage() {
       if (sttMode === "push-to-talk") sttSubmitOnEndRef.current = true;
       cancelSttTimeout();
       speechRecognition.stop();
-      if (sttTranscriptArrivedRef.current) {
+      if (sttTranscriptArrivedRef.current && sttAutoSubmitOnEnd) {
         sttTranscriptArrivedRef.current = false;
         textareaRef.current?.form?.requestSubmit();
+      } else {
+        sttTranscriptArrivedRef.current = false;
       }
     } else {
+      // Reset BOTH refs so a stale `true` from a previous failed restart
+      // (recognition.start() throws InvalidStateError, grace timer still
+      // sets sttSubmitOnEndRef = true, recognition.stop() is a no-op
+      // because recognitionRef is null) does not trigger an unintended
+      // submission on the next session's onEnd. This is the cause of the
+      // 'submits even though I haven't finished talking' bug.
+      sttSubmitOnEndRef.current = false;
       sttTranscriptArrivedRef.current = false;
       speechRecognition.start();
     }
@@ -5430,7 +5448,9 @@ function SessionPage() {
                     }`}
                     aria-label={
                       sttCountdownDigit !== null
-                        ? `Auto-submit in ${sttCountdownDigit}`
+                        ? sttAutoSubmitOnEnd
+                          ? `Auto-submit in ${sttCountdownDigit}`
+                          : `Voice grace ${sttCountdownDigit}`
                         : isAssistantBusy
                           ? "Queue message"
                           : "Send"
