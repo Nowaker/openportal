@@ -11,6 +11,7 @@ import AppSidebar from "@/components/app-sidebar";
 import { AppSidebarNav, PinnedTabStrip } from "@/components/app-sidebar-nav";
 import { FileBrowserPanel } from "@/components/file-browser-panel";
 import { OpencodeUpdateBanner } from "@/components/opencode-update-banner";
+import { CompactBanner } from "@/components/ui/compact-banner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -45,51 +46,53 @@ function ConnectionStatusBanner() {
   if (status === "connected") return null;
   if (status === "opencode-down") {
     return (
-      <div className="flex flex-col gap-1 border-b-2 border-warning bg-warning px-3 py-2.5 text-sm font-medium text-warning-fg shadow-sm">
-        <div className="flex items-center gap-2">
-          <ExclamationTriangleIcon
-            className="size-5 shrink-0 animate-pulse"
-            aria-hidden="true"
-          />
-          <span className="flex-1">
-            OpenCode is unreachable. Showing cached data - retrying every 10s...
+      <CompactBanner
+        intent="warning"
+        icon={<ExclamationTriangleIcon className="size-3.5" aria-hidden />}
+        message="OpenCode unreachable - retrying every 10s"
+        actions={
+          <>
+            <RestartOpencodeButton />
+            <Link
+              to="/servers"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted"
+            >
+              <ServerStackIcon className="size-3" />
+              Servers
+            </Link>
+          </>
+        }
+        details={
+          <span>
+            Cached data still showing. OpenPortal-owned features (prompts
+            archive, server list, settings) keep working. Live OpenCode
+            reads resume automatically.
           </span>
-          <RestartOpencodeButton />
-          <Link
-            to="/servers"
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
-          >
-            <ServerStackIcon className="size-3.5" />
-            Server list
-          </Link>
-        </div>
-        <span className="pl-7 text-xs text-warning-fg/90">
-          OpenPortal-owned features (prompts archive, server list, settings)
-          keep working. Live OpenCode reads will resume automatically.
-        </span>
-      </div>
+        }
+      />
     );
   }
   return (
-    <div className="flex flex-col gap-1 border-b-2 border-danger bg-danger px-3 py-2.5 text-sm font-medium text-danger-fg shadow-sm">
-      <div className="flex items-center gap-2">
-        <ArrowPathIcon className="size-5 shrink-0 animate-spin" />
-        <span className="flex-1">
-          Lost connection to OpenPortal. Reconnecting...
-        </span>
+    <CompactBanner
+      intent="danger"
+      icon={<ArrowPathIcon className="size-3.5 animate-spin" aria-hidden />}
+      message="OpenPortal lost - reconnecting"
+      actions={
         <Link
           to="/servers"
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted"
         >
-          <ServerStackIcon className="size-3.5" />
-          Server list
+          <ServerStackIcon className="size-3" />
+          Servers
         </Link>
-      </div>
-      <span className="pl-7 text-xs text-danger-fg/90">
-        Your prompt drafts and pasted images are saved locally - nothing
-        will be lost.
-      </span>
-    </div>
+      }
+      details={
+        <span>
+          Your prompt drafts and pasted images are saved locally - nothing
+          will be lost.
+        </span>
+      }
+    />
   );
 }
 
@@ -278,26 +281,27 @@ function BuildMismatchBanner() {
   const [reloading, setReloading] = useState(false);
   if (!mismatched) return null;
   return (
-    <div className="flex items-center gap-2 border-b-2 border-warning bg-warning px-3 py-2.5 text-sm font-medium text-warning-fg shadow-sm">
-      <ArrowPathIcon className="size-5 shrink-0 animate-pulse" />
-      <span className="flex-1">
-        OpenPortal was updated. Reload the page to get the latest version.
-      </span>
-      <button
-        type="button"
-        disabled={reloading}
-        onClick={() => {
-          setReloading(true);
-          window.location.reload();
-        }}
-        className="rounded-md border border-border bg-bg px-2 py-1 text-sm font-medium text-fg hover:bg-muted disabled:opacity-70 inline-flex items-center gap-1.5"
-      >
-        <ArrowPathIcon
-          className={`size-3.5 shrink-0 ${reloading ? "animate-spin" : ""}`}
-        />
-        {reloading ? "Reloading…" : "Reload"}
-      </button>
-    </div>
+    <CompactBanner
+      intent="warning"
+      icon={<ArrowPathIcon className="size-3.5" aria-hidden />}
+      message="OpenPortal updated - reload to upgrade"
+      actions={
+        <button
+          type="button"
+          disabled={reloading}
+          onClick={() => {
+            setReloading(true);
+            window.location.reload();
+          }}
+          className="rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted disabled:opacity-70 inline-flex items-center gap-1"
+        >
+          <ArrowPathIcon
+            className={`size-3 shrink-0 ${reloading ? "animate-spin" : ""}`}
+          />
+          {reloading ? "Reloading…" : "Reload"}
+        </button>
+      }
+    />
   );
 }
 
@@ -335,30 +339,35 @@ function NotificationPermissionBanner() {
 
   if (mode === "denied") {
     return (
-      <div className="flex items-center gap-2 border-b-2 border-warning bg-warning px-3 py-2.5 text-sm font-medium text-warning-fg shadow-sm">
-        <BellAlertIcon className="size-5 shrink-0" />
-        <span className="flex-1">
-          Notifications are blocked at the browser level. Click the lock /
-          tune icon in the address bar → Site settings → Notifications →
-          Allow, then reload.
-        </span>
-        <button
-          type="button"
-          onClick={dismiss}
-          className="rounded-md p-1 text-warning-fg/80 hover:bg-warning-fg/10 hover:text-warning-fg"
-          aria-label="Dismiss"
-        >
-          <XMarkIcon className="size-4" />
-        </button>
-      </div>
+      <CompactBanner
+        intent="warning"
+        icon={<BellAlertIcon className="size-3.5" aria-hidden />}
+        message="Notifications blocked"
+        actions={
+          <button
+            type="button"
+            onClick={dismiss}
+            className="rounded-md p-0.5 text-warning-subtle-fg/80 hover:bg-warning-subtle-fg/10 hover:text-warning-subtle-fg"
+            aria-label="Dismiss"
+          >
+            <XMarkIcon className="size-3.5" />
+          </button>
+        }
+        details={
+          <span>
+            Click the lock / tune icon in the address bar → Site settings →
+            Notifications → Allow, then reload.
+          </span>
+        }
+      />
     );
   }
 
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-bg/95 px-3 py-2 text-sm">
-      <BellAlertIcon className="size-4 shrink-0 text-muted-fg" />
+    <div className="flex items-center gap-2 border-b border-border bg-bg/95 px-3 py-1.5 text-xs">
+      <BellAlertIcon className="size-3.5 shrink-0 text-muted-fg" />
       <span className="flex-1 text-fg">
-        Get notified when sessions complete or need attention.
+        Get notified on session events.
       </span>
       <button
         type="button"
@@ -366,17 +375,17 @@ function NotificationPermissionBanner() {
           await requestNotificationPermission();
           setMode("hidden");
         }}
-        className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium hover:bg-muted"
+        className="rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted"
       >
         Enable
       </button>
       <button
         type="button"
         onClick={dismiss}
-        className="rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg"
+        className="rounded-md p-0.5 text-muted-fg hover:bg-muted hover:text-fg"
         aria-label="Dismiss"
       >
-        <XMarkIcon className="size-4" />
+        <XMarkIcon className="size-3.5" />
       </button>
     </div>
   );
