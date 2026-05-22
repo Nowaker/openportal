@@ -54,6 +54,10 @@ import { useMarkdownModeStore } from "@/stores/markdown-mode-store";
 import {
   useNotificationSoundStore,
   playNotificationSound,
+  playSoundById,
+  SOUND_OPTIONS,
+  type NotificationCategory,
+  type SoundId,
 } from "@/stores/notification-sound-store";
 import {
   useTtsStore,
@@ -837,72 +841,111 @@ function VoiceInputSetting() {
 }
 
 function NotificationSoundSetting() {
-  const enabled = useNotificationSoundStore((s) => s.enabled);
-  const setEnabled = useNotificationSoundStore((s) => s.setEnabled);
   const volume = useNotificationSoundStore((s) => s.volume);
   const setVolume = useNotificationSoundStore((s) => s.setVolume);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div>
         <h3 className="text-sm font-semibold">Notification sounds</h3>
         <p className="text-xs text-muted-fg">
-          Play short audio cues alongside browser notifications. One sound
-          when a session completes a turn, another when the AI asks a
-          question and needs your attention. Browsers may suppress
-          autoplay until you have interacted with the page at least once.
+          Per-event sound cues, copied from the opencode web UI. Browsers
+          may suppress autoplay until you have interacted with the page at
+          least once.
         </p>
       </div>
+      <label className="block text-xs text-muted-fg">
+        Volume: {Math.round(volume * 100)}%
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={Math.round(volume * 100)}
+          onChange={(e) => setVolume(parseInt(e.target.value, 10) / 100)}
+          className="mt-1 block w-full"
+          data-test="portal-settings-notification-sound-volume"
+        />
+      </label>
+      <div className="divide-y divide-border rounded-md border border-border">
+        <SoundCategoryRow
+          category="agent"
+          title="Agent"
+          description="Play sound when the agent is complete or needs attention"
+        />
+        <SoundCategoryRow
+          category="permissions"
+          title="Permissions"
+          description="Play sound when a permission is required"
+        />
+        <SoundCategoryRow
+          category="errors"
+          title="Errors"
+          description="Play sound when an error occurs"
+        />
+      </div>
+    </div>
+  );
+}
+
+function SoundCategoryRow({
+  category,
+  title,
+  description,
+}: {
+  category: NotificationCategory;
+  title: string;
+  description: string;
+}) {
+  const cfg = useNotificationSoundStore((s) => s[category]);
+  const setEnabled = useNotificationSoundStore((s) => s.setCategoryEnabled);
+  const setSound = useNotificationSoundStore((s) => s.setCategorySound);
+  return (
+    <div className="flex flex-wrap items-center gap-3 p-3 sm:flex-nowrap">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-sm font-medium">{title}</span>
+        <span className="text-xs text-muted-fg">{description}</span>
+      </div>
       <Checkbox
-        isSelected={enabled}
-        onChange={(v) => setEnabled(Boolean(v))}
-        data-test="portal-settings-notification-sound-enabled"
+        isSelected={cfg.enabled}
+        onChange={(v) => setEnabled(category, Boolean(v))}
+        data-test={`portal-settings-sound-${category}-enabled`}
+        aria-label={`Enable ${title} sound`}
       >
-        Enable notification sounds
+        Enabled
       </Checkbox>
-      {enabled && (
-        <div className="space-y-2">
-          <label className="block text-xs text-muted-fg">
-            Volume: {Math.round(volume * 100)}%
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={Math.round(volume * 100)}
-              onChange={(e) => setVolume(parseInt(e.target.value, 10) / 100)}
-              className="mt-1 block w-full"
-              data-test="portal-settings-notification-sound-volume"
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => playNotificationSound("turn-complete")}
-              className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
-              data-test="portal-settings-notification-sound-test-complete"
-            >
-              Test: turn complete
-            </button>
-            <button
-              type="button"
-              onClick={() => playNotificationSound("attention")}
-              className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
-              data-test="portal-settings-notification-sound-test-attention"
-            >
-              Test: needs attention
-            </button>
-            <button
-              type="button"
-              onClick={() => playNotificationSound("error")}
-              className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
-              data-test="portal-settings-notification-sound-test-error"
-            >
-              Test: error
-            </button>
-          </div>
-        </div>
-      )}
+      <Select
+        aria-label={`${title} sound`}
+        selectedKey={cfg.soundId}
+        onSelectionChange={(key) => {
+          if (!key) return;
+          const id = String(key) as SoundId;
+          setSound(category, id);
+          playSoundById(id);
+        }}
+      >
+        <SelectTrigger className="min-w-[10rem]" />
+        <SelectContent
+          className="max-h-[min(60vh,20rem)]"
+          popover={{
+            className: "max-h-[min(60vh,20rem)] flex flex-col overflow-hidden",
+          }}
+        >
+          {SOUND_OPTIONS.map((opt) => (
+            <SelectItem key={opt.id} id={opt.id} textValue={opt.label}>
+              <SelectLabel>{opt.label}</SelectLabel>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <button
+        type="button"
+        onClick={() => playSoundById(cfg.soundId)}
+        className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
+        data-test={`portal-settings-sound-${category}-test`}
+      >
+        Test
+      </button>
     </div>
   );
 }

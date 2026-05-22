@@ -3,7 +3,7 @@ import type { Session } from "@opencode-ai/sdk";
 import type { SessionStatusMap } from "@/hooks/use-opencode";
 import {
   playNotificationSound,
-  type SoundKind,
+  type NotificationCategory,
 } from "@/stores/notification-sound-store";
 
 interface Args {
@@ -34,7 +34,7 @@ function spawnNotification(
   body: string,
   tagSuffix: string,
   onSelect: (sessionId: string) => void,
-  sound: SoundKind,
+  sound: NotificationCategory,
 ) {
   playNotificationSound(sound);
   if (typeof window === "undefined") return;
@@ -99,7 +99,7 @@ export function useStatusNotifications({
         session?.directory || "",
         "done",
         onSelect,
-        "turn-complete",
+        "agent",
       );
     }
     prevStatusRef.current = next;
@@ -121,7 +121,7 @@ export function useStatusNotifications({
         "AI is asking for input",
         "question",
         onSelect,
-        "attention",
+        "agent",
       );
     }
     prevQuestionsRef.current = new Set(questionSessionIds);
