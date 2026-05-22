@@ -4843,15 +4843,31 @@ function SessionPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {isAssistantBusy && isServerBusy && !isQuestionBlocked && (
+        {sessionIndicator?.mode === "compaction" && (
           <div className="py-3 px-3">
             <div className="flex items-center gap-2">
-              <Ripples size="30" speed="2" color="var(--color-primary)" />
-              <span className="text-sm text-muted-fg">Thinking...</span>
-              <ThinkingStaleness messages={messages} />
+              <Ripples size="30" speed="2" color="var(--color-violet-500)" />
+              <span className="text-sm font-medium text-violet-600 dark:text-violet-400 animate-pulse">
+                Compacting...
+              </span>
+              <span className="text-xs text-muted-fg">
+                summarising older history
+              </span>
             </div>
           </div>
         )}
+        {isAssistantBusy &&
+          isServerBusy &&
+          !isQuestionBlocked &&
+          sessionIndicator?.mode !== "compaction" && (
+            <div className="py-3 px-3">
+              <div className="flex items-center gap-2">
+                <Ripples size="30" speed="2" color="var(--color-primary)" />
+                <span className="text-sm text-muted-fg">Thinking...</span>
+                <ThinkingStaleness messages={messages} />
+              </div>
+            </div>
+          )}
         {isQuestionBlocked && (
           <div className="border-t border-sky-500/30 bg-sky-500/10 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
