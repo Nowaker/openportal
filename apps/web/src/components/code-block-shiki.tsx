@@ -76,18 +76,68 @@ const FILENAME_TO_LANG: Record<string, string> = {
   ".prettierignore": "ignore",
   ".eslintignore": "ignore",
   ".editorconfig": "ini",
-  ".envrc": "bash",
-  ".bashrc": "bash",
-  ".bash_profile": "bash",
-  ".zshrc": "bash",
-  ".profile": "bash",
 };
+
+// Case-insensitive matches for rc/init files where casing varies between
+// distributions (Zshrc vs .zshrc, Xsessionrc vs .Xsessionrc, etc.).
+const LOWER_FILENAME_TO_LANG: Record<string, string> = {
+  ".bashrc": "bash",
+  ".zshrc": "bash",
+  ".kshrc": "bash",
+  ".tcshrc": "bash",
+  ".cshrc": "bash",
+  ".profile": "bash",
+  ".bash_profile": "bash",
+  ".zprofile": "bash",
+  ".zlogin": "bash",
+  ".zlogout": "bash",
+  ".envrc": "bash",
+  ".inputrc": "bash",
+  ".dircolors": "bash",
+  ".aliases": "bash",
+  ".functions": "bash",
+  ".exports": "bash",
+  ".extra": "bash",
+  ".curlrc": "bash",
+  ".wgetrc": "ini",
+  ".vimrc": "vim",
+  ".tmux.conf": "ini",
+  ".xresources": "ini",
+  ".xsession": "bash",
+  ".xinitrc": "bash",
+  ".xprofile": "bash",
+  ".xsessionrc": "bash",
+  zshrc: "bash",
+  bashrc: "bash",
+  xresources: "ini",
+  xsession: "bash",
+  xinitrc: "bash",
+  xprofile: "bash",
+  xsessionrc: "bash",
+  inputrc: "bash",
+  sudoers: "ini",
+  fstab: "ini",
+  hosts: "ini",
+  crontab: "bash",
+};
+
+// Pattern fallback for .<word>rc[.<suffix>] - covers .zshrc.pre,
+// .bashrc.local, .zshrc.d/* etc.
+const FILENAME_PATTERNS: Array<[RegExp, string]> = [
+  [/^\.[a-z][a-z0-9_-]*rc(\.[a-z0-9._-]+)?$/i, "bash"],
+];
 
 export function languageFromFilename(filename: string): string | null {
   if (!filename) return null;
   const base = filename.split("/").pop() ?? filename;
   const hit = FILENAME_TO_LANG[base];
   if (hit) return normalizeForShiki(hit);
+  const lower = base.toLowerCase();
+  const ciHit = LOWER_FILENAME_TO_LANG[lower];
+  if (ciHit) return normalizeForShiki(ciHit);
+  for (const [pattern, lang] of FILENAME_PATTERNS) {
+    if (pattern.test(base)) return normalizeForShiki(lang);
+  }
   return null;
 }
 

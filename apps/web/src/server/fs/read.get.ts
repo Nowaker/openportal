@@ -59,6 +59,23 @@ const EXTENSION_TO_LANG: Record<string, string> = {
   ini: "ini",
   dockerfile: "docker",
   makefile: "makefile",
+  service: "systemd",
+  timer: "systemd",
+  socket: "systemd",
+  mount: "systemd",
+  automount: "systemd",
+  target: "systemd",
+  device: "systemd",
+  slice: "systemd",
+  swap: "systemd",
+  network: "systemd",
+  netdev: "systemd",
+  link: "systemd",
+  nspawn: "systemd",
+  busname: "systemd",
+  conf: "ini",
+  cfg: "ini",
+  desktop: "ini",
 };
 
 const FILENAME_TO_LANG: Record<string, string> = {
@@ -73,9 +90,60 @@ const FILENAME_TO_LANG: Record<string, string> = {
   ".env.development": "bash",
 };
 
+const LOWER_FILENAME_TO_LANG: Record<string, string> = {
+  ".bashrc": "bash",
+  ".zshrc": "bash",
+  ".kshrc": "bash",
+  ".tcshrc": "bash",
+  ".cshrc": "bash",
+  ".profile": "bash",
+  ".bash_profile": "bash",
+  ".zprofile": "bash",
+  ".zlogin": "bash",
+  ".zlogout": "bash",
+  ".envrc": "bash",
+  ".inputrc": "bash",
+  ".dircolors": "bash",
+  ".aliases": "bash",
+  ".functions": "bash",
+  ".exports": "bash",
+  ".extra": "bash",
+  ".curlrc": "bash",
+  ".wgetrc": "ini",
+  ".vimrc": "vim",
+  ".tmux.conf": "ini",
+  ".xresources": "ini",
+  ".xsession": "bash",
+  ".xinitrc": "bash",
+  ".xprofile": "bash",
+  ".xsessionrc": "bash",
+  zshrc: "bash",
+  bashrc: "bash",
+  xresources: "ini",
+  xsession: "bash",
+  xinitrc: "bash",
+  xprofile: "bash",
+  xsessionrc: "bash",
+  inputrc: "bash",
+  sudoers: "ini",
+  fstab: "ini",
+  hosts: "ini",
+  crontab: "bash",
+};
+
+const FILENAME_PATTERNS: Array<[RegExp, string]> = [
+  [/^\.[a-z][a-z0-9_-]*rc(\.[a-z0-9._-]+)?$/i, "bash"],
+];
+
 function languageFor(filename: string): string {
   const exact = FILENAME_TO_LANG[filename];
   if (exact) return exact;
+  const lower = filename.toLowerCase();
+  const ciExact = LOWER_FILENAME_TO_LANG[lower];
+  if (ciExact) return ciExact;
+  for (const [pattern, lang] of FILENAME_PATTERNS) {
+    if (pattern.test(filename)) return lang;
+  }
   const dot = filename.lastIndexOf(".");
   if (dot < 0) return "text";
   const ext = filename.slice(dot + 1).toLowerCase();
