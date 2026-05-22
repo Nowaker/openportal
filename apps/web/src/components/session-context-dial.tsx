@@ -51,8 +51,10 @@ interface AssistantMessageLike {
 
 export function SessionContextDial({
   sessionId,
+  onClick,
 }: {
   sessionId: string | null;
+  onClick?: () => void;
 }) {
   const { messages } = useSessionMessages(sessionId ?? undefined, {
     enabled: sessionId !== null,
@@ -123,10 +125,11 @@ export function SessionContextDial({
   return (
     <button
       type="button"
-      aria-label={`Context usage: ${usagePct}% (${formattedTokens} / ${formattedLimit} tokens)`}
-      title={`${usagePct}%  ${formattedTokens} / ${formattedLimit} tokens`}
+      onClick={onClick}
+      aria-label={`Context usage: ${usagePct}% (${formattedTokens} / ${formattedLimit} tokens). Click to open Session Info.`}
+      title={`${usagePct}%  ${formattedTokens} / ${formattedLimit} tokens - click for Session Info`}
       data-test="portal-session-context-dial"
-      className="shrink-0 inline-flex items-center justify-center size-6 rounded hover:bg-muted/40"
+      className="shrink-0 inline-flex items-center justify-center size-6 rounded hover:bg-muted/40 cursor-pointer"
     >
       <svg
         width="16"

@@ -132,6 +132,11 @@ export function AppSidebarNav() {
   const [showSessionInfo, setShowSessionInfo] = useHashOpen("info");
   const [mcpInfoName, setMcpInfoName] = useHashValue("mcp");
   const [pluginInfoSpec, setPluginInfoSpec] = useHashValue("plugin");
+  // Hamburger menu open state. Hash-tracked so the Android hardware
+  // back button (which dispatches popstate with the previous hash)
+  // closes the menu instead of navigating away from the page. Same
+  // pattern as the SessionInfoModal.
+  const [menuOpen, setMenuOpen] = useHashOpen("menu");
 
   const sessionMatch = useMatch({
     from: "/_app/session/$id",
@@ -536,9 +541,14 @@ export function AppSidebarNav() {
         )}
       </span>
       <span className="flex items-center gap-x-2 ml-auto shrink-0">
-        {sessionId && <SessionContextDial sessionId={sessionId} />}
+        {sessionId && (
+          <SessionContextDial
+            sessionId={sessionId}
+            onClick={() => setShowSessionInfo(true)}
+          />
+        )}
         {!isMobile && sessionId && <PinTopbarButton sessionId={sessionId} />}
-        <Menu>
+        <Menu isOpen={menuOpen} onOpenChange={setMenuOpen}>
           <MenuTrigger aria-label="Open menu">
             <Button intent="outline" size="sq-sm">
               <EllipsisVerticalIcon className="size-4" />
