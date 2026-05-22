@@ -317,18 +317,34 @@ function TopBar({
   inPanel: boolean;
 }) {
   const pathInputRef = useRef<PathInputHandle>(null);
-  const closePanel = () => {
-    if (typeof window !== "undefined" && window.parent !== window) {
+  // Close-panel-or-window. In iframe mode (inPanel), the parent
+  // listens for postMessage. As a top-level tab, try window.close()
+  // (works if the tab was opened by window.open from another tab);
+  // otherwise fall back to history.back(), and finally home.
+  const handleClose = () => {
+    if (typeof window === "undefined") return;
+    if (window.parent !== window) {
       window.parent.postMessage({ type: "fb-close" }, "*");
+      return;
     }
+    if (window.opener && !window.opener.closed) {
+      window.close();
+      return;
+    }
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = "/";
   };
+  void inPanel;
   return (
-    <header className="flex items-center gap-1.5 border-b border-border bg-bg px-3 py-2">
+    <header className="flex items-center gap-1 border-b border-border bg-bg px-2 py-2">
       <button
         type="button"
         onClick={onGoBack}
         title="Back (browser history)"
-        className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+        className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
       >
         <ArrowLeftIcon className="size-4" />
       </button>
@@ -338,9 +354,18 @@ function TopBar({
         disabled={!parent}
         data-test="portal-files-up"
         title="Parent directory"
-        className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
+        className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
       >
         <ArrowUpIcon className="size-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onRefresh}
+        data-test="portal-files-refresh"
+        title="Refresh"
+        className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+      >
+        <ArrowPathIcon className="size-4" />
       </button>
       <button
         type="button"
@@ -348,7 +373,7 @@ function TopBar({
         disabled={!home}
         data-test="portal-files-home"
         title={`Your home directory${home ? ` (${home})` : ""}`}
-        className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:opacity-30"
+        className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:opacity-30"
       >
         <HashtagIcon className="size-4" />
       </button>
@@ -358,7 +383,7 @@ function TopBar({
           onClick={onGoProject}
           data-test="portal-files-project"
           title={`Project directory (${project})`}
-          className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+          className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
         >
           <HomeIcon className="size-4" />
         </button>
@@ -372,30 +397,19 @@ function TopBar({
           entries={entries}
           placeholder="path"
           data-test="portal-files-pathinput"
-          className="w-full rounded-md border border-border bg-muted/20 px-2 py-1 text-xs font-mono outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
+          className="w-full rounded-md border border-border bg-muted/20 px-2 py-1 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
         />
       </div>
       <button
         type="button"
-        onClick={onRefresh}
-        data-test="portal-files-refresh"
-        title="Refresh"
-        className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+        onClick={handleClose}
+        data-test="portal-files-close"
+        title="Close file browser"
+        aria-label="Close file browser"
+        className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
       >
-        <ArrowPathIcon className="size-4" />
+        <XMarkIcon className="size-4" />
       </button>
-      {inPanel && (
-        <button
-          type="button"
-          onClick={closePanel}
-          data-test="portal-files-close"
-          title="Close file browser"
-          aria-label="Close file browser"
-          className="inline-flex size-7 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
-        >
-          <XMarkIcon className="size-4" />
-        </button>
-      )}
     </header>
   );
 }
