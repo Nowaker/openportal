@@ -4,8 +4,10 @@ import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   ArrowUpIcon,
+  AtSymbolIcon,
   CheckIcon,
   ClipboardDocumentIcon,
+  ClockIcon,
   DocumentIcon,
   DocumentPlusIcon,
   EyeIcon,
@@ -15,8 +17,10 @@ import {
   HashtagIcon,
   HomeIcon,
   PencilSquareIcon,
+  StarIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { StarIcon as StarIconSolid } from "@heroicons/react/24/solid";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
@@ -33,6 +37,12 @@ import {
 import { fromTildeDisplay, toTildeDisplay } from "@/lib/path-utils";
 import { getFileIcon } from "@/lib/file-icons";
 import { FileEditor } from "@/components/file-editor";
+import {
+  useFileHistoryStore,
+  prioritizeForProject,
+  isInProject,
+  type FileHistoryEntry,
+} from "@/stores/file-history-store";
 
 interface BrowseEntry {
   name: string;
@@ -181,6 +191,7 @@ function FilesPage() {
         onGoHome={() => browse?.home && goTo(browse.home)}
         onGoProject={() => search.project && goTo(search.project)}
         onGoUp={() => browse?.parent && goTo(browse.parent)}
+        onGoTo={(p) => goTo(p)}
         inPanel={search.panel === 1}
       />
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
@@ -228,12 +239,17 @@ function FilesPage() {
               currentPath={browse.path ?? ""}
               selectedFile={search.file}
               onSelectDir={(name) => {
+                if (name === ".." && browse.parent) {
+                  goTo(browse.parent);
+                  return;
+                }
                 const next =
                   browse.path === "/"
                     ? `/${name}`
                     : `${browse.path}/${name}`;
                 goTo(next);
               }}
+              parent={browse.parent}
               onSelectFile={(name) => goTo(browse.path ?? "", name)}
             />
           )}
@@ -287,6 +303,136 @@ function FilesPage() {
   );
 }
 
+function HistoryDropdown({
+  kind,
+  project,
+  onSelect,
+}: {
+  kind: "recent" | "mentions" | "bookmarks";
+  project: string | null;
+  onSelect: (path: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const max = useFileHistoryStore((s) => s.maxDisplay);
+  const recent = useFileHistoryStore((s) => s.recentlyOpened);
+  const bookmarks = useFileHistoryStore((s) => s.bookmarks);
+  const removeBookmark = useFileHistoryStore((s) => s.removeBookmark);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const config = {
+    recent: {
+      label: "Recently opened",
+      icon: ClockIcon,
+      entries: recent,
+      empty: "No recent files yet.",
+      notImplemented: false,
+    },
+    mentions: {
+      label: "Recently mentioned",
+      icon: AtSymbolIcon,
+      entries: [] as FileHistoryEntry[],
+      empty: "Recently mentioned files - not implemented yet.",
+      notImplemented: true,
+    },
+    bookmarks: {
+      label: "Bookmarks",
+      icon: StarIcon,
+      entries: bookmarks,
+      empty: "No bookmarks yet.",
+      notImplemented: false,
+    },
+  }[kind];
+
+  const displayed = prioritizeForProject(config.entries, project, max);
+  const inProjectCount = displayed.filter((e) =>
+    isInProject(e, project),
+  ).length;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={config.label}
+        aria-label={config.label}
+        aria-expanded={open}
+        className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+        data-test={`portal-files-history-${kind}`}
+      >
+        <config.icon className="size-4" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-72 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-bg shadow-xl">
+          <div className="border-b border-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-fg">
+            {config.label}
+          </div>
+          {config.notImplemented ? (
+            <div className="px-3 py-3 text-xs text-muted-fg italic">
+              {config.empty}
+            </div>
+          ) : displayed.length === 0 ? (
+            <div className="px-3 py-3 text-xs text-muted-fg italic">
+              {config.empty}
+            </div>
+          ) : (
+            <ul className="text-xs">
+              {displayed.map((entry, idx) => {
+                const showSeparator =
+                  idx === inProjectCount && idx > 0 && project;
+                return (
+                  <li key={entry.path}>
+                    {showSeparator && (
+                      <div className="border-t border-border/60 my-1 mx-3" />
+                    )}
+                    <div className="flex items-center gap-1.5 px-2 hover:bg-muted/30">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelect(entry.path);
+                          setOpen(false);
+                        }}
+                        title={entry.path}
+                        className="flex-1 min-w-0 truncate py-1.5 text-left"
+                      >
+                        {entry.isDir ? (
+                          <FolderIcon className="inline size-3 mr-1.5 align-text-bottom text-amber-500/80" />
+                        ) : (
+                          <DocumentIcon className="inline size-3 mr-1.5 align-text-bottom text-muted-fg" />
+                        )}
+                        {entry.path.split("/").pop() || entry.path}
+                      </button>
+                      {kind === "bookmarks" && (
+                        <button
+                          type="button"
+                          onClick={() => removeBookmark(entry.path)}
+                          title="Remove bookmark"
+                          aria-label={`Remove bookmark ${entry.path}`}
+                          className="shrink-0 text-muted-fg/60 hover:text-danger"
+                        >
+                          <XMarkIcon className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TopBar({
   pathInput,
   onPathInputChange,
@@ -298,6 +444,7 @@ function TopBar({
   onGoBack,
   onGoHome,
   onGoUp,
+  onGoTo,
   inPanel,
   project,
   onGoProject,
@@ -314,6 +461,7 @@ function TopBar({
   onGoHome: () => void;
   onGoProject: () => void;
   onGoUp: () => void;
+  onGoTo: (path: string) => void;
   inPanel: boolean;
 }) {
   const pathInputRef = useRef<PathInputHandle>(null);
@@ -388,6 +536,21 @@ function TopBar({
           <HomeIcon className="size-4" />
         </button>
       )}
+      <HistoryDropdown
+        kind="recent"
+        project={project ?? null}
+        onSelect={onGoTo}
+      />
+      <HistoryDropdown
+        kind="mentions"
+        project={project ?? null}
+        onSelect={onGoTo}
+      />
+      <HistoryDropdown
+        kind="bookmarks"
+        project={project ?? null}
+        onSelect={onGoTo}
+      />
       <div className="flex-1 min-w-0">
         <PathInput
           ref={pathInputRef}
@@ -574,13 +737,22 @@ function FileTree({
   selectedFile,
   onSelectDir,
   onSelectFile,
+  parent,
 }: {
   entries: BrowseEntry[];
   currentPath: string;
   selectedFile: string | undefined;
   onSelectDir: (name: string) => void;
   onSelectFile: (name: string) => void;
+  parent: string | null;
 }) {
+  // Synthetic '..' entry rendered as the first row when the current
+  // directory isn't the user-visible root. Clicking it routes back
+  // to `parent` (which the server computed against the configured
+  // base directories, so it can't escape the scope).
+  const allEntries = parent
+    ? [{ name: "..", isDir: true, size: undefined } as BrowseEntry, ...entries]
+    : entries;
   // Build a regular SPA URL for each entry so the tree can be a real
   // <a href> tree. Native long-press on mobile + middle-click /
   // cmd-click / ctrl-click on desktop now work without any custom
@@ -588,7 +760,9 @@ function FileTree({
   // new tab", "Save link", etc.
   const buildEntryHref = (entry: BrowseEntry): string => {
     const url = new URL(window.location.origin + "/files");
-    if (entry.isDir) {
+    if (entry.name === ".." && parent) {
+      url.searchParams.set("path", parent);
+    } else if (entry.isDir) {
       const nextPath =
         currentPath === "/"
           ? `/${entry.name}`
@@ -612,7 +786,7 @@ function FileTree({
 
   return (
     <ul className="text-sm">
-      {entries.map((e) => {
+      {allEntries.map((e) => {
         const isSelected = !e.isDir && e.name === selectedFile;
         return (
           <li key={e.name}>
@@ -744,7 +918,12 @@ function FileViewer({
     setIsEditing(false);
     setSaving(false);
     setForceShowBinaryAsText(false);
-  }, [file.path]);
+    if (typeof file.path === "string" && file.path.length > 0) {
+      useFileHistoryStore
+        .getState()
+        .recordOpened(file.path, file.kind === "directory");
+    }
+  }, [file.path, file.kind]);
   const startEdit = () => {
     setEditedText(file.content ?? "");
     setIsEditing(true);
@@ -979,6 +1158,7 @@ function FileViewer({
         onStartEdit={startEdit}
         onSave={() => void saveEdit()}
         onCancel={cancelEdit}
+        filePath={file.path}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
         {renderableKind && viewMode === "rendered" && (
@@ -1034,6 +1214,7 @@ function FileHeader({
   onStartEdit,
   onSave,
   onCancel,
+  filePath,
 }: {
   filename: string;
   size: number | undefined;
@@ -1050,6 +1231,7 @@ function FileHeader({
   onStartEdit?: () => void;
   onSave?: () => void;
   onCancel?: () => void;
+  filePath?: string;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
@@ -1105,6 +1287,9 @@ function FileHeader({
               <span className="hidden sm:inline">Split</span>
             </ViewModeButton>
           </div>
+        )}
+        {!isEditing && filePath && (
+          <BookmarkButton path={filePath} isDir={false} />
         )}
         {!isEditing && onCopy && (
           <button
@@ -1176,6 +1361,27 @@ function FileHeader({
         </a>
       </div>
     </div>
+  );
+}
+
+function BookmarkButton({ path, isDir }: { path: string; isDir: boolean }) {
+  const bookmarks = useFileHistoryStore((s) => s.bookmarks);
+  const toggle = useFileHistoryStore((s) => s.toggleBookmark);
+  const isBookmarked = bookmarks.some((b) => b.path === path);
+  const Icon = isBookmarked ? StarIconSolid : StarIcon;
+  return (
+    <button
+      type="button"
+      onClick={() => toggle(path, isDir)}
+      aria-label={isBookmarked ? "Remove bookmark" : "Add bookmark"}
+      title={isBookmarked ? "Remove bookmark" : "Add bookmark"}
+      data-test="portal-files-bookmark"
+      className={`inline-flex items-center gap-1 rounded border border-border bg-bg px-2 py-1 hover:bg-muted/30 ${
+        isBookmarked ? "text-amber-500" : ""
+      }`}
+    >
+      <Icon className="size-3" />
+    </button>
   );
 }
 
