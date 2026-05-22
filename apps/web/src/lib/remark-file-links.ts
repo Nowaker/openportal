@@ -49,7 +49,7 @@ function findMatches(text: string): Array<{ start: number; end: number; path: st
 }
 
 function makeLinkUrl(path: string): string {
-  return `file:///?path=${encodeURIComponent(path)}`;
+  return `/files?path=${encodeURIComponent(path)}`;
 }
 
 export const remarkFileLinks = () => {

@@ -1,5 +1,4 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { z } from "zod/v4";
 import {
   useEffect,
   useLayoutEffect,
@@ -128,14 +127,28 @@ import useMediaQuery from "@/hooks/use-media-query";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import type { Session } from "@opencode-ai/sdk";
 
-const sessionSearchSchema = z.object({
-  focus: z.literal("composer").optional(),
-  prompts: z.union([z.literal("1"), z.literal(1), z.literal(true)]).optional(),
-});
+// Search params on this route are best-effort. Stale URL state from
+// history transitions or copy-pasted links MUST NOT crash the router
+// match step (tanstack-router throws ZodError otherwise). .catch maps
+// any non-matching value to undefined so the route accepts any URL
+// shape and silently drops what it can't interpret.
+interface SessionSearch {
+  focus?: "composer";
+  prompts?: 1;
+}
 
 export const Route = createFileRoute("/_app/session/$id")({
   component: SessionRouteWrapper,
-  validateSearch: sessionSearchSchema,
+  validateSearch: (raw: Record<string, unknown>): SessionSearch => ({
+    focus: raw.focus === "composer" ? "composer" : undefined,
+    prompts:
+      raw.prompts === 1 ||
+      raw.prompts === "1" ||
+      raw.prompts === true ||
+      raw.prompts === "true"
+        ? 1
+        : undefined,
+  }),
 });
 
 function SessionRouteWrapper() {
@@ -396,7 +409,7 @@ function parseToolQuestions(part: ToolPart): QuestionInfo[] {
 
 function formatToolCall(part: ToolPart): {
   icon: React.ReactNode;
-  label: string;
+  label: React.ReactNode;
   details?: string;
 } {
   const toolName = part.tool?.toLowerCase() || "";
@@ -404,7 +417,7 @@ function formatToolCall(part: ToolPart): {
 
   switch (toolName) {
     case "edit": {
-      const filePath = input.filePath || input.file || "";
+      const filePath = String(input.filePath || input.file || "");
       const additions =
         typeof input._newLines === "number"
           ? input._newLines
@@ -415,26 +428,38 @@ function formatToolCall(part: ToolPart): {
           : String(input.oldString || "").split("\n").length;
       return {
         icon: <IconPen size="12px" />,
-        label: `edit ${filePath}`,
+        label: (
+          <>
+            edit <InlineFilePath path={filePath} />
+          </>
+        ),
         details: `(+${additions}-${deletions})`,
       };
     }
     case "read": {
-      const filePath = input.filePath || input.file || "";
+      const filePath = String(input.filePath || input.file || "");
       return {
         icon: <IconEye size="12px" />,
-        label: `read ${filePath}`,
+        label: (
+          <>
+            read <InlineFilePath path={filePath} />
+          </>
+        ),
       };
     }
     case "write": {
-      const filePath = input.filePath || input.file || "";
+      const filePath = String(input.filePath || input.file || "");
       const lines =
         typeof input._contentLines === "number"
           ? input._contentLines
           : String(input.content || "").split("\n").length;
       return {
         icon: <IconSquareFeather size="12px" />,
-        label: `write ${filePath}`,
+        label: (
+          <>
+            write <InlineFilePath path={filePath} />
+          </>
+        ),
         details: `(${lines} lines)`,
       };
     }
@@ -448,8 +473,8 @@ function formatToolCall(part: ToolPart): {
       };
     }
     case "glob": {
-      const pattern = input?.pattern || "";
-      const path = input?.path || "";
+      const pattern = String(input?.pattern || "");
+      const path = String(input?.path || "");
       return {
         icon: <IconMagnifier size="12px" />,
         label: `glob ${pattern}`,
@@ -457,8 +482,8 @@ function formatToolCall(part: ToolPart): {
       };
     }
     case "grep": {
-      const pattern = input.pattern || "";
-      const path = input.path || "";
+      const pattern = String(input.pattern || "");
+      const path = String(input.path || "");
       return {
         icon: "◼︎",
         label: `grep "${pattern}"`,
@@ -2045,18 +2070,16 @@ function FileExistenceLink({
     return <span {...rest}>{children}</span>;
   }
   const resolvedAbs = data?.path ?? lookupPath;
+  const browserHref = `/files?path=${encodeURIComponent(resolvedAbs)}${hash}`;
   return (
     <a
       {...rest}
-      href={`file:///?path=${encodeURIComponent(resolvedAbs)}${hash}`}
+      href={browserHref}
       onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
         if (isMobile) {
-          window.open(
-            `/files?path=${encodeURIComponent(resolvedAbs)}${hash}`,
-            "_blank",
-            "noopener,noreferrer",
-          );
+          window.open(browserHref, "_blank", "noopener,noreferrer");
         } else {
           useFileBrowserPanelStore.getState().open(resolvedAbs);
         }
@@ -2064,6 +2087,24 @@ function FileExistenceLink({
     >
       {children}
     </a>
+  );
+}
+
+// Inline file-path link used inside tool-call labels (edit/read/write).
+// Tool inputs carry absolute paths, so we don't need sessionDirectory
+// here. Reuses FileExistenceLink so the existence-check + click
+// routing matches markdown links exactly.
+function InlineFilePath({ path }: { path: string }) {
+  if (!path) return null;
+  return (
+    <FileExistenceLink
+      rawPath={path}
+      sessionDirectory={null}
+      hash=""
+      rest={{ className: "underline decoration-dotted underline-offset-2" }}
+    >
+      <span className="font-mono text-[11px]">{path}</span>
+    </FileExistenceLink>
   );
 }
 
@@ -2091,17 +2132,16 @@ function MessageMarkdown({
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       a: ({ href, children, ...rest }: any) => {
-        if (typeof href === "string" && href.startsWith("file://")) {
+        // Portal-emitted file links: /files?path=<encoded>. Hover shows
+        // a real working URL, middle-click / ctrl-click opens the file
+        // browser route in a new tab. The handler below preventDefaults
+        // a plain left-click so we can use the in-app panel/route.
+        if (typeof href === "string" && href.startsWith("/files?")) {
           let path: string | null = null;
           let hash = "";
           try {
-            const u = new URL(href);
-            const qp = u.searchParams.get("path");
-            if (qp !== null) {
-              path = qp;
-            } else {
-              path = decodeURIComponent(u.pathname);
-            }
+            const u = new URL(href, window.location.origin);
+            path = u.searchParams.get("path");
             hash = u.hash;
           } catch {
             path = null;
