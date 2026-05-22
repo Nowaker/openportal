@@ -2006,44 +2006,59 @@ function joinPosix(base: string, rel: string): string {
   return `${baseClean}/${relClean}`;
 }
 
+function resolvePath(
+  rawPath: string,
+  sessionDirectory: string | null,
+): string | null {
+  if (!rawPath) return null;
+  if (rawPath.startsWith("/")) return rawPath;
+  if (rawPath.startsWith("~")) return rawPath;
+  if (!sessionDirectory) return null;
+  return joinPosix(sessionDirectory, rawPath);
+}
+
 function FileExistenceLink({
-  absolutePath,
+  rawPath,
+  sessionDirectory,
   hash,
   children,
   rest,
 }: {
-  absolutePath: string;
+  rawPath: string;
+  sessionDirectory: string | null;
   hash: string;
   children: React.ReactNode;
   rest: Record<string, unknown>;
 }) {
   const { isMobile } = useMediaQuery();
-  const { data } = useSWR<{ exists: boolean }>(
-    `/api/fs/exists?path=${encodeURIComponent(absolutePath)}`,
+  const lookupPath = resolvePath(rawPath, sessionDirectory);
+  const { data } = useSWR<{ exists: boolean; path?: string }>(
+    lookupPath ? `/api/fs/exists?path=${encodeURIComponent(lookupPath)}` : null,
     async (url: string) => {
       const r = await fetch(url);
       if (!r.ok) return { exists: false };
-      return (await r.json()) as { exists: boolean };
+      return (await r.json()) as { exists: boolean; path?: string };
     },
     { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
-  if (data && !data.exists) {
+  if (!lookupPath || (data && !data.exists)) {
     return <span {...rest}>{children}</span>;
   }
+  const resolvedAbs = data?.path ?? lookupPath;
   return (
     <a
       {...rest}
-      href={`file://${absolutePath}${hash}`}
+      href={`file:///?path=${encodeURIComponent(resolvedAbs)}${hash}`}
       onClick={(e) => {
         e.preventDefault();
         if (isMobile) {
           window.open(
-            `/files?path=${encodeURIComponent(absolutePath)}${hash}`,
+            `/files?path=${encodeURIComponent(resolvedAbs)}${hash}`,
             "_blank",
             "noopener,noreferrer",
           );
         } else {
-          useFileBrowserPanelStore.getState().open(absolutePath);
+          useFileBrowserPanelStore.getState().open(resolvedAbs);
         }
       }}
     >
@@ -2077,47 +2092,42 @@ function MessageMarkdown({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       a: ({ href, children, ...rest }: any) => {
         if (typeof href === "string" && href.startsWith("file://")) {
-          return (
-            <a
-              {...rest}
-              href={href}
-              onClick={(e) => {
-                e.preventDefault();
-                let path: string | null = null;
-                let hash = "";
-                try {
-                  const u = new URL(href);
-                  path = decodeURIComponent(u.pathname);
-                  hash = u.hash;
-                } catch {
-                  path = null;
-                }
-                if (!path) return;
-                if (isMobile) {
-                  window.open(
-                    `/files?path=${encodeURIComponent(path)}${hash}`,
-                    "_blank",
-                    "noopener,noreferrer",
-                  );
-                } else {
-                  useFileBrowserPanelStore.getState().open(path);
-                }
-              }}
-            >
-              {children}
-            </a>
-          );
+          let path: string | null = null;
+          let hash = "";
+          try {
+            const u = new URL(href);
+            const qp = u.searchParams.get("path");
+            if (qp !== null) {
+              path = qp;
+            } else {
+              path = decodeURIComponent(u.pathname);
+            }
+            hash = u.hash;
+          } catch {
+            path = null;
+          }
+          if (path) {
+            return (
+              <FileExistenceLink
+                rawPath={path}
+                sessionDirectory={sessionDirectory ?? null}
+                hash={hash}
+                rest={rest}
+              >
+                {children}
+              </FileExistenceLink>
+            );
+          }
         }
         if (
           typeof href === "string" &&
-          sessionDirectory &&
           looksLikeRelativeFilePath(href)
         ) {
           const [pathPart, hashPart = ""] = href.split(/(?=#)/, 2);
-          const absolutePath = joinPosix(sessionDirectory, pathPart);
           return (
             <FileExistenceLink
-              absolutePath={absolutePath}
+              rawPath={pathPart}
+              sessionDirectory={sessionDirectory ?? null}
               hash={hashPart}
               rest={rest}
             >
