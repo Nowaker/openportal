@@ -14,7 +14,7 @@ import { OpencodeUpdateBanner } from "@/components/opencode-update-banner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
-import { useSelfInstance } from "@/hooks/use-opencode";
+import { useBootstrapPrefetch, useSelfInstance } from "@/hooks/use-opencode";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useBuildMismatch } from "@/hooks/use-build-mismatch";
 import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
@@ -406,6 +406,7 @@ function AppLayout() {
   usePullToRefresh();
   useSettingsSync();
   useEventStream();
+  useBootstrapPrefetch();
 
   // Permalink consumption: when a URL carries ?server=<id> and the
   // instance store is not yet bound to that server, POST to

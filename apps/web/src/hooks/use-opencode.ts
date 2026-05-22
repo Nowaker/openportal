@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import useSWR from "swr";
+import { useEffect, useMemo } from "react";
+import useSWR, { useSWRConfig } from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import {
@@ -218,13 +218,63 @@ export function useConfig() {
 export function useProviders() {
   const port = usePort();
 
-  return useSWR(port ? `/api/opencode/${port}/providers` : null, fetcher);
+  return useSWR(port ? `/api/opencode/${port}/providers` : null, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5000,
+    keepPreviousData: true,
+  });
 }
 
 export function useAgents() {
   const port = usePort();
 
-  return useSWR(port ? `/api/opencode/${port}/agents` : null, fetcher);
+  return useSWR(port ? `/api/opencode/${port}/agents` : null, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5000,
+    keepPreviousData: true,
+  });
+}
+
+// Hydrates providers/agents/config SWR caches in ONE round-trip so the
+// initial page render doesn't fan out to three separate /api calls on
+// a slow link. Mount once near the app root. Server-side keeps a
+// stale-while-revalidate cache (bootstrap-cache.ts) so subsequent
+// individual calls (when components re-mount) also stay fast.
+export function useBootstrapPrefetch() {
+  const port = usePort();
+  const { mutate } = useSWRConfig();
+  const { data } = useSWR(
+    port ? `/api/opencode/${port}/bootstrap` : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 5000,
+      keepPreviousData: true,
+    },
+  );
+  useEffect(() => {
+    if (!port || !data) return;
+    const payload = data as {
+      providers?: unknown;
+      agents?: unknown;
+      config?: unknown;
+    };
+    if (payload.providers !== undefined) {
+      void mutate(`/api/opencode/${port}/providers`, payload.providers, {
+        revalidate: false,
+      });
+    }
+    if (payload.agents !== undefined) {
+      void mutate(`/api/opencode/${port}/agents`, payload.agents, {
+        revalidate: false,
+      });
+    }
+    if (payload.config !== undefined) {
+      void mutate(`/api/opencode/${port}/config`, payload.config, {
+        revalidate: false,
+      });
+    }
+  }, [port, data, mutate]);
 }
 
 export function useHealth() {
