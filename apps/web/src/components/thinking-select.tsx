@@ -74,6 +74,15 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
 
   const current = useThinkingStore((s) => s.resolve(sessionId));
   const setForSession = useThinkingStore((s) => s.setForSession);
+  const setDefault = useThinkingStore((s) => s.setDefault);
+
+  const applyEffort = (effort: string) => {
+    if (sessionId) {
+      setForSession(sessionId, effort);
+    } else {
+      setDefault(effort);
+    }
+  };
 
   if (variants.length === 0) return null;
 
@@ -94,9 +103,7 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
       </Button>
       <MenuContent placement="bottom end" className="min-w-32">
         <MenuItem
-          onAction={() => {
-            if (sessionId) setForSession(sessionId, "");
-          }}
+          onAction={() => applyEffort("")}
         >
           <span className="flex items-center gap-2">
             {variantIcon("", "size-4")}
@@ -106,9 +113,7 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
         {variants.map((v) => (
           <MenuItem
             key={v}
-            onAction={() => {
-              if (sessionId) setForSession(sessionId, v);
-            }}
+            onAction={() => applyEffort(v)}
           >
             <span className="flex items-center gap-2">
               {variantIcon(v, "size-4")}

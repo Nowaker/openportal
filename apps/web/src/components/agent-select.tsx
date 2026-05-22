@@ -21,23 +21,20 @@ function isValidAgent(agents: Agent[], name?: string | null) {
   return agents.some((agent) => agent.name === name);
 }
 
-// Layered last-used resolution for brand-new sessions:
-//   1. agent already chosen for THIS session (handled before this is called)
-//   2. agent last picked on THIS server (lastUsedForInstance)
-//   3. agent last picked GLOBALLY (lastUsedGlobal)
-//   4. user-configured defaultName ("plan" by default)
-//   5. hard fallback: first available agent
+// Layered resolution: returns the agent name to display when this
+// session doesn't have its own pick yet (or doesn't have an id yet,
+// like the new-session composer).
+//   1. agent last picked on THIS server (lastUsedForInstance)
+//   2. agent last picked GLOBALLY (lastUsedGlobal)
+//   3. hard fallback: 'plan' if present, else first available agent
 function resolveDefaultAgentName(
   agents: Agent[],
-  defaultName: string,
   lastUsedForInstance: string | null,
   lastUsedGlobal: string | null,
 ) {
   if (agents.length === 0) return undefined;
-
   if (isValidAgent(agents, lastUsedForInstance)) return lastUsedForInstance!;
   if (isValidAgent(agents, lastUsedGlobal)) return lastUsedGlobal!;
-  if (isValidAgent(agents, defaultName)) return defaultName;
   return agents.find((agent) => agent.name === "plan")?.name ?? agents[0]?.name;
 }
 
@@ -50,33 +47,41 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
 
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
   const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
-  const defaultAgentName = useAgentStore((s) => s.defaultAgentName);
+  const setLastUsedAgentForInstance = useAgentStore(
+    (s) => s.setLastUsedAgentForInstance,
+  );
+  const setLastUsedAgentGlobal = useAgentStore((s) => s.setLastUsedAgentGlobal);
   const lastUsedAgentGlobal = useAgentStore((s) => s.lastUsedAgentGlobal);
   const lastUsedAgentForInstance = useAgentStore((s) =>
     s.getLastUsedAgentForInstance(instanceId),
   );
 
+  const resolvedDefault = resolveDefaultAgentName(
+    agents,
+    lastUsedAgentForInstance,
+    lastUsedAgentGlobal,
+  );
+  // displayedAgent is what the Select shows. For an existing session
+  // we read its per-session pick; if missing, fall back to the
+  // resolved default. For the new-session composer (sessionId=null)
+  // we always show the resolved default since there's no per-session
+  // entry to read yet.
+  const displayedAgent = sessionId
+    ? (isValidAgent(agents, selectedAgent) ? selectedAgent : resolvedDefault)
+    : resolvedDefault;
+
   useEffect(() => {
     if (!sessionId || agents.length === 0) return;
     if (isValidAgent(agents, selectedAgent)) return;
-
-    const fallback = resolveDefaultAgentName(
-      agents,
-      defaultAgentName,
-      lastUsedAgentForInstance,
-      lastUsedAgentGlobal,
-    );
-    if (fallback) {
-      setSelectedAgent(sessionId, fallback, instanceId);
+    if (resolvedDefault) {
+      setSelectedAgent(sessionId, resolvedDefault, instanceId);
     }
   }, [
     agents,
     sessionId,
     selectedAgent,
     setSelectedAgent,
-    defaultAgentName,
-    lastUsedAgentForInstance,
-    lastUsedAgentGlobal,
+    resolvedDefault,
     instanceId,
   ]);
 
@@ -85,10 +90,18 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
       aria-label="Agent"
       placeholder={isLoading ? "Loading agents..." : "Select agent"}
       className="w-full min-w-0"
-      selectedKey={selectedAgent}
+      selectedKey={displayedAgent}
       onSelectionChange={(key) => {
-        if (sessionId && key) {
-          setSelectedAgent(sessionId, String(key), instanceId);
+        if (!key) return;
+        const name = String(key);
+        if (sessionId) {
+          setSelectedAgent(sessionId, name, instanceId);
+        } else {
+          // new-session composer: persist the pick as the new default
+          // so resolveDefaultAgent reads it back at submit time and
+          // the display stays consistent with what the user clicked.
+          setLastUsedAgentForInstance(instanceId, name);
+          setLastUsedAgentGlobal(name);
         }
       }}
     >

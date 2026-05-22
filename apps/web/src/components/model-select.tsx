@@ -115,6 +115,9 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
   );
   const setModelForSession = useModelStore((s) => s.setModelForSession);
   const clearSessionModel = useModelStore((s) => s.clearSessionModel);
+  const setInstanceDefaultModel = useModelStore(
+    (s) => s.setInstanceDefaultModel,
+  );
   const setModelFromDefault = useModelStore((s) => s.setModelFromDefault);
   const isOverridingDefault = useModelStore((s) =>
     s.isOverridingDefault(sessionId ?? null, instanceId ?? null),
@@ -161,8 +164,15 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
           if (sessionId) clearSessionModel(sessionId);
           return;
         }
+        const value = String(key);
         if (sessionId) {
-          setModelForSession(sessionId, String(key), instanceId ?? null);
+          setModelForSession(sessionId, value, instanceId ?? null);
+        } else {
+          // new-session composer (no sessionId yet): write to the
+          // instance + global last-used layers so the picked model
+          // is what resolveModelKey returns at submit time AND
+          // becomes the default for future new-session screens.
+          setInstanceDefaultModel(value, instanceId ?? null);
         }
       }}
     >

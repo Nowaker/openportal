@@ -19,7 +19,9 @@ import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
 import { useAgentStore } from "@/stores/agent-store";
 import { ModelSelect } from "@/components/model-select";
+import { useModelStore } from "@/stores/model-store";
 import { ThinkingSelect } from "@/components/thinking-select";
+import { useThinkingStore } from "@/stores/thinking-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -85,6 +87,9 @@ function NewSessionPage() {
   const createSession = useCreateSession();
   const instanceId = useInstanceStore((s) => s.instance?.id ?? null);
   const resolveDefaultAgent = useAgentStore((s) => s.resolveDefaultAgent);
+  const resolveModel = useModelStore((s) => s.resolveModel);
+  const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
+  const resolveThinking = useThinkingStore((s) => s.resolve);
   const { mutate: globalMutate } = useSWRConfig();
 
   const directory = directoryFromUrl || storeDir || null;
@@ -299,14 +304,20 @@ function NewSessionPage() {
         const sessionId = session.id;
         setSendingStatus("Session created. Sending your prompt to OpenCode...");
 
+        const pickedAgent = resolveDefaultAgent(instanceId);
+        const pickedThinking = resolveThinking(null);
+        const overridingModel = isOverridingDefault(null, instanceId);
+        const pickedModel = overridingModel
+          ? resolveModel(null, instanceId)
+          : null;
         const body = {
           text: message,
           ...(pendingAttachments.length > 0
             ? { attachments: pendingAttachments }
             : {}),
-          ...(resolveDefaultAgent(instanceId)
-            ? { agent: resolveDefaultAgent(instanceId)! }
-            : {}),
+          ...(pickedAgent ? { agent: pickedAgent } : {}),
+          ...(pickedModel ? { model: pickedModel } : {}),
+          ...(pickedThinking ? { thinking: pickedThinking } : {}),
         };
 
         const res = await fetch(
