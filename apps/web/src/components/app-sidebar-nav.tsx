@@ -734,14 +734,22 @@ export function AppSidebarNav() {
                           : kind === "failed"
                             ? "Failed"
                             : kind === "needsAuth"
-                              ? "Needs auth"
+                              ? "Needs auth - click for details"
                               : kind === "needsClientRegistration"
                                 ? "Needs client registration"
                                 : "Unknown";
                     const iconColor =
-                      kind === "disabled"
-                        ? "text-muted-fg/40"
-                        : "text-muted-fg";
+                      kind === "connected"
+                        ? "text-emerald-500"
+                        : kind === "disabled"
+                          ? "text-muted-fg/40"
+                          : kind === "failed"
+                            ? "text-red-500"
+                            : kind === "needsAuth"
+                              ? "text-amber-500"
+                              : kind === "needsClientRegistration"
+                                ? "text-red-600"
+                                : "text-muted-fg";
                     return (
                       <MenuItem
                         key={name}

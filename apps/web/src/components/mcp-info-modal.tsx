@@ -213,7 +213,10 @@ function statusLabel(kind: string): string {
 function statusDot(kind: string): string {
   if (kind === "connected") return "bg-emerald-500";
   if (kind === "disabled") return "bg-muted-fg/40";
-  return "bg-amber-500";
+  if (kind === "failed") return "bg-red-500";
+  if (kind === "needsAuth") return "bg-amber-500";
+  if (kind === "needsClientRegistration") return "bg-red-600";
+  return "bg-muted-fg";
 }
 
 interface OpencodeConfig {
