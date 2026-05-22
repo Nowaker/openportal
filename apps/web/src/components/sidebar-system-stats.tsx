@@ -1,3 +1,4 @@
+import { useInstanceStore } from "@/stores/instance-store";
 import { useSystemStats } from "@/stores/system-stats-store";
 
 function formatRss(kb: number): string {
@@ -42,6 +43,7 @@ function Bar({
 
 export function SidebarSystemStats() {
   const { stats, isLoading } = useSystemStats();
+  const activePort = useInstanceStore((s) => s.instance?.port ?? null);
   if (isLoading && !stats.load) return null;
   if (!stats.load && !stats.memory) return null;
 
@@ -57,11 +59,24 @@ export function SidebarSystemStats() {
   const memPercent = stats.memory?.usedPercent ?? 0;
   const memTone =
     memPercent >= 90 ? "danger" : memPercent >= 80 ? "warning" : "neutral";
+  const memTotalKb = stats.memory?.totalKb ?? 0;
+
+  // The active opencode is the one we're connected to right now -
+  // pgrep's cmdline column carries `--port <N>` so we match on that.
+  const currentProcess = activePort
+    ? stats.opencodeProcesses.find((p) =>
+        p.cmdline.includes(`--port ${activePort}`),
+      ) ?? null
+    : null;
+  const currentMemPercent =
+    currentProcess && memTotalKb > 0
+      ? (currentProcess.rssKb / memTotalKb) * 100
+      : 0;
+
   const totalOpencodeRssKb = stats.opencodeProcesses.reduce(
     (sum, p) => sum + p.rssKb,
     0,
   );
-  const memTotalKb = stats.memory?.totalKb ?? 0;
   const opencodeMemPercent =
     memTotalKb > 0 ? (totalOpencodeRssKb / memTotalKb) * 100 : 0;
   const totalOpencodeCpu = stats.opencodeProcesses.reduce(
@@ -94,9 +109,17 @@ export function SidebarSystemStats() {
         }
         tone={memTone}
       />
+      {currentProcess && (
+        <Bar
+          label="Current opencode"
+          percent={currentMemPercent}
+          detail={`${formatRss(currentProcess.rssKb)}, ${currentProcess.cpuPercent.toFixed(0)}% CPU`}
+          tone="neutral"
+        />
+      )}
       {stats.opencodeProcesses.length > 0 && (
         <Bar
-          label={`OpenCode×${stats.opencodeProcesses.length}`}
+          label={`All opencodes×${stats.opencodeProcesses.length}`}
           percent={opencodeMemPercent}
           detail={`${formatRss(totalOpencodeRssKb)}, ${totalOpencodeCpu.toFixed(0)}% CPU`}
           tone="neutral"
