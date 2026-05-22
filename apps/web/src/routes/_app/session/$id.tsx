@@ -1989,12 +1989,77 @@ function CodeBlockCopyButton({ text }: { text: string }) {
   );
 }
 
+function looksLikeRelativeFilePath(href: string): boolean {
+  if (!href) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return false;
+  if (href.startsWith("/")) return false;
+  if (href.startsWith("~")) return false;
+  if (href.startsWith("#")) return false;
+  if (href.startsWith("?")) return false;
+  if (href.startsWith("//")) return false;
+  return true;
+}
+
+function joinPosix(base: string, rel: string): string {
+  const baseClean = base.replace(/\/+$/, "");
+  const relClean = rel.replace(/^\.\/+/, "");
+  return `${baseClean}/${relClean}`;
+}
+
+function FileExistenceLink({
+  absolutePath,
+  hash,
+  children,
+  rest,
+}: {
+  absolutePath: string;
+  hash: string;
+  children: React.ReactNode;
+  rest: Record<string, unknown>;
+}) {
+  const { isMobile } = useMediaQuery();
+  const { data } = useSWR<{ exists: boolean }>(
+    `/api/fs/exists?path=${encodeURIComponent(absolutePath)}`,
+    async (url: string) => {
+      const r = await fetch(url);
+      if (!r.ok) return { exists: false };
+      return (await r.json()) as { exists: boolean };
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  if (data && !data.exists) {
+    return <span {...rest}>{children}</span>;
+  }
+  return (
+    <a
+      {...rest}
+      href={`file://${absolutePath}${hash}`}
+      onClick={(e) => {
+        e.preventDefault();
+        if (isMobile) {
+          window.open(
+            `/files?path=${encodeURIComponent(absolutePath)}${hash}`,
+            "_blank",
+            "noopener,noreferrer",
+          );
+        } else {
+          useFileBrowserPanelStore.getState().open(absolutePath);
+        }
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 function MessageMarkdown({
   text,
   remarkPlugins,
+  sessionDirectory,
 }: {
   text: string;
   remarkPlugins: NonNullable<React.ComponentProps<typeof Markdown>["remarkPlugins"]>;
+  sessionDirectory?: string;
 }) {
   const { isMobile } = useMediaQuery();
   const components = useMemo(
@@ -2043,6 +2108,23 @@ function MessageMarkdown({
             </a>
           );
         }
+        if (
+          typeof href === "string" &&
+          sessionDirectory &&
+          looksLikeRelativeFilePath(href)
+        ) {
+          const [pathPart, hashPart = ""] = href.split(/(?=#)/, 2);
+          const absolutePath = joinPosix(sessionDirectory, pathPart);
+          return (
+            <FileExistenceLink
+              absolutePath={absolutePath}
+              hash={hashPart}
+              rest={rest}
+            >
+              {children}
+            </FileExistenceLink>
+          );
+        }
         const isAnchor = typeof href === "string" && href.startsWith("#");
         const isMailto = typeof href === "string" && href.startsWith("mailto:");
         const openInNewTab = !!href && !isAnchor && !isMailto;
@@ -2058,7 +2140,7 @@ function MessageMarkdown({
         );
       },
     }),
-    [isMobile],
+    [isMobile, sessionDirectory],
   );
 
   return (
@@ -2263,6 +2345,7 @@ const MessageItem = memo(function MessageItem({
   message,
   port,
   sessionId,
+  sessionDirectory,
   pendingPermissions,
   onPermissionResolved,
   isAssistantBusy,
@@ -2276,6 +2359,7 @@ const MessageItem = memo(function MessageItem({
   message: MessageWithParts;
   port: number;
   sessionId: string;
+  sessionDirectory: string | null;
   pendingPermissions: PermissionRequest[];
   onPermissionResolved: (requestId: string) => void;
   isAssistantBusy: boolean;
@@ -2424,6 +2508,7 @@ const MessageItem = memo(function MessageItem({
                 <MessageMarkdown
                   text={textContent}
                   remarkPlugins={[remarkGfm]}
+                  sessionDirectory={sessionDirectory ?? undefined}
                 />
               ) : (
                 omoBlocks.map((block, i) =>
@@ -2449,6 +2534,7 @@ const MessageItem = memo(function MessageItem({
                       key={`user-${i}`}
                       text={block.text}
                       remarkPlugins={[remarkGfm, remarkBreaks]}
+                      sessionDirectory={sessionDirectory ?? undefined}
                     />
                   ) : null,
                 )
@@ -4555,6 +4641,7 @@ function SessionPage() {
           message={messageWithQueueFlag}
           port={port}
           sessionId={sessionId}
+          sessionDirectory={currentSession?.directory ?? null}
           pendingPermissions={pendingPermissions}
           onPermissionResolved={handlePermissionResolved}
           isAssistantBusy={isAssistantBusy}
@@ -4570,6 +4657,7 @@ function SessionPage() {
     [
       port,
       sessionId,
+      currentSession?.directory,
       pendingPermissions,
       handlePermissionResolved,
       isAssistantBusy,
