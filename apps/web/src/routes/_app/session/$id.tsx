@@ -2208,36 +2208,34 @@ function MessageMarkdown({
 function PermalinkGapBanner({
   gapCount,
   loading,
-  onLoadNext,
+  onLoadTop,
+  onLoadBottom,
   onLoadAll,
 }: {
   gapCount: number;
   loading: boolean;
-  onLoadNext: () => void;
+  onLoadTop: () => void;
+  onLoadBottom: () => void;
   onLoadAll: () => void;
 }) {
   return (
     <div className="my-3 mx-3 rounded-md border border-dashed border-border bg-muted/20 px-3 py-3 flex flex-col gap-2 items-center text-center">
-      <div className="text-xs text-muted-fg">
-        Gap of {gapCount.toLocaleString()} message
-        {gapCount === 1 ? "" : "s"} between target window and latest
-        messages.
-      </div>
-      <div className="flex items-center justify-center gap-2 flex-wrap">
-        {loading ? (
-          <div className="flex items-center gap-2">
-            <Loader className="size-4" />
-            <span className="text-xs text-muted-fg">Loading...</span>
-          </div>
-        ) : (
-          <>
+      {loading ? (
+        <div className="flex items-center gap-2 py-2">
+          <Loader className="size-4" />
+          <span className="text-xs text-muted-fg">Loading...</span>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
             <button
               type="button"
-              onClick={onLoadNext}
+              onClick={onLoadTop}
               disabled={loading}
+              title="Extend the target window downward into the gap"
               className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
             >
-              Load 50 more
+              Load top 50 more
             </button>
             <button
               type="button"
@@ -2248,9 +2246,34 @@ function PermalinkGapBanner({
             >
               Load all (slow)
             </button>
-          </>
-        )}
-      </div>
+          </div>
+          <div className="text-xs text-muted-fg">
+            Gap of {gapCount.toLocaleString()} message
+            {gapCount === 1 ? "" : "s"} between target window and latest
+            messages.
+          </div>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={onLoadBottom}
+              disabled={loading}
+              title="Extend the latest window upward into the gap"
+              className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
+            >
+              Load bottom 50 more
+            </button>
+            <button
+              type="button"
+              onClick={onLoadAll}
+              disabled={loading}
+              title="Loading the entire history can take long on big sessions"
+              className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
+            >
+              Load all (slow)
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -4759,9 +4782,10 @@ function SessionPage() {
       <>
         {aroundPart.map((message, idx) => renderMessage(message, idx, ctx))}
         <PermalinkGapBanner
-          gapCount={permalinkWindow.gap.count}
+          gapCount={permalinkWindow.gapCount}
           loading={permalinkWindow.loading.fillGap}
-          onLoadNext={() => permalinkWindow.fillGap("next50")}
+          onLoadTop={() => permalinkWindow.fillGap("next50")}
+          onLoadBottom={() => permalinkWindow.fillGap("prev50")}
           onLoadAll={() => permalinkWindow.fillGap("all")}
         />
         {latestPart.map((message, idx) =>

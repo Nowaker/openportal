@@ -234,7 +234,7 @@ export function removeOptimisticMessage(
 // at a time from the bottom edge of the around-target window upward
 // into the gap; 'all' replaces the merged view with the full
 // (?limit=all) session list.
-export type FillGapStrategy = "next50" | "all";
+export type FillGapStrategy = "next50" | "prev50" | "all";
 
 export interface PermalinkWindowState {
   messages: MessageWithParts[];
@@ -437,6 +437,16 @@ export function useSessionMessagesAround(
           setLatest([]);
           setTarget([]);
           setTotalCount(r.messages.length);
+        } else if (strategy === "prev50") {
+          const anchor = latest[0];
+          if (!anchor) return;
+          const enc = encodeURIComponent(anchor.info.id);
+          const r = await fetchWindow(
+            `${baseUrl}?before=${enc}&limit=50${onlyUserSuffix}`,
+          );
+          if (myToken !== cancelTokenRef.current) return;
+          setLatest((cur) => mergeByIdSorted([r.messages, cur]));
+          if (r.total !== null) setTotalCount(r.total);
         } else {
           const around = mergeByIdSorted([before, target, after]);
           const anchor = around[around.length - 1];
@@ -458,7 +468,7 @@ export function useSessionMessagesAround(
         }
       }
     },
-    [baseUrl, before, target, after, loading.fillGap, onlyUserSuffix],
+    [baseUrl, before, target, after, latest, loading.fillGap, onlyUserSuffix],
   );
 
   const around = useMemo(
