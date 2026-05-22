@@ -1,10 +1,13 @@
 import { useInstanceStore } from "@/stores/instance-store";
 import { useSystemStats } from "@/stores/system-stats-store";
 
-function formatRss(kb: number): string {
-  if (kb >= 1024 * 1024) return `${(kb / 1024 / 1024).toFixed(1)} GB`;
-  if (kb >= 1024) return `${(kb / 1024).toFixed(0)} MB`;
-  return `${kb} kB`;
+function formatSize(kb: number): string {
+  if (kb >= 1024 * 1024 * 1024)
+    return `${(kb / (1024 * 1024 * 1024)).toFixed(1)} TB`;
+  if (kb >= 1024 * 1024)
+    return `${(kb / (1024 * 1024)).toFixed(1)} GB`;
+  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`;
+  return `${kb} KB`;
 }
 
 function Bar({
@@ -48,15 +51,19 @@ export function SidebarSystemStats() {
   if (isLoading && !stats.load) return null;
   if (!stats.load && !stats.memory) return null;
 
+  // Prefer server-computed total CPU% (delta-sampled /proc/stat
+  // idle vs total jiffies) over load1/cores which can lag behind
+  // the actual instantaneous workload. Fall back to load1/cores
+  // when the sampler returns null (kernel didn't provide /proc/stat).
   const cores =
     typeof navigator !== "undefined"
       ? Math.max(1, navigator.hardwareConcurrency || 1)
       : 1;
-  const loadPercent = stats.load
-    ? Math.min(100, (stats.load.one / cores) * 100)
-    : 0;
-  const loadTone =
-    loadPercent >= 90 ? "danger" : loadPercent >= 70 ? "warning" : "neutral";
+  const cpuPercent =
+    stats.cpu?.totalPercent ??
+    (stats.load ? Math.min(100, (stats.load.one / cores) * 100) : 0);
+  const cpuTone =
+    cpuPercent >= 90 ? "danger" : cpuPercent >= 70 ? "warning" : "neutral";
   const memPercent = stats.memory?.usedPercent ?? 0;
   const memTone =
     memPercent >= 90 ? "danger" : memPercent >= 80 ? "warning" : "neutral";
@@ -106,20 +113,16 @@ export function SidebarSystemStats() {
     >
       <Bar
         label="cpu"
-        percent={loadPercent}
-        detail={
-          stats.load
-            ? `${stats.load.one.toFixed(2)} (${cores}c)`
-            : "—"
-        }
-        tone={loadTone}
+        percent={cpuPercent}
+        detail={`${Math.round(cpuPercent)}%`}
+        tone={cpuTone}
       />
       <Bar
         label="ram"
         percent={memPercent}
         detail={
           stats.memory
-            ? `${stats.memory.usedPercent}% (${formatRss(stats.memory.usedKb)})`
+            ? `${stats.memory.usedPercent}% (${formatSize(stats.memory.usedKb)})`
             : "—"
         }
         tone={memTone}
@@ -128,7 +131,7 @@ export function SidebarSystemStats() {
         <Bar
           label="iowait"
           percent={stats.cpu.iowaitPercent}
-          detail={`${stats.cpu.iowaitPercent.toFixed(1)}%`}
+          detail={`${Math.round(stats.cpu.iowaitPercent)}%`}
           tone={
             stats.cpu.iowaitPercent >= 30
               ? "danger"
@@ -145,7 +148,7 @@ export function SidebarSystemStats() {
             key={`${d.path}-${i}`}
             label={label}
             percent={d.usedPercent}
-            detail={`${d.usedPercent}% (${formatRss(d.usedKb)} / ${formatRss(d.totalKb)})`}
+            detail={`${d.usedPercent}% (${formatSize(d.usedKb)} / ${formatSize(d.totalKb)})`}
             tone={
               d.usedPercent >= 95
                 ? "danger"
@@ -160,7 +163,7 @@ export function SidebarSystemStats() {
         <Bar
           label="this oc"
           percent={currentMemPercent}
-          detail={`${formatRss(currentProcess.rssKb)}, ${currentProcess.cpuPercent.toFixed(0)}% CPU`}
+          detail={`${formatSize(currentProcess.rssKb)}, ${Math.round(currentProcess.cpuPercent)}% CPU`}
           tone="neutral"
         />
       )}
@@ -168,7 +171,7 @@ export function SidebarSystemStats() {
         <Bar
           label={`all ocs×${stats.opencodeProcesses.length}`}
           percent={opencodeMemPercent}
-          detail={`${formatRss(totalOpencodeRssKb)}, ${totalOpencodeCpu.toFixed(0)}% CPU`}
+          detail={`${formatSize(totalOpencodeRssKb)}, ${Math.round(totalOpencodeCpu)}% CPU`}
           tone="neutral"
         />
       )}

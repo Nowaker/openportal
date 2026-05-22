@@ -1,6 +1,7 @@
 import { defineHandler } from "nitro/h3";
 import { execSync } from "child_process";
 import { readFileSync, statSync, statfsSync } from "fs";
+import { cpus } from "node:os";
 import { readPortalConfig } from "./lib/portal-config";
 
 interface DiskStat {
@@ -19,7 +20,7 @@ interface SystemStats {
     usedKb: number;
     usedPercent: number;
   } | null;
-  cpu: { iowaitPercent: number } | null;
+  cpu: { totalPercent: number; iowaitPercent: number } | null;
   disks: DiskStat[];
   opencodeProcesses: Array<{
     pid: number;
@@ -65,24 +66,145 @@ function readCpuStat(): {
   }
 }
 
-async function readIowaitPercent(): Promise<number | null> {
-  const a = readCpuStat();
-  if (!a) return null;
+function sumJiffies(s: NonNullable<ReturnType<typeof readCpuStat>>): number {
+  return (
+    s.user + s.nice + s.system + s.idle + s.iowait + s.irq + s.softirq + s.steal
+  );
+}
+
+// /proc/<pid>/stat fields after the (comm) blob: state, ppid, pgrp,
+// session, tty_nr, tpgid, flags, minflt, cminflt, majflt, cmajflt,
+// utime, stime. utime+stime is the CPU jiffies the process has
+// consumed. The (comm) blob can contain spaces and parens; the safe
+// parse splits on the LAST close-paren so anything before that
+// position is ignored.
+function readProcCpuJiffies(pid: number): number | null {
+  try {
+    const raw = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const lastParen = raw.lastIndexOf(")");
+    if (lastParen < 0) return null;
+    const tail = raw.slice(lastParen + 2).trim().split(/\s+/);
+    const utime = parseInt(tail[11] ?? "0", 10);
+    const stime = parseInt(tail[12] ?? "0", 10);
+    if (Number.isNaN(utime) || Number.isNaN(stime)) return null;
+    return utime + stime;
+  } catch {
+    return null;
+  }
+}
+
+interface OpencodeProcLite {
+  pid: number;
+  cmdline: string;
+}
+
+function listOpencodeProcs(): OpencodeProcLite[] {
+  try {
+    const raw = execSync("pgrep -af 'opencode .* serve' 2>/dev/null", {
+      encoding: "utf8",
+      timeout: 1500,
+    }).trim();
+    if (!raw) return [];
+    const out: OpencodeProcLite[] = [];
+    for (const line of raw.split("\n")) {
+      const space = line.indexOf(" ");
+      if (space < 0) continue;
+      const pid = parseInt(line.slice(0, space), 10);
+      const cmdline = line.slice(space + 1).trim();
+      if (!Number.isFinite(pid)) continue;
+      const head = cmdline.split(/\s+/)[0] ?? "";
+      if (!/(\/|^)opencode$/.test(head)) continue;
+      out.push({ pid, cmdline });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function readRssKb(pid: number): number {
+  try {
+    const statm = readFileSync(`/proc/${pid}/statm`, "utf8").trim();
+    const rssPages = parseInt(statm.split(/\s+/)[1] ?? "0", 10);
+    return rssPages * 4;
+  } catch {
+    return 0;
+  }
+}
+
+interface SampledStats {
+  iowaitPercent: number | null;
+  cpuPercent: number | null;
+  opencodeProcesses: SystemStats["opencodeProcesses"];
+}
+
+// Single delta-sampling pass that computes iowait + total CPU%
+// (overall, derived from idle-jiffies delta) + per-opencode-process
+// CPU% (derived from /proc/<pid>/stat utime+stime delta against the
+// system jiffies delta scaled by core count, so a process pegging
+// one core renders as 100% in a top-style display). One 100ms sleep
+// covers all three samples - the broken old path called `top -b -n 1`
+// per process which always returned 0% (top needs prior history to
+// compute a delta and the single-iteration mode has none).
+async function sampleStats(): Promise<SampledStats> {
+  const procs = listOpencodeProcs();
+  const numCpus = cpus().length || 1;
+  const sysA = readCpuStat();
+  const procA = procs.map((p) => readProcCpuJiffies(p.pid));
   await new Promise((resolve) => setTimeout(resolve, 100));
-  const b = readCpuStat();
-  if (!b) return null;
-  const totalDelta =
-    b.user - a.user +
-    (b.nice - a.nice) +
-    (b.system - a.system) +
-    (b.idle - a.idle) +
-    (b.iowait - a.iowait) +
-    (b.irq - a.irq) +
-    (b.softirq - a.softirq) +
-    (b.steal - a.steal);
-  if (totalDelta <= 0) return null;
-  const iowaitDelta = b.iowait - a.iowait;
-  return Math.max(0, Math.min(100, (iowaitDelta / totalDelta) * 100));
+  const sysB = readCpuStat();
+  const procB = procs.map((p) => readProcCpuJiffies(p.pid));
+  if (!sysA || !sysB) {
+    return {
+      iowaitPercent: null,
+      cpuPercent: null,
+      opencodeProcesses: procs.map((p) => ({
+        pid: p.pid,
+        rssKb: readRssKb(p.pid),
+        cpuPercent: 0,
+        cmdline: p.cmdline,
+      })),
+    };
+  }
+  const sysDelta = sumJiffies(sysB) - sumJiffies(sysA);
+  if (sysDelta <= 0) {
+    return {
+      iowaitPercent: 0,
+      cpuPercent: 0,
+      opencodeProcesses: procs.map((p) => ({
+        pid: p.pid,
+        rssKb: readRssKb(p.pid),
+        cpuPercent: 0,
+        cmdline: p.cmdline,
+      })),
+    };
+  }
+  const iowaitDelta = sysB.iowait - sysA.iowait;
+  const idleDelta = sysB.idle - sysA.idle;
+  const iowaitPercent = Math.max(
+    0,
+    Math.min(100, (iowaitDelta / sysDelta) * 100),
+  );
+  const cpuPercent = Math.max(
+    0,
+    Math.min(100, ((sysDelta - idleDelta) / sysDelta) * 100),
+  );
+  const opencodeProcesses = procs.map((p, i) => {
+    const a = procA[i];
+    const b = procB[i];
+    let pcpu = 0;
+    if (a !== null && b !== null) {
+      const procDelta = b - a;
+      pcpu = Math.max(0, (procDelta / sysDelta) * 100 * numCpus);
+    }
+    return {
+      pid: p.pid,
+      rssKb: readRssKb(p.pid),
+      cpuPercent: pcpu,
+      cmdline: p.cmdline,
+    };
+  });
+  return { iowaitPercent, cpuPercent, opencodeProcesses };
 }
 
 function readLoadavg(): SystemStats["load"] {
@@ -117,52 +239,6 @@ function readMeminfo(): SystemStats["memory"] {
     return { totalKb, availableKb, usedKb, usedPercent };
   } catch {
     return null;
-  }
-}
-
-function readOpencodeProcesses(): SystemStats["opencodeProcesses"] {
-  try {
-    const raw = execSync("pgrep -af 'opencode .* serve' 2>/dev/null", {
-      encoding: "utf8",
-      timeout: 1500,
-    }).trim();
-    if (!raw) return [];
-    const out: SystemStats["opencodeProcesses"] = [];
-    for (const line of raw.split("\n")) {
-      const space = line.indexOf(" ");
-      if (space < 0) continue;
-      const pid = parseInt(line.slice(0, space), 10);
-      const cmdline = line.slice(space + 1).trim();
-      if (!Number.isFinite(pid)) continue;
-      const head = cmdline.split(/\s+/)[0] ?? "";
-      if (!/(\/|^)opencode$/.test(head)) continue;
-      let rssKb = 0;
-      let cpuPercent = 0;
-      try {
-        const statm = readFileSync(`/proc/${pid}/statm`, "utf8").trim();
-        const rssPages = parseInt(statm.split(/\s+/)[1] ?? "0", 10);
-        rssKb = rssPages * 4;
-      } catch {
-        /* process disappeared between pgrep and read - skip */
-      }
-      try {
-        const top = execSync(
-          `top -b -n 1 -p ${pid} 2>/dev/null | tail -1`,
-          { encoding: "utf8", timeout: 1500 },
-        ).trim();
-        const cols = top.split(/\s+/).filter(Boolean);
-        if (cols[0] === String(pid)) {
-          const cpu = parseFloat(cols[8] ?? "0");
-          if (!Number.isNaN(cpu)) cpuPercent = cpu;
-        }
-      } catch {
-        /* top not available or process gone */
-      }
-      out.push({ pid, rssKb, cpuPercent, cmdline });
-    }
-    return out;
-  } catch {
-    return [];
   }
 }
 
@@ -240,13 +316,19 @@ function readDiskStats(): DiskStat[] {
 }
 
 export default defineHandler(async () => {
-  const iowaitPercent = await readIowaitPercent();
+  const sampled = await sampleStats();
   const stats: SystemStats = {
     load: readLoadavg(),
     memory: readMeminfo(),
-    cpu: iowaitPercent === null ? null : { iowaitPercent },
+    cpu:
+      sampled.cpuPercent === null && sampled.iowaitPercent === null
+        ? null
+        : {
+            totalPercent: sampled.cpuPercent ?? 0,
+            iowaitPercent: sampled.iowaitPercent ?? 0,
+          },
     disks: readDiskStats(),
-    opencodeProcesses: readOpencodeProcesses(),
+    opencodeProcesses: sampled.opencodeProcesses,
     observedAt: Date.now(),
   };
   return stats;

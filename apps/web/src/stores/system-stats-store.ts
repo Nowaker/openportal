@@ -25,7 +25,7 @@ export interface SystemStats {
     usedKb: number;
     usedPercent: number;
   } | null;
-  cpu: { iowaitPercent: number } | null;
+  cpu: { totalPercent: number; iowaitPercent: number } | null;
   disks: DiskStat[];
   opencodeProcesses: OpencodeProcess[];
   observedAt: number;
