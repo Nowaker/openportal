@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -6,6 +6,7 @@ import {
 } from "react-aria-components";
 import {
   ArrowDownTrayIcon,
+  AdjustmentsHorizontalIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useSessionMessages } from "@/hooks/use-session-messages";
@@ -490,22 +491,29 @@ function Body({
   );
 }
 
-function ExportSection({ sessionId }: { sessionId: string }) {
+export function ExportSection({
+  sessionId,
+  alwaysExpanded = false,
+}: {
+  sessionId: string;
+  alwaysExpanded?: boolean;
+}) {
   const port = useInstanceStore((s) => s.instance?.port ?? null);
+  const [showCustom, setShowCustom] = useState(alwaysExpanded);
   if (!port) return null;
   const base = `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/export`;
-  const links = [
-    { label: "All messages", kind: "all" },
-    { label: "User prompts only", kind: "prompts" },
-    { label: "Last 50 messages", kind: "all", limit: 50 },
-  ] as const;
+  const presets = [
+    { label: "All messages", kind: "all" as const },
+    { label: "User prompts only", kind: "prompts" as const },
+    { label: "Last 50 messages", kind: "all" as const, limit: 50 },
+  ];
   return (
     <div className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-fg">
-        Export as Markdown
+        Export session
       </div>
       <div className="flex flex-wrap gap-2">
-        {links.map((l) => {
+        {presets.map((l) => {
           const params = new URLSearchParams({ kind: l.kind });
           if ("limit" in l && l.limit) params.set("limit", String(l.limit));
           const href = `${base}?${params.toString()}`;
@@ -522,8 +530,184 @@ function ExportSection({ sessionId }: { sessionId: string }) {
             </a>
           );
         })}
+        {!alwaysExpanded && (
+          <button
+            type="button"
+            onClick={() => setShowCustom((v) => !v)}
+            data-test="portal-session-export-custom-toggle"
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs hover:bg-muted/40 hover:text-fg ${
+              showCustom
+                ? "border-accent bg-accent/10 text-accent-fg"
+                : "border-border bg-bg"
+            }`}
+          >
+            <AdjustmentsHorizontalIcon className="size-3.5" />
+            Custom
+          </button>
+        )}
+      </div>
+      {showCustom && (
+        <ExportCustomForm sessionId={sessionId} port={port} base={base} />
+      )}
+    </div>
+  );
+}
+
+function ExportCustomForm({
+  port: _port,
+  base,
+}: {
+  sessionId: string;
+  port: number;
+  base: string;
+}) {
+  const [format, setFormat] = useState<"md" | "json">("md");
+  const [last, setLast] = useState<"10" | "25" | "50" | "100" | "all">("all");
+  const [users, setUsers] = useState(true);
+  const [aiFinal, setAiFinal] = useState(true);
+  const [aiAll, setAiAll] = useState(true);
+  const [thinking, setThinking] = useState(false);
+  const [tools, setTools] = useState(false);
+
+  const params = new URLSearchParams();
+  params.set("format", format);
+  params.set("kind", "all");
+  if (last !== "all") params.set("last", last);
+  params.set("users", users ? "1" : "0");
+  params.set("ai-all", aiAll ? "1" : "0");
+  params.set("ai-final", aiFinal ? "1" : "0");
+  params.set("thinking", thinking ? "1" : "0");
+  params.set("tools", tools ? "1" : "0");
+  const href = `${base}?${params.toString()}`;
+
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-bg p-3 text-xs">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-medium text-muted-fg">Format</span>
+        {(["md", "json"] as const).map((f) => (
+          <label key={f} className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="radio"
+              name="export-format"
+              value={f}
+              checked={format === f}
+              onChange={() => setFormat(f)}
+              className="size-3 accent-accent"
+            />
+            <span>{f === "md" ? "Markdown" : "JSON"}</span>
+          </label>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-medium text-muted-fg">Last</span>
+        {(["10", "25", "50", "100", "all"] as const).map((n) => (
+          <label key={n} className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="radio"
+              name="export-last"
+              value={n}
+              checked={last === n}
+              onChange={() => setLast(n)}
+              className="size-3 accent-accent"
+            />
+            <span>{n === "all" ? "all" : n}</span>
+          </label>
+        ))}
+      </div>
+      <div className="space-y-1.5">
+        <span className="font-medium text-muted-fg">Include</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          <CheckRow checked={users} onChange={setUsers} label="User prompts" />
+          <CheckRow
+            checked={aiFinal}
+            onChange={setAiFinal}
+            label="Final AI response"
+          />
+          <CheckRow checked={aiAll} onChange={setAiAll} label="All AI messages" />
+          <CheckRow
+            checked={thinking}
+            onChange={setThinking}
+            label="AI thinking"
+          />
+          <CheckRow checked={tools} onChange={setTools} label="Tool calls" />
+        </div>
+      </div>
+      <div className="pt-1">
+        <a
+          href={href}
+          download
+          data-test="portal-session-export-custom-download"
+          className="inline-flex items-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent/90"
+        >
+          <ArrowDownTrayIcon className="size-3.5" />
+          Download {format === "md" ? "Markdown" : "JSON"}
+        </a>
       </div>
     </div>
+  );
+}
+
+function CheckRow({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="size-3.5 accent-accent"
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+export function ExportSessionModal({
+  isOpen,
+  sessionId,
+  onOpenChange,
+}: {
+  isOpen: boolean;
+  sessionId: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      isDismissable
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-sm"
+    >
+      <Modal className="w-full max-w-xl max-h-[85dvh] flex flex-col rounded-xl border border-border bg-bg shadow-2xl outline-none">
+        <PrimitiveDialog className="flex flex-col flex-1 min-h-0 outline-none">
+          {({ close }) => (
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <h2 className="text-sm font-semibold">Export session</h2>
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label="Close"
+                  className="text-muted-fg hover:text-fg"
+                >
+                  <XMarkIcon className="size-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <ExportSection sessionId={sessionId} alwaysExpanded />
+              </div>
+            </div>
+          )}
+        </PrimitiveDialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 

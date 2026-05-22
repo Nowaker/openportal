@@ -41,7 +41,10 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@/components/ui/menu";
-import { SessionInfoModal } from "@/components/session-info-modal";
+import {
+  ExportSessionModal,
+  SessionInfoModal,
+} from "@/components/session-info-modal";
 import { SessionStatusBadge } from "@/components/session-status-badge";
 import { SessionContextDial } from "@/components/session-context-dial";
 import { McpInfoModal } from "@/components/mcp-info-modal";
@@ -130,6 +133,7 @@ export function AppSidebarNav() {
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
   const [showSessionInfo, setShowSessionInfo] = useHashOpen("info");
+  const [showExportSession, setShowExportSession] = useHashOpen("export");
   const [mcpInfoName, setMcpInfoName] = useHashValue("mcp");
   const [pluginInfoSpec, setPluginInfoSpec] = useHashValue("plugin");
   // Hamburger menu open state. Hash-tracked so the Android hardware
@@ -613,6 +617,13 @@ export function AppSidebarNav() {
                     />
                     Session info
                   </MenuItem>
+                  <MenuItem onAction={() => setShowExportSession(true)}>
+                    <ArrowDownTrayIcon
+                      className="size-4"
+                      data-slot="icon"
+                    />
+                    Export session
+                  </MenuItem>
                   {currentSession?.directory && (
                     <MenuItem
                       onAction={() => openInVscode(currentSession.directory)}
@@ -889,6 +900,13 @@ export function AppSidebarNav() {
           isOpen={showSessionInfo}
           sessionId={sessionId}
           onOpenChange={setShowSessionInfo}
+        />
+      )}
+      {sessionId && (
+        <ExportSessionModal
+          isOpen={showExportSession}
+          sessionId={sessionId}
+          onOpenChange={setShowExportSession}
         />
       )}
       <McpInfoModal
