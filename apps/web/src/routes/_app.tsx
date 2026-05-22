@@ -290,7 +290,7 @@ function BuildMismatchBanner() {
           setReloading(true);
           window.location.reload();
         }}
-        className="rounded-md border border-border bg-bg px-2 py-1 text-sm font-medium hover:bg-muted disabled:opacity-70 inline-flex items-center gap-1.5"
+        className="rounded-md border border-border bg-bg px-2 py-1 text-sm font-medium text-fg hover:bg-muted disabled:opacity-70 inline-flex items-center gap-1.5"
       >
         <ArrowPathIcon
           className={`size-3.5 shrink-0 ${reloading ? "animate-spin" : ""}`}
