@@ -5,6 +5,7 @@ export interface Instance {
   id: string;
   name: string;
   port: number;
+  hostname?: string;
 }
 
 interface InstanceState {

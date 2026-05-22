@@ -10,6 +10,7 @@ interface SystemStats {
     usedKb: number;
     usedPercent: number;
   } | null;
+  cpu: { iowaitPercent: number } | null;
   opencodeProcesses: Array<{
     pid: number;
     rssKb: number;
@@ -17,6 +18,61 @@ interface SystemStats {
     cmdline: string;
   }>;
   observedAt: number;
+}
+
+// /proc/stat cumulative jiffy counters since boot. Reading once gives
+// you the average since boot which is useless for "is iowait high
+// right now". Sample twice 100ms apart and compute the delta -
+// matches what top/iostat do for instant iowait.
+function readCpuStat(): {
+  user: number;
+  nice: number;
+  system: number;
+  idle: number;
+  iowait: number;
+  irq: number;
+  softirq: number;
+  steal: number;
+} | null {
+  try {
+    const raw = readFileSync("/proc/stat", "utf8");
+    const line = raw.split("\n").find((l) => l.startsWith("cpu "));
+    if (!line) return null;
+    const parts = line.split(/\s+/).slice(1).map((x) => parseInt(x, 10));
+    if (parts.some((n) => Number.isNaN(n))) return null;
+    return {
+      user: parts[0] ?? 0,
+      nice: parts[1] ?? 0,
+      system: parts[2] ?? 0,
+      idle: parts[3] ?? 0,
+      iowait: parts[4] ?? 0,
+      irq: parts[5] ?? 0,
+      softirq: parts[6] ?? 0,
+      steal: parts[7] ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readIowaitPercent(): Promise<number | null> {
+  const a = readCpuStat();
+  if (!a) return null;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const b = readCpuStat();
+  if (!b) return null;
+  const totalDelta =
+    b.user - a.user +
+    (b.nice - a.nice) +
+    (b.system - a.system) +
+    (b.idle - a.idle) +
+    (b.iowait - a.iowait) +
+    (b.irq - a.irq) +
+    (b.softirq - a.softirq) +
+    (b.steal - a.steal);
+  if (totalDelta <= 0) return null;
+  const iowaitDelta = b.iowait - a.iowait;
+  return Math.max(0, Math.min(100, (iowaitDelta / totalDelta) * 100));
 }
 
 function readLoadavg(): SystemStats["load"] {
@@ -100,10 +156,12 @@ function readOpencodeProcesses(): SystemStats["opencodeProcesses"] {
   }
 }
 
-export default defineHandler(() => {
+export default defineHandler(async () => {
+  const iowaitPercent = await readIowaitPercent();
   const stats: SystemStats = {
     load: readLoadavg(),
     memory: readMeminfo(),
+    cpu: iowaitPercent === null ? null : { iowaitPercent },
     opencodeProcesses: readOpencodeProcesses(),
     observedAt: Date.now(),
   };

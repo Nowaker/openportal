@@ -17,6 +17,7 @@ export interface SystemStats {
     usedKb: number;
     usedPercent: number;
   } | null;
+  cpu: { iowaitPercent: number } | null;
   opencodeProcesses: OpencodeProcess[];
   observedAt: number;
 }
@@ -24,6 +25,7 @@ export interface SystemStats {
 const EMPTY: SystemStats = {
   load: null,
   memory: null,
+  cpu: null,
   opencodeProcesses: [],
   observedAt: 0,
 };

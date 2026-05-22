@@ -459,7 +459,12 @@ function AppLayout() {
         instance.port !== self.port ||
         instance.id !== self.id
       ) {
-        setInstance({ id: self.id, name: self.name, port: self.port });
+        setInstance({
+          id: self.id,
+          name: self.name,
+          port: self.port,
+          hostname: typeof self.hostname === "string" ? self.hostname : undefined,
+        });
       }
     }
     setHydrated(true);

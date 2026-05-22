@@ -44,6 +44,7 @@ function Bar({
 export function SidebarSystemStats() {
   const { stats, isLoading } = useSystemStats();
   const activePort = useInstanceStore((s) => s.instance?.port ?? null);
+  const activeHostname = useInstanceStore((s) => s.instance?.hostname ?? null);
   if (isLoading && !stats.load) return null;
   if (!stats.load && !stats.memory) return null;
 
@@ -61,13 +62,27 @@ export function SidebarSystemStats() {
     memPercent >= 90 ? "danger" : memPercent >= 80 ? "warning" : "neutral";
   const memTotalKb = stats.memory?.totalKb ?? 0;
 
-  // The active opencode is the one we're connected to right now -
-  // pgrep's cmdline column carries `--port <N>` so we match on that.
-  const currentProcess = activePort
-    ? stats.opencodeProcesses.find((p) =>
-        p.cmdline.includes(`--port ${activePort}`),
-      ) ?? null
-    : null;
+  // Identify the opencode the portal is connected to. opencode's
+  // cmdline carries `--hostname <ip>` and may or may not carry
+  // `--port <N>` (default 4096 is implicit, only non-defaults are
+  // explicit). Match on whichever signals are available, preferring
+  // hostname when several processes share the default port.
+  const currentProcess = (() => {
+    if (!activePort && !activeHostname) return null;
+    const candidates = stats.opencodeProcesses.filter((p) => {
+      if (activePort) {
+        const explicit = p.cmdline.includes(`--port ${activePort}`);
+        const implicitDefault =
+          activePort === 4096 && !p.cmdline.includes("--port ");
+        if (!explicit && !implicitDefault) return false;
+      }
+      if (activeHostname && !p.cmdline.includes(`--hostname ${activeHostname}`)) {
+        return false;
+      }
+      return true;
+    });
+    return candidates[0] ?? null;
+  })();
   const currentMemPercent =
     currentProcess && memTotalKb > 0
       ? (currentProcess.rssKb / memTotalKb) * 100
@@ -109,6 +124,20 @@ export function SidebarSystemStats() {
         }
         tone={memTone}
       />
+      {stats.cpu && (
+        <Bar
+          label="IO wait"
+          percent={stats.cpu.iowaitPercent}
+          detail={`${stats.cpu.iowaitPercent.toFixed(1)}%`}
+          tone={
+            stats.cpu.iowaitPercent >= 30
+              ? "danger"
+              : stats.cpu.iowaitPercent >= 10
+                ? "warning"
+                : "neutral"
+          }
+        />
+      )}
       {currentProcess && (
         <Bar
           label="Current opencode"
