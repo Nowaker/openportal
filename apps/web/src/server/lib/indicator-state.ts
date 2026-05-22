@@ -323,6 +323,13 @@ export function applyOpencodeEvent(
           next.inFlightAssistantId = info.id;
           next.mode = typeof info.mode === "string" ? info.mode : null;
           next.currentToolName = null;
+          // Opencode does NOT emit a separate session.status event when
+          // an assistant message starts; the in-flight assistant IS the
+          // busy signal. Without flipping busy here, the title-bar
+          // 'in progress' badge + chat-log 'Thinking...' line never
+          // render and the session appears idle for the entire turn.
+          next.busy = true;
+          next.idle = false;
         }
       }
       break;
@@ -345,6 +352,8 @@ export function applyOpencodeEvent(
           next.inFlightAssistantId = null;
           next.mode = null;
           next.currentToolName = null;
+          next.busy = false;
+          next.idle = true;
         }
       }
       break;
