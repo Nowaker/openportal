@@ -27,6 +27,13 @@ const HOP_BY_HOP = new Set([
   "transfer-encoding",
   "upgrade",
   "content-length",
+  // Bun's fetch auto-decompresses upstream responses (Bun >=1.0), so the
+  // body we forward is already plain text/JSON. Forwarding the upstream's
+  // `Content-Encoding: gzip` would lie to the downstream client and cause
+  // strict HTTP clients (Undici, @opencode-ai/sdk) to abort the response
+  // with zlib's "incorrect header check" when they try to decode plain JSON
+  // as gzip. Stripping it makes the proxy round-trip honest.
+  "content-encoding",
 ]);
 
 function filterRequestHeaders(headers: Record<string, string | undefined>): Headers {
