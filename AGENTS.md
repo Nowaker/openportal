@@ -117,6 +117,16 @@ path.
 NEVER restart `openportal.service` standalone for code changes -
 that defeats the dev-first guarantee. Use `scripts/deploy.sh`.
 
+`scripts/deploy.sh` does the restart for you. After it prints
+`===== deploy ok =====` the new bundle is serving on
+`https://portal.desktop.ts.nowaker.net:8443/`. You do NOT need to
+manually `systemctl --user restart openportal.service` afterwards -
+that's already happened. The user (whose browser tab may still be
+showing the old bundle from before the deploy) typically needs a
+hard refresh (Ctrl+Shift+R / Cmd+Shift+R) to pick up the new
+asset hash. The asset-fallback layer keeps the old tab working
+without crashes; the user just has to reload to see the new code.
+
 ### Stale asset 500s are impossible by construction
 
 A browser tab whose cached `index.html` references a hashed asset
