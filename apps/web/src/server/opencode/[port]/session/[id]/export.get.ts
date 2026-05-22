@@ -35,6 +35,7 @@ interface MessagePart {
   filename?: string;
   tool?: string;
   ignored?: boolean;
+  reasoning?: unknown;
 }
 
 interface Message {
@@ -48,15 +49,26 @@ function fmtTime(ms: number | undefined): string {
   return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
 }
 
-function partsToMarkdown(parts: MessagePart[]): string {
+interface PartFilters {
+  includeThinking: boolean;
+  includeTools: boolean;
+}
+
+function partsToMarkdown(parts: MessagePart[], filters: PartFilters): string {
   const chunks: string[] = [];
   for (const p of parts) {
     if (p.ignored) continue;
     if (p.type === "text" && typeof p.text === "string") {
       chunks.push(p.text);
+    } else if (
+      p.type === "reasoning" &&
+      filters.includeThinking &&
+      typeof p.text === "string"
+    ) {
+      chunks.push(`\n<details><summary>Thinking</summary>\n\n${p.text}\n\n</details>\n`);
     } else if (p.type === "file" && p.filename) {
       chunks.push(`\n[file: ${p.filename}]\n`);
-    } else if (p.type === "tool" && p.tool) {
+    } else if (p.type === "tool" && filters.includeTools && p.tool) {
       chunks.push(`\n[tool: ${p.tool}]\n`);
     }
   }
@@ -81,6 +93,14 @@ function isSyntheticOmo(msg: Message): boolean {
   return false;
 }
 
+function asBool(q: unknown, defaultValue: boolean): boolean {
+  if (q === undefined) return defaultValue;
+  const s = String(q);
+  if (s === "1" || s === "true") return true;
+  if (s === "0" || s === "false") return false;
+  return defaultValue;
+}
+
 export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
@@ -91,13 +111,30 @@ export default defineHandler(async (event) => {
       ? (query.kind as "prompts" | "all")
       : "all";
   const limitParam =
-    typeof query.limit === "string" ? query.limit : "all";
+    typeof query.limit === "string"
+      ? query.limit
+      : typeof query.last === "string"
+        ? query.last
+        : "all";
   const limit =
     limitParam === "all" || limitParam === "0"
       ? null
       : Math.max(1, Math.min(10000, Number(limitParam) || 100));
-  const includeSystem =
-    query["include-system"] === "1" || query["include-system"] === "true";
+  const includeSystem = asBool(query["include-system"], false);
+  const format =
+    query.format === "json" || query.format === "md"
+      ? (query.format as "md" | "json")
+      : "md";
+
+  const usersFlag = asBool(query.users, kind !== "prompts");
+  const aiAllFlag = asBool(query["ai-all"], kind === "all");
+  const aiFinalFlag = asBool(query["ai-final"], kind === "all");
+  const thinkingFlag = asBool(query.thinking, false);
+  const toolsFlag = asBool(query.tools, kind === "all");
+
+  const includeUsers = kind === "prompts" ? true : usersFlag;
+  const includeAiAll = kind === "prompts" ? false : aiAllFlag;
+  const includeAiFinal = kind === "prompts" ? false : aiFinalFlag;
 
   const upstreamLimit = limit ?? 5000;
   const res = await fetchOpencode(
@@ -111,13 +148,74 @@ export default defineHandler(async (event) => {
   const body = (await res.json().catch(() => null)) as unknown;
   const list: Message[] = Array.isArray(body) ? (body as Message[]) : [];
 
+  let lastAssistantIdx = -1;
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].info?.role === "assistant" && !isSyntheticOmo(list[i])) {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+  const lastAssistantId =
+    lastAssistantIdx >= 0 ? list[lastAssistantIdx].info?.id ?? null : null;
+
   const filtered = list.filter((m) => {
     if (!includeSystem && isSyntheticOmo(m)) return false;
-    if (kind === "prompts" && m.info?.role !== "user") return false;
+    const role = m.info?.role;
+    if (role === "user") return includeUsers;
+    if (role === "assistant") {
+      if (includeAiAll) return true;
+      if (includeAiFinal && m.info?.id === lastAssistantId) return true;
+      return false;
+    }
     return true;
   });
 
   const sliced = limit !== null ? filtered.slice(-limit) : filtered;
+  const partFilters: PartFilters = {
+    includeThinking: thinkingFlag,
+    includeTools: toolsFlag,
+  };
+
+  if (format === "json") {
+    const payload = {
+      sessionId: id,
+      exportedAt: new Date().toISOString(),
+      filters: {
+        kind,
+        limit,
+        includeUsers,
+        includeAiAll,
+        includeAiFinal,
+        includeThinking: thinkingFlag,
+        includeTools: toolsFlag,
+        includeSystem,
+      },
+      messages: sliced.map((m) => {
+        const info = m.info ?? {};
+        return {
+          id: info.id,
+          role: info.role,
+          createdAt: info.time?.created
+            ? new Date(info.time.created).toISOString()
+            : null,
+          providerID: info.providerID,
+          modelID: info.modelID,
+          agent: info.agent,
+          parts: (m.parts ?? [])
+            .filter((p) => !p.ignored)
+            .filter((p) => p.type !== "reasoning" || thinkingFlag)
+            .filter((p) => p.type !== "tool" || toolsFlag),
+        };
+      }),
+    };
+    setResponseHeader(event, "Content-Type", "application/json; charset=utf-8");
+    setResponseHeader(
+      event,
+      "Content-Disposition",
+      `attachment; filename="${id}-${kind}.json"`,
+    );
+    return payload;
+  }
 
   const lines: string[] = [];
   lines.push(`# Session ${id}`);
@@ -136,7 +234,7 @@ export default defineHandler(async (event) => {
         : "";
     lines.push(`## ${time} ${role}${tag} ${info.id ?? ""}`);
     lines.push("");
-    const md = partsToMarkdown(m.parts ?? []);
+    const md = partsToMarkdown(m.parts ?? [], partFilters);
     lines.push(md.length > 0 ? md : "*(empty)*");
     lines.push("");
   }
