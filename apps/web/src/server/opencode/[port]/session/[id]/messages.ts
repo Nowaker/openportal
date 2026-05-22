@@ -222,6 +222,17 @@ function collectUserText(parts: unknown[] | undefined): string {
 // inspecting `_pending`, which matters for the star/permalink/since
 // paths (they key off `info.id`).
 function toVirtualUserMessage(row: PromptRow): unknown {
+  // Phase tracks the actual server-side delivery state, not an
+  // optimistic guess. UI maps:
+  //   pending  -> "Submitting"     (portal has it, worker hasn't dispatched)
+  //   delivered -> "Sent to OpenCode" (worker 204'd from promptAsync)
+  //   failed   -> "Failed"          (UI surfaces lastError separately)
+  const phase: "submitting" | "opencode-accepted" | "failed" =
+    row.status === "delivered"
+      ? "opencode-accepted"
+      : row.status === "failed"
+        ? "failed"
+        : "submitting";
   return {
     info: {
       id: `pending::${row.id}`,
@@ -232,6 +243,7 @@ function toVirtualUserMessage(row: PromptRow): unknown {
         lastAttemptAt: row.last_attempt_at,
         lastError: row.last_error,
         archiveId: row.id,
+        phase,
       },
     },
     parts: [

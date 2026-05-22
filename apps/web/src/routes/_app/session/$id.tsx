@@ -4587,25 +4587,15 @@ function SessionPage() {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
       }
-      // Phase transition: portal accepted -> opencode received it. The
-      // badge color advances from light blue (submitting) to medium blue
-      // (sent-to-opencode). The optimistic row will get replaced by the
-      // real opencode message via the upcoming mutateSessionMessages, at
-      // which point the badge disappears entirely.
-      updateOptimisticMessage(port, sessionId, messageId, {
-        info: {
-          ...optimisticMessage.info,
-          _pending: {
-            ...(optimisticMessage.info._pending ?? {
-              attempts: 0,
-              lastAttemptAt: Date.now(),
-              lastError: null,
-              archiveId: messageId,
-            }),
-            phase: "opencode-accepted",
-          },
-        },
-      });
+      // 202 from portal means portal has DURABLY stored the prompt -
+      // not that opencode has it yet. Phase stays at 'submitting'
+      // until the upcoming /messages refresh brings back the virtual
+      // row from the prompts DB; toVirtualUserMessage advances the
+      // phase to 'opencode-accepted' only once the worker has
+      // actually 204'd from opencode's /promptAsync (status='delivered'
+      // in the DB). Optimistically claiming opencode-accepted here
+      // was a lie the user noticed - the 'Sent to OpenCode' badge
+      // would show before the worker had even run.
       const promptResult = (await response
         .json()
         .catch(() => null)) as { recoveredFromRestart?: boolean } | null;
