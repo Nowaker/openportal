@@ -105,7 +105,7 @@ export function SidebarSystemStats() {
       data-test="portal-sidebar-system-stats"
     >
       <Bar
-        label="Load"
+        label="cpu"
         percent={loadPercent}
         detail={
           stats.load
@@ -115,7 +115,7 @@ export function SidebarSystemStats() {
         tone={loadTone}
       />
       <Bar
-        label="Memory"
+        label="ram"
         percent={memPercent}
         detail={
           stats.memory
@@ -126,7 +126,7 @@ export function SidebarSystemStats() {
       />
       {stats.cpu && (
         <Bar
-          label="IO wait"
+          label="iowait"
           percent={stats.cpu.iowaitPercent}
           detail={`${stats.cpu.iowaitPercent.toFixed(1)}%`}
           tone={
@@ -138,9 +138,27 @@ export function SidebarSystemStats() {
           }
         />
       )}
+      {stats.disks.map((d, i) => {
+        const label = stats.disks.length === 1 ? "disk" : `disk ${d.path}`;
+        return (
+          <Bar
+            key={`${d.path}-${i}`}
+            label={label}
+            percent={d.usedPercent}
+            detail={`${d.usedPercent}% (${formatRss(d.usedKb)} / ${formatRss(d.totalKb)})`}
+            tone={
+              d.usedPercent >= 95
+                ? "danger"
+                : d.usedPercent >= 85
+                  ? "warning"
+                  : "neutral"
+            }
+          />
+        );
+      })}
       {currentProcess && (
         <Bar
-          label="Current opencode"
+          label="this oc"
           percent={currentMemPercent}
           detail={`${formatRss(currentProcess.rssKb)}, ${currentProcess.cpuPercent.toFixed(0)}% CPU`}
           tone="neutral"
@@ -148,7 +166,7 @@ export function SidebarSystemStats() {
       )}
       {stats.opencodeProcesses.length > 0 && (
         <Bar
-          label={`All opencodes×${stats.opencodeProcesses.length}`}
+          label={`all ocs×${stats.opencodeProcesses.length}`}
           percent={opencodeMemPercent}
           detail={`${formatRss(totalOpencodeRssKb)}, ${totalOpencodeCpu.toFixed(0)}% CPU`}
           tone="neutral"

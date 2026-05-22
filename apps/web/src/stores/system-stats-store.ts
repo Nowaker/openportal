@@ -9,6 +9,14 @@ export interface OpencodeProcess {
   cmdline: string;
 }
 
+export interface DiskStat {
+  path: string;
+  totalKb: number;
+  availableKb: number;
+  usedKb: number;
+  usedPercent: number;
+}
+
 export interface SystemStats {
   load: { one: number; five: number; fifteen: number } | null;
   memory: {
@@ -18,6 +26,7 @@ export interface SystemStats {
     usedPercent: number;
   } | null;
   cpu: { iowaitPercent: number } | null;
+  disks: DiskStat[];
   opencodeProcesses: OpencodeProcess[];
   observedAt: number;
 }
@@ -26,6 +35,7 @@ const EMPTY: SystemStats = {
   load: null,
   memory: null,
   cpu: null,
+  disks: [],
   opencodeProcesses: [],
   observedAt: 0,
 };

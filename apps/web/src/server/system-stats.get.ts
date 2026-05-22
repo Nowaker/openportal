@@ -1,6 +1,15 @@
 import { defineHandler } from "nitro/h3";
 import { execSync } from "child_process";
-import { readFileSync } from "fs";
+import { readFileSync, statSync, statfsSync } from "fs";
+import { readPortalConfig } from "./lib/portal-config";
+
+interface DiskStat {
+  path: string;
+  totalKb: number;
+  availableKb: number;
+  usedKb: number;
+  usedPercent: number;
+}
 
 interface SystemStats {
   load: { one: number; five: number; fifteen: number } | null;
@@ -11,6 +20,7 @@ interface SystemStats {
     usedPercent: number;
   } | null;
   cpu: { iowaitPercent: number } | null;
+  disks: DiskStat[];
   opencodeProcesses: Array<{
     pid: number;
     rssKb: number;
@@ -156,12 +166,86 @@ function readOpencodeProcesses(): SystemStats["opencodeProcesses"] {
   }
 }
 
+function longestCommonRoot(paths: string[]): string {
+  if (paths.length === 0) return "/";
+  const split = paths.map((p) => p.split("/").filter((s) => s.length > 0));
+  if (split.length === 1) return "/" + split[0].join("/");
+  const minLen = Math.min(...split.map((s) => s.length));
+  let commonLen = 0;
+  for (let i = 0; i < minLen; i++) {
+    const seg = split[0][i];
+    if (split.every((s) => s[i] === seg)) commonLen++;
+    else break;
+  }
+  if (commonLen === 0) return "/";
+  return "/" + split[0].slice(0, commonLen).join("/");
+}
+
+function statfsToDisk(path: string): DiskStat | null {
+  try {
+    const s = statfsSync(path);
+    const totalBytes = s.bsize * s.blocks;
+    const availBytes = s.bsize * s.bavail;
+    const usedBytes = Math.max(0, totalBytes - availBytes);
+    if (totalBytes === 0) return null;
+    const usedPercent = Math.round((usedBytes / totalBytes) * 100);
+    return {
+      path,
+      totalKb: Math.round(totalBytes / 1024),
+      availableKb: Math.round(availBytes / 1024),
+      usedKb: Math.round(usedBytes / 1024),
+      usedPercent,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readDiskStats(): DiskStat[] {
+  let configuredDirs: string[];
+  try {
+    configuredDirs = readPortalConfig().directories;
+  } catch {
+    return [];
+  }
+  if (configuredDirs.length === 0) return [];
+
+  const byDev = new Map<number, string[]>();
+  for (const dir of configuredDirs) {
+    try {
+      const s = statSync(dir);
+      const list = byDev.get(s.dev) ?? [];
+      list.push(dir);
+      byDev.set(s.dev, list);
+    } catch {
+      /* dir doesn't exist on disk - skip */
+    }
+  }
+  if (byDev.size === 0) return [];
+
+  if (byDev.size === 1) {
+    const dirsOnFs = Array.from(byDev.values())[0];
+    const root = longestCommonRoot(dirsOnFs);
+    const stat = statfsToDisk(root);
+    return stat ? [stat] : [];
+  }
+
+  const out: DiskStat[] = [];
+  for (const dirsOnFs of byDev.values()) {
+    const root = longestCommonRoot(dirsOnFs);
+    const stat = statfsToDisk(root);
+    if (stat) out.push(stat);
+  }
+  return out;
+}
+
 export default defineHandler(async () => {
   const iowaitPercent = await readIowaitPercent();
   const stats: SystemStats = {
     load: readLoadavg(),
     memory: readMeminfo(),
     cpu: iowaitPercent === null ? null : { iowaitPercent },
+    disks: readDiskStats(),
     opencodeProcesses: readOpencodeProcesses(),
     observedAt: Date.now(),
   };
