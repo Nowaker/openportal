@@ -1,192 +1,170 @@
 # Prompt submission state machine
 
-Captures the full flow from the user pressing Send to the assistant's
-reply landing in the chat. Each state, what it means, when it fires,
-and what the user sees.
+How openportal accepts a prompt from the browser and tracks it through
+to the assistant's response. The previous version of this doc framed
+the design around per-tab optimistic UI - the user rightly pointed out
+that misses the architecture's actual intent. The real design is
+**server-side durable storage**, with the chat log surfacing every
+in-flight prompt as a first-class message regardless of which tab or
+browser submitted it.
 
-## States
+## Why server-side, not per-tab
 
-The optimistic-message store carries a `_pending.phase` field on user
-messages. Two values exist today (`apps/web/src/hooks/use-session-messages.ts:40`):
+The composer is a frontend concern; the prompt's lifecycle is not.
+Once the user hits Send, the prompt belongs to **openportal**, not to
+the tab that submitted it:
 
-```typescript
-phase?: "submitting" | "opencode-accepted";
+- Tab close mid-submission must not lose the prompt.
+- Network blip between portal and opencode must not lose the prompt
+  (worker retries from durable storage).
+- A second browser viewing the same session must see the pending
+  prompt - same status, same badge, same age - because the chat log
+  reflects what openportal knows, not what one tab's local store
+  remembers.
+- A fresh page load on the submitting browser must show the pending
+  prompt - no localStorage rehydration needed; the server tells the
+  truth.
+
+The implementation lives entirely under `apps/web/src/server/lib/`
+(prompt-archive.ts, prompt-db.ts) plus the worker plugin at
+`apps/web/src/server/plugins/pending-prompt-worker.ts`.
+
+## Lifecycle stages
+
+The `prompts` SQLite table tracks each submission with a `status`
+column. Four canonical values:
+
+| status     | meaning                                                 |
+| ---------- | ------------------------------------------------------- |
+| pending    | openportal has the prompt, worker hasn't dispatched yet |
+| delivered  | opencode 204'd, prompt is in the session's tool queue   |
+| failed     | worker exhausted retries; `last_error` carries the why  |
+| sent       | a legacy/archive-only row (no worker handoff expected)  |
+
+The frontend reads each row as a virtual user message with an
+`_pending` info field carrying `{ attempts, lastAttemptAt, lastError,
+archiveId, phase }`. Phase is a finer-grained UI state stamped by
+the dispatch path:
+
+| phase             | UI badge                         | who sets it                          |
+| ----------------- | -------------------------------- | ------------------------------------ |
+| submitting        | "Submitting" (blue)              | row insert (status=pending)          |
+| opencode-accepted | "Sent to OpenCode" (darker blue) | worker after promptAsync 204         |
+| (none)            | (badge gone)                     | real opencode message replaces it    |
+
+After opencode emits its own user-role message via SSE the synthetic
+row is reconciled by id - the worker marks the prompt row delivered,
+the next /messages response no longer appends the synthetic, and the
+opencode message stands on its own. The badge disappears because the
+synthetic source is gone.
+
+## End-to-end flow
+
+```
+[Browser] composer Send                                            t=0
+   |
+   | POST /api/opencode/:port/session/:id/prompt
+   |   body: { text, attachments, model, agent, thinking }
+   |
+   v
+[Portal] prompt endpoint
+   | 1. validate body
+   | 2. detectStuckFromRestart preflight (cheap)
+   | 3. INSERT INTO prompts ... status='pending' phase='submitting'
+   | 4. wakePendingPromptWorker
+   | 5. return 202 { archiveId, recoveredFromRestart }       t=~10ms
+   |
+   v
+[Browser]
+   | Composer clears, cross-tab broadcast notifies other tabs
+   | (their drafts clear ONLY if content matches - prevents stomping
+   |  a partially-typed prompt in another tab on the same session)
+   |
+   | Next /messages refresh includes the row as virtual user msg
+   | rendering "Submitting" badge
+   |
+[Portal] pending-prompt-worker plugin
+   | Scans status='pending' rows
+   | For each: POST opencode /session/:id/promptAsync ...
+   |   on 204 -> UPDATE status='delivered', stamp phase='opencode-accepted'
+   |   on err -> UPDATE last_error, retry on next scan (exp backoff)
+   |
+   v
+[Browser] /messages now shows phase='opencode-accepted'
+   | Badge flips to "Sent to OpenCode"
+   |
+[Opencode]
+   | Picks up the prompt from its own session DB
+   | Emits message.created (role=user) via SSE - REAL user message
+   | Emits message.created (role=assistant) - the response in flight
+   | Emits assistant parts (text/tool/reasoning) as it generates
+   |
+[Portal] indicator stream + /messages
+   | Synthetic row stops being appended (the real one is there now)
+   | Badge disappears
+   | "Thinking..." indicator (server-side state, /api/indicators/stream)
+   | renders below the now-completed user message
+   |
+[Opencode] message.updated with info.time.completed set
+   | Stream finalizes the assistant message
+   |
+[Browser] indicator stream flips busy=false; the assistant message
+   | renders fully; user can submit the next prompt
 ```
 
-After `opencode-accepted` the optimistic row is **replaced** by the
-real message from opencode's SSE event stream - the badge disappears
-because the row no longer has `_pending`. So there are effectively
-three observable visual stages:
+## Cross-browser visibility
 
-1. `phase === "submitting"`
-2. `phase === "opencode-accepted"`
-3. (badge gone; assistant generation in flight or already done)
+Because the `prompts` SQLite table is the source of truth, any browser
+hitting GET /api/opencode/:port/session/:id/messages?... receives the
+same pending rows. There is NO per-tab pending state on the server
+side - one tab POSTing the prompt, another tab refreshing the session,
+both see the same "Submitting" badge until the worker dispatches and
+the real message takes over.
 
-## Stage 1: `submitting`
+This was the original spec for the feature ("if I submit a prompt from
+browser 1 to this session and it's gone to 2 and completed it,
+loading session in browser 2 has to show that prompt with the correct
+badge in the chat log too" - user, May 2026), and it's how the
+implementation behaves.
 
-**When it fires**: The instant the user presses Send.
-`handleSubmit()` at `apps/web/src/routes/_app/session/$id.tsx:4133`
-runs and calls `addOptimisticMessage()` at line 4293 with the
-new message pre-stamped with `phase: "submitting"` (line 4268).
-The user-message row appears in the chat immediately.
+## Source map
 
-**What's happening internally**:
-- The composer textarea is locked (button disabled, focus
-  preserved per the post-c084f12 smart-clear).
-- The composer's draft store gets cleared (cross-tab
-  BroadcastChannel `opencode-composer-sync` fires).
-- A POST to `/api/opencode/<port>/session/<id>/prompt` is in flight.
-- openportal HAS NOT yet heard back from opencode.
+- Storage: `apps/web/src/server/lib/prompt-archive.ts`,
+  `apps/web/src/server/lib/prompt-db.ts`
+- Async worker: `apps/web/src/server/plugins/pending-prompt-worker.ts`
+- Endpoint: `apps/web/src/server/opencode/[port]/session/[id]/prompt.ts`
+- /messages merge: `apps/web/src/server/opencode/[port]/session/[id]/messages.ts`
+  (function `toVirtualUserMessage` at line ~182,
+  pending-merge at line ~178)
+- Frontend badge: `apps/web/src/routes/_app/session/$id.tsx`
+  (uses `info._pending.phase`, line ~2542)
+- Optimistic-display (per-tab safety net, not the source of truth):
+  same file, `addOptimisticMessage` at line ~4293
 
-**Visible to the user**:
-- The user-row renders with `bg-accent/25` (light) / `dark:bg-accent/20`
-  (dark) per the recent visibility bump.
-- A small blue badge above the message body reads "Submitting"
-  with a spinning <Loader/> icon. The badge uses the lighter blue
-  variant (border-blue-300/40, bg-blue-300/15).
-- attempts counter appends "- N attempts" if the retry path has
-  kicked in.
+## Open questions
 
-**Exit condition**: One of three:
-- HTTP 200 from opencode -> transition to `opencode-accepted`.
-- HTTP 4xx/5xx -> badge persists with `lastError` populated; the
-  outer queue worker retries.
-- Network failure -> same as HTTP 5xx.
+The user's spec mentioned more granular intermediate states:
 
-## Stage 2: `opencode-accepted`
+- "opencode picked it up for processing"
+- "opencode thinks"
+- "opencode posts response, tool calls, etc"
 
-**When it fires**: The fetch() to opencode resolved with a 200
-response, BEFORE the SSE stream has delivered the real
-message.created event. This is the window where opencode says
-"yes I got it" but hasn't yet finalised the user message id +
-returned it through the event channel.
+These are NOT carried as `phase` values today because they're already
+observable via the existing primitives:
 
-Hit at `apps/web/src/routes/_app/session/$id.tsx:4432`.
+- "picked up" + "thinking" -> indicator stream's `busy` flag for the
+  session, rendered as the "Thinking..." line below the last message.
+- "posts response, tool calls" -> the actual stream of assistant
+  parts arrives via SSE and renders incrementally.
 
-**What's happening internally**:
-- The optimistic row's `_pending.phase` is patched in place via
-  `updateOptimisticMessage()`. The row stays optimistic - it
-  doesn't get replaced yet.
-- A `toast.success` may fire if `recoveredFromRestart` is true
-  (the stuck-detector-bridge marker).
-- The composer's smart-clear pass runs (clears submitted text,
-  preserves anything the user typed during the round-trip).
+Adding them as `_pending.phase` values would be redundant - the
+synthetic row is GONE by the time opencode starts producing its
+response. The badge progression
+"Submitting" -> "Sent to OpenCode" -> (badge gone, indicator takes
+over) is the complete observable lifecycle from the user's POV.
 
-**Visible to the user**:
-- The badge text flips to "Sent to OpenCode".
-- The badge color deepens: border-blue-500/40, bg-blue-500/15.
-  The deeper blue communicates "we got further in the flow".
-- Loader icon still spinning - assistant hasn't replied yet.
-
-**Exit condition**: The SSE `message.created` event for the new
-user-message ID arrives. The optimistic row is removed and
-replaced by the real message row from the SWR cache (which has
-no `_pending`). Badge disappears.
-
-## Stage 3: (assistant generation in flight)
-
-**When it fires**: After the optimistic user message is replaced
-by the real one. From this point opencode is generating the
-assistant reply.
-
-**What's happening internally**:
-- `isAssistantBusy` (line 3189) flips true. Driven by the
-  session.status SSE event from opencode (busy / retry / idle).
-- The indicator broadcaster (`apps/web/src/server/lib/indicator-state.ts`)
-  pushes the busy state to ALL connected tabs.
-- The Stop button (red X) appears in the composer chrome.
-
-**Visible to the user**:
-- No "Submitting" / "Sent to OpenCode" badge - the row is now a
-  normal user message.
-- A "Thinking..." indicator + staleness clock appears BELOW the
-  user message (driven by `<ThinkingStaleness messages={messages} />`
-  at line 1525).
-- The composer's submit button is hidden / replaced by the
-  Stop button (`isAssistantBusy ? "Queue message" : "Send"`).
-- Sticky-bottom kicks in: if the user was already at the
-  bottom, the view follows new content. If they scrolled up,
-  the view stays put.
-- Status-badge in the title bar shows "THINKING" / "TOOL: X" /
-  "QUESTION" / "PERMISSION" / "COMPACTING" per the
-  pickBadge() priority chain.
-
-**Tool runs**: If the assistant fires a tool, the title-bar
-badge swaps to "TOOL: <name>" + the chat row shows the tool
-call. The assistant CAN make several tool calls in one turn -
-the badge updates per the latest in-flight tool. When the tool
-completes, opencode emits message.part.updated with the result.
-
-**Permission asks**: If a tool needs explicit user permission
-AND auto-approve is off (or disabled for this session), the
-title-bar badge becomes "PERMISSION" + the chat row shows the
-permission prompt. The user replies via the UI; openportal
-posts to `/api/opencode/<port>/permission/<id>/reply`.
-
-**Questions**: If the assistant asks the user a question
-(opencode's `question.asked` event), the title-bar badge
-becomes "QUESTION" + a yellow question banner appears in the
-chat. Reply via the UI fires `/api/opencode/<port>/session/<id>/
-question-answer`.
-
-## Stage 4: idle
-
-**When it fires**: opencode emits `session.idle` (or its session
-falls off the session.status map - both signals work). The
-assistant message has `time.completed` set.
-
-**What's happening internally**:
-- `isAssistantBusy` flips false.
-- The TTS auto-trigger (if enabled in Settings) speaks the
-  assistant's text.
-- The notification-sounds path (if enabled) plays the
-  turn-complete sound.
-- The OS-level browser Notification fires (if permission
-  granted + tab not focused).
-- Status-badge clears.
-
-**Visible to the user**:
-- No more "Thinking..." indicator.
-- Submit button returns; Stop button gone.
-- The assistant's complete message body is rendered.
-- If TTS enabled: audio playback starts.
-- If notification permission granted: bell sound + OS toast.
-
-## Visual cheat sheet (composer button)
-
-In addition to the per-message badge, the COMPOSER submit button
-itself has a phase indicator for STT countdown (independent of
-the prompt-submission state machine):
-
-- Idle: PlayIcon (send arrow).
-- STT push-to-talk grace window active: digit "5..1" countdown
-  on the submit button itself (`sttCountdownDigit` derivation at
-  line 3327). Pulses + tabular-nums for stability.
-- assistant-busy: aria-label flips to "Queue message" - the
-  button still works, it just queues the prompt for after the
-  current turn.
-
-## Cross-tab synchronisation
-
-All of the above flows broadcast via:
-- `opencode-composer-sync` BroadcastChannel (cross-tab composer
-  clear on submit).
-- SSE `/api/indicators/stream` (cross-tab status / question /
-  permission state).
-- Per-session `localStorage["opencode-pending-prompt:<sid>"]`
-  safety net (rehydrates if the submit fetch was silently
-  dropped on a tab close mid-submit).
-
-## Where to look in code
-
-| Stage | Code path |
-|---|---|
-| Phase 1 stamp | `$id.tsx:4263-4269` (addOptimisticMessage) |
-| Phase 2 stamp | `$id.tsx:4425-4434` (after fetch resolves) |
-| Badge render | `$id.tsx:2385-2410` |
-| isAssistantBusy compute | `$id.tsx:3189-3253` |
-| Thinking indicator | `$id.tsx:1524-1539` (ThinkingStaleness) |
-| Status badge priority chain | `apps/web/src/components/session-status-badge.tsx:35-95` |
-| SSE event stream | `apps/web/src/server/lib/indicator-broadcaster.ts` |
-| TTS auto-trigger | `$id.tsx` useEffect watching messages |
-| Notification sounds | `apps/web/src/stores/notification-sound-store.ts` |
+If we want a sticky in-place badge during the assistant-generation
+phase, it should be a property of the assistant message (not the
+user prompt) and surface as e.g. "Generating..." next to the
+assistant message's avatar. That's a future enhancement, separate
+from the prompt-submission state machine.
