@@ -1749,6 +1749,26 @@ function SettingsPage() {
         <TabPanel id="composer" className="pt-6">
           <div className="space-y-10">
             <div>
+              <h2 className="text-lg font-semibold">Composer</h2>
+              <p className="text-xs text-muted-fg">
+                How the prompt input behaves: Enter key, auto-approve
+                permissions.
+              </p>
+            </div>
+
+            <section>
+              <ComposerSettings />
+            </section>
+
+            <section>
+              <PermissionsSettings />
+            </section>
+          </div>
+        </TabPanel>
+
+        <TabPanel id="chat" className="pt-6">
+          <div className="space-y-10">
+            <div>
               <h2 className="text-lg font-semibold">Chat</h2>
             </div>
 
