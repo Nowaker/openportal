@@ -17,6 +17,7 @@ import { getDecisionsForMessage } from "../../../../lib/permission-audit";
 import { getToolOutputMaxBytes } from "../../../../lib/instance-settings-state";
 import {
   listPendingPromptsForSession,
+  listVisiblePromptsForSession,
   type PromptRow,
 } from "../../../../lib/prompt-archive";
 
@@ -175,8 +176,41 @@ async function loadFullMessages(
       setResponseHeader(event, "X-OpenPortal-OpenCode-Down", "true");
     }
   }
-  const pending = listPendingPromptsForSession(id).map(toVirtualUserMessage);
-  return pending.length === 0 ? real : [...real, ...pending];
+  const visible = listVisiblePromptsForSession(id);
+  if (visible.length === 0) return real;
+  // Dedup: drop any virtual whose raw_text matches a real user
+  // message that landed AFTER the prompt was captured. Without this
+  // the user briefly sees their submission TWICE - once as the
+  // server-emitted message, once as the still-grace-windowed virtual.
+  const realUserSnippets = new Set<string>();
+  for (const m of real) {
+    if (!m || typeof m !== "object") continue;
+    const msg = m as {
+      info?: { role?: string; time?: { created?: number } };
+      parts?: unknown[];
+    };
+    if (msg.info?.role !== "user") continue;
+    const text = collectUserText(msg.parts).trim();
+    if (text.length === 0) continue;
+    realUserSnippets.add(text);
+  }
+  const filtered = visible
+    .filter((row) => !realUserSnippets.has(row.raw_text.trim()))
+    .map(toVirtualUserMessage);
+  return filtered.length === 0 ? real : [...real, ...filtered];
+}
+
+function collectUserText(parts: unknown[] | undefined): string {
+  if (!Array.isArray(parts)) return "";
+  const chunks: string[] = [];
+  for (const p of parts) {
+    if (!p || typeof p !== "object") continue;
+    const part = p as { type?: string; text?: unknown };
+    if (part.type === "text" && typeof part.text === "string") {
+      chunks.push(part.text);
+    }
+  }
+  return chunks.join("");
 }
 
 // Promote a pending-prompt SQLite row into a synthetic chat-message

@@ -213,6 +213,35 @@ export function listPendingPromptsForSession(sessionId: string): PromptRow[] {
     .all(sessionId) as unknown as PromptRow[];
 }
 
+// Virtual-message source for the /messages merge. Returns:
+//   - All status='pending' rows (worker hasn't dispatched yet)
+//   - Recently-delivered rows (worker handed off to opencode but
+//     opencode hasn't echoed the message back via SSE yet). Without
+//     this grace window the virtual disappears the instant the
+//     worker 204s, but opencode can take 5-15s before its own user
+//     message lands in the stream - the chat log would be empty
+//     of the user's just-submitted prompt during that gap.
+//   - Delivered rows are dropped via the dedup step in messages.ts
+//     when the real opencode message arrives, OR by this query
+//     when delivered_at is older than DELIVERED_VISIBLE_MS.
+const DELIVERED_VISIBLE_MS = 60_000;
+export function listVisiblePromptsForSession(sessionId: string): PromptRow[] {
+  const db = getPromptDb();
+  const cutoff = Date.now() - DELIVERED_VISIBLE_MS;
+  return db
+    .query(
+      `SELECT * FROM prompts
+         WHERE session_id = ?
+           AND (
+             status = 'pending'
+             OR (status = 'delivered' AND delivered_at IS NOT NULL AND delivered_at >= ?)
+             OR status = 'failed'
+           )
+         ORDER BY ts_ms ASC`,
+    )
+    .all(sessionId, cutoff) as unknown as PromptRow[];
+}
+
 export function markPromptDelivered(id: string): void {
   const db = getPromptDb();
   db.prepare(
