@@ -232,6 +232,175 @@ interface McpConfigEntry {
   env?: Record<string, string>;
 }
 
+// Three-step OAuth handshake for an MCP server in `needsAuth` state.
+// Manual code paste because the OAuth provider's redirect lands on
+// the user's browser machine, not on the host running opencode -
+// localhost callback capture only works for the desktop client.
+function McpAuthSection({
+  mcpName,
+  port,
+}: {
+  mcpName: string;
+  port: number | null;
+}) {
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const { mutate: revalidateStatus } = useMcpStatus();
+
+  const startFlow = async () => {
+    if (!port) return;
+    setBusy(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      const r = await fetch(`/api/opencode/${port}/mcp-auth-start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: mcpName }),
+      });
+      const json = (await r.json()) as {
+        ok: boolean;
+        authorizationUrl?: string;
+        error?: string;
+      };
+      if (!r.ok || !json.ok || !json.authorizationUrl) {
+        setError(json.error ?? `start failed (HTTP ${r.status})`);
+      } else {
+        setAuthUrl(json.authorizationUrl);
+        window.open(
+          json.authorizationUrl,
+          "_blank",
+          "noopener,noreferrer,popup=yes",
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitCode = async () => {
+    if (!port) return;
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/opencode/${port}/mcp-auth-callback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: mcpName, code: trimmed }),
+      });
+      const json = (await r.json()) as {
+        ok: boolean;
+        error?: string;
+        body?: unknown;
+      };
+      if (!r.ok || !json.ok) {
+        setError(
+          (typeof json.body === "object" &&
+            json.body &&
+            "message" in (json.body as object) &&
+            String((json.body as { message?: unknown }).message)) ||
+            json.error ||
+            `callback failed (HTTP ${r.status})`,
+        );
+      } else {
+        setSuccess(true);
+        setCode("");
+        setAuthUrl(null);
+        await revalidateStatus();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 space-y-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+        OAuth handshake required
+      </div>
+      {!authUrl && !success && (
+        <>
+          <p className="text-sm text-fg/90">
+            This MCP server needs OAuth credentials before it can connect.
+            Start the handshake to open the provider's login page.
+          </p>
+          <button
+            type="button"
+            onClick={() => void startFlow()}
+            disabled={busy || !port}
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent/90 disabled:opacity-50"
+            data-test="portal-mcp-auth-start"
+          >
+            Start OAuth handshake
+          </button>
+        </>
+      )}
+      {authUrl && !success && (
+        <>
+          <p className="text-sm text-fg/90">
+            A new tab should have opened at the OAuth provider. After you log
+            in, the provider redirects with{" "}
+            <code className="text-xs">?code=...</code> in the URL. Copy that
+            code and paste it below.
+          </p>
+          <div className="text-xs">
+            <span className="text-muted-fg">Auth URL: </span>
+            <a
+              href={authUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="break-all text-accent underline"
+            >
+              {authUrl}
+            </a>
+          </div>
+          <div className="flex flex-wrap items-stretch gap-2">
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="paste authorization code"
+              className="flex-1 min-w-0 rounded-md border border-border bg-bg px-2 py-1.5 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              data-test="portal-mcp-auth-code"
+            />
+            <button
+              type="button"
+              onClick={() => void submitCode()}
+              disabled={busy || !code.trim()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent/90 disabled:opacity-50"
+              data-test="portal-mcp-auth-submit"
+            >
+              Submit code
+            </button>
+          </div>
+        </>
+      )}
+      {success && (
+        <p className="text-sm text-emerald-700 dark:text-emerald-400">
+          Auth completed. The server should connect on its own; if not, toggle
+          its switch in the hamburger menu.
+        </p>
+      )}
+      {error && (
+        <p className="text-sm text-danger break-words">{error}</p>
+      )}
+    </div>
+  );
+}
+
 function Body({
   mcpName,
   onClose,
@@ -384,6 +553,10 @@ function Body({
             No config entry found for this MCP in opencode.json. Status comes
             from the running server only.
           </p>
+        )}
+
+        {kind === "needsAuth" && (
+          <McpAuthSection mcpName={mcpName} port={port} />
         )}
 
         <div className="border-t border-border pt-3">
