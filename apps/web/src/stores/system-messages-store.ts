@@ -7,6 +7,7 @@ export type SystemMessageCategory =
   | "stuck-detector"
   | "notification"
   | "version"
+  | "session"
   | "other";
 
 export type SystemMessageLevel = "info" | "warning" | "error" | "success";

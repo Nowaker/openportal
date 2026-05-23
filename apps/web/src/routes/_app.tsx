@@ -24,6 +24,7 @@ import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
 import { useEventStream } from "@/hooks/use-event-stream";
 import { useSettingsSync } from "@/hooks/use-settings-sync";
 import { requestNotificationPermission } from "@/hooks/use-status-notifications";
+import { logSystemMessage } from "@/stores/system-messages-store";
 import {
   PullToRefreshIndicator,
   PullToRefreshWrapper,
@@ -374,8 +375,22 @@ function NotificationPermissionBanner() {
       <button
         type="button"
         onClick={async () => {
-          await requestNotificationPermission();
+          const result = await requestNotificationPermission();
           setMode("hidden");
+          if (result === "granted") {
+            logSystemMessage(
+              "notification",
+              "success",
+              "Browser notifications enabled",
+            );
+          } else if (result === "denied") {
+            logSystemMessage(
+              "notification",
+              "warning",
+              "Browser notifications denied by user",
+              "Re-enable via the site's permissions panel; OpenPortal will not re-prompt automatically.",
+            );
+          }
         }}
         className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
       >

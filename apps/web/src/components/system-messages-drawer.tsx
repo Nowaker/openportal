@@ -24,6 +24,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   install: "Install",
   "stuck-detector": "Stuck detector",
   notification: "Notification",
+  version: "Version",
+  session: "Session",
   other: "Other",
 };
 

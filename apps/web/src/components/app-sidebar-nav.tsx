@@ -58,7 +58,10 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DirectoryPicker } from "@/components/directory-picker/directory-picker";
 import { mutate as globalSWRMutate } from "swr";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
-import { useSystemMessagesStore } from "@/stores/system-messages-store";
+import {
+  logSystemMessage,
+  useSystemMessagesStore,
+} from "@/stores/system-messages-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useTitleBarActionsStore } from "@/stores/title-bar-actions-store";
 import { useVscodeOpener } from "@/components/vscode-link";
@@ -102,6 +105,62 @@ import type { Session } from "@opencode-ai/sdk";
 // session.directory can be absolute ('/home/u/projekty/nowaker/blah') or
 // even a single-segment short name; either way the basename is what we
 // surface in the topbar + browser tab.
+async function compactSessionWithAudit(
+  port: number,
+  sessionId: string,
+  providerID: string,
+  modelID: string,
+  projectDirectory: string | null,
+): Promise<void> {
+  toast.info("Compacting session...");
+  try {
+    const r = await fetch(
+      `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/compact`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerID, modelID }),
+      },
+    );
+    if (r.ok) {
+      toast.success("Session compacted.");
+      logSystemMessage(
+        "session",
+        "success",
+        "Session compacted",
+        `Compacted with ${providerID}/${modelID}`,
+        projectDirectory,
+      );
+      return;
+    }
+    const body = (await r.json().catch(() => null)) as
+      | { error?: string; body?: { message?: string } }
+      | null;
+    const msg =
+      body?.body?.message ??
+      body?.error ??
+      `Compaction failed (HTTP ${r.status}).`;
+    toast.error(msg);
+    logSystemMessage(
+      "session",
+      "error",
+      "Compaction failed",
+      msg,
+      projectDirectory,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Compaction request failed.";
+    toast.error(msg);
+    logSystemMessage(
+      "session",
+      "error",
+      "Compaction request errored",
+      msg,
+      projectDirectory,
+    );
+  }
+}
+
 function projectLabelFromDirectory(directory?: string): string | null {
   if (!directory) return null;
   const parts = directory.replace(/\/+$/, "").split("/");
@@ -327,6 +386,13 @@ export function AppSidebarNav() {
     try {
       await callMoveLocal(movePending.targetPath);
       toast.success("Session moved.");
+      logSystemMessage(
+        "session",
+        "success",
+        `Session moved to ${movePending.targetPath}`,
+        undefined,
+        currentSession?.directory ?? null,
+      );
       setMovePending(null);
       await globalSWRMutate(
         (key) =>
@@ -339,6 +405,13 @@ export function AppSidebarNav() {
     } catch (err) {
       const e = err as Error;
       toast.error(e.message);
+      logSystemMessage(
+        "session",
+        "error",
+        "Move-to-project failed",
+        e.message,
+        currentSession?.directory ?? null,
+      );
     } finally {
       setMoveBusy(false);
     }
@@ -375,12 +448,26 @@ export function AppSidebarNav() {
         const body = (await r.json().catch(() => null)) as {
           error?: string;
         } | null;
-        toast.error(
-          body?.error ?? `${isArchived ? "Unarchive" : "Archive"} failed (HTTP ${r.status}).`,
+        const err =
+          body?.error ?? `${isArchived ? "Unarchive" : "Archive"} failed (HTTP ${r.status}).`;
+        toast.error(err);
+        logSystemMessage(
+          "session",
+          "error",
+          `${isArchived ? "Unarchive" : "Archive"} failed`,
+          err,
+          currentSession?.directory ?? null,
         );
         return;
       }
       toast.success(isArchived ? "Session unarchived." : "Session archived.");
+      logSystemMessage(
+        "session",
+        "success",
+        isArchived ? "Session unarchived" : "Session archived",
+        undefined,
+        currentSession?.directory ?? null,
+      );
       await globalSWRMutate(
         (key) =>
           typeof key === "string" &&
@@ -390,8 +477,14 @@ export function AppSidebarNav() {
       );
       setShowArchiveConfirm(false);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Archive request failed.",
+      const msg = err instanceof Error ? err.message : "Archive request failed.";
+      toast.error(msg);
+      logSystemMessage(
+        "session",
+        "error",
+        `${isArchived ? "Unarchive" : "Archive"} request errored`,
+        msg,
+        currentSession?.directory ?? null,
       );
     } finally {
       setArchiveBusy(false);
@@ -657,43 +750,14 @@ export function AppSidebarNav() {
               <button
                 type="button"
                 onClick={() => {
-                  void (async () => {
-                    toast.info("Compacting session...");
-                    try {
-                      const selectedModel = resolveModel(sessionId, instanceId);
-                      const r = await fetch(
-                        `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/compact`,
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            providerID: selectedModel.providerID,
-                            modelID: selectedModel.modelID,
-                          }),
-                        },
-                      );
-                      if (r.ok) {
-                        toast.success("Session compacted.");
-                      } else {
-                        const errBody = (await r
-                          .json()
-                          .catch(() => null)) as
-                          | { error?: string; body?: { message?: string } }
-                          | null;
-                        toast.error(
-                          errBody?.body?.message ??
-                            errBody?.error ??
-                            `Compaction failed (HTTP ${r.status}).`,
-                        );
-                      }
-                    } catch (err) {
-                      toast.error(
-                        err instanceof Error
-                          ? err.message
-                          : "Compaction request failed.",
-                      );
-                    }
-                  })();
+                  const selectedModel = resolveModel(sessionId, instanceId);
+                  void compactSessionWithAudit(
+                    port,
+                    sessionId,
+                    selectedModel.providerID,
+                    selectedModel.modelID,
+                    currentSession?.directory ?? null,
+                  );
                 }}
                 aria-label="Compact session"
                 title="Compact session - summarise older history"
@@ -831,51 +895,17 @@ export function AppSidebarNav() {
                   <MenuItem
                     onAction={() => {
                       if (!port || !sessionId) return;
-                      void (async () => {
-                        toast.info("Compacting session...");
-                        try {
-                          const selectedModel = resolveModel(
-                            sessionId,
-                            instanceId,
-                          );
-                          const r = await fetch(
-                            `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/compact`,
-                            {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                              },
-                              body: JSON.stringify({
-                                providerID: selectedModel.providerID,
-                                modelID: selectedModel.modelID,
-                              }),
-                            },
-                          );
-                          if (r.ok) {
-                            toast.success("Session compacted.");
-                          } else {
-                            const body = (await r
-                              .json()
-                              .catch(() => null)) as
-                              | {
-                                  error?: string;
-                                  body?: { message?: string };
-                                }
-                              | null;
-                            toast.error(
-                              body?.body?.message ??
-                                body?.error ??
-                                `Compaction failed (HTTP ${r.status}).`,
-                            );
-                          }
-                        } catch (err) {
-                          toast.error(
-                            err instanceof Error
-                              ? err.message
-                              : "Compaction request failed.",
-                          );
-                        }
-                      })();
+                      const selectedModel = resolveModel(
+                        sessionId,
+                        instanceId,
+                      );
+                      void compactSessionWithAudit(
+                        port,
+                        sessionId,
+                        selectedModel.providerID,
+                        selectedModel.modelID,
+                        currentSession?.directory ?? null,
+                      );
                     }}
                   >
                     <ArrowPathRoundedSquareIcon
