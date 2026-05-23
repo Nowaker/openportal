@@ -53,6 +53,34 @@ projects), follow this protocol:
 
 ## Operational patterns
 
+### Where openportal runs from (per branch)
+
+| Branch / worktree | Where it runs | How to (re)start |
+|---|---|---|
+| `main-nowaker` (`~/projekty/webapps/portal`) | systemd unit `openportal.service` on port 5000 | `bash scripts/deploy.sh` (full cycle) or `bash ~/projekty/webapps/portal-runtime/start-or-restart.sh` (registry-aware restart). NEVER use `scripts/run-worktree.sh` on the main repo. |
+| Any other worktree (`~/projekty/webapps/portal-<feature>`) | foreground process from `bash scripts/run-worktree.sh` on port 5200 (default) or arg | `bash scripts/run-worktree.sh [PORT]`. Ctrl+C to stop. NEVER touch systemd from a worktree. |
+
+The worktree script lives in-tree (`scripts/run-worktree.sh`) so every
+worktree has it without sibling-runtime-dir setup. It:
+
+- Builds `apps/web/.output/` + `packages/cli/dist/` from the worktree's
+  source (turbo-cache-skipping `bun build`).
+- Binds to the tailnet IP, same as prod.
+- Forces full isolation: `~/.openportal-worktrees/<branch>/openportal.json`
+  + `~/.openportal-worktrees/<branch>/openportal-state.json` +
+  `~/.local/share/openportal-worktrees/<branch>/openportal.db`. Prod's
+  `~/.openportal/*` is untouched.
+- Seeds the registry to point at the user's prod opencode on
+  `127.0.0.1:4096` so the worktree UI sees real opencode state. Edit
+  the seeded `openportal.json` to retarget.
+- Default port `5200` (prod is 5000, dev is 5001, openchamber is on
+  5100). Override with `bash scripts/run-worktree.sh 5123`. Re-running
+  `REBUILD=1 bash scripts/run-worktree.sh` forces a fresh bundle.
+- On first launch the script materializes `packages/cli/web ->
+  apps/web/.output` (worktree-local symlink) so the CLI's
+  `existsSync(WEB_SERVER_PATH)` startup gate passes. The symlink is
+  per-worktree and not committed.
+
 ### Portal restart cycle (I do this, not the user)
 
 ```bash
