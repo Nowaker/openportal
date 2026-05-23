@@ -163,14 +163,24 @@ anything that needs a tracker on GitLab.
 
 ### System messages drawer
 
-- Always-accessible dropdown anchored to the bottom-left of the
-  layout (bell icon + unread-count badge). Acts as the durable
-  audit log for OpenPortal-side events that today fire toasts and
-  forget: connection lost / restored, service restart attempted /
-  success / error, plugin install events, notification permission
-  changes, and other portal-side notifications. Chat content does
-  NOT route here — chat lives in the session route, the drawer is
-  for system events.
+- Durable audit log for OpenPortal-side events that today fire
+  toasts and forget: connection lost / restored, service restart
+  attempted / success / error, plugin install events, notification
+  permission changes, and other portal-side notifications. Chat
+  content does NOT route here — chat lives in the session route,
+  the drawer is for system events.
+- Two entry points with different default filters:
+  - **Top-right hamburger menu** (session-context menu): opens
+    project-filtered — shows messages scoped to the current
+    session's directory plus all system-wide events (connection,
+    version, etc.). Unread-count badge on the menu item.
+  - **Left-sidebar bottom dropdown** (the host avatar / profile
+    menu): opens unfiltered — shows everything across all
+    projects. Same unread-count badge.
+- Drawer is a centered react-aria Modal with fixed header +
+  scrollable body + fixed footer, dismissable via backdrop click,
+  Escape, or the X button. Opening any entry point also marks all
+  shown messages as acknowledged so the unread-count badge clears.
 - In-memory ring buffer holds the last 200 events per browser tab;
   reload clears it (localStorage persistence is a v2 follow-up).
 - Each entry carries a category badge, timestamp, level icon
@@ -179,9 +189,12 @@ anything that needs a tracker on GitLab.
 - Important messages MUST route through the drawer in addition to
   any short-lived toast - the toast is the ephemeral notification,
   the drawer is the durable record. `logSystemMessage(category,
-  level, message, details?)` from `apps/web/src/stores/system-
-  messages-store.ts` is the contract; use it alongside the
-  matching `toast.*` call.
+  level, message, details?, projectDirectory?)` from
+  `apps/web/src/stores/system-messages-store.ts` is the contract;
+  use it alongside the matching `toast.*` call. Pass
+  `projectDirectory` (e.g. session.directory) for project-scoped
+  events; omit for system-wide ones (connection, version
+  mismatch) so they show under both filter scopes.
 
 ### Plumbing
 
