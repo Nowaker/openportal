@@ -25,6 +25,7 @@ import { ModelSelect } from "@/components/model-select";
 import { OmoBlockView } from "@/components/omo-block-view";
 import { ThinkingSelect } from "@/components/thinking-select";
 import { MessageInfoModal } from "@/components/message-info-modal";
+import { ForkDialog } from "@/components/fork-dialog";
 import { parseOmoBlocks } from "@/lib/omo-injection";
 import {
   FileMentionPopover,
@@ -4404,16 +4405,37 @@ function SessionPage() {
     }
   }, [port, sessionId]);
 
+  // Section L: Fork message-id is captured when the user clicks Fork
+  // on a per-message action button. We open <ForkDialog> instead of
+  // firing the request immediately so the user can confirm + pick a
+  // target directory + see multi-phase progress.
+  const [forkRequest, setForkRequest] = useState<MessageWithParts | null>(null);
+  const [forkPhase, setForkPhase] = useState<
+    "idle" | "asking" | "moving" | "opening" | "error"
+  >("idle");
+  const [forkError, setForkError] = useState<string | null>(null);
+
   const handleForkRequest = useCallback(
-    async (message: MessageWithParts) => {
-      if (!port || !sessionId) return;
+    (message: MessageWithParts) => {
+      setForkPhase("idle");
+      setForkError(null);
+      setForkRequest(message);
+    },
+    [],
+  );
+
+  const handleForkConfirm = useCallback(
+    async (targetDirectory: string | null) => {
+      if (!port || !sessionId || !forkRequest) return;
+      setForkError(null);
+      setForkPhase("asking");
       try {
         const res = await fetch(
           `/api/opencode/${port}/session/${sessionId}/fork`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messageID: message.info.id }),
+            body: JSON.stringify({ messageID: forkRequest.info.id }),
           },
         );
         if (!res.ok) {
@@ -4423,17 +4445,40 @@ function SessionPage() {
         if (!newSession?.id) {
           throw new Error("Fork response missing session id");
         }
+        if (targetDirectory) {
+          setForkPhase("moving");
+          const moveRes = await fetch(
+            `/api/opencode/${port}/session/${encodeURIComponent(newSession.id)}/move-to-project`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ targetPath: targetDirectory }),
+            },
+          );
+          if (!moveRes.ok) {
+            const body = (await moveRes.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(
+              `Fork landed; moving to project failed: ${body?.error ?? `HTTP ${moveRes.status}`}`,
+            );
+          }
+        }
+        setForkPhase("opening");
         toast.success("Forked to new session");
+        setForkRequest(null);
+        setForkPhase("idle");
         await navigate({
           to: "/session/$id",
           params: { id: newSession.id },
         });
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        toast.error(`Fork failed: ${detail}`);
+        setForkError(detail);
+        setForkPhase("error");
       }
     },
-    [port, sessionId, navigate],
+    [port, sessionId, forkRequest, navigate],
   );
 
   // Recovery for the 'prompt accepted but generation never dispatched'
@@ -5827,6 +5872,20 @@ function SessionPage() {
           </>
         </div>
       )}
+      <ForkDialog
+        isOpen={forkRequest !== null}
+        onOpenChange={(open) => {
+          if (!open && forkPhase !== "asking" && forkPhase !== "moving") {
+            setForkRequest(null);
+            setForkPhase("idle");
+            setForkError(null);
+          }
+        }}
+        onConfirm={handleForkConfirm}
+        currentDirectory={currentSession?.directory ?? null}
+        phase={forkPhase}
+        errorMessage={forkError}
+      />
     </div>
   );
 }
