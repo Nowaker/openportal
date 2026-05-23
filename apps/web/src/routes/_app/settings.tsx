@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
 import { ContentVisibilityTable } from "@/components/content-visibility-table";
 import { DiagnosticsPanel } from "@/components/diagnostics-panel";
+import { StuckRecoverySettings } from "@/components/stuck-recovery-settings";
 import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
@@ -1959,7 +1960,10 @@ function SettingsPage() {
         </TabPanel>
 
         <TabPanel id="diagnostics" className="pt-6">
-          <DiagnosticsPanel />
+          <div className="space-y-10">
+            <DiagnosticsPanel />
+            <StuckRecoverySettings />
+          </div>
         </TabPanel>
       </Tabs>
       </div>
