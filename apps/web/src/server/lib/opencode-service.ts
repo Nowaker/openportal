@@ -111,6 +111,7 @@ export function restartUserService(unit: string): { ok: boolean; output: string 
     const out = execSync(`systemctl --user restart ${shellEscape(unit)}`, {
       encoding: "utf-8",
       timeout: 30000,
+      env: withUserBusEnv(),
     });
     return { ok: true, output: out };
   } catch (e) {
@@ -119,6 +120,26 @@ export function restartUserService(unit: string): { ok: boolean; output: string 
       output: e instanceof Error ? e.message : String(e),
     };
   }
+}
+
+// systemctl --user needs XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS to
+// reach the user manager's dbus socket. The systemd user manager sets
+// these on every service it spawns, but our launcher (runner.sh) used
+// to scrub them via `env -i` before exec, leaving the openportal process
+// with bus-less child invocations. runner.sh now forwards them, but we
+// keep a defensive fallback here so an out-of-band launch (`bun run`
+// manually, dev container, etc.) still works.
+function withUserBusEnv(): NodeJS.ProcessEnv {
+  const uid = process.getuid?.();
+  const runtime =
+    process.env.XDG_RUNTIME_DIR ?? (uid !== undefined ? `/run/user/${uid}` : undefined);
+  const dbus =
+    process.env.DBUS_SESSION_BUS_ADDRESS ??
+    (runtime !== undefined ? `unix:path=${runtime}/bus` : undefined);
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (runtime !== undefined) env.XDG_RUNTIME_DIR = runtime;
+  if (dbus !== undefined) env.DBUS_SESSION_BUS_ADDRESS = dbus;
+  return env;
 }
 
 function shellEscape(s: string): string {
