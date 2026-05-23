@@ -1,5 +1,6 @@
 import useSWR, { useSWRConfig } from "swr";
 import { usePollMs } from "@/hooks/use-opencode";
+import { logSystemMessage } from "@/stores/system-messages-store";
 
 const KEY = "/api/state/pinned";
 
@@ -46,6 +47,11 @@ export function useTogglePinnedSession() {
       if (res.ok) {
         const json = (await res.json()) as PinnedResponse;
         await mutate(KEY, json, { revalidate: false });
+        logSystemMessage(
+          "other",
+          "info",
+          `Session ${action === "pin" ? "pinned" : "unpinned"}: ${sessionId.slice(0, 12)}\u2026`,
+        );
       }
     } catch {
       /* network blip - SWR refreshInterval will reconcile */

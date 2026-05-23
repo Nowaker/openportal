@@ -11,6 +11,7 @@
 // list only shows truly-overridden sessions.
 
 import useSWR, { mutate as globalMutate } from "swr";
+import { logSystemMessage } from "@/stores/system-messages-store";
 
 const KEY = "/api/auto-approve";
 
@@ -86,6 +87,11 @@ export async function setAutoApproveDefault(value: boolean): Promise<void> {
   if (!r.ok) throw new Error(`setAutoApproveDefault failed: ${r.status}`);
   const next = (await r.json()) as AutoApproveConfig;
   await pushConfig(next);
+  logSystemMessage(
+    "other",
+    "info",
+    `Auto-approve global default set to ${value ? "ON" : "OFF"}`,
+  );
 }
 
 export async function setSessionOverride(
@@ -103,6 +109,11 @@ export async function setSessionOverride(
   if (!r.ok) throw new Error(`setSessionOverride failed: ${r.status}`);
   const next = (await r.json()) as AutoApproveConfig;
   await pushConfig(next);
+  logSystemMessage(
+    "other",
+    "info",
+    `Auto-approve override for ${sessionId.slice(0, 12)}\u2026 set to ${value ? "ON" : "OFF"}`,
+  );
 }
 
 export async function removeSessionOverride(
@@ -115,6 +126,11 @@ export async function removeSessionOverride(
   if (!r.ok) throw new Error(`removeSessionOverride failed: ${r.status}`);
   const next = (await r.json()) as AutoApproveConfig;
   await pushConfig(next);
+  logSystemMessage(
+    "other",
+    "info",
+    `Auto-approve override removed for ${sessionId.slice(0, 12)}\u2026`,
+  );
 }
 
 export async function clearAllOverrides(): Promise<void> {
@@ -122,6 +138,11 @@ export async function clearAllOverrides(): Promise<void> {
   if (!r.ok) throw new Error(`clearAllOverrides failed: ${r.status}`);
   const next = (await r.json()) as AutoApproveConfig;
   await pushConfig(next);
+  logSystemMessage(
+    "other",
+    "info",
+    "All auto-approve session overrides cleared",
+  );
 }
 
 export async function toggleAutoApprove(
