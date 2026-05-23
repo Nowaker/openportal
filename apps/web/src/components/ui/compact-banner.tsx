@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
 export type CompactBannerIntent = "warning" | "danger" | "info";
 
@@ -69,14 +68,6 @@ export function CompactBanner({
         </button>
         {actions && (
           <span className="shrink-0 flex items-center gap-1.5">{actions}</span>
-        )}
-        {expandable && (
-          <ChevronDownIcon
-            className={`size-3.5 shrink-0 ${p.iconColor} transition-transform ${
-              expanded ? "rotate-180" : ""
-            }`}
-            aria-hidden
-          />
         )}
       </div>
       {expandable && expanded && (

@@ -57,9 +57,9 @@ function ConnectionStatusBanner() {
             <RestartOpencodeButton />
             <Link
               to="/servers"
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
             >
-              <ServerStackIcon className="size-3" />
+              <ServerStackIcon className="size-3.5" />
               Servers
             </Link>
           </>
@@ -82,9 +82,9 @@ function ConnectionStatusBanner() {
       actions={
         <Link
           to="/servers"
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted"
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
         >
-          <ServerStackIcon className="size-3" />
+          <ServerStackIcon className="size-3.5" />
           Servers
         </Link>
       }
@@ -179,7 +179,7 @@ function RestartOpencodeButton() {
         title="Detect and restart the OpenCode systemd unit"
       >
         <ArrowPathIcon className="size-3.5" />
-        Restart OpenCode
+        Restart
       </button>
     );
   }
@@ -295,10 +295,10 @@ function BuildMismatchBanner() {
             setReloading(true);
             window.location.reload();
           }}
-          className="rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted disabled:opacity-70 inline-flex items-center gap-1"
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted disabled:opacity-70"
         >
           <ArrowPathIcon
-            className={`size-3 shrink-0 ${reloading ? "animate-spin" : ""}`}
+            className={`size-3.5 shrink-0 ${reloading ? "animate-spin" : ""}`}
           />
           {reloading ? "Reloading…" : "Reload"}
         </button>
@@ -377,7 +377,7 @@ function NotificationPermissionBanner() {
           await requestNotificationPermission();
           setMode("hidden");
         }}
-        className="rounded-md border border-border bg-bg px-1.5 py-0.5 text-xs font-medium text-fg hover:bg-muted"
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
       >
         Enable
       </button>
