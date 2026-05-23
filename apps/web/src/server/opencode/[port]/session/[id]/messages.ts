@@ -1,4 +1,9 @@
-import { defineHandler, getQuery, setResponseHeader } from "nitro/h3";
+import {
+  defineHandler,
+  getQuery,
+  setResponseHeader,
+  setResponseStatus,
+} from "nitro/h3";
 import {
   fetchOpencode,
   getOpencodeClient,
@@ -93,7 +98,17 @@ export default defineHandler(async (event) => {
     query.onlyUser === "true" ||
     query.onlyUser === "yes";
 
-  let full = await loadFullMessages(port, id, event, /*forceRefresh*/ false);
+  let full: unknown[];
+  try {
+    full = await loadFullMessages(port, id, event, /*forceRefresh*/ false);
+  } catch (err) {
+    if (err instanceof MessagesUnavailableError) {
+      setResponseStatus(event, 503);
+      setResponseHeader(event, "X-OpenPortal-OpenCode-Down", "true");
+      return [];
+    }
+    throw err;
+  }
   let view = onlyUser ? full.filter(isUserMessage) : full;
   setResponseHeader(event, "X-Messages-Total-Raw", String(full.length));
 
@@ -146,6 +161,22 @@ export default defineHandler(async (event) => {
 
 type EventLike = Parameters<Parameters<typeof defineHandler>[0]>[0];
 
+// Thrown when opencode is unreachable AND we have nothing to serve (no
+// stale cache, no pending-prompt virtuals). The outer handler catches
+// this and returns 503 so SWR's default error-retains-data behavior
+// preserves the user's loaded chat log instead of overwriting it with
+// "No messages yet". Without this signal a successful 200 with an
+// empty body would let SWR replace previousData, clearing the UI on
+// every slow/timed-out poll. The user's invariant for low-connectivity
+// mode: 'you must not clear any loaded content when opencode connection
+// sucks.'
+class MessagesUnavailableError extends Error {
+  constructor() {
+    super("opencode unreachable and no cached or pending data");
+    this.name = "MessagesUnavailableError";
+  }
+}
+
 // Single entry point that combines real opencode messages with
 // virtual pending-prompt messages and degrades gracefully when
 // opencode is unreachable:
@@ -173,15 +204,22 @@ async function loadFullMessages(
   forceRefresh: boolean,
 ): Promise<unknown[]> {
   let real: unknown[] | null = forceRefresh ? null : getCachedMessages(id);
+  let opencodeTimedOut = false;
   if (real === null) {
     try {
       real = await fetchAndCache(port, id);
-    } catch {
-      real = getStaleMessages(id) ?? [];
+    } catch (err) {
+      real = getStaleMessages(id);
+      opencodeTimedOut = err instanceof FetchTimeoutError;
       setResponseHeader(event, "X-OpenPortal-OpenCode-Down", "true");
     }
   }
   const visible = listVisiblePromptsForSession(id);
+  if (real === null && visible.length === 0) {
+    if (opencodeTimedOut) throw new MessagesUnavailableError();
+    return [];
+  }
+  if (real === null) real = [];
   if (visible.length === 0) return real;
   // Dedup pass 1: text match. Drop any virtual whose raw_text
   // matches a real user message that landed AFTER the prompt was
@@ -417,15 +455,19 @@ const FALLBACK_FETCH_LIMIT = 1000;
 // ASAP'.
 const FETCH_TIMEOUT_MS = 3_000;
 
+class FetchTimeoutError extends Error {
+  constructor() {
+    super(`opencode session.messages timed out after ${FETCH_TIMEOUT_MS}ms`);
+    this.name = "FetchTimeoutError";
+  }
+}
+
 async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
   const client = await getOpencodeClient(port);
   const result = await Promise.race([
     client.session.messages({ path: { id } }),
     new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`opencode session.messages timed out after ${FETCH_TIMEOUT_MS}ms`)),
-        FETCH_TIMEOUT_MS,
-      ),
+      setTimeout(() => reject(new FetchTimeoutError()), FETCH_TIMEOUT_MS),
     ),
   ]);
   const data = (result as { data?: unknown }).data;
