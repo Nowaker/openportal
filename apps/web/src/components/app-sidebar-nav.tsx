@@ -848,9 +848,10 @@ export function AppSidebarNav() {
               <MenuItem
                 onAction={() => {
                   const dir = currentSession?.directory ?? null;
+                  const sid = currentSession?.id ?? null;
                   useSystemMessagesStore
                     .getState()
-                    .openProjectFiltered(dir);
+                    .openProjectFiltered(dir, sid);
                 }}
                 data-test="portal-hamburger-system-messages"
               >

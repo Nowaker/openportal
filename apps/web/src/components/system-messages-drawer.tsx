@@ -54,6 +54,7 @@ export function SystemMessagesDrawer() {
   const allMessages = useSystemMessagesStore((s) => s.messages);
   const isOpen = useSystemMessagesStore((s) => s.isOpen);
   const filter = useSystemMessagesStore((s) => s.filter);
+  const setFilter = useSystemMessagesStore((s) => s.setFilter);
   const acknowledgeAll = useSystemMessagesStore((s) => s.acknowledgeAll);
   const closeDrawer = useSystemMessagesStore((s) => s.closeDrawer);
   const clear = useSystemMessagesStore((s) => s.clear);
@@ -63,14 +64,31 @@ export function SystemMessagesDrawer() {
     if (isOpen) acknowledgeAll();
   }, [isOpen, acknowledgeAll]);
 
+  // Apply the 3-mode filter. System-wide messages (no projectDirectory
+  // and no sessionId) ALWAYS show in 'project' + 'session' modes so
+  // connection / version / restart events aren't hidden behind a
+  // narrowed scope.
   const messages = React.useMemo(() => {
-    if (!filter) return allMessages;
-    const dir = filter.projectDirectory;
-    if (!dir) return allMessages.filter((m) => !m.projectDirectory);
-    return allMessages.filter(
-      (m) => !m.projectDirectory || m.projectDirectory === dir,
-    );
+    if (!filter || filter.kind === "all") return allMessages;
+    if (filter.kind === "project") {
+      const dir = filter.projectDirectory;
+      if (!dir) return allMessages.filter((m) => !m.projectDirectory);
+      return allMessages.filter(
+        (m) => !m.projectDirectory || m.projectDirectory === dir,
+      );
+    }
+    const sid = filter.sessionId;
+    if (!sid) return allMessages.filter((m) => !m.sessionId);
+    return allMessages.filter((m) => !m.sessionId || m.sessionId === sid);
   }, [allMessages, filter]);
+
+  const switchToMode = React.useCallback(
+    (kind: "all" | "project" | "session") => {
+      if (!filter) return;
+      setFilter({ ...filter, kind });
+    },
+    [filter, setFilter],
+  );
 
   return (
     <ModalOverlay
@@ -81,7 +99,7 @@ export function SystemMessagesDrawer() {
       isDismissable
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/50"
     >
-      <Modal className="outline-none w-full max-w-md max-h-[90vh]">
+      <Modal className="outline-none w-full max-w-2xl max-h-[90vh]">
         <PrimitiveDialog
           role="dialog"
           aria-label="System messages"
@@ -92,24 +110,47 @@ export function SystemMessagesDrawer() {
               <BellIcon className="size-4 text-muted-fg shrink-0" />
               <span className="truncate">
                 System messages
-                {filter ? (
-                  <span className="ml-1 text-xs text-muted-fg font-normal">
-                    ({filter.projectDirectory
-                      ? `scope: ${filter.projectDirectory}`
-                      : "system-only"}
-                    )
-                  </span>
-                ) : (
-                  <span className="ml-1 text-xs text-muted-fg font-normal">
-                    (all)
-                  </span>
-                )}
-              </span>
-              <span className="text-xs text-muted-fg font-normal shrink-0">
-                {messages.length}
+                <span className="ml-1 text-xs text-muted-fg font-normal">
+                  {messages.length}
+                </span>
               </span>
             </div>
-            <div className="flex items-center gap-1">
+            {filter && (
+              <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
+                {(["all", "project", "session"] as const).map((kind) => {
+                  const disabled =
+                    (kind === "project" && !filter.projectDirectory) ||
+                    (kind === "session" && !filter.sessionId);
+                  return (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => switchToMode(kind)}
+                      disabled={disabled}
+                      className={`rounded px-2 py-0.5 capitalize ${
+                        filter.kind === kind
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-fg hover:text-fg disabled:opacity-40 disabled:cursor-not-allowed"
+                      }`}
+                      title={
+                        kind === "project"
+                          ? filter.projectDirectory
+                            ? `Project: ${filter.projectDirectory}`
+                            : "No current project to scope by"
+                          : kind === "session"
+                            ? filter.sessionId
+                              ? `Session: ${filter.sessionId.slice(0, 12)}\u2026`
+                              : "No current session to scope by"
+                            : "All messages across all projects"
+                      }
+                    >
+                      {kind}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex items-center gap-1 shrink-0">
               {messages.length > 0 && (
                 <button
                   type="button"

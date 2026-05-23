@@ -21,10 +21,22 @@ export interface SystemMessage {
   details?: string;
   acknowledged: boolean;
   projectDirectory?: string | null;
+  sessionId?: string | null;
 }
 
+// Three scope modes the user can toggle between in the drawer header:
+//   all     - every message regardless of project / session
+//   project - messages tagged with this projectDirectory + system-wide
+//   session - messages tagged with this sessionId + system-wide
+// System-wide messages (no projectDirectory + no sessionId) always
+// show in 'project' and 'session' modes so the user never loses
+// connection / version / restart events when narrowing the view.
+export type DrawerFilterKind = "all" | "project" | "session";
+
 export interface DrawerFilter {
+  kind: DrawerFilterKind;
   projectDirectory: string | null;
+  sessionId: string | null;
 }
 
 const MAX_MESSAGES = 200;
@@ -89,8 +101,10 @@ interface SystemMessagesState {
   acknowledgeAll: () => void;
   clear: () => void;
   openDrawer: () => void;
-  openProjectFiltered: (projectDirectory: string | null) => void;
-  openUnfiltered: () => void;
+  openProjectFiltered: (projectDirectory: string | null, sessionId?: string | null) => void;
+  openSessionFiltered: (projectDirectory: string | null, sessionId: string | null) => void;
+  openUnfiltered: (projectDirectory?: string | null, sessionId?: string | null) => void;
+  setFilter: (filter: DrawerFilter) => void;
   closeDrawer: () => void;
 }
 
@@ -134,9 +148,22 @@ export const useSystemMessagesStore = create<SystemMessagesState>((set) => ({
     return set({ messages: [], unreadCount: 0 });
   },
   openDrawer: () => set({ isOpen: true }),
-  openProjectFiltered: (projectDirectory) =>
-    set({ isOpen: true, filter: { projectDirectory } }),
-  openUnfiltered: () => set({ isOpen: true, filter: null }),
+  openProjectFiltered: (projectDirectory, sessionId = null) =>
+    set({
+      isOpen: true,
+      filter: { kind: "project", projectDirectory, sessionId },
+    }),
+  openSessionFiltered: (projectDirectory, sessionId) =>
+    set({
+      isOpen: true,
+      filter: { kind: "session", projectDirectory, sessionId },
+    }),
+  openUnfiltered: (projectDirectory = null, sessionId = null) =>
+    set({
+      isOpen: true,
+      filter: { kind: "all", projectDirectory, sessionId },
+    }),
+  setFilter: (filter) => set({ filter }),
   closeDrawer: () => set({ isOpen: false }),
 }));
 
@@ -161,6 +188,7 @@ export function logSystemMessage(
   message: string,
   details?: string,
   projectDirectory?: string | null,
+  sessionId?: string | null,
 ): void {
   useSystemMessagesStore.getState().add({
     category,
@@ -168,5 +196,6 @@ export function logSystemMessage(
     message,
     details,
     projectDirectory,
+    sessionId,
   });
 }
