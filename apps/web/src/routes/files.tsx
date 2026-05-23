@@ -57,6 +57,8 @@ interface BrowseResponse {
   entries?: BrowseEntry[];
   virtual?: true;
   error?: string;
+  isFile?: true;
+  filename?: string;
 }
 
 interface FileResponse {
@@ -166,8 +168,34 @@ function FilesPage() {
   const home = browse?.home ?? "";
   const [pathInput, setPathInput] = useState("");
   useEffect(() => {
-    if (browse?.path) setPathInput(toTildeDisplay(browse.path, home));
-  }, [browse?.path, home]);
+    if (browse?.isFile && browse.path) {
+      setPathInput(toTildeDisplay(browse.path, home));
+    } else if (browse?.path) {
+      const display = search.file
+        ? `${browse.path === "/" ? "" : browse.path}/${search.file}`
+        : browse.path;
+      setPathInput(toTildeDisplay(display, home));
+    }
+  }, [browse?.path, browse?.isFile, search.file, home]);
+
+  // Server-side detection: when the user pastes a FILE path into the
+  // address bar (or arrives via a markdown link that put the filename
+  // in ?path=), browse returns { isFile, parent, filename }. Auto-
+  // navigate to the canonical ?path=<dir>&file=<name> URL so the
+  // file viewer renders + the URL bar reflects the split.
+  useEffect(() => {
+    if (browse?.isFile && browse.parent && browse.filename) {
+      void navigate({
+        to: "/files",
+        search: {
+          path: browse.parent,
+          file: browse.filename,
+          panel: search.panel,
+        },
+        replace: true,
+      });
+    }
+  }, [browse?.isFile, browse?.parent, browse?.filename, search.panel, navigate]);
 
   const submitPath = () => {
     const abs = fromTildeDisplay(pathInput, home);
@@ -520,7 +548,8 @@ function TopBar({
         onClick={onGoHome}
         disabled={!home}
         data-test="portal-files-home"
-        title={`Your home directory${home ? ` (${home})` : ""}`}
+        title={`Root${home ? ` (${home})` : ""}`}
+        aria-label="Root"
         className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg disabled:opacity-30"
       >
         <HashtagIcon className="size-4" />

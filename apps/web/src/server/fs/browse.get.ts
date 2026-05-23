@@ -44,6 +44,12 @@ export default defineHandler(async (event) => {
     };
   }
 
+  // Compute parent unconditionally so the client's Up + Root buttons
+  // stay active even when the current path is a file, a missing path,
+  // or a permission-denied path. Without this the buttons go inactive
+  // and the user is stranded.
+  const computedParent = path === "/" ? null : dirname(path);
+
   let stat;
   try {
     stat = await lstat(path);
@@ -51,11 +57,24 @@ export default defineHandler(async (event) => {
     return {
       error: e instanceof Error ? e.message : "Path not accessible",
       path,
+      parent: computedParent,
+      home: homedir(),
     };
   }
 
+  // When the path points at a regular file (not a directory), return
+  // an isFile marker so the client can route to the file viewer with
+  // parent + filename split automatically. Lets the user paste a
+  // file path into the address bar OR navigate via a /files?path=
+  // link that has the filename embedded in path.
   if (!stat.isDirectory()) {
-    return { error: "Not a directory", path };
+    return {
+      isFile: true,
+      path,
+      parent: computedParent,
+      filename: path.split("/").pop() ?? "",
+      home: homedir(),
+    };
   }
 
   let raw;
