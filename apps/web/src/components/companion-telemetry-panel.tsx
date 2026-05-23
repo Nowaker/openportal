@@ -9,6 +9,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { usePollMs } from "@/hooks/use-opencode";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { logSystemMessage } from "@/stores/system-messages-store";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 
 interface DetectedOpencode {
@@ -56,24 +57,28 @@ function SudoPasswordModal({
       const j = (await res.json()) as { ok?: boolean; note?: string };
       setPassword("");
       if (j.ok) {
-        toast.success(j.note ?? `Restarted ${state.unit}`);
+        const successMsg = j.note ?? `Restarted ${state.unit}`;
+        toast.success(successMsg);
+        logSystemMessage("restart", "success", successMsg);
         onSuccess();
         onClose();
       } else {
         // Restart errors stay until the user dismisses them. User explicitly
         // reported that the default 4s sonner dwell time hid the error
         // before they could read it ("wtf, it can't disappear just because").
-        toast.error(j.note ?? `Restart of ${state.unit} failed`, {
-          duration: Infinity,
-          closeButton: true,
-        });
+        // Also logged to the system-messages drawer so the error survives
+        // even after the persistent toast is dismissed.
+        const errMsg = j.note ?? `Restart of ${state.unit} failed`;
+        toast.error(errMsg, { duration: Infinity, closeButton: true });
+        logSystemMessage("restart", "error", `Restart failed: ${state.unit}`, errMsg);
       }
     } catch (err) {
       setPassword("");
-      toast.error(
-        err instanceof Error ? `Restart failed: ${err.message}` : "Restart failed",
-        { duration: Infinity, closeButton: true },
-      );
+      const errMsg = err instanceof Error
+        ? `Restart failed: ${err.message}`
+        : "Restart failed";
+      toast.error(errMsg, { duration: Infinity, closeButton: true });
+      logSystemMessage("restart", "error", `Restart failed: ${state?.unit ?? "?"}`, errMsg);
     } finally {
       setSubmitting(false);
     }
@@ -268,19 +273,28 @@ export function CompanionTelemetryPanel() {
       const message = j.note ?? (j.changed ? "Installed" : "Already installed");
       if (ok) {
         toast.success(message);
+        logSystemMessage("install", "success", message);
       } else {
         // Persistent + dismissable: install-and-restart can fail for
         // many actionable reasons (missing systemd unit, sudo timeout,
         // unit-not-found) and the user needs the full text. See the
-        // SudoPrompt onClick handler above for the same pattern.
+        // SudoPrompt onClick handler above for the same pattern. Also
+        // logged to the system-messages drawer for durability.
         toast.error(message, { duration: Infinity, closeButton: true });
+        logSystemMessage(
+          "install",
+          "error",
+          "Install + restart failed",
+          message,
+        );
       }
       await mutate();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? `Install failed: ${err.message}` : "Install failed",
-        { duration: Infinity, closeButton: true },
-      );
+      const errMsg = err instanceof Error
+        ? `Install failed: ${err.message}`
+        : "Install failed";
+      toast.error(errMsg, { duration: Infinity, closeButton: true });
+      logSystemMessage("install", "error", "Install request errored", errMsg);
     } finally {
       setInstalling(null);
     }

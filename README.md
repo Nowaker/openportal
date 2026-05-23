@@ -161,6 +161,28 @@ anything that needs a tracker on GitLab.
   maps each to its systemd unit + scope, and renders them in the
   panel so you can tell which one is currently bound.
 
+### System messages drawer
+
+- Always-accessible dropdown anchored to the bottom-left of the
+  layout (bell icon + unread-count badge). Acts as the durable
+  audit log for OpenPortal-side events that today fire toasts and
+  forget: connection lost / restored, service restart attempted /
+  success / error, plugin install events, notification permission
+  changes, and other portal-side notifications. Chat content does
+  NOT route here — chat lives in the session route, the drawer is
+  for system events.
+- In-memory ring buffer holds the last 200 events per browser tab;
+  reload clears it (localStorage persistence is a v2 follow-up).
+- Each entry carries a category badge, timestamp, level icon
+  (info / warning / error / success), short message, and an
+  expandable details block for full error text / stack traces.
+- Important messages MUST route through the drawer in addition to
+  any short-lived toast - the toast is the ephemeral notification,
+  the drawer is the durable record. `logSystemMessage(category,
+  level, message, details?)` from `apps/web/src/stores/system-
+  messages-store.ts` is the contract; use it alongside the
+  matching `toast.*` call.
+
 ### Plumbing
 
 - Bun runtime; Nitro v3 server; tanstack-router + SWR + zustand on

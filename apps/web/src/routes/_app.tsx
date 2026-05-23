@@ -12,6 +12,7 @@ import { AppSidebarNav, PinnedTabStrip } from "@/components/app-sidebar-nav";
 import { FileBrowserPanel } from "@/components/file-browser-panel";
 import { OpencodeUpdateBanner } from "@/components/opencode-update-banner";
 import { StuckDetectorInstallBanner } from "@/components/stuck-detector-install-banner";
+import { SystemMessagesDrawer } from "@/components/system-messages-drawer";
 import { CompactBanner } from "@/components/ui/compact-banner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
@@ -561,6 +562,7 @@ function AppLayout() {
           </SidebarInset>
           <FileBrowserPanel />
         </SidebarProvider>
+        <SystemMessagesDrawer />
       </PullToRefreshWrapper>
     </BreadcrumbProvider>
   );
