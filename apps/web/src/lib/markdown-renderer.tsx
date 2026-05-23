@@ -1,4 +1,5 @@
 import Markdown from "react-markdown";
+import { useNavigate } from "@tanstack/react-router";
 import { MermaidBlock } from "@/components/mermaid-block";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -112,6 +113,7 @@ export function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const { isMobile } = useMediaQuery();
   const linkBehavior = useChatLinkStore((s) => s.behavior);
+  const navigate = useNavigate();
   const remarkPlugins =
     mode === "extended"
       ? [remarkGfm, remarkBreaks, remarkGithubBlockquoteAlert]
@@ -175,6 +177,47 @@ export function MarkdownRenderer({
       }
       const isAnchor = finalHref?.startsWith("#") ?? false;
       const isMailto = finalHref?.startsWith("mailto:") ?? false;
+      // Same-origin links (openportal's own routes like /session/ses_*,
+      // /files, /prompts, /pinned, etc.) MUST open in the same tab via
+      // tanstack SPA navigation so they don't blow away the SWR cache,
+      // draft input, and scroll position. linkBehavior only governs
+      // EXTERNAL links - the user's choice for "open external link in
+      // a new tab" should not punish their own session navigation.
+      const isOpenPortalInternal = (() => {
+        if (!finalHref || isAnchor || isMailto) return false;
+        if (finalHref.startsWith("file://")) return false;
+        if (finalHref.startsWith("/")) return true;
+        if (typeof window === "undefined") return false;
+        try {
+          const u = new URL(finalHref, window.location.origin);
+          return u.origin === window.location.origin;
+        } catch {
+          return false;
+        }
+      })();
+      if (isOpenPortalInternal && finalHref) {
+        return (
+          <a
+            {...rest}
+            href={finalHref}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              if (e.button !== 0) return;
+              e.preventDefault();
+              try {
+                const u = new URL(finalHref, window.location.origin);
+                void navigate({
+                  to: (u.pathname + u.search + u.hash) as string,
+                });
+              } catch {
+                window.location.href = finalHref;
+              }
+            }}
+          >
+            {children}
+          </a>
+        );
+      }
       const externalLink = !!finalHref && !isAnchor && !isMailto;
       if (externalLink && linkBehavior === "none") {
         return <span {...rest}>{children}</span>;
