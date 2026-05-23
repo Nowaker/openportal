@@ -233,6 +233,12 @@ function statusDot(kind: string): string {
 // Manual code paste because the OAuth provider's redirect lands on
 // the user's browser machine, not on the host running opencode -
 // localhost callback capture only works for the desktop client.
+// Cross-component signal: the sidebar's MCP knob click on a `needsAuth`
+// row sets this sessionStorage key before opening the info modal, so
+// McpAuthSection knows to kick off the OAuth handshake automatically
+// (one-click flow rather than knob -> modal -> Start OAuth handshake).
+const AUTO_AUTH_KEY = "openportal-mcp-auto-auth";
+
 function McpAuthSection({
   mcpName,
   port,
@@ -246,6 +252,21 @@ function McpAuthSection({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const { mutate: revalidateStatus } = useMcpStatus();
+
+  useEffect(() => {
+    try {
+      const auto = sessionStorage.getItem(AUTO_AUTH_KEY);
+      if (auto === mcpName) {
+        sessionStorage.removeItem(AUTO_AUTH_KEY);
+        if (port && !authUrl && !success && !busy) {
+          void startFlow();
+        }
+      }
+    } catch {
+      // sessionStorage can throw in some sandboxed contexts; just no-op
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mcpName, port]);
 
   const startFlow = async () => {
     if (!port) return;

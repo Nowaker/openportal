@@ -1231,9 +1231,11 @@ function PinTopbarButton({ sessionId }: { sessionId: string }) {
 // 5-state MCP row used in the hamburger MCP list AND the Session Info
 // modal. State drives both the icon (BoltIcon vs BoltSlashIcon for
 // failed) and the slider fill color (green=on, orange=needs-auth,
-// muted=disabled). Clicking the slider in 'needsAuth' state opens
-// the info modal where the handshake form lives rather than calling
-// toggleMcp (which would just bounce back to 'needsAuth' anyway).
+// muted=disabled). Clicking the slider in 'needsAuth' state opens the
+// info modal AND signals McpAuthSection (via sessionStorage) to
+// auto-start the OAuth handshake on mount - one click takes the user
+// from the knob all the way to the OAuth provider in a new tab, then
+// the modal's code-paste form is ready when they return.
 export function McpRow({
   name,
   kind,
@@ -1302,6 +1304,11 @@ export function McpRow({
         onClick={(e) => {
           e.stopPropagation();
           if (needsAuth) {
+            try {
+              sessionStorage.setItem("openportal-mcp-auto-auth", name);
+            } catch {
+              /* sandboxed sessionStorage - modal will show manual button */
+            }
             onOpenInfo();
             return;
           }

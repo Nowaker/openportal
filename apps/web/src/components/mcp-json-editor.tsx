@@ -33,6 +33,41 @@ const RAW_VALUE_SUGGESTIONS: Record<string, string[]> = {
   enabled: ["true", "false"],
 };
 
+const NESTED_KEY_SUGGESTIONS: Record<string, string[]> = {
+  environment: [
+    "PATH",
+    "HOME",
+    "USER",
+    "NODE_ENV",
+    "PYTHONPATH",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GOOGLE_API_KEY",
+    "GROQ_API_KEY",
+    "MISTRAL_API_KEY",
+    "GITHUB_TOKEN",
+    "GITLAB_TOKEN",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_REGION",
+    "AWS_PROFILE",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "OPENCODE_BASE_URL",
+  ],
+  headers: [
+    "Authorization",
+    "Content-Type",
+    "Accept",
+    "Accept-Language",
+    "User-Agent",
+    "X-API-Key",
+    "X-Request-Id",
+    "X-Forwarded-For",
+    "Cookie",
+  ],
+};
+
 type JsonCtx =
   | { kind: "none" }
   | {
@@ -41,15 +76,29 @@ type JsonCtx =
       replaceStart: number;
       replaceEnd: number;
       prefix: string;
+    }
+  | {
+      kind: "nested-key";
+      parent: string;
+      replaceStart: number;
+      replaceEnd: number;
+      prefix: string;
     };
 
-function findOuterDepthAndStringStart(
+function walkBufferToCursor(
   text: string,
   cursor: number,
-): { depth: number; inString: boolean; stringStart: number } {
+): {
+  depth: number;
+  inString: boolean;
+  stringStart: number;
+  parentStack: (string | undefined)[];
+} {
   let depth = 0;
   let inString = false;
   let stringStart = -1;
+  let pendingKey: string | undefined = undefined;
+  const parentStack: (string | undefined)[] = [];
   for (let i = 0; i < cursor; i++) {
     const c = text[i];
     if (inString) {
@@ -59,18 +108,33 @@ function findOuterDepthAndStringStart(
       }
       if (c === '"') {
         inString = false;
+        pendingKey = text.slice(stringStart + 1, i);
       }
       continue;
     }
     if (c === '"') {
       inString = true;
       stringStart = i;
+      pendingKey = undefined;
       continue;
     }
-    if (c === "{" || c === "[") depth++;
-    else if (c === "}" || c === "]") depth--;
+    if (c === "{") {
+      depth++;
+      parentStack.push(pendingKey);
+      pendingKey = undefined;
+    } else if (c === "[") {
+      depth++;
+      parentStack.push(undefined);
+      pendingKey = undefined;
+    } else if (c === "}" || c === "]") {
+      depth--;
+      parentStack.pop();
+      pendingKey = undefined;
+    } else if (c === "," || c === ":") {
+      pendingKey = undefined;
+    }
   }
-  return { depth, inString, stringStart };
+  return { depth, inString, stringStart, parentStack };
 }
 
 function findEndOfString(text: string, start: number): number {
@@ -109,11 +173,11 @@ function findKeyBefore(text: string, colonPos: number): string | undefined {
 }
 
 function parseJsonContext(text: string, cursor: number): JsonCtx {
-  const { depth, inString, stringStart } = findOuterDepthAndStringStart(
+  const { depth, inString, stringStart, parentStack } = walkBufferToCursor(
     text,
     cursor,
   );
-  if (depth !== 1) return { kind: "none" };
+  if (depth !== 1 && depth !== 2) return { kind: "none" };
 
   if (inString && stringStart >= 0) {
     const replaceStart = stringStart + 1;
@@ -135,10 +199,25 @@ function parseJsonContext(text: string, cursor: number): JsonCtx {
       };
     }
     if (text[k] === "{" || text[k] === ",") {
-      return { kind: "key", replaceStart, replaceEnd, prefix };
+      if (depth === 1) {
+        return { kind: "key", replaceStart, replaceEnd, prefix };
+      }
+      const parent = parentStack[1];
+      if (parent && NESTED_KEY_SUGGESTIONS[parent]) {
+        return {
+          kind: "nested-key",
+          parent,
+          replaceStart,
+          replaceEnd,
+          prefix,
+        };
+      }
+      return { kind: "none" };
     }
     return { kind: "none" };
   }
+
+  if (depth !== 1) return { kind: "none" };
 
   let m = cursor - 1;
   while (m >= 0 && /[A-Za-z0-9_]/.test(text[m])) m--;
@@ -171,6 +250,8 @@ function suggestionsForContext(ctx: JsonCtx): string[] {
     pool = STRING_VALUE_SUGGESTIONS[ctx.field] ?? [];
   else if (ctx.kind === "raw-value" && ctx.field)
     pool = RAW_VALUE_SUGGESTIONS[ctx.field] ?? [];
+  else if (ctx.kind === "nested-key")
+    pool = NESTED_KEY_SUGGESTIONS[ctx.parent] ?? [];
   if (pool.length === 0) return [];
   return pool.filter((s) => s.toLowerCase().startsWith(lowerPrefix));
 }
