@@ -30,7 +30,11 @@ interface CacheEntry {
   messages: unknown[];
 }
 
-const SHORT_TTL_MS = 2_000;
+// Cache TTLs. 30s SHORT was 2s pre-caching-proxy refactor; bumped so
+// SWR polls (every 3s) overwhelmingly serve from in-memory cache
+// instead of round-tripping to opencode. Background refresh keeps the
+// cache reasonably warm. 5min LONG used by session-prefetcher plugin.
+const SHORT_TTL_MS = 30_000;
 const LONG_LIVED_TTL_MS = 5 * 60_000;
 const MAX_ENTRIES = 200;
 const cache = new Map<string, CacheEntry>();

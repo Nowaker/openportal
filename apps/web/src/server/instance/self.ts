@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { getActiveServer } from "../lib/server-registry";
 import { resolveLiveEndpoint } from "../lib/server-resolver";
-import { probeOpencode } from "../lib/server-discovery";
+import { probeOpencodeCached } from "../lib/probe-cache";
 import { detectClient } from "../lib/client-detection";
 import { getLatestBrowserPresence } from "../lib/presence-tracker";
 
@@ -82,8 +82,12 @@ export default defineHandler(async (event) => {
     }
     const fresh = getActiveServer() ?? active;
     if (!fresh.ephemeral) {
-      const ok = await probeOpencode(live.host, live.port, live.auth);
-      if (!ok) {
+      const probeResult = await probeOpencodeCached(
+        live.host,
+        live.port,
+        live.auth,
+      );
+      if (!probeResult.ok) {
         const reason =
           "Active OpenCode did not respond (server stopped, credentials rejected, or port in use by something else).";
         const health: HealthShape = {

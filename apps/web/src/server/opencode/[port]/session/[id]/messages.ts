@@ -203,20 +203,44 @@ async function loadFullMessages(
   event: EventLike,
   forceRefresh: boolean,
 ): Promise<unknown[]> {
-  let real: unknown[] | null = forceRefresh ? null : getCachedMessages(id);
-  let opencodeTimedOut = false;
+  // Stale-while-revalidate semantics:
+  //   1. Fresh cache (TTL'd) -> serve immediately, no opencode call.
+  //   2. Stale cache exists (LRU'd, ignores TTL) -> serve stale
+  //      immediately, kick off background refresh that updates cache.
+  //      User sees data instantly; cache updates on next poll.
+  //   3. No cache at all (cold load, post-restart) -> block + fetch.
+  //      Only block path that can fail; falls through to virtuals
+  //      below if any pending prompts exist for this session.
+  // Per user 'caching proxy' directive: openportal owns the view of
+  // the world. Opencode slowness/failure NEVER clears cache. Cache only
+  // updates when opencode AUTHORITATIVELY responds with new data.
+  // Stale-while-revalidate: serve any cache we have (fresh OR stale)
+  // before awaiting opencode. Background refresh keeps the cache warm
+  // without blocking the response. Only block-and-wait when cache is
+  // truly empty (first-ever fetch for this session). This is the
+  // 'caching proxy' invariant - openportal serves its own view of the
+  // world and updates it as opencode reports changes.
+  const fresh = forceRefresh ? null : getCachedMessages(id);
+  const stale = forceRefresh ? null : getStaleMessages(id);
+  let real: unknown[] | null = fresh;
+  let opencodeUnreachable = false;
+  if (fresh === null && stale !== null) {
+    real = stale;
+    void fetchAndCache(port, id).catch(() => {
+    });
+  }
   if (real === null) {
     try {
       real = await fetchAndCache(port, id);
-    } catch (err) {
+    } catch {
       real = getStaleMessages(id);
-      opencodeTimedOut = err instanceof FetchTimeoutError;
+      opencodeUnreachable = true;
       setResponseHeader(event, "X-OpenPortal-OpenCode-Down", "true");
     }
   }
   const visible = listVisiblePromptsForSession(id);
   if (real === null && visible.length === 0) {
-    if (opencodeTimedOut) throw new MessagesUnavailableError();
+    if (opencodeUnreachable) throw new MessagesUnavailableError();
     return [];
   }
   if (real === null) real = [];
@@ -444,32 +468,43 @@ function parsePositiveLimit(raw: unknown, fallback: number): number {
 // whatever the SDK is choking on. Defense in depth.
 const FALLBACK_FETCH_LIMIT = 1000;
 
-// Fast-fail timeout so a slow/down opencode does NOT block the
-// browser's /messages fetch on cold load. Without this, refreshing
-// the page when opencode is sick would leave the chat log spinner
-// up for the full SDK timeout (potentially 30+ seconds), and the
-// user's pending-backlog virtuals would not render until then. With
-// the timeout, fetchAndCache throws on 3s and the caller's catch
-// falls through to getStaleMessages + virtuals, satisfying the user
-// invariant 'MUST SEND CONTENT TO OP FRONTEND, WHATEVER THE SOURCE,
-// ASAP'.
-const FETCH_TIMEOUT_MS = 3_000;
+// No artificial timeout on the SDK call. Per user invariant: 'If it
+// takes forever for something to load, so be it, it's okay.' OpenPortal
+// must NOT pretend opencode is unreachable just because it's slow.
+// Cache (fresh OR stale) already covers the cold-load latency case via
+// stale-while-revalidate semantics in loadFullMessages. Real transport
+// failures (ECONNREFUSED, ETIMEDOUT) still throw and route through the
+// stale-cache fallback. This used to have a 3s Promise.race timeout
+// (60ac234) that was reverted because it caused 502 cascades during
+// transient slowness - the user explicitly called this out as the
+// regression in the 'caching proxy' design directive.
+// Single-flight guard for background refreshes. Multiple concurrent
+// SWR polls would otherwise stack opencode SDK calls on a session
+// whose fetch is already in flight. Keys are session IDs; values are
+// the in-flight promise (resolved-to-void when done). Cleared on
+// settle so the next poll can fire a fresh background refresh.
+const inFlight = new Map<string, Promise<void>>();
 
-class FetchTimeoutError extends Error {
-  constructor() {
-    super(`opencode session.messages timed out after ${FETCH_TIMEOUT_MS}ms`);
-    this.name = "FetchTimeoutError";
-  }
+function backgroundRefresh(port: number, id: string): void {
+  if (inFlight.has(id)) return;
+  const p = (async () => {
+    try {
+      await fetchAndCache(port, id);
+    } catch {
+      // Silent failure - the cache already has stale content and
+      // the next foreground request will retry. This is exactly
+      // the user-specified behavior: a failed fetch must NOT
+      // invalidate or clear the cache.
+    }
+  })().finally(() => {
+    inFlight.delete(id);
+  });
+  inFlight.set(id, p);
 }
 
 async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
   const client = await getOpencodeClient(port);
-  const result = await Promise.race([
-    client.session.messages({ path: { id } }),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new FetchTimeoutError()), FETCH_TIMEOUT_MS),
-    ),
-  ]);
+  const result = await client.session.messages({ path: { id } });
   const data = (result as { data?: unknown }).data;
   let raw: unknown[];
   if (Array.isArray(data)) {
