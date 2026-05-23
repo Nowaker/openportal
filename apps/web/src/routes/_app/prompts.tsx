@@ -27,6 +27,7 @@ import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { MarkdownRenderer } from "@/lib/markdown-renderer";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useSessions } from "@/hooks/use-opencode";
+import type { Session } from "@opencode-ai/sdk";
 import {
   formatAbsoluteAndRelative,
   formatMessageTime,
@@ -116,6 +117,8 @@ function basename(path: string): string {
   return last || path || "(unknown)";
 }
 
+type Scope = "session" | "project" | "global";
+
 function PromptsPage() {
   const { setPageTitle } = useBreadcrumb();
   const search = useSearch({ from: "/_app/prompts" });
@@ -125,6 +128,19 @@ function PromptsPage() {
   const [extraPages, setExtraPages] = useState<PromptRow[][]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [scope, setScope] = useState<Scope>(() =>
+    search.focus ? "session" : "global",
+  );
+
+  const { data: sessionsData } = useSessions();
+  const sessionsById = useMemo(() => {
+    const m = new Map<string, Session>();
+    for (const s of sessionsData ?? []) m.set(s.id, s);
+    return m;
+  }, [sessionsData]);
+  const sessionTitleFor = (sid: string): string | null => {
+    return sessionsById.get(sid)?.title ?? null;
+  };
 
   useEffect(() => {
     setPageTitle("Prompt history");
@@ -151,6 +167,27 @@ function PromptsPage() {
     return [...first, ...extraPages.flat()];
   }, [data?.rows, extraPages]);
 
+  const focusProjectPath = useMemo(() => {
+    if (!search.focus) return null;
+    const row = rows.find((r) => r.session_id === search.focus);
+    return row?.project_path ?? null;
+  }, [rows, search.focus]);
+
+  // Client-side scope filter, layered on top of the backend FTS
+  // filter. v1 is intentionally client-side so we don't need an
+  // /api/prompts schema change; the trade-off is that 'this session'
+  // / 'this project' can only filter prompts already loaded into
+  // memory. Backend filter params are a follow-up.
+  const scopedRows = useMemo(() => {
+    if (scope === "session" && search.focus) {
+      return rows.filter((r) => r.session_id === search.focus);
+    }
+    if (scope === "project" && focusProjectPath) {
+      return rows.filter((r) => r.project_path === focusProjectPath);
+    }
+    return rows;
+  }, [rows, scope, search.focus, focusProjectPath]);
+
   const loadMore = async () => {
     if (loadingMore || nextCursor === null) return;
     setLoadingMore(true);
@@ -173,15 +210,15 @@ function PromptsPage() {
         headline="Showing cached prompt history - OpenCode is unreachable."
         hint="The archive is served from OpenPortal's local SQLite. Re-firing a prompt into a session will fail until OpenCode is back."
       />
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <div className="relative flex flex-1 items-center">
+      <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:gap-2 sm:px-4">
+        <div className="relative flex flex-1 items-center min-w-0">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-2 size-4 text-muted-fg" />
           <input
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search filtered text (FTS5)…"
-            className="w-full rounded-md border border-border bg-bg px-8 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-md border border-border bg-bg px-8 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           {q.length > 0 && (
             <button
@@ -194,39 +231,74 @@ function PromptsPage() {
             </button>
           )}
         </div>
-        <div className="inline-flex rounded-md border border-border p-0.5 text-xs">
-          {(["tree", "flat"] as ViewMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setView(m)}
-              className={`px-2 py-1 rounded-sm transition-colors ${
-                view === m
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-fg hover:text-fg"
-              }`}
+        <div className="flex shrink-0 items-center gap-1">
+          {search.focus && (
+            <div
+              className="inline-flex rounded-md border border-border p-0.5 text-[11px]"
+              role="group"
+              aria-label="Filter scope"
             >
-              {m === "tree" ? "Tree" : "Flat"}
-            </button>
-          ))}
+              {(["session", "project", "global"] as Scope[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setScope(s)}
+                  className={`px-1.5 py-0.5 rounded-sm transition-colors ${
+                    scope === s
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-fg hover:text-fg"
+                  }`}
+                  title={
+                    s === "session"
+                      ? "Only prompts from the session you opened from"
+                      : s === "project"
+                        ? "Prompts from any session in the same project"
+                        : "All prompts across all projects"
+                  }
+                >
+                  {s === "session"
+                    ? "Session"
+                    : s === "project"
+                      ? "Project"
+                      : "Global"}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="inline-flex rounded-md border border-border p-0.5 text-[11px]">
+            {(["tree", "flat"] as ViewMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setView(m)}
+                className={`px-1.5 py-0.5 rounded-sm transition-colors ${
+                  view === m
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-fg hover:text-fg"
+                }`}
+              >
+                {m === "tree" ? "Tree" : "Flat"}
+              </button>
+            ))}
+          </div>
+          <Button
+            intent="secondary"
+            size="sm"
+            onPress={() => void mutate()}
+            aria-label="Refresh"
+          >
+            <ArrowPathIcon className="size-4" />
+          </Button>
+          <a
+            href={buildExportUrl(q)}
+            download
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted/30"
+            title="Download every matching prompt as NDJSON"
+          >
+            <ArrowDownTrayIcon className="size-4" />
+            <span className="hidden sm:inline">Export</span>
+          </a>
         </div>
-        <Button
-          intent="secondary"
-          size="sm"
-          onPress={() => void mutate()}
-          aria-label="Refresh"
-        >
-          <ArrowPathIcon className="size-4" />
-        </Button>
-        <a
-          href={buildExportUrl(q)}
-          download
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1.5 text-xs hover:bg-muted/30"
-          title="Download every matching prompt as NDJSON"
-        >
-          <ArrowDownTrayIcon className="size-4" />
-          <span className="hidden sm:inline">Export</span>
-        </a>
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-2 sm:px-4">
@@ -249,21 +321,34 @@ function PromptsPage() {
             </p>
           </div>
         )}
-        {!isLoading && !error && rows.length > 0 && (
+        {!isLoading && !error && scopedRows.length === 0 && rows.length > 0 && (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center text-sm text-muted-fg">
+            <p>No prompts match the current scope.</p>
+            <button
+              type="button"
+              onClick={() => setScope("global")}
+              className="text-xs underline hover:text-fg"
+            >
+              Switch to Global
+            </button>
+          </div>
+        )}
+        {!isLoading && !error && scopedRows.length > 0 && (
           <>
             {view === "flat" ? (
               <FlatList
-                rows={rows}
+                rows={scopedRows}
                 query={q}
                 onRefire={setRefireTargetId}
               />
             ) : (
               <TreeView
-                rows={rows}
+                rows={scopedRows}
                 query={q}
                 focusSessionId={search.focus}
                 searchActive={q.trim().length > 0}
                 onRefire={setRefireTargetId}
+                sessionTitleFor={sessionTitleFor}
               />
             )}
             {nextCursor !== null && (
@@ -364,12 +449,14 @@ function TreeView({
   focusSessionId,
   searchActive,
   onRefire,
+  sessionTitleFor,
 }: {
   rows: PromptRow[];
   query: string;
   focusSessionId: string | undefined;
   searchActive: boolean;
   onRefire: (id: string) => void;
+  sessionTitleFor?: (sid: string) => string | null;
 }) {
   const groups = useMemo(() => buildTree(rows), [rows]);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
@@ -486,17 +573,30 @@ function TreeView({
                       <button
                         type="button"
                         onClick={() => toggleSession(sessionId)}
-                        className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-xs hover:bg-muted/30"
+                        className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-xs hover:bg-muted/30 min-w-0"
                       >
                         <ChevronRightIcon
                           className={`size-3 shrink-0 transition-transform ${sessionCollapsed ? "" : "rotate-90"}`}
                         />
-                        <span className="font-mono text-muted-fg">
-                          {sessionId.slice(0, 16)}…
-                        </span>
-                        <span className="text-muted-fg">
-                          ({sessionRows.length})
-                        </span>
+                        {(() => {
+                          const title = sessionTitleFor?.(sessionId) ?? null;
+                          return (
+                            <>
+                              {title && (
+                                <span className="truncate font-medium text-fg">
+                                  {title}
+                                </span>
+                              )}
+                              <span className="font-mono text-muted-fg shrink-0">
+                                {sessionId.slice(0, title ? 8 : 16)}
+                                {title ? "" : "…"}
+                              </span>
+                              <span className="text-muted-fg shrink-0">
+                                ({sessionRows.length})
+                              </span>
+                            </>
+                          );
+                        })()}
                       </button>
                       {!sessionCollapsed && (
                         <ul className="ml-3 divide-y divide-border/40 border-l border-border/30 pl-2">
