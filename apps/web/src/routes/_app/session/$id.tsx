@@ -2622,24 +2622,61 @@ const MessageItem = memo(function MessageItem({
   const messageTitleAt = formatAbsoluteAndRelative(message.info.time?.created);
 
   const hasHeaderRow = textContent || fileParts.length > 0;
+  // Detect synthetic audit messages (stuck-detector + compaction-fixer
+  // SQL-inject these on every recovery dispatch). Shape: message.synthetic
+  // === true AND the text part has ignored === true. opencode's
+  // toModelMessagesEffect filters these out of LLM context; the renderer
+  // needs to surface them with a distinct style so they don't blend with
+  // real user messages. metadata.source identifies the injector for the
+  // tag label. Section E of the STUCK_DETECTION_INCORPORATION directive.
+  const messageAny = message.info as unknown as {
+    synthetic?: boolean;
+    metadata?: { source?: string; kind?: string };
+  };
+  const firstTextPart = message.parts.find(
+    (p) => (p as { type?: string }).type === "text",
+  ) as { ignored?: boolean } | undefined;
+  const isSyntheticMarker =
+    !isAssistant &&
+    messageAny.synthetic === true &&
+    firstTextPart?.ignored === true;
+  const syntheticSource = messageAny.metadata?.source ?? "synthetic";
+  const syntheticTag =
+    syntheticSource === "stuck-detector-plugin"
+      ? "stuck-detector"
+      : syntheticSource === "stuck-compaction-fixer"
+        ? "compaction-fixer"
+        : syntheticSource;
   // Visual decoration when a revert is staged: gray tone + strike-through.
   // Nothing is destroyed in the backend yet - the actual truncate happens
   // only when the user submits a new message.
   const decoration = pendingDelete
     ? "opacity-50 line-through"
     : "";
+  const userBgClass = isSyntheticMarker
+    ? "bg-muted/30 border-t border-b border-muted/50 [[data-role=user]+&]:border-t-0"
+    : "bg-accent/10 dark:bg-accent/8 border-t border-b border-accent/50 [[data-role=user]+&]:border-t-0";
   return (
     <div
       className={`${decoration} relative px-3 py-3 ${
-        !isAssistant && hasHeaderRow
-          ? "bg-accent/10 dark:bg-accent/8 border-t border-b border-accent/50 [[data-role=user]+&]:border-t-0"
-          : ""
+        !isAssistant && hasHeaderRow ? userBgClass : ""
       }`}
       data-role={message.info.role}
       data-message-id={message.info.id}
+      data-synthetic={isSyntheticMarker ? "true" : undefined}
       data-test={`portal-msg-${message.info.id}`}
       id={`msg-${message.info.id}`}
     >
+      {isSyntheticMarker && hasHeaderRow && (
+        <div className="mb-1 flex items-center gap-2 text-xs text-muted-fg">
+          <span className="inline-flex items-center rounded-md border border-muted-fg/30 bg-muted/60 px-1.5 py-0.5 font-mono">
+            [{syntheticTag}]
+          </span>
+          {messageAny.metadata?.kind && (
+            <span className="opacity-70">{messageAny.metadata.kind}</span>
+          )}
+        </div>
+      )}
       {hasHeaderRow && (
         <div className="relative">
           {/*
