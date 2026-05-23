@@ -2597,6 +2597,57 @@ function ErrorAcknowledgeControl({
   );
 }
 
+// Wraps the in-chat error block so its border + background + text
+// colors flip from red (active) to muted gray (acknowledged) the moment
+// the user clicks Acknowledge. Without the acknowledged check the outer
+// box stayed red after acknowledgement, contradicting the 'was a problem
+// but isn\u2019t any more' visual the user asked for.
+function ErrorBox({
+  sessionId,
+  messageId,
+  isLastError,
+  gutter,
+  title,
+  detail,
+}: {
+  sessionId: string;
+  messageId: string;
+  isLastError: boolean;
+  gutter: string;
+  title: string;
+  detail?: string;
+}) {
+  const acknowledgedId = useSessionErrorStore(
+    (s) => s.acknowledged[sessionId],
+  );
+  const isAcknowledged = acknowledgedId === messageId;
+  const palette = isAcknowledged
+    ? "border-border/60 bg-muted/30 text-muted-fg"
+    : "border-danger/40 bg-danger-subtle/30 text-danger-subtle-fg";
+  return (
+    <div
+      className={`${gutter} rounded-md border ${palette} p-3 text-xs`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className={`font-semibold ${isAcknowledged ? "text-muted-fg" : ""}`}>
+          {title}
+        </div>
+        {isLastError && (
+          <ErrorAcknowledgeControl
+            sessionId={sessionId}
+            messageId={messageId}
+          />
+        )}
+      </div>
+      {detail && (
+        <div className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug">
+          {detail}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const MessageItem = memo(function MessageItem({
   message,
   port,
@@ -2965,24 +3016,14 @@ const MessageItem = memo(function MessageItem({
         );
       })()}
       {errorDescription && (
-        <div
-          className={`${textContent || toolCalls.length > 0 ? "mt-2 ml-6" : ""} rounded-md border border-danger/40 bg-danger-subtle/30 p-3 text-xs text-danger-subtle-fg`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="font-semibold">{errorDescription.title}</div>
-            {isLastError && (
-              <ErrorAcknowledgeControl
-                sessionId={sessionId}
-                messageId={message.info.id}
-              />
-            )}
-          </div>
-          {errorDescription.detail && (
-            <div className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug">
-              {errorDescription.detail}
-            </div>
-          )}
-        </div>
+        <ErrorBox
+          sessionId={sessionId}
+          messageId={message.info.id}
+          isLastError={isLastError}
+          gutter={textContent || toolCalls.length > 0 ? "mt-2 ml-6" : ""}
+          title={errorDescription.title}
+          detail={errorDescription.detail}
+        />
       )}
       <MessageInfoModal
         isOpen={showInfoModal}
