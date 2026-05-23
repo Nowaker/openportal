@@ -18,52 +18,6 @@ interface Args {
   onSelect: (sessionId: string) => void;
 }
 
-// Per-kind gating + active-tab gate added by Section J. Pre-Section-J:
-// always fired when OS permission granted. Post-Section-J: consults
-// policy[kind].notify AND policy[kind].notifyEvenIfActiveTab vs.
-// document.visibilityState. The default policy still fires on every
-// status so existing users see no behavior change unless they opt
-// into changes via /settings#notifications.
-function shouldFire(kind: NotificationKind, policy: NotifyPolicy): boolean {
-  const rule = policy[kind];
-  if (!rule.notify) return false;
-  if (typeof document === "undefined") return true;
-  if (document.visibilityState === "visible" && !rule.notifyEvenIfActiveTab) {
-    return false;
-  }
-  return true;
-}
-
-function spawnNotification(
-  id: string,
-  title: string,
-  body: string,
-  tagSuffix: string,
-  onSelect: (sessionId: string) => void,
-  sound: NotificationCategory,
-  kind: NotificationKind,
-  policy: NotifyPolicy,
-) {
-  if (!shouldFire(kind, policy)) return;
-  playNotificationSound(sound);
-  if (typeof window === "undefined") return;
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
-  try {
-    const notif = new Notification(title, {
-      body,
-      tag: `opencode-session-${id}-${tagSuffix}`,
-    });
-    notif.onclick = () => {
-      window.focus();
-      onSelect(id);
-      notif.close();
-    };
-  } catch {
-    /* permission revoked between check and fire - ignore */
-  }
-}
-
 // Fires browser notifications on two transitions:
 //   1. busy -> idle: "session complete" - notify because the run finished
 //   2. question newly appears for a session: "needs attention" - the model
@@ -196,9 +150,6 @@ export function useStatusNotifications({
         policyRef.current,
       );
     }
-    prevQuestionsRef.current = new Set(questionSessionIds);
-  }, [questionSessionIds, sessions, onSelect]);
-}
     prevQuestionsRef.current = new Set(questionSessionIds);
   }, [questionSessionIds, sessions, onSelect]);
 }

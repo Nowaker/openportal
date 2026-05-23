@@ -1,5 +1,5 @@
-// Per-session messages cache with short TTL. Polling-mode SWR clients
-// (Settings > Live updates = poll, default) repeatedly hit GET
+// Per-session messages cache. Polling-mode SWR clients (Settings > Live
+// updates = poll, default) repeatedly hit GET
 // /api/opencode/<port>/session/<id>/messages every few seconds; without a
 // cache each poll round-trips to opencode + re-runs the strip pipeline
 // (diagnostics, summary, base64 image rewrites) for the full message
@@ -9,18 +9,30 @@
 // are zero-copy slice operations. Stripping is what's expensive on
 // kotlin-LSP-heavy sessions, not the network round-trip.
 //
-// TTL is intentionally short (2s) so the cache never serves visibly
-// stale data without SSE backing it up. Mutations (POST /prompt or
-// /command) call invalidateMessagesCache(sessionId) to drop the entry
-// proactively so the next read sees the freshly-arrived user message.
+// Two TTL flavors:
+//   - SHORT_TTL_MS (2s): default. Used by the messages handler when it
+//     fetches a session on demand. Cache never serves visibly stale data
+//     without SSE backing it up.
+//   - LONG_LIVED_TTL_MS (5min): used by the session-prefetcher plugin
+//     (Section G). The plugin walks all in-flight sessions on a 60s
+//     cadence and writes their messages with the long TTL so the cache
+//     stays warm. Indicator-broadcaster still invalidates these entries
+//     on every delta, so the long TTL is just an upper bound between
+//     refreshes - real freshness comes from the SSE invalidation.
+//
+// Mutations (POST /prompt or /command) call invalidateMessagesCache to
+// drop the entry proactively so the next read sees the freshly-arrived
+// user message.
 
 interface CacheEntry {
   fetchedAt: number;
+  ttlMs: number;
   messages: unknown[];
 }
 
-const TTL_MS = 2_000;
-const MAX_ENTRIES = 50;
+const SHORT_TTL_MS = 2_000;
+const LONG_LIVED_TTL_MS = 5 * 60_000;
+const MAX_ENTRIES = 200;
 const cache = new Map<string, CacheEntry>();
 
 function evictIfFull(): void {
@@ -32,7 +44,7 @@ function evictIfFull(): void {
 export function getCachedMessages(sessionId: string): unknown[] | null {
   const entry = cache.get(sessionId);
   if (!entry) return null;
-  if (Date.now() - entry.fetchedAt > TTL_MS) {
+  if (Date.now() - entry.fetchedAt > entry.ttlMs) {
     cache.delete(sessionId);
     return null;
   }
@@ -48,6 +60,20 @@ export function setCachedMessages(
   cache.delete(sessionId);
   cache.set(sessionId, {
     fetchedAt: Date.now(),
+    ttlMs: SHORT_TTL_MS,
+    messages,
+  });
+  evictIfFull();
+}
+
+export function setCachedMessagesLongLived(
+  sessionId: string,
+  messages: unknown[],
+): void {
+  cache.delete(sessionId);
+  cache.set(sessionId, {
+    fetchedAt: Date.now(),
+    ttlMs: LONG_LIVED_TTL_MS,
     messages,
   });
   evictIfFull();
@@ -55,6 +81,10 @@ export function setCachedMessages(
 
 export function invalidateMessagesCache(sessionId: string): void {
   cache.delete(sessionId);
+}
+
+export function getCachedSessionIds(): string[] {
+  return Array.from(cache.keys());
 }
 
 // Stale-mode read: returns the cache entry IGNORING TTL. Used as the
