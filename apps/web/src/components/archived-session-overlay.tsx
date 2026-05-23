@@ -4,18 +4,13 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { logSystemMessage } from "@/stores/system-messages-store";
 
-// Per AI_TODO.md #29: when the active session is archived, the composer
-// stays visible (so the layout matches the active-session view) but is
-// non-interactive. This overlay covers the composer area with a centered
-// notice + Unarchive button. The composer underneath gets pointer-events-
-// none via the parent's archived flag handling; this overlay opts itself
-// back in for the button.
-
 interface ArchivedSessionOverlayProps {
   port: number | null;
   sessionId: string | null;
   onUnarchived?: () => void;
 }
+
+const ICON_HIDE_HEIGHT_PX = 120;
 
 export function ArchivedSessionOverlay({
   port,
@@ -23,6 +18,26 @@ export function ArchivedSessionOverlay({
   onUnarchived,
 }: ArchivedSessionOverlayProps) {
   const [busy, setBusy] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [showIcon, setShowIcon] = React.useState(true);
+
+  // Hide the icon when the overlay container is too short to fit it
+  // alongside the title + button without cropping. The composer area
+  // this overlay covers shrinks on mobile + small viewports, so we
+  // observe the actual rendered height instead of guessing by media
+  // query.
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = entry.contentRect.height;
+        setShowIcon(h >= ICON_HIDE_HEIGHT_PX);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const handleUnarchive = async () => {
     if (!port || !sessionId) return;
@@ -55,19 +70,17 @@ export function ArchivedSessionOverlay({
 
   return (
     <div
-      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-bg/60 backdrop-blur-[1px] pointer-events-auto px-4 text-center"
+      ref={containerRef}
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-bg/60 backdrop-blur-[1px] pointer-events-auto px-3 text-center"
       data-test="portal-archived-session-overlay"
       role="status"
       aria-live="polite"
     >
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-bg/95 px-5 py-4 shadow-lg">
-        <ArchiveBoxXMarkIcon className="size-7 text-muted-fg" />
-        <div className="space-y-1">
-          <div className="text-sm font-semibold">Session archived</div>
-          <div className="text-xs text-muted-fg max-w-md">
-            Controls below stay visible for reference. Unarchive to continue.
-          </div>
-        </div>
+      <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-bg/95 px-3 py-2 shadow-lg">
+        {showIcon && (
+          <ArchiveBoxXMarkIcon className="size-5 text-muted-fg shrink-0" />
+        )}
+        <div className="text-xs font-medium">Session archived</div>
         <Button
           size="sm"
           onPress={() => {
@@ -76,7 +89,7 @@ export function ArchivedSessionOverlay({
           isDisabled={busy}
           data-test="portal-archived-session-unarchive"
         >
-          {busy ? "Unarchiving..." : "Unarchive session"}
+          {busy ? "Unarchiving..." : "Unarchive"}
         </Button>
       </div>
     </div>
