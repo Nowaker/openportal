@@ -10,6 +10,10 @@ interface Entry {
   name: string;
   isDir: boolean;
   size?: number;
+  // mtime as unix ms. Surfaced so the client can render a short
+  // 'last-modified age' column (2d / 5m / ...) without a second
+  // round-trip. Best-effort: any stat failure leaves this undefined.
+  mtimeMs?: number;
 }
 
 export default defineHandler(async (event) => {
@@ -100,13 +104,12 @@ export default defineHandler(async (event) => {
       .map(async (e) => {
         const isDir = e.isDirectory();
         const entry: Entry = { name: e.name, isDir };
-        if (!isDir) {
-          try {
-            const s = await lstat(`${path}/${e.name}`);
-            entry.size = s.size;
-          } catch {
-            /* size is best-effort */
-          }
+        try {
+          const s = await lstat(`${path}/${e.name}`);
+          if (!isDir) entry.size = s.size;
+          entry.mtimeMs = s.mtimeMs;
+        } catch {
+          /* stat is best-effort - column shows nothing on failure */
         }
         return entry;
       }),

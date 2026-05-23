@@ -48,6 +48,7 @@ interface BrowseEntry {
   name: string;
   isDir: boolean;
   size?: number;
+  mtimeMs?: number;
 }
 
 interface BrowseResponse {
@@ -613,6 +614,31 @@ function formatBytes(n: number | undefined): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Aggressive short formatting per user spec: 'short numbers; bump
+// units higher aggressively; precision isn't needed, short value is.'
+// Targets a 2-3 character glanceable column ('30s', '5m', '2h', '3d',
+// '4w', '6mo', '1y'). Units escalate at boundaries that match human
+// intuition (60s -> 1m, 24h -> 1d, 7d -> 1w, 30d -> 1mo, 365d -> 1y).
+function formatAge(mtimeMs: number | undefined): string {
+  if (typeof mtimeMs !== "number") return "";
+  const deltaMs = Date.now() - mtimeMs;
+  if (deltaMs < 0) return "0s";
+  const s = Math.floor(deltaMs / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  const w = Math.floor(d / 7);
+  if (d < 30) return `${w}w`;
+  const mo = Math.floor(d / 30);
+  if (d < 365) return `${mo}mo`;
+  const y = Math.floor(d / 365);
+  return `${y}y`;
+}
+
 function NewEntryToolbar({
   currentPath,
   onCreated,
@@ -845,10 +871,19 @@ function FileTree({
                 const { Icon, color } = getFileIcon(e.name, e.isDir);
                 return <Icon className={`size-4 shrink-0 ${color}`} />;
               })()}
-              <span className="truncate">{e.name}</span>
+              <span className="truncate flex-1 min-w-0">{e.name}</span>
               {!e.isDir && typeof e.size === "number" && (
-                <span className="ml-auto shrink-0 text-xs text-muted-fg">
+                <span className="shrink-0 text-xs text-muted-fg tabular-nums w-14 text-right">
                   {formatBytes(e.size)}
+                </span>
+              )}
+              {e.isDir && <span className="shrink-0 w-14" />}
+              {typeof e.mtimeMs === "number" && (
+                <span
+                  className="shrink-0 text-xs text-muted-fg tabular-nums w-10 text-right"
+                  title={new Date(e.mtimeMs).toLocaleString()}
+                >
+                  {formatAge(e.mtimeMs)}
                 </span>
               )}
             </a>
