@@ -24,6 +24,7 @@ import {
   type McpConfigEntry,
 } from "@/hooks/use-mcp-config";
 import { useInstanceStore } from "@/stores/instance-store";
+import { McpJsonEditor } from "@/components/mcp-json-editor";
 
 interface Props {
   isOpen: boolean;
@@ -1238,20 +1239,21 @@ function JsonTab({
         </pre>
       ) : (
         <>
-          <textarea
+          <McpJsonEditor
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
+            onChange={setText}
             rows={Math.max(8, Math.min(24, text.split("\n").length + 1))}
-            className="w-full rounded-md border border-border bg-bg p-3 font-mono text-[12px] outline-none focus:border-primary"
-            data-test="portal-mcp-json-textarea"
           />
           <p className="text-[10px] text-muted-fg">
             Set to <code>null</code> to delete this MCP. Known type values:{" "}
             <code>"local"</code>, <code>"remote"</code>. Custom values are
             accepted - opencode validates at load.
+            <br />
+            <kbd>Ctrl+Space</kbd> triggers suggestions; suggestions also
+            appear automatically while typing inside known fields. Use{" "}
+            <kbd>Up</kbd>/<kbd>Down</kbd> to navigate,{" "}
+            <kbd>Tab</kbd>/<kbd>Enter</kbd> to insert, <kbd>Esc</kbd> to
+            dismiss.
           </p>
           {error && (
             <p className="text-xs text-danger break-words">{error}</p>
