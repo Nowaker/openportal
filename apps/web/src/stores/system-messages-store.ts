@@ -1,14 +1,5 @@
 import { create } from "zustand";
 
-// In-memory ring buffer for OpenPortal-side system events (connection
-// lost/restored, service restart attempted/failed, plugin install
-// events, notification permission flips, anything else that today
-// fires a toast-and-forgets). Surfaced via the drawer mounted in the
-// app shell so important messages survive the 4s toast dwell.
-//
-// Per the AI_TODO.md #29 spec: in-memory only (per browser tab),
-// last N events. localStorage persistence is a v2 follow-up.
-
 export type SystemMessageCategory =
   | "connection"
   | "restart"
@@ -28,21 +19,64 @@ export interface SystemMessage {
   message: string;
   details?: string;
   acknowledged: boolean;
-  // Absent / null = system-wide event (connection, version, etc.).
-  // Set to a session.directory path for events scoped to one project,
-  // so the top-right hamburger drawer can filter to "current project
-  // + system-wide" while the left-sidebar dropdown shows everything.
   projectDirectory?: string | null;
 }
 
 export interface DrawerFilter {
-  // null projectDirectory = show only system-wide messages (rare;
-  // mostly internal). When set to a directory path, the drawer shows
-  // messages with that projectDirectory plus all system-wide ones.
   projectDirectory: string | null;
 }
 
 const MAX_MESSAGES = 200;
+const STORAGE_KEY = "openportal-system-messages-v1";
+
+// Hydrate the persisted ring buffer at module load. We persist ONLY
+// the messages array (and derived unreadCount); isOpen + filter are
+// ephemeral UI state. Wrapped in try/catch because:
+//  - localStorage may be unavailable (SSR, private mode, sandboxed iframe)
+//  - the stored JSON may be corrupted by a partial write or a schema
+//    drift; treat any parse failure as "no history" so the drawer
+//    starts clean rather than crashing the app shell.
+// We trim to MAX_MESSAGES on hydrate so a stored buffer from a prior
+// session that exceeded the cap (e.g. from a debug-mode build with a
+// higher cap) gets clamped to the current limit.
+function loadMessages(): SystemMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const valid: SystemMessage[] = [];
+    for (const item of parsed) {
+      if (
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as SystemMessage).id === "string" &&
+        typeof (item as SystemMessage).timestamp === "number" &&
+        typeof (item as SystemMessage).message === "string"
+      ) {
+        valid.push(item as SystemMessage);
+      }
+    }
+    return valid.slice(0, MAX_MESSAGES);
+  } catch {
+    return [];
+  }
+}
+
+// Persist after every mutation. Wrapped in try/catch because localStorage
+// can throw on quota exceeded (extremely unlikely at 200 * ~500 bytes =
+// ~100KB but possible if the user has many other apps stuffed in there).
+// We swallow the error rather than break the in-memory state - the
+// drawer keeps working, it just won't survive the next reload.
+function saveMessages(messages: SystemMessage[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+  } catch {
+    // ignore
+  }
+}
 
 interface SystemMessagesState {
   messages: SystemMessage[];
@@ -59,9 +93,11 @@ interface SystemMessagesState {
   closeDrawer: () => void;
 }
 
+const initialMessages = loadMessages();
+
 export const useSystemMessagesStore = create<SystemMessagesState>((set) => ({
-  messages: [],
-  unreadCount: 0,
+  messages: initialMessages,
+  unreadCount: initialMessages.filter((x) => !x.acknowledged).length,
   isOpen: false,
   filter: null,
   add: (m) =>
@@ -74,6 +110,7 @@ export const useSystemMessagesStore = create<SystemMessagesState>((set) => ({
       };
       const messages = [next, ...s.messages].slice(0, MAX_MESSAGES);
       const unreadCount = messages.filter((x) => !x.acknowledged).length;
+      saveMessages(messages);
       return { messages, unreadCount };
     }),
   acknowledge: (id) =>
@@ -81,14 +118,20 @@ export const useSystemMessagesStore = create<SystemMessagesState>((set) => ({
       const messages = s.messages.map((m) =>
         m.id === id ? { ...m, acknowledged: true } : m,
       );
-      return { messages, unreadCount: messages.filter((x) => !x.acknowledged).length };
+      const unreadCount = messages.filter((x) => !x.acknowledged).length;
+      saveMessages(messages);
+      return { messages, unreadCount };
     }),
   acknowledgeAll: () =>
-    set((s) => ({
-      messages: s.messages.map((m) => ({ ...m, acknowledged: true })),
-      unreadCount: 0,
-    })),
-  clear: () => set({ messages: [], unreadCount: 0 }),
+    set((s) => {
+      const messages = s.messages.map((m) => ({ ...m, acknowledged: true }));
+      saveMessages(messages);
+      return { messages, unreadCount: 0 };
+    }),
+  clear: () => {
+    saveMessages([]);
+    return set({ messages: [], unreadCount: 0 });
+  },
   openDrawer: () => set({ isOpen: true }),
   openProjectFiltered: (projectDirectory) =>
     set({ isOpen: true, filter: { projectDirectory } }),
@@ -96,15 +139,21 @@ export const useSystemMessagesStore = create<SystemMessagesState>((set) => ({
   closeDrawer: () => set({ isOpen: false }),
 }));
 
-// Convenience helper to add a system message from any call site.
-// Use this alongside (NOT instead of) toast.* calls — the drawer is
-// the durable log; toast is the ephemeral notification.
-//
-// projectDirectory is optional: pass session.directory (or
-// useInstanceStore.getState().currentSession?.directory) for
-// project-scoped events; omit for system-wide ones (connection
-// status, version mismatch, etc.) so they always show regardless of
-// the active project filter.
+// Cross-tab sync: a second openportal tab that writes a new message
+// fires a `storage` event in this tab. We re-hydrate the ring buffer
+// in-place so both tabs show the same audit log. e.newValue null
+// means another tab called clear() - sync to empty.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== STORAGE_KEY) return;
+    const messages = loadMessages();
+    useSystemMessagesStore.setState({
+      messages,
+      unreadCount: messages.filter((x) => !x.acknowledged).length,
+    });
+  });
+}
+
 export function logSystemMessage(
   category: SystemMessageCategory,
   level: SystemMessageLevel,
