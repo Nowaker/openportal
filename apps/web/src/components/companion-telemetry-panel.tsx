@@ -60,12 +60,19 @@ function SudoPasswordModal({
         onSuccess();
         onClose();
       } else {
-        toast.error(j.note ?? `Restart of ${state.unit} failed`);
+        // Restart errors stay until the user dismisses them. User explicitly
+        // reported that the default 4s sonner dwell time hid the error
+        // before they could read it ("wtf, it can't disappear just because").
+        toast.error(j.note ?? `Restart of ${state.unit} failed`, {
+          duration: Infinity,
+          closeButton: true,
+        });
       }
     } catch (err) {
       setPassword("");
       toast.error(
         err instanceof Error ? `Restart failed: ${err.message}` : "Restart failed",
+        { duration: Infinity, closeButton: true },
       );
     } finally {
       setSubmitting(false);
@@ -259,11 +266,20 @@ export function CompanionTelemetryPanel() {
       }
       const ok = restart ? j.restart?.ok !== false : true;
       const message = j.note ?? (j.changed ? "Installed" : "Already installed");
-      (ok ? toast.success : toast.error)(message);
+      if (ok) {
+        toast.success(message);
+      } else {
+        // Persistent + dismissable: install-and-restart can fail for
+        // many actionable reasons (missing systemd unit, sudo timeout,
+        // unit-not-found) and the user needs the full text. See the
+        // SudoPrompt onClick handler above for the same pattern.
+        toast.error(message, { duration: Infinity, closeButton: true });
+      }
       await mutate();
     } catch (err) {
       toast.error(
         err instanceof Error ? `Install failed: ${err.message}` : "Install failed",
+        { duration: Infinity, closeButton: true },
       );
     } finally {
       setInstalling(null);
