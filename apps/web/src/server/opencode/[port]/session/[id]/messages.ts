@@ -553,20 +553,23 @@ function capOrDropOutput(
   cap: number | null,
 ): void {
   if (!(key in obj)) return;
-  if (cap === null) {
-    delete obj[key];
-    return;
-  }
+  // cap === null means "no cap" per the settings UI label "Leave blank for
+  // no cap (forwards full output)". Before this fix, null deleted the
+  // output entirely, which silently broke tool output rendering on every
+  // fresh install (the default is null). Keep the value as-is.
+  if (cap === null) return;
   const v = obj[key];
   if (typeof v === "string") {
     if (v.length > cap) {
       obj[key] =
         v.slice(0, cap) +
-        `\n\n[...truncated ${v.length - cap} bytes - configure cap in Settings -> Performance]`;
+        `\n\n[...truncated ${v.length - cap} bytes - configure cap in Settings -> Content]`;
     }
     return;
   }
-  delete obj[key];
+  // Non-string output (tool returned an object/array). The cap doesn't
+  // apply to non-string shapes; keep them intact so the renderer can
+  // decide what to do.
 }
 
 // Tool-specific heavy input-field stripping. The per-part ajax endpoint
