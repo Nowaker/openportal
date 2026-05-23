@@ -54,6 +54,7 @@ import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DirectoryPicker } from "@/components/directory-picker/directory-picker";
 import { mutate as globalSWRMutate } from "swr";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -141,6 +142,16 @@ export function AppSidebarNav() {
   const [pluginInfoSpec, setPluginInfoSpec] = useHashValue("plugin");
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [showMovePicker, setShowMovePicker] = useState(false);
+  const [movePending, setMovePending] = useState<{
+    targetPath: string;
+    dryRunStdout: string;
+  } | null>(null);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moveInFlightPrompt, setMoveInFlightPrompt] = useState<{
+    targetPath: string;
+    reason: string;
+  } | null>(null);
   // Hamburger menu open state. Hash-tracked so the Android hardware
   // back button (which dispatches popstate with the previous hash)
   // closes the menu instead of navigating away from the page. Same
@@ -234,6 +245,103 @@ export function AppSidebarNav() {
   // read it safely.
   const archivedTs = (currentSession as Session & { time?: { archived?: number } } | null | undefined)?.time?.archived;
   const isArchived = typeof archivedTs === "number" && archivedTs > 0;
+
+  const callMoveLocal = async (
+    targetPath: string,
+    options: { dryRun?: boolean; allowInFlight?: boolean } = {},
+  ) => {
+    if (!port || !sessionId) {
+      throw new Error("no session selected");
+    }
+    const r = await fetch(
+      `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/move-to-project`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetPath,
+          dryRun: options.dryRun === true,
+          allowInFlight: options.allowInFlight === true,
+        }),
+      },
+    );
+    const json = (await r.json().catch(() => null)) as {
+      ok?: boolean;
+      stdout?: string;
+      stderr?: string;
+      error?: string;
+      inFlight?: boolean;
+    } | null;
+    if (!r.ok || !json?.ok) {
+      const err = new Error(
+        json?.error ?? `move failed (HTTP ${r.status})`,
+      ) as Error & { inFlight?: boolean; stdout?: string };
+      err.inFlight = json?.inFlight === true;
+      err.stdout = json?.stdout ?? "";
+      throw err;
+    }
+    return { stdout: json.stdout ?? "", stderr: json.stderr ?? "" };
+  };
+
+  const handleMoveTargetSelected = async (targetPath: string) => {
+    setShowMovePicker(false);
+    if (!port || !sessionId) return;
+    setMoveBusy(true);
+    try {
+      const result = await callMoveLocal(targetPath, { dryRun: true });
+      setMovePending({ targetPath, dryRunStdout: result.stdout });
+    } catch (err) {
+      const e = err as Error & { inFlight?: boolean };
+      if (e.inFlight) {
+        setMoveInFlightPrompt({ targetPath, reason: e.message });
+      } else {
+        toast.error(e.message);
+      }
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  const handleMoveConfirm = async () => {
+    if (!movePending) return;
+    setMoveBusy(true);
+    try {
+      await callMoveLocal(movePending.targetPath);
+      toast.success("Session moved.");
+      setMovePending(null);
+      await globalSWRMutate(
+        (key) =>
+          typeof key === "string" &&
+          (key.includes("/sessions") ||
+            key.endsWith(`/session/${sessionId}`)),
+        undefined,
+        { revalidate: true },
+      );
+    } catch (err) {
+      const e = err as Error;
+      toast.error(e.message);
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  const handleMoveInFlightOverride = async () => {
+    if (!moveInFlightPrompt) return;
+    const targetPath = moveInFlightPrompt.targetPath;
+    setMoveInFlightPrompt(null);
+    setMoveBusy(true);
+    try {
+      const result = await callMoveLocal(targetPath, {
+        dryRun: true,
+        allowInFlight: true,
+      });
+      setMovePending({ targetPath, dryRunStdout: result.stdout });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "move failed");
+    } finally {
+      setMoveBusy(false);
+    }
+  };
 
   const handleArchiveToggle = async () => {
     if (!port || !sessionId) return;
@@ -747,6 +855,14 @@ export function AppSidebarNav() {
                     <ArchiveBoxIcon className="size-4" data-slot="icon" />
                     {isArchived ? "Unarchive session" : "Archive session"}
                   </MenuItem>
+                  <MenuItem
+                    onAction={() => setShowMovePicker(true)}
+                    isDisabled={moveBusy}
+                    data-test="portal-hamburger-move"
+                  >
+                    <FolderOpenIcon className="size-4" data-slot="icon" />
+                    Move to project...
+                  </MenuItem>
                   {isMobile && sessionTitle && (
                     <MenuItem onAction={startEditTitle}>
                       <PencilSquareIcon
@@ -926,6 +1042,49 @@ export function AppSidebarNav() {
         onConfirm={handleArchiveToggle}
         onClose={() => {
           if (!archiveBusy) setShowArchiveConfirm(false);
+        }}
+      />
+      <DirectoryPicker
+        isOpen={showMovePicker}
+        onOpenChange={(open) => {
+          if (!open) setShowMovePicker(false);
+        }}
+        onSelect={(path) => {
+          void handleMoveTargetSelected(path);
+        }}
+        title="Move session to project"
+        excludePath={currentSession?.directory ?? null}
+      />
+      <ConfirmDialog
+        isOpen={movePending !== null}
+        title={`Move "${sessionTitle ?? sessionId}"?`}
+        description={
+          movePending
+            ? `Target: ${movePending.targetPath}\n\nDry-run output:\n${movePending.dryRunStdout.slice(0, 800)}`
+            : ""
+        }
+        confirmLabel="Move"
+        tone="default"
+        busy={moveBusy}
+        onConfirm={handleMoveConfirm}
+        onClose={() => {
+          if (!moveBusy) setMovePending(null);
+        }}
+      />
+      <ConfirmDialog
+        isOpen={moveInFlightPrompt !== null}
+        title="Session has an in-flight runner"
+        description={
+          moveInFlightPrompt
+            ? `Aborting first is safer. Override only if you know the runner is wedged.\n\nDry-run error:\n${moveInFlightPrompt.reason.slice(0, 600)}`
+            : ""
+        }
+        confirmLabel="Override (allow in-flight)"
+        tone="danger"
+        busy={moveBusy}
+        onConfirm={handleMoveInFlightOverride}
+        onClose={() => {
+          if (!moveBusy) setMoveInFlightPrompt(null);
         }}
       />
       {vscodeModal}
