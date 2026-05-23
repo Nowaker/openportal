@@ -2,6 +2,7 @@ import {
   ChevronUpDownIcon,
   ChevronRightIcon,
   ArchiveBoxIcon,
+  ChatBubbleLeftIcon,
   ServerStackIcon,
   ArchiveBoxArrowDownIcon,
   ArrowUturnLeftIcon,
@@ -11,6 +12,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useSystemMessagesStore } from "@/stores/system-messages-store";
+import { useCmdStore } from "@/stores/cmd-store";
 import {
   Cog6ToothIcon,
   PlusIcon,
@@ -1461,6 +1463,20 @@ export default function AppSidebar(
                 <FolderOpenIcon className="size-4 shrink-0" data-slot="icon" />
                 <SidebarLabel className="text-xs sm:text-sm">
                   Open directory
+                </SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
+                tooltip="Open session (Ctrl/Cmd+K)"
+                onPress={() => {
+                  setIsOpenOnMobile(false);
+                  useCmdStore.getState().open();
+                }}
+                className="cursor-pointer gap-x-2"
+                data-test="portal-sidebar-open-session"
+              >
+                <ChatBubbleLeftIcon className="size-4 shrink-0" data-slot="icon" />
+                <SidebarLabel className="text-xs sm:text-sm">
+                  Open session
                 </SidebarLabel>
               </SidebarItem>
             </SidebarSection>

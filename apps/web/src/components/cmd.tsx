@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useCmdStore } from "@/stores/cmd-store";
 import { useNavigate, useParams, useLocation } from "@tanstack/react-router";
 import {
   CommandMenu,
@@ -48,7 +49,8 @@ interface InstanceData {
 }
 
 export default function Cmd() {
-  const [isOpen, setIsOpen] = useState(false);
+  const isOpen = useCmdStore((s) => s.isOpen);
+  const setIsOpen = useCmdStore((s) => s.setOpen);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
