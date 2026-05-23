@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
 import { getOpencodeClientV2 } from "../../../../lib/opencode-client";
@@ -40,6 +41,11 @@ export default defineHandler(async (event) => {
   const reconstructedText = body.arguments
     ? `/${body.command} ${body.arguments}`
     : `/${body.command}`;
+  // Smart-dedup: pre-generate messageID so the user message opencode
+  // creates carries the same ID we store on the archive row. Without
+  // this, slash-command expansion would emit text bearing no
+  // resemblance to '/foo bar' and the text-based dedup misses it.
+  const messageID = `msg_${randomUUID().replace(/-/g, "")}`;
   void archivePrompt({
     port,
     sessionId: sessionID,
@@ -50,9 +56,15 @@ export default defineHandler(async (event) => {
     variant: body.variant,
     source: "command",
     attachmentsCount: 0,
+    opencodeMessageId,
   }).catch((err) => {
     console.error("[prompt-archive] async failure:", err);
   });
+
+  // Pre-generate the messageID portal-side so messages.ts dedup can
+  // correlate the archived row with opencode's emitted user message
+  // (which carries an expanded template, NOT the literal '/foo bar').
+  const opencodeMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
 
   const client = await getOpencodeClientV2(port);
   try {
@@ -63,6 +75,7 @@ export default defineHandler(async (event) => {
       agent: body.agent,
       model: body.model,
       variant: body.variant,
+      messageID: opencodeMessageId,
     });
     invalidateMessagesCache(sessionID);
     return { accepted: true, info: result.data?.info, parts: result.data?.parts };

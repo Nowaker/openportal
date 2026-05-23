@@ -22,6 +22,7 @@
 //      itself near-instant - opencode just appends to the session
 //      DB and serialises turns server-side).
 
+import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
@@ -73,11 +74,27 @@ export default defineHandler(async (event) => {
     url: a.url,
   }));
 
+  // Smart-dedup: pre-generate the opencode messageID portal-side so the
+  // user-message dedup in messages.ts can match by ID instead of fuzzy
+  // text. opencode accepts an optional messageID on prompt_async; when
+  // we supply it, opencode stamps the resulting user message with that
+  // exact ID. Stored on the archive row + included in payload_json so
+  // the pending-prompt-worker retries with the same ID (idempotent).
+  const messageID = `msg_${randomUUID().replace(/-/g, "")}`;
+  // Generate the opencode message ID up-front so the same ID flows
+  // into (a) opencode (via the body.messageID field on prompt_async),
+  // (b) the archive row (via opencodeMessageId), and (c) any retry
+  // attempts via the pending-prompt-worker reading payload.messageID
+  // from payload_json. Bulletproof correlation for the messages.ts
+  // dedup pass which can now match by ID instead of fuzzy text.
+  const opencodeMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
+
   const payload = {
     parts: [...fileParts, { type: "text" as const, text: body.text }],
     model: body.model,
     agent: body.agent,
     variant: body.variant,
+    messageID: opencodeMessageId,
   };
 
   let recoveredFromRestart = false;
@@ -103,6 +120,7 @@ export default defineHandler(async (event) => {
     attachmentsCount: body.attachments?.length ?? 0,
     status: "pending",
     payload,
+    opencodeMessageId,
   });
 
   if (!row) {

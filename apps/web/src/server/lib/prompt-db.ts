@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 
 import init_0001 from "./migrations/0001_init.sql?raw";
 import pending_0002 from "./migrations/0002_pending_prompts.sql?raw";
+import opencode_msg_id_0003 from "./migrations/0003_opencode_message_id.sql?raw";
 
 interface Migration {
   version: number;
@@ -16,6 +17,7 @@ interface Migration {
 const MIGRATIONS: Migration[] = [
   { version: 1, sql: init_0001 },
   { version: 2, sql: pending_0002 },
+  { version: 3, sql: opencode_msg_id_0003 },
 ];
 
 const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

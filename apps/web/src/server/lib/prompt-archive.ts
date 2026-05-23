@@ -16,10 +16,12 @@ export interface ArchiveInput {
   variant?: string;
   source: PromptSource;
   attachmentsCount?: number;
-  // Test-mode overrides: bypass the opencode SDK lookup. Production code
-  // calls archivePrompt with neither override set so the cached SDK
-  // lookup runs; tests pass both to keep the archive module
-  // self-contained.
+  // Smart-dedup correlation token: a portal-generated message ID that
+  // we pass to opencode in the prompt_async/command body. opencode
+  // stamps the resulting user message with this exact ID so the
+  // dedup in messages.ts can match by ID rather than fuzzy text.
+  opencodeMessageId?: string | null;
+  // Test-mode overrides.
   projectPathOverride?: string;
   parentSessionIdOverride?: string | null;
 }
@@ -47,6 +49,7 @@ export interface PromptRow {
   last_attempt_at: number | null;
   attempts: number;
   last_error: string | null;
+  opencode_message_id: string | null;
 }
 
 export const MAX_DELIVERY_ATTEMPTS = 12;
@@ -114,8 +117,9 @@ const INSERT_SQL = `
     raw_text, raw_text_unfiltered,
     model_provider, model_id, agent, variant,
     source, attachments_count,
-    status, port, payload_json, delivered_at, last_attempt_at, attempts, last_error
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    status, port, payload_json, delivered_at, last_attempt_at, attempts, last_error,
+    opencode_message_id
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 export async function archivePrompt(
@@ -162,6 +166,7 @@ export async function archivePrompt(
     last_attempt_at: null,
     attempts: 0,
     last_error: null,
+    opencode_message_id: input.opencodeMessageId ?? null,
   };
   try {
     getPromptDb()
@@ -187,6 +192,7 @@ export async function archivePrompt(
         row.last_attempt_at,
         row.attempts,
         row.last_error,
+        row.opencode_message_id,
       );
   } catch (err) {
     console.error("[prompt-archive] insert failed:", err);

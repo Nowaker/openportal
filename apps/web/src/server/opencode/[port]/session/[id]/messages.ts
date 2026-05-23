@@ -199,17 +199,19 @@ async function loadFullMessages(
   // A 2s grace window absorbs sub-second race between portal's
   // ts_ms and opencode's created (clocks + ordering).
   const realUserSnippets = new Set<string>();
+  const realUserIds = new Set<string>();
   let latestRealUserMs = 0;
   let latestRealAnyMs = 0;
   for (const m of real) {
     if (!m || typeof m !== "object") continue;
     const msg = m as {
-      info?: { role?: string; time?: { created?: number } };
+      info?: { role?: string; id?: string; time?: { created?: number } };
       parts?: unknown[];
     };
     const created = msg.info?.time?.created ?? 0;
     if (created > latestRealAnyMs) latestRealAnyMs = created;
     if (msg.info?.role !== "user") continue;
+    if (typeof msg.info?.id === "string") realUserIds.add(msg.info.id);
     const text = collectUserText(msg.parts).trim();
     if (text.length === 0) continue;
     realUserSnippets.add(text);
@@ -225,8 +227,21 @@ async function loadFullMessages(
   // in use-session-messages.ts mergeByIdSorted compares time.created
   // ascending, so virtual ts_ms is normalised to max-real-created + 1
   // ms (or kept at row.ts_ms if it was already later than that).
+  // Dedup priority:
+  //   pass 0 (NEW): match by opencode_message_id. When portal generated
+  //     the messageID up-front and passed it to opencode in
+  //     prompt_async/command, opencode stamps the user message with
+  //     that exact ID. ID match is bulletproof - immune to slash-
+  //     command template expansion or any other text shape drift.
+  //   pass 1: text match (legacy). Required for rows archived before
+  //     this commit whose opencode_message_id is NULL.
+  //   pass 2: slash-command defence (legacy). Required for rows whose
+  //     ID match somehow missed AND the text doesn't match.
   const filtered = visible
     .filter((row) => {
+      if (row.opencode_message_id && realUserIds.has(row.opencode_message_id)) {
+        return false;
+      }
       if (realUserSnippets.has(row.raw_text.trim())) return false;
       if (
         row.raw_text.startsWith("/") &&
