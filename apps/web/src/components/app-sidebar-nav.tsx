@@ -855,12 +855,14 @@ export function AppSidebarNav() {
                 data-test="portal-hamburger-system-messages"
               >
                 <BellIcon className="size-4" data-slot="icon" />
-                System messages
-                {systemMessagesUnread > 0 && (
-                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500/90 text-white text-[10px] font-semibold min-w-4 h-4 px-1">
-                    {systemMessagesUnread > 99 ? "99+" : systemMessagesUnread}
-                  </span>
-                )}
+                <span>
+                  System messages
+                  {systemMessagesUnread > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-red-500/90 text-white text-[10px] font-semibold min-w-4 h-4 px-1 align-middle">
+                      {systemMessagesUnread > 99 ? "99+" : systemMessagesUnread}
+                    </span>
+                  )}
+                </span>
               </MenuItem>
             </MenuSection>
             {sessionId && <MenuSeparator />}
