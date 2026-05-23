@@ -4,10 +4,12 @@ const NAMESPACE = "instance";
 
 export interface InstanceSettings {
   toolOutputMaxBytes: number | null;
+  lastSeenStuckDetectorActionId: number;
 }
 
 const DEFAULTS: InstanceSettings = {
   toolOutputMaxBytes: null,
+  lastSeenStuckDetectorActionId: 0,
 };
 
 function readConfig(): InstanceSettings {
@@ -15,6 +17,7 @@ function readConfig(): InstanceSettings {
   if (!raw || typeof raw !== "object") return { ...DEFAULTS };
   const obj = raw as Partial<InstanceSettings>;
   const cap = obj.toolOutputMaxBytes;
+  const lastSeen = obj.lastSeenStuckDetectorActionId;
   return {
     toolOutputMaxBytes:
       cap === null || cap === undefined
@@ -22,6 +25,10 @@ function readConfig(): InstanceSettings {
         : typeof cap === "number" && cap > 0 && Number.isFinite(cap)
           ? Math.floor(cap)
           : null,
+    lastSeenStuckDetectorActionId:
+      typeof lastSeen === "number" && Number.isFinite(lastSeen) && lastSeen >= 0
+        ? Math.floor(lastSeen)
+        : 0,
   };
 }
 
@@ -46,4 +53,17 @@ export function setToolOutputMaxBytes(value: number | null): InstanceSettings {
 
 export function getToolOutputMaxBytes(): number | null {
   return readConfig().toolOutputMaxBytes;
+}
+
+export function getLastSeenStuckDetectorActionId(): number {
+  return readConfig().lastSeenStuckDetectorActionId;
+}
+
+export function setLastSeenStuckDetectorActionId(value: number): void {
+  const config = readConfig();
+  config.lastSeenStuckDetectorActionId =
+    typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? Math.floor(value)
+      : 0;
+  writeConfig(config);
 }
