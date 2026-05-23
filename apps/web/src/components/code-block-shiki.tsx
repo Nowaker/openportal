@@ -25,12 +25,15 @@ export const LANGUAGE_OPTIONS = bundledLanguagesInfo
 // flourite gives lowercase-no-spaces results that don't always line up
 // with shiki's grammar ids ("c++" vs "cpp", "objective-c" vs "objc"
 // etc.). Centralize the few divergences here; everything else falls
-// through unchanged.
+// through unchanged. "bash" -> "shell" because the user reports
+// "bash" rendering as inexistent in their highlighter dropdown +
+// they want "shell" instead (more portable + always supported).
 const FLOURITE_TO_SHIKI: Record<string, string> = {
   "c++": "cpp",
   "objective-c": "objc",
   "f#": "fsharp",
   "c#": "csharp",
+  bash: "shell",
   unknown: "text",
 };
 
@@ -58,7 +61,7 @@ const FILENAME_TO_LANG: Record<string, string> = {
   "README.md": "markdown",
   CHANGELOG: "text",
   "CHANGELOG.md": "markdown",
-  PKGBUILD: "bash",
+  PKGBUILD: "shell",
   ".SRCINFO": "ini",
   Dockerfile: "docker",
   "Dockerfile.dev": "docker",
@@ -70,61 +73,157 @@ const FILENAME_TO_LANG: Record<string, string> = {
   Gemfile: "ruby",
   Rakefile: "ruby",
   Vagrantfile: "ruby",
+  ".gitconfig": "ini",
   ".gitignore": "ignore",
   ".dockerignore": "ignore",
   ".npmignore": "ignore",
   ".prettierignore": "ignore",
   ".eslintignore": "ignore",
   ".editorconfig": "ini",
+  gitconfig: "ini",
+  gitignore: "ignore",
 };
 
 // Case-insensitive matches for rc/init files where casing varies between
 // distributions (Zshrc vs .zshrc, Xsessionrc vs .Xsessionrc, etc.).
+// Values are shiki language ids; "bash" goes through FLOURITE_TO_SHIKI
+// to "shell" because shiki's shell grammar is the user-preferred id.
 const LOWER_FILENAME_TO_LANG: Record<string, string> = {
-  ".bashrc": "bash",
-  ".zshrc": "bash",
-  ".kshrc": "bash",
-  ".tcshrc": "bash",
-  ".cshrc": "bash",
-  ".profile": "bash",
-  ".bash_profile": "bash",
-  ".zprofile": "bash",
-  ".zlogin": "bash",
-  ".zlogout": "bash",
-  ".envrc": "bash",
-  ".inputrc": "bash",
-  ".dircolors": "bash",
-  ".aliases": "bash",
-  ".functions": "bash",
-  ".exports": "bash",
-  ".extra": "bash",
-  ".curlrc": "bash",
+  ".bashrc": "shell",
+  ".zshrc": "shell",
+  ".kshrc": "shell",
+  ".tcshrc": "shell",
+  ".cshrc": "shell",
+  ".profile": "shell",
+  ".bash_profile": "shell",
+  ".zprofile": "shell",
+  ".zlogin": "shell",
+  ".zlogout": "shell",
+  ".envrc": "shell",
+  ".inputrc": "shell",
+  ".dircolors": "shell",
+  ".aliases": "shell",
+  ".functions": "shell",
+  ".exports": "shell",
+  ".extra": "shell",
+  ".curlrc": "shell",
+  ".rvmrc": "shell",
   ".wgetrc": "ini",
   ".vimrc": "vim",
   ".tmux.conf": "ini",
   ".xresources": "ini",
-  ".xsession": "bash",
-  ".xinitrc": "bash",
-  ".xprofile": "bash",
-  ".xsessionrc": "bash",
-  zshrc: "bash",
-  bashrc: "bash",
+  ".xsession": "shell",
+  ".xinitrc": "shell",
+  ".xprofile": "shell",
+  ".xsessionrc": "shell",
+  zshrc: "shell",
+  bashrc: "shell",
+  rvmrc: "shell",
   xresources: "ini",
-  xsession: "bash",
-  xinitrc: "bash",
-  xprofile: "bash",
-  xsessionrc: "bash",
-  inputrc: "bash",
+  xsession: "shell",
+  xinitrc: "shell",
+  xprofile: "shell",
+  xsessionrc: "shell",
+  inputrc: "shell",
   sudoers: "ini",
   fstab: "ini",
   hosts: "ini",
-  crontab: "bash",
+  crontab: "shell",
+};
+
+// Extension table. Applied BEFORE pattern fallback + flourite content
+// detection so common extensions (.sh, .txt, .log) hit their canonical
+// language without going through the content sniffer's heuristics. Plain
+// .txt was being detected as Lua via flourite false-positive; .sh was
+// being detected as "bash" which shiki renders as text. Both fixed by
+// explicit extension mappings here.
+const EXTENSION_TO_LANG: Record<string, string> = {
+  ".sh": "shell",
+  ".bash": "shell",
+  ".zsh": "shell",
+  ".ksh": "shell",
+  ".dash": "shell",
+  ".ash": "shell",
+  ".fish": "fish",
+  ".ps1": "powershell",
+  ".psm1": "powershell",
+  ".bat": "bat",
+  ".cmd": "bat",
+  ".txt": "text",
+  ".log": "text",
+  ".lst": "text",
+  ".tsv": "text",
+  ".env": "shell",
+  ".sql": "sql",
+  ".conf": "ini",
+  ".cfg": "ini",
+  ".ini": "ini",
+  ".toml": "toml",
+  ".yaml": "yaml",
+  ".yml": "yaml",
+  ".json": "json",
+  ".jsonc": "jsonc",
+  ".json5": "json5",
+  ".xml": "xml",
+  ".html": "html",
+  ".htm": "html",
+  ".css": "css",
+  ".scss": "scss",
+  ".sass": "sass",
+  ".less": "less",
+  ".md": "markdown",
+  ".mdx": "mdx",
+  ".rst": "text",
+  ".tex": "latex",
+  ".py": "python",
+  ".rb": "ruby",
+  ".pl": "perl",
+  ".php": "php",
+  ".lua": "lua",
+  ".js": "javascript",
+  ".jsx": "jsx",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
+  ".ts": "typescript",
+  ".tsx": "tsx",
+  ".mts": "typescript",
+  ".cts": "typescript",
+  ".go": "go",
+  ".rs": "rust",
+  ".c": "c",
+  ".h": "c",
+  ".cpp": "cpp",
+  ".cc": "cpp",
+  ".cxx": "cpp",
+  ".hpp": "cpp",
+  ".java": "java",
+  ".kt": "kotlin",
+  ".kts": "kotlin",
+  ".swift": "swift",
+  ".scala": "scala",
+  ".clj": "clojure",
+  ".cljs": "clojure",
+  ".ex": "elixir",
+  ".exs": "elixir",
+  ".erl": "erlang",
+  ".hs": "haskell",
+  ".elm": "elm",
+  ".dart": "dart",
+  ".r": "r",
+  ".R": "r",
+  ".vim": "vim",
+  ".lock": "yaml",
+  ".diff": "diff",
+  ".patch": "diff",
+  ".csv": "csv",
 };
 
 // Pattern fallback for .<word>rc[.<suffix>] - covers .zshrc.pre,
-// .bashrc.local, .zshrc.d/* etc.
+// .bashrc.local, .zshrc.d/* etc. Default to shell since these are
+// usually shell scripts; an explicit override in LOWER_FILENAME_TO_LANG
+// (e.g. .wgetrc -> ini) takes precedence and runs before this regex.
 const FILENAME_PATTERNS: Array<[RegExp, string]> = [
-  [/^\.[a-z][a-z0-9_-]*rc(\.[a-z0-9._-]+)?$/i, "bash"],
+  [/^\.[a-z][a-z0-9_-]*rc(\.[a-z0-9._-]+)?$/i, "shell"],
 ];
 
 export function languageFromFilename(filename: string): string | null {
@@ -135,6 +234,17 @@ export function languageFromFilename(filename: string): string | null {
   const lower = base.toLowerCase();
   const ciHit = LOWER_FILENAME_TO_LANG[lower];
   if (ciHit) return normalizeForShiki(ciHit);
+  // Extension match. Find the rightmost dot AFTER the leading dot (so
+  // dotfiles like .bashrc don't get matched on the empty pre-dot
+  // segment). For multi-dot files like foo.test.ts we take only the
+  // final extension; the FILENAME_PATTERNS regex below handles the
+  // *.rc.local cases.
+  const dotIdx = lower.lastIndexOf(".");
+  if (dotIdx > 0) {
+    const ext = lower.slice(dotIdx);
+    const extHit = EXTENSION_TO_LANG[ext];
+    if (extHit) return normalizeForShiki(extHit);
+  }
   for (const [pattern, lang] of FILENAME_PATTERNS) {
     if (pattern.test(base)) return normalizeForShiki(lang);
   }
