@@ -52,6 +52,19 @@ export interface SessionIndicatorState {
   mode: string | null;
   currentToolName: string | null;
   inFlightAssistantId: string | null;
+  // Stuck-detector plugin verdict merged into the indicator state by
+  // stuck-detector-client.ts. Null when the plugin isn't reachable;
+  // 'idle' / 'in-progress' / 'stuck' when it is. stuck_cause and
+  // retry only populate when verdict='stuck'.
+  stuck_verdict: "idle" | "in-progress" | "stuck" | null;
+  stuck_cause: string | null;
+  stuck_warnings: string[];
+  retry: {
+    attempt: number;
+    next_ms: number | null;
+    message: string | null;
+    overdue: boolean;
+  } | null;
 }
 
 export type SubscriberPayload =
@@ -98,6 +111,10 @@ function emptyState(
     pendingPermissionIds: [],
     todoState: null,
     todos: null,
+    stuck_verdict: null,
+    stuck_cause: null,
+    stuck_warnings: [],
+    retry: null,
     pendingPromptIds: [],
     connected: serverConnected.get(serverId) ?? true,
     mode: null,
@@ -394,6 +411,62 @@ export function applyOpencodeEvent(
       return;
   }
   commit(next);
+}
+
+// Stuck-detector plugin verdicts are global per-sessionId (the plugin
+// runs at 127.0.0.1:4098 and tracks every session across all opencode
+// instances). Portal's indicator state is keyed by serverId::sessionId,
+// so one verdict can apply to multiple indicator entries when a session
+// shows up under more than one server. Update every matching entry.
+export interface StuckVerdictUpdate {
+  sessionID: string;
+  verdict: "idle" | "in-progress" | "stuck";
+  stuck_cause: string | null;
+  warnings?: string[];
+  retry?: {
+    attempt: number;
+    next_ms: number | null;
+    message: string | null;
+    overdue: boolean;
+  } | null;
+}
+
+export function applyStuckVerdict(update: StuckVerdictUpdate): void {
+  let any = false;
+  for (const [k, cur] of sessions.entries()) {
+    if (cur.sessionId !== update.sessionID) continue;
+    const next: SessionIndicatorState = {
+      ...cur,
+      stuck_verdict: update.verdict,
+      stuck_cause: update.stuck_cause,
+      stuck_warnings: update.warnings ?? [],
+      retry: update.retry ?? null,
+    };
+    sessions.set(k, next);
+    fanOut({ type: "update", state: next });
+    any = true;
+  }
+  if (!any) {
+    /* No indicator entry yet for this session. The verdict cache from
+       the plugin includes sessions that haven't yet emitted an event
+       portal subscribes to. Dropped; the verdict re-arrives when the
+       plugin notices a status change. */
+  }
+}
+
+function fanOut(payload: SubscriberPayload): void {
+  for (const s of subs) {
+    if (
+      payload.type === "update" &&
+      matches(
+        s.filter,
+        payload.state.serverId,
+        payload.state.sessionId,
+      )
+    ) {
+      s.listener(payload);
+    }
+  }
 }
 
 export function getSnapshot(
