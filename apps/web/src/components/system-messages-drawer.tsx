@@ -172,33 +172,59 @@ function MessageRow({
   onToggle: () => void;
 }) {
   const hasDetails = Boolean(message.details);
+  // Click target is the badge+timestamp+message header row; the
+  // <pre> details block lives OUTSIDE the button so the user can
+  // select / copy log content. Browsers default <button> to
+  // user-select: none, which is why the previous nested-pre-in-
+  // button structure silently broke selection on every system
+  // message details block.
   return (
     <li className="px-3 py-2 text-xs">
-      <button
-        type="button"
-        onClick={hasDetails ? onToggle : undefined}
-        className="w-full text-left flex items-start gap-2"
-        aria-expanded={hasDetails ? expanded : undefined}
-        disabled={!hasDetails}
-      >
+      <div className="flex items-start gap-2">
         <LevelIcon level={message.level} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2">
-            <span className="inline-flex items-center rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-fg">
-              {CATEGORY_LABELS[message.category] ?? message.category}
-            </span>
-            <span className="font-mono text-[10px] text-muted-fg tabular-nums">
-              {formatTime(message.timestamp)}
-            </span>
-          </div>
-          <div className="mt-0.5 [overflow-wrap:anywhere]">{message.message}</div>
+          {hasDetails ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="w-full text-left flex flex-col items-stretch gap-0.5 cursor-pointer"
+              aria-expanded={expanded}
+              title={expanded ? "Collapse details" : "Expand details"}
+            >
+              <div className="flex items-baseline gap-2">
+                <span className="inline-flex items-center rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-fg">
+                  {CATEGORY_LABELS[message.category] ?? message.category}
+                </span>
+                <span className="font-mono text-[10px] text-muted-fg tabular-nums">
+                  {formatTime(message.timestamp)}
+                </span>
+              </div>
+              <div className="mt-0.5 [overflow-wrap:anywhere]">
+                {message.message}
+              </div>
+            </button>
+          ) : (
+            <div className="flex flex-col items-stretch gap-0.5">
+              <div className="flex items-baseline gap-2">
+                <span className="inline-flex items-center rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-fg">
+                  {CATEGORY_LABELS[message.category] ?? message.category}
+                </span>
+                <span className="font-mono text-[10px] text-muted-fg tabular-nums">
+                  {formatTime(message.timestamp)}
+                </span>
+              </div>
+              <div className="mt-0.5 [overflow-wrap:anywhere]">
+                {message.message}
+              </div>
+            </div>
+          )}
           {hasDetails && expanded && (
             <pre className="mt-1 rounded border border-border/60 bg-muted/20 px-2 py-1 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap [overflow-wrap:anywhere]">
               {message.details}
             </pre>
           )}
         </div>
-      </button>
+      </div>
     </li>
   );
 }

@@ -288,6 +288,43 @@ Set in `~/.openportal/openportal.json`. Priority order:
 
 ## UX preferences
 
+### Text selection (mandatory)
+
+Any text rendered in the UI MUST be selectable by the user. Period.
+The user copy-pastes log lines, session IDs, error messages, tool
+output, sidebar paths, and chat content all day long; an
+accidentally-disabled `user-select` breaks a workflow that should
+just work.
+
+Hard rules:
+
+- NEVER add `select-none` (Tailwind) or `user-select: none` (raw CSS)
+  to ANY element that contains text content.
+- If you find an existing `select-none` on a text element, REMOVE
+  it unless its presence is justified by a comment naming a real
+  use case (drag handles, image-like decorations, badges that exist
+  purely as visual icons).
+- The "looks like a button so it shouldn't be selectable" rationale
+  is WRONG. Buttons are selectable in every native UI on the
+  planet, and so are ours.
+- A "looks like an icon" rationale is fine ONLY when the element is
+  truly a glyph with no text body (e.g. a `<svg>`). Heroicons
+  rendered as `<svg>` are already non-selectable by default; you
+  don't need to enforce it.
+- `select-none` IS appropriate on drag handles, sortable grip
+  affordances, and ambient overlay layers that catch pointer
+  events but aren't supposed to receive text focus. Anywhere else,
+  it is a bug.
+
+If you're tempted to disable selection to "prevent accidental
+selection while dragging" or "prevent text drag on a button" -
+reach for `draggable={false}` or `WebkitUserDrag: 'none'`, not
+`user-select: none`. Those preserve text selection while killing
+the drag misbehaviour you actually wanted to fix.
+
+This rule is permanent. Reviewers may revert any `select-none`
+addition without further discussion.
+
 ### Loading feedback (mandatory)
 
 Any UI that awaits data MUST show a visible loading indicator while
