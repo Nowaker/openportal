@@ -17,6 +17,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 
 type BadgeKind =
   | "error"
+  | "stuck"
   | "question"
   | "permission"
   | "compacting"
@@ -32,6 +33,20 @@ interface BadgeRender {
   title: string;
 }
 
+// Priority chain (top first):
+//   ERROR > STUCK > QUESTION > PERMISSION > COMPACTING > TOOL > THINKING
+//   > QUEUED > none
+//
+// STUCK is sourced from the stuck-detector verdict (state.stuck_verdict
+// === "stuck"). Surfaces when opencode's runtime is wedged - a state
+// the event-stream-based .busy signal can NOT detect because by
+// definition no events arrive when the runner is stuck.
+//
+// THINKING uses .busy OR stuck_verdict === "in-progress" so the badge
+// fires even when opencode misses firing message.created (the
+// long-standing bug where the yellow badge would stay invisible).
+// stuck-detector probes the runtime directly and is authoritative
+// for "is something actually running".
 export function pickBadge(state: SessionIndicatorState | null): BadgeRender | null {
   if (!state) return null;
 
@@ -41,6 +56,17 @@ export function pickBadge(state: SessionIndicatorState | null): BadgeRender | nu
       label: "ERROR",
       className: "bg-danger text-danger-fg",
       title: `Session error: ${state.lastError.slice(0, 200)}`,
+    };
+  }
+
+  if (state.stuck_verdict === "stuck") {
+    return {
+      kind: "stuck",
+      label: "STUCK",
+      className: "bg-danger text-danger-fg animate-pulse",
+      title: state.stuck_cause
+        ? `Runner appears stuck: ${state.stuck_cause}`
+        : "Runner appears stuck (no-runner / stale-stream)",
     };
   }
 
@@ -71,7 +97,9 @@ export function pickBadge(state: SessionIndicatorState | null): BadgeRender | nu
     };
   }
 
-  if (state.currentToolName && state.busy) {
+  const runtimeBusy = state.busy || state.stuck_verdict === "in-progress";
+
+  if (state.currentToolName && runtimeBusy) {
     return {
       kind: "tool",
       label: `TOOL: ${state.currentToolName}`,
@@ -80,12 +108,15 @@ export function pickBadge(state: SessionIndicatorState | null): BadgeRender | nu
     };
   }
 
-  if (state.busy) {
+  if (runtimeBusy) {
     return {
       kind: "thinking",
       label: "THINKING",
       className: "bg-warning text-warning-fg animate-pulse",
-      title: "Assistant is generating",
+      title:
+        state.busy
+          ? "Assistant is generating"
+          : "Runtime is busy (per stuck-detector probe)",
     };
   }
 

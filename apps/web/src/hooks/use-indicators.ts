@@ -50,6 +50,15 @@ export interface SessionIndicatorState {
   mode: string | null;
   currentToolName: string | null;
   inFlightAssistantId: string | null;
+  // Stuck-detector verdict, merged into the indicator state by the
+  // server-side stuck-detector-client plugin. Authoritative source
+  // for "is the runner actually doing something" - the opencode
+  // event stream (which feeds .busy) can miss message.created and
+  // leave .busy stale, so the badge logic falls back to this when
+  // .busy is false but the runtime says in-progress.
+  stuck_verdict: "idle" | "in-progress" | "stuck" | null;
+  stuck_cause: string | null;
+  stuck_warnings: string[];
 }
 
 type StreamPayload =

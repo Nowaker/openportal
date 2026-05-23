@@ -129,8 +129,18 @@ export type SessionStatusMap = Record<
   { type: "busy" | "retry" | "idle" }
 >;
 
-function toStatus(s: SessionIndicatorState): { type: "busy" | "idle" } {
-  return { type: s.busy ? "busy" : "idle" };
+// Sidebar/topbar dot status. Honours both the event-stream .busy
+// flag AND the stuck-detector verdict so a session whose runner is
+// alive but whose opencode missed firing message.created still
+// shows the busy dot. Verdict "stuck" maps to "retry" so the dot
+// surfaces a distinct visual (amber-600 solid, no pulse) - it IS
+// running, but in a degraded state.
+function toStatus(
+  s: SessionIndicatorState,
+): { type: "busy" | "retry" | "idle" } {
+  if (s.stuck_verdict === "stuck") return { type: "retry" };
+  if (s.busy || s.stuck_verdict === "in-progress") return { type: "busy" };
+  return { type: "idle" };
 }
 
 export function useSessionStatus(): {
