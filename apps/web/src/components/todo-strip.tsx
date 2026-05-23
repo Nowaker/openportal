@@ -26,11 +26,29 @@ export function TodoStrip({ snapshot }: Props) {
   const toggle = useTodoExpandStore((s) => s.toggle);
   const close = useTodoExpandStore((s) => s.close);
   const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  // Tracks when the popup was last dismissed via the outside-click
+  // backdrop. The backdrop's pointerdown closes the popup, but the
+  // SAME pointer interaction then propagates a click to the strip
+  // button below (depending on where the user clicked) which calls
+  // toggle() and immediately re-opens the popup. The user reported
+  // this as 'clicking the todo bar closes and immediately shows the
+  // big todo again'. The guard: if the strip's onClick fires within
+  // 300ms of the last close, swallow it. Treats the close + click
+  // as one atomic 'close' interaction the way the user expects.
+  const lastCloseAtRef = React.useRef<number>(0);
   const [anchor, setAnchor] = React.useState<{
     top: number;
     left: number;
     width: number;
   } | null>(null);
+  const handleToggle = React.useCallback(() => {
+    if (Date.now() - lastCloseAtRef.current < 300) return;
+    toggle();
+  }, [toggle]);
+  const handleClose = React.useCallback(() => {
+    lastCloseAtRef.current = Date.now();
+    close();
+  }, [close]);
 
   // Recompute anchor position whenever the popup opens or the viewport
   // resizes. fixed-positioning means we need viewport-relative coords;
@@ -72,7 +90,7 @@ export function TodoStrip({ snapshot }: Props) {
       <button
         ref={buttonRef}
         type="button"
-        onClick={toggle}
+        onClick={handleToggle}
         aria-expanded={expanded}
         aria-label={`Plan: ${done} done${active > 0 ? `, ${active} in progress` : ""}, ${total} total`}
         title={`Plan: ${done} done${active > 0 ? ` + ${active} in progress` : ""} / ${total} total${firstActiveContent ? `: ${firstActiveContent}` : ""}`}
@@ -104,7 +122,7 @@ export function TodoStrip({ snapshot }: Props) {
         />
       </button>
       {expanded && anchor && (
-        <TodoPopup snapshot={snapshot} anchor={anchor} onClose={close} />
+        <TodoPopup snapshot={snapshot} anchor={anchor} onClose={handleClose} />
       )}
     </>
   );
@@ -170,7 +188,7 @@ function TodoPopup({ snapshot, anchor, onClose }: TodoPopupProps) {
       <div
         aria-hidden
         className="fixed inset-0 z-[99]"
-        onPointerDown={onClose}
+        onClick={onClose}
       />
       <div
         ref={popupRef}
@@ -179,7 +197,7 @@ function TodoPopup({ snapshot, anchor, onClose }: TodoPopupProps) {
         className="z-[100] flex flex-col rounded-md border border-border bg-bg shadow-xl overflow-hidden"
         style={positionStyle}
         data-test="portal-todo-float"
-        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border/60 px-2 py-1 shrink-0">
           <span className="flex items-center gap-1.5 text-xs text-muted-fg">
