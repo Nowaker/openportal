@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -28,8 +29,10 @@ export interface ConfirmDialogProps {
   isOpen: boolean;
   // Headline (e.g. "Remove server?").
   title: string;
-  // Body copy. Multiline allowed.
-  description?: string;
+  // Body copy. Plain string renders as `whitespace-pre-line` paragraph
+  // (multiline ok); pass a ReactNode (e.g. <pre>) for richer layouts
+  // like dry-run output blobs.
+  description?: ReactNode;
   // Confirm button label. Defaults to "Confirm".
   confirmLabel?: string;
   // Cancel button label. Defaults to "Cancel".
@@ -69,29 +72,37 @@ export function ConfirmDialog({
       isDismissable={!busy}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/50"
     >
-      <Modal className="outline-none w-full max-w-sm">
+      <Modal className="outline-none w-full max-w-sm max-h-[90vh]">
         <PrimitiveDialog
           role="alertdialog"
-          className="relative outline-none rounded-xl bg-bg shadow-2xl border border-border/50 p-5 space-y-4"
+          className="relative outline-none rounded-xl bg-bg shadow-2xl border border-border/50 flex flex-col max-h-[90vh]"
         >
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
             disabled={busy}
-            className="absolute right-2 top-2 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg disabled:opacity-50"
+            className="absolute right-2 top-2 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg disabled:opacity-50 z-10"
           >
             <XMarkIcon className="size-4" />
           </button>
-          <div className="space-y-1 pr-6">
+          <div className="space-y-1 pr-6 px-5 pt-5 shrink-0">
             <h2 className="text-base font-semibold">{title}</h2>
-            {description && (
-              <p className="text-sm text-muted-fg whitespace-pre-line">
-                {description}
-              </p>
-            )}
           </div>
-          <div className="flex justify-end gap-2">
+          {description !== undefined && description !== "" ? (
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-2 pb-3">
+              {typeof description === "string" ? (
+                <p className="text-sm text-muted-fg whitespace-pre-line break-words">
+                  {description}
+                </p>
+              ) : (
+                description
+              )}
+            </div>
+          ) : (
+            <div className="h-2 shrink-0" />
+          )}
+          <div className="flex justify-end gap-2 px-5 pb-5 pt-2 shrink-0 border-t border-border/30">
             <Button
               size="sm"
               intent="secondary"

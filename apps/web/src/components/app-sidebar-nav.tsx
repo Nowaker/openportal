@@ -1075,9 +1075,22 @@ export function AppSidebarNav() {
         isOpen={movePending !== null}
         title={`Move "${sessionTitle ?? sessionId}"?`}
         description={
-          movePending
-            ? `Target: ${movePending.targetPath}\n\nDry-run output:\n${movePending.dryRunStdout.slice(0, 800)}`
-            : ""
+          movePending ? (
+            <div className="space-y-2 text-sm text-muted-fg">
+              <div>
+                <span className="font-medium text-fg">Target:</span>{" "}
+                <span className="break-all">{movePending.targetPath}</span>
+              </div>
+              <div>
+                <div className="font-medium text-fg mb-1">Dry-run output:</div>
+                <pre className="text-[11px] leading-snug font-mono whitespace-pre-wrap break-all bg-muted/30 border border-border/40 rounded p-2 text-fg">
+                  {movePending.dryRunStdout}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            ""
+          )
         }
         confirmLabel="Move"
         tone="default"
@@ -1091,13 +1104,34 @@ export function AppSidebarNav() {
         isOpen={moveLiveRunnerPrompt !== null}
         title="Session has a live runner"
         description={
-          moveLiveRunnerPrompt
-            ? `${
-                moveLiveRunnerPrompt.liveSessionIds.length > 0
-                  ? `Live session(s): ${moveLiveRunnerPrompt.liveSessionIds.join(", ")}\n\n`
-                  : ""
-              }Abort the live runner(s) and move? Any stuck subagent sessions will be auto-skipped.\n\nDetails:\n${moveLiveRunnerPrompt.reason.slice(0, 600)}`
-            : ""
+          moveLiveRunnerPrompt ? (
+            <div className="space-y-2 text-sm text-muted-fg">
+              {moveLiveRunnerPrompt.liveSessionIds.length > 0 && (
+                <div>
+                  <div className="font-medium text-fg mb-1">
+                    Live session(s):
+                  </div>
+                  <ul className="text-[11px] font-mono break-all space-y-0.5">
+                    {moveLiveRunnerPrompt.liveSessionIds.map((sid) => (
+                      <li key={sid}>{sid}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p>
+                Abort the live runner(s) and move? Any stuck subagent sessions
+                will be auto-skipped.
+              </p>
+              <div>
+                <div className="font-medium text-fg mb-1">Details:</div>
+                <pre className="text-[11px] leading-snug font-mono whitespace-pre-wrap break-all bg-muted/30 border border-border/40 rounded p-2 text-fg">
+                  {moveLiveRunnerPrompt.reason}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            ""
+          )
         }
         confirmLabel="Abort and move"
         tone="danger"
