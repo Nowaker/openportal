@@ -25,6 +25,7 @@ import { useEventStream } from "@/hooks/use-event-stream";
 import { useSettingsSync } from "@/hooks/use-settings-sync";
 import { requestNotificationPermission } from "@/hooks/use-status-notifications";
 import { logSystemMessage } from "@/stores/system-messages-store";
+import { useStuckDetectorEvents } from "@/hooks/use-stuck-detector-events";
 import {
   PullToRefreshIndicator,
   PullToRefreshWrapper,
@@ -433,6 +434,7 @@ function AppLayout() {
   useSettingsSync();
   useEventStream();
   useBootstrapPrefetch();
+  useStuckDetectorEvents();
 
   // Permalink consumption: when a URL carries ?server=<id> and the
   // instance store is not yet bound to that server, POST to

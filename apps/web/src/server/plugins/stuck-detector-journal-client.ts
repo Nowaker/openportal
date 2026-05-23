@@ -3,6 +3,7 @@ import {
   getLastSeenStuckDetectorActionId,
   setLastSeenStuckDetectorActionId,
 } from "../lib/instance-settings-state";
+import { emitStuckEvent } from "../lib/stuck-detector-events";
 
 const PLUGIN_URL = "http://127.0.0.1:4098";
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -25,9 +26,35 @@ interface JournalEntry {
   extra?: unknown;
 }
 
+let initialDrainComplete = false;
+
 function processAction(entry: JournalEntry): void {
   if (typeof entry.id !== "number") return;
+  const previouslySeen = entry.id <= getLastSeenStuckDetectorActionId();
   setLastSeenStuckDetectorActionId(entry.id);
+  // Only fan out entries the user hasn't seen before. The initial drain
+  // replays the full journal from the last-seen cursor at startup; we
+  // want those to update the cursor but NOT spam the drawer with old
+  // history. After the initial drain finishes, every new entry is by
+  // definition unseen and worth surfacing.
+  if (!initialDrainComplete && previouslySeen) return;
+  if (
+    typeof entry.session_id !== "string" ||
+    typeof entry.action !== "string" ||
+    typeof entry.cause !== "string"
+  ) {
+    return;
+  }
+  emitStuckEvent({
+    type: "journal-action",
+    id: entry.id,
+    sessionID: entry.session_id,
+    action: entry.action,
+    cause: entry.cause,
+    ok: entry.ok === true,
+    reason: typeof entry.reason === "string" ? entry.reason : undefined,
+    at: Date.now(),
+  });
 }
 
 async function drainSince(since: number, signal: AbortSignal): Promise<number> {
@@ -101,6 +128,7 @@ async function runLoop(signal: AbortSignal): Promise<void> {
     try {
       const since = getLastSeenStuckDetectorActionId();
       const drained = await drainSince(since, signal);
+      initialDrainComplete = true;
       await streamSince(drained, signal);
       delay = RECONNECT_BASE_DELAY_MS;
     } catch (err) {

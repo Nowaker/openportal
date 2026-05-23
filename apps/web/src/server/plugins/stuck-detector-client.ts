@@ -16,10 +16,21 @@ import {
   applyStuckVerdict,
   type StuckVerdictUpdate,
 } from "../lib/indicator-state";
+import {
+  emitStuckEvent,
+  type VerdictKind,
+} from "../lib/stuck-detector-events";
 
 const PLUGIN_URL = "http://127.0.0.1:4098";
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
+
+// Track the last verdict per session so we only fan out actual
+// transitions. Verdict deltas come in continuously (every retry
+// re-emits a verdict); without dedup the drawer would fill with
+// thousands of identical 'still in-progress' entries.
+const lastVerdict = new Map<string, VerdictKind>();
+let snapshotSeeded = false;
 
 interface RawVerdict {
   sessionID?: string;
@@ -73,11 +84,41 @@ async function fetchSnapshot(signal: AbortSignal): Promise<void> {
     if (!body || typeof body !== "object") return;
     for (const v of Object.values(body)) {
       const update = normalize(v);
-      if (update) applyStuckVerdict(update);
+      if (update) {
+        applyStuckVerdict(update);
+        lastVerdict.set(update.sessionID, update.verdict);
+      }
     }
+    snapshotSeeded = true;
   } catch {
     /* plugin not reachable, leave indicator state empty */
   }
+}
+
+function maybeEmitTransition(update: StuckVerdictUpdate): void {
+  // Skip until the initial snapshot is loaded so we don't synthesize
+  // false 'X became stuck' events for sessions whose first verdict
+  // delta arrives before the seed. After seeding, only true
+  // transitions to/from 'stuck' surface to the drawer; idle <->
+  // in-progress chatter would drown out the real events.
+  if (!snapshotSeeded) {
+    lastVerdict.set(update.sessionID, update.verdict);
+    return;
+  }
+  const prev = lastVerdict.get(update.sessionID);
+  lastVerdict.set(update.sessionID, update.verdict);
+  if (prev === undefined) return;
+  if (prev === update.verdict) return;
+  const interesting = prev === "stuck" || update.verdict === "stuck";
+  if (!interesting) return;
+  emitStuckEvent({
+    type: "verdict-transition",
+    sessionID: update.sessionID,
+    prev,
+    next: update.verdict,
+    stuck_cause: update.stuck_cause,
+    at: Date.now(),
+  });
 }
 
 async function streamVerdicts(signal: AbortSignal): Promise<void> {
@@ -110,7 +151,10 @@ async function streamVerdicts(signal: AbortSignal): Promise<void> {
         continue;
       }
       const update = normalize(parsed);
-      if (update) applyStuckVerdict(update);
+      if (update) {
+        applyStuckVerdict(update);
+        maybeEmitTransition(update);
+      }
     }
   }
 }
