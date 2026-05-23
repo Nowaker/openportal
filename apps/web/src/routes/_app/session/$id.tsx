@@ -13,6 +13,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { remarkFileLinks } from "@/lib/remark-file-links";
 import { remarkIdLinks } from "@/lib/remark-id-links";
+import { linkifySessionIds } from "@/lib/linkify-session-ids";
 import useSWR, { mutate as globalSWRMutate } from "swr";
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
@@ -1255,13 +1256,21 @@ function PermissionRequestForm({
 // Strings render verbatim with their actual line breaks preserved so
 // multi-line tool inputs (bash commands, edit diffs) read as the
 // user-typed source rather than as one-line JSON with \n sequences.
-function FormattedValue({ value }: { value: unknown }): React.ReactElement {
+function FormattedValue({
+  value,
+  resolveSessionId,
+}: {
+  value: unknown;
+  resolveSessionId: (partial: string) => string | null;
+}): React.ReactElement {
   if (value === null || value === undefined) {
     return <span className="text-muted-fg/60 italic">(none)</span>;
   }
   if (typeof value === "string") {
     return (
-      <span className="whitespace-pre-wrap break-words">{value}</span>
+      <span className="whitespace-pre-wrap break-words">
+        {linkifySessionIds(value, { resolveSessionId })}
+      </span>
     );
   }
   if (typeof value === "boolean" || typeof value === "number") {
@@ -1275,7 +1284,7 @@ function FormattedValue({ value }: { value: unknown }): React.ReactElement {
       <ul className="ml-3 mt-1 space-y-1 list-disc">
         {value.map((item, i) => (
           <li key={i} className="break-words">
-            <FormattedValue value={item} />
+            <FormattedValue value={item} resolveSessionId={resolveSessionId} />
           </li>
         ))}
       </ul>
@@ -1292,7 +1301,7 @@ function FormattedValue({ value }: { value: unknown }): React.ReactElement {
           <div key={k} className="grid grid-cols-[auto_1fr] gap-x-2 items-start">
             <dt className="font-mono text-muted-fg text-xs pt-0.5">{k}:</dt>
             <dd className="break-words text-fg">
-              <FormattedValue value={v} />
+              <FormattedValue value={v} resolveSessionId={resolveSessionId} />
             </dd>
           </div>
         ))}
@@ -1343,6 +1352,17 @@ function ToolInputModal({
   }, [currentValue]);
   const hasOutput =
     output !== null && output !== undefined && output !== "";
+  const { data: sessionsData } = useSessions();
+  const resolveSessionId = useMemo(() => {
+    const sessions = sessionsData ?? [];
+    return (partial: string): string | null => {
+      if (!partial.startsWith("ses_")) return null;
+      const exact = sessions.find((s) => s.id === partial);
+      if (exact) return exact.id;
+      const matches = sessions.filter((s) => s.id.startsWith(partial));
+      return matches.length === 1 ? matches[0].id : null;
+    };
+  }, [sessionsData]);
   return (
     <ModalOverlay
       isOpen
@@ -1435,10 +1455,13 @@ function ToolInputModal({
                     Failed to load tool {section}.
                   </div>
                 ) : view === "formatted" ? (
-                  <FormattedValue value={currentValue} />
+                  <FormattedValue
+                    value={currentValue}
+                    resolveSessionId={resolveSessionId}
+                  />
                 ) : (
                   <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 rounded p-3">
-                    {jsonText}
+                    {linkifySessionIds(jsonText, { resolveSessionId })}
                   </pre>
                 )}
               </div>
