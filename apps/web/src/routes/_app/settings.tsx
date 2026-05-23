@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
 import { ContentVisibilityTable } from "@/components/content-visibility-table";
 import { DiagnosticsPanel } from "@/components/diagnostics-panel";
+import { NotificationsSettings } from "@/components/notifications-settings";
 import { StuckRecoverySettings } from "@/components/stuck-recovery-settings";
 import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
@@ -17,6 +18,7 @@ import {
   ChatBubbleLeftEllipsisIcon,
   ChatBubbleLeftRightIcon,
   BoltIcon,
+  BellIcon,
   EyeIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
@@ -1573,6 +1575,7 @@ function SettingsPage() {
       "chat",
       "tools",
       "content",
+      "notifications",
       "performance",
       "diagnostics",
     ].includes(hash)
@@ -1592,6 +1595,7 @@ function SettingsPage() {
           "chat",
           "tools",
           "content",
+          "notifications",
           "performance",
           "diagnostics",
         ].includes(hash)
@@ -1646,6 +1650,10 @@ function SettingsPage() {
           <Tab id="content" data-test="portal-settings-tab-content">
             <EyeIcon className="size-4" data-slot="icon" />
             Content
+          </Tab>
+          <Tab id="notifications" data-test="portal-settings-tab-notifications">
+            <BellIcon className="size-4" data-slot="icon" />
+            Notifications
           </Tab>
           <Tab id="performance" data-test="portal-settings-tab-performance">
             <BoltIcon className="size-4" data-slot="icon" />
@@ -1943,6 +1951,20 @@ function SettingsPage() {
             </div>
             <ContentVisibilityTable />
             <ToolOutputCapSetting />
+          </div>
+        </TabPanel>
+
+        <TabPanel id="notifications" className="pt-6">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-lg font-semibold">Notifications</h2>
+              <p className="text-xs text-muted-fg pt-1">
+                Per-status browser notification policy. Permission must be
+                granted at the OS / browser level for notifications to fire
+                regardless of these settings.
+              </p>
+            </div>
+            <NotificationsSettings />
           </div>
         </TabPanel>
 

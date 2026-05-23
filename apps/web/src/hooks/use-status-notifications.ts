@@ -5,6 +5,11 @@ import {
   playNotificationSound,
   type NotificationCategory,
 } from "@/stores/notification-sound-store";
+import {
+  useInstanceSettings,
+  type NotificationKind,
+  type NotifyPolicy,
+} from "@/stores/instance-settings-store";
 
 interface Args {
   sessions: Session[];
@@ -13,21 +18,22 @@ interface Args {
   onSelect: (sessionId: string) => void;
 }
 
-// Fires browser notifications on two transitions:
-//   1. busy -> idle: "session complete" - notify because the run finished
-//   2. question newly appears for a session: "needs attention" - the model
-//      asked something and is waiting on the user
-// Always fires when the OS-level Notification permission is granted,
-// regardless of whether the tab is in foreground or which session the user
-// is currently viewing. Multi-monitor environments make "tab is visible"
-// an unreliable signal of "the user is actually watching": the tab can be
-// the active tab in a window the user is not looking at right now.
-//
-// Click on either notification focuses the window and invokes
-// onSelect(sessionId), which the caller binds to in-app router navigation.
-// window.location.href would force a full reload and lose the tab's SWR
-// cache, in-flight prompt drafts in localStorage, sidebar scroll position,
-// etc.
+// Per-kind gating + active-tab gate added by Section J. Pre-Section-J:
+// always fired when OS permission granted. Post-Section-J: consults
+// policy[kind].notify AND policy[kind].notifyEvenIfActiveTab vs.
+// document.visibilityState. The default policy still fires on every
+// status so existing users see no behavior change unless they opt
+// into changes via /settings#notifications.
+function shouldFire(kind: NotificationKind, policy: NotifyPolicy): boolean {
+  const rule = policy[kind];
+  if (!rule.notify) return false;
+  if (typeof document === "undefined") return true;
+  if (document.visibilityState === "visible" && !rule.notifyEvenIfActiveTab) {
+    return false;
+  }
+  return true;
+}
+
 function spawnNotification(
   id: string,
   title: string,
@@ -35,7 +41,66 @@ function spawnNotification(
   tagSuffix: string,
   onSelect: (sessionId: string) => void,
   sound: NotificationCategory,
+  kind: NotificationKind,
+  policy: NotifyPolicy,
 ) {
+  if (!shouldFire(kind, policy)) return;
+  playNotificationSound(sound);
+  if (typeof window === "undefined") return;
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const notif = new Notification(title, {
+      body,
+      tag: `opencode-session-${id}-${tagSuffix}`,
+    });
+    notif.onclick = () => {
+      window.focus();
+      onSelect(id);
+      notif.close();
+    };
+  } catch {
+    /* permission revoked between check and fire - ignore */
+  }
+}
+
+// Fires browser notifications on two transitions:
+//   1. busy -> idle: "session complete" - notify because the run finished
+//   2. question newly appears for a session: "needs attention" - the model
+//      asked something and is waiting on the user
+// Section J adds a per-kind policy: each kind has notify+notifyEvenIfActiveTab.
+// Active tab is detected via document.visibilityState === "visible". When
+// the active-tab flag is OFF for a kind, we skip the notification (but
+// still play the sound) because the user is already looking at this tab.
+//
+// Click on either notification focuses the window and invokes
+// onSelect(sessionId), which the caller binds to in-app router navigation.
+// window.location.href would force a full reload and lose the tab's SWR
+// cache, in-flight prompt drafts in localStorage, sidebar scroll position,
+// etc.
+function shouldFire(
+  kind: NotificationKind,
+  policy: NotifyPolicy,
+): boolean {
+  const rule = policy[kind];
+  if (!rule || !rule.notify) return false;
+  if (typeof document !== "undefined" && document.visibilityState === "visible") {
+    return rule.notifyEvenIfActiveTab;
+  }
+  return true;
+}
+
+function spawnNotification(
+  id: string,
+  title: string,
+  body: string,
+  tagSuffix: string,
+  onSelect: (sessionId: string) => void,
+  sound: NotificationCategory,
+  kind: NotificationKind,
+  policy: NotifyPolicy,
+) {
+  if (!shouldFire(kind, policy)) return;
   playNotificationSound(sound);
   if (typeof window === "undefined") return;
   if (!("Notification" in window)) return;
@@ -61,6 +126,9 @@ export function useStatusNotifications({
   questionSessionIds,
   onSelect,
 }: Args) {
+  const { settings } = useInstanceSettings();
+  const policyRef = useRef<NotifyPolicy>(settings.notifyPolicy);
+  policyRef.current = settings.notifyPolicy;
   const prevStatusRef = useRef<Record<string, string>>({});
   const prevQuestionsRef = useRef<Set<string>>(new Set());
 
@@ -100,6 +168,8 @@ export function useStatusNotifications({
         "done",
         onSelect,
         "agent",
+        "session-done",
+        policyRef.current,
       );
     }
     prevStatusRef.current = next;
@@ -122,8 +192,13 @@ export function useStatusNotifications({
         "question",
         onSelect,
         "agent",
+        "question",
+        policyRef.current,
       );
     }
+    prevQuestionsRef.current = new Set(questionSessionIds);
+  }, [questionSessionIds, sessions, onSelect]);
+}
     prevQuestionsRef.current = new Set(questionSessionIds);
   }, [questionSessionIds, sessions, onSelect]);
 }
