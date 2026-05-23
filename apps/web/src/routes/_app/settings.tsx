@@ -39,7 +39,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
-import { useAgents, useProviders } from "@/hooks/use-opencode";
+import { useAgents, useProviders, useSessions } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
@@ -1338,10 +1338,25 @@ function ComposerSettings() {
 
 function PermissionsSettings() {
   const { config, isLoading } = useAutoApproveConfig();
+  const sessionsQuery = useSessions();
   const [pendingRemove, setPendingRemove] = React.useState<string | null>(null);
   const [busyDefault, setBusyDefault] = React.useState(false);
   const [confirmClearAll, setConfirmClearAll] = React.useState(false);
   const [clearBusy, setClearBusy] = React.useState(false);
+
+  const sessionTitles = React.useMemo(() => {
+    const sessions = (sessionsQuery.data ?? []) as Array<{
+      id?: string;
+      title?: string;
+    }>;
+    const map: Record<string, string> = {};
+    for (const s of sessions) {
+      if (typeof s.id === "string" && typeof s.title === "string") {
+        map[s.id] = s.title;
+      }
+    }
+    return map;
+  }, [sessionsQuery.data]);
 
   const overrideEntries = React.useMemo(() => {
     return Object.entries(config.sessionOverrides).sort(([a], [b]) =>
@@ -1449,7 +1464,16 @@ function PermissionsSettings() {
                 className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2"
               >
                 <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="font-mono text-xs truncate">{sid}</div>
+                  {sessionTitles[sid] ? (
+                    <div className="text-sm truncate">{sessionTitles[sid]}</div>
+                  ) : (
+                    <div className="text-xs text-muted-fg italic">
+                      {sessionsQuery.isLoading ? "Loading title..." : "(no title)"}
+                    </div>
+                  )}
+                  <div className="font-mono text-xs text-muted-fg truncate">
+                    {sid}
+                  </div>
                   <div className="text-xs text-muted-fg">
                     Auto-approve:{" "}
                     <span
