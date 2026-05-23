@@ -200,19 +200,31 @@ async function loadFullMessages(
   // ts_ms and opencode's created (clocks + ordering).
   const realUserSnippets = new Set<string>();
   let latestRealUserMs = 0;
+  let latestRealAnyMs = 0;
   for (const m of real) {
     if (!m || typeof m !== "object") continue;
     const msg = m as {
       info?: { role?: string; time?: { created?: number } };
       parts?: unknown[];
     };
+    const created = msg.info?.time?.created ?? 0;
+    if (created > latestRealAnyMs) latestRealAnyMs = created;
     if (msg.info?.role !== "user") continue;
     const text = collectUserText(msg.parts).trim();
     if (text.length === 0) continue;
     realUserSnippets.add(text);
-    const created = msg.info?.time?.created ?? 0;
     if (created > latestRealUserMs) latestRealUserMs = created;
   }
+  // Bump every virtual's effective `created` to AFTER the most recent
+  // real message in the session. Without this, a queued virtual whose
+  // archive timestamp is older than the currently-thinking assistant
+  // message sorts ABOVE the assistant in the chat log - the user's
+  // queued prompt visually appears 'before' the in-flight turn, which
+  // is wrong: a queued message is FUTURE work, the in-flight turn is
+  // CURRENT, so the queued entry must render LAST. The frontend sort
+  // in use-session-messages.ts mergeByIdSorted compares time.created
+  // ascending, so virtual ts_ms is normalised to max-real-created + 1
+  // ms (or kept at row.ts_ms if it was already later than that).
   const filtered = visible
     .filter((row) => {
       if (realUserSnippets.has(row.raw_text.trim())) return false;
@@ -224,7 +236,9 @@ async function loadFullMessages(
       }
       return true;
     })
-    .map(toVirtualUserMessage);
+    .map((row) =>
+      toVirtualUserMessage(row, Math.max(row.ts_ms, latestRealAnyMs + 1)),
+    );
   return filtered.length === 0 ? real : [...real, ...filtered];
 }
 
@@ -249,7 +263,7 @@ function collectUserText(parts: unknown[] | undefined): string {
 // id prefix `pending::` makes virtuals identifiable without
 // inspecting `_pending`, which matters for the star/permalink/since
 // paths (they key off `info.id`).
-function toVirtualUserMessage(row: PromptRow): unknown {
+function toVirtualUserMessage(row: PromptRow, effectiveCreated?: number): unknown {
   // Phase tracks the actual server-side delivery state, not an
   // optimistic guess. UI maps:
   //   pending  -> "Submitting"     (portal has it, worker hasn't dispatched)
@@ -265,7 +279,7 @@ function toVirtualUserMessage(row: PromptRow): unknown {
     info: {
       id: `pending::${row.id}`,
       role: "user",
-      time: { created: row.ts_ms, completed: null },
+      time: { created: effectiveCreated ?? row.ts_ms, completed: null },
       _pending: {
         attempts: row.attempts,
         lastAttemptAt: row.last_attempt_at,
