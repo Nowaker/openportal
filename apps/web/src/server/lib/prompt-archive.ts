@@ -88,6 +88,26 @@ interface SessionMeta {
 // session at creation). Module-scope cache, no eviction.
 const sessionMetaCache = new Map<string, SessionMeta>();
 
+// Fast-fail timeout for the opencode session.get call. When opencode is
+// down (refused) the underlying fetch resolves quickly; when it's just
+// SLOW (overloaded, network blip, network-mounted filesystem stalling)
+// the SDK call can hang indefinitely. archivePrompt sits in the /prompt
+// critical path - hanging here means the browser's textarea won't
+// clear because portal hasn't returned 202 yet, defeating the
+// 'openportal accepts the prompt regardless of opencode state' contract.
+// 3s is generous for any healthy opencode and short enough that the
+// user perceives portal acceptance as immediate when opencode is sick.
+const GET_SESSION_TIMEOUT_MS = 3_000;
+
+// Hard time budget on the opencode call so a slow/down opencode does
+// NOT block /prompt accept. The user's stated invariant is 'openportal
+// must accept the prompt. Period. Opencode up or down, whatever.' If
+// opencode doesn't respond in 2s we fall back to empty meta; the
+// archive still lands with project_path="" and parentID=null. A
+// background backfill could repair those later but is out of scope
+// for the accept-path fix.
+const SESSION_META_TIMEOUT_MS = 2000;
+
 async function getSessionMeta(
   port: number,
   sessionId: string,
@@ -95,15 +115,25 @@ async function getSessionMeta(
   const cached = sessionMetaCache.get(sessionId);
   if (cached) return cached;
   try {
-    const client = await getOpencodeClient(port);
-    const resp = await client.session.get({ path: { id: sessionId } });
-    const data = resp.data as
-      | { directory?: string; parentID?: string | null }
-      | undefined;
-    const meta: SessionMeta = {
-      directory: data?.directory ?? "",
-      parentID: data?.parentID ?? null,
-    };
+    const meta = await Promise.race<SessionMeta>([
+      (async () => {
+        const client = await getOpencodeClient(port);
+        const resp = await client.session.get({ path: { id: sessionId } });
+        const data = resp.data as
+          | { directory?: string; parentID?: string | null }
+          | undefined;
+        return {
+          directory: data?.directory ?? "",
+          parentID: data?.parentID ?? null,
+        };
+      })(),
+      new Promise<SessionMeta>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("getSessionMeta timeout")),
+          SESSION_META_TIMEOUT_MS,
+        ),
+      ),
+    ]);
     sessionMetaCache.set(sessionId, meta);
     return meta;
   } catch {

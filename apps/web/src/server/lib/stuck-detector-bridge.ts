@@ -14,7 +14,30 @@ import { getMergedSessionStatus } from "./session-status";
 //
 // Fails closed: ANY detection error returns false so a probe bug never
 // blocks the dispatcher.
+// Hard time budget so opencode being slow/down does NOT block the
+// /prompt critical path. User invariant: 'openportal must accept the
+// prompt. Period.' If detection doesn't finish in 2s, return false
+// (= no recovery action). The recovery toast won't fire that turn,
+// but the prompt still archives + dispatches.
+const DETECT_TIMEOUT_MS = 2000;
+
 export async function detectStuckFromRestart(
+  port: number,
+  sessionId: string,
+): Promise<boolean> {
+  try {
+    return await Promise.race<boolean>([
+      detectStuckFromRestartInner(port, sessionId),
+      new Promise<boolean>((resolve) =>
+        setTimeout(() => resolve(false), DETECT_TIMEOUT_MS),
+      ),
+    ]);
+  } catch {
+    return false;
+  }
+}
+
+async function detectStuckFromRestartInner(
   port: number,
   sessionId: string,
 ): Promise<boolean> {
@@ -23,16 +46,11 @@ export async function detectStuckFromRestart(
 
     let sessionBusy = false;
     try {
-      // opencode's /session/status is scoped per-project; the SDK
-      // helper (and the bare endpoint) only sees sessions whose
-      // directory == opencode-serve CWD, so any session in a real
-      // worktree appears missing. Use the merged status helper which
-      // walks GET /project + per-directory fan-out.
       const statusMap = await getMergedSessionStatus(port);
       const status = statusMap[sessionId];
       sessionBusy = status?.type === "busy" || status?.type === "retry";
     } catch {
-      // status unreachable - treat as not busy and let the message-tail check decide
+      // status unreachable - treat as not busy
     }
     if (sessionBusy) return false;
 

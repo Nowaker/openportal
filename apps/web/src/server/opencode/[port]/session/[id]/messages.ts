@@ -406,9 +406,28 @@ function parsePositiveLimit(raw: unknown, fallback: number): number {
 // whatever the SDK is choking on. Defense in depth.
 const FALLBACK_FETCH_LIMIT = 1000;
 
+// Fast-fail timeout so a slow/down opencode does NOT block the
+// browser's /messages fetch on cold load. Without this, refreshing
+// the page when opencode is sick would leave the chat log spinner
+// up for the full SDK timeout (potentially 30+ seconds), and the
+// user's pending-backlog virtuals would not render until then. With
+// the timeout, fetchAndCache throws on 3s and the caller's catch
+// falls through to getStaleMessages + virtuals, satisfying the user
+// invariant 'MUST SEND CONTENT TO OP FRONTEND, WHATEVER THE SOURCE,
+// ASAP'.
+const FETCH_TIMEOUT_MS = 3_000;
+
 async function fetchAndCache(port: number, id: string): Promise<unknown[]> {
   const client = await getOpencodeClient(port);
-  const result = await client.session.messages({ path: { id } });
+  const result = await Promise.race([
+    client.session.messages({ path: { id } }),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`opencode session.messages timed out after ${FETCH_TIMEOUT_MS}ms`)),
+        FETCH_TIMEOUT_MS,
+      ),
+    ),
+  ]);
   const data = (result as { data?: unknown }).data;
   let raw: unknown[];
   if (Array.isArray(data)) {

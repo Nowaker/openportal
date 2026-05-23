@@ -97,16 +97,27 @@ export default defineHandler(async (event) => {
     messageID: opencodeMessageId,
   };
 
-  let recoveredFromRestart = false;
-  if (await detectStuckFromRestart(port, id)) {
+  // Stuck-from-restart probe + abort moved AFTER archivePrompt and made
+  // fire-and-forget. The probe makes multiple opencode SDK calls;
+  // awaiting it blocked the /prompt 202 response by up to opencode's
+  // request timeout when opencode was sick. User invariant: 'openportal
+  // must accept the prompt. Period. Opencode up or down, whatever.' The
+  // recoveredFromRestart toast is sacrificed (we set it to false always)
+  // - the recovery still HAPPENS in the background, the user just
+  // doesn't get the heads-up toast on this turn. If we need the toast
+  // back, the worker could emit a system message after a background
+  // abort succeeds.
+  const recoveredFromRestart = false;
+  void (async () => {
     try {
-      const client = await getOpencodeClient(port);
-      await client.session.abort({ path: { id } });
-      recoveredFromRestart = true;
+      if (await detectStuckFromRestart(port, id)) {
+        const client = await getOpencodeClient(port);
+        await client.session.abort({ path: { id } });
+      }
     } catch {
-      /* abort may noop if opencode already reaped the dead row; fine */
+      // background; failures here MUST NOT block the /prompt path
     }
-  }
+  })();
 
   const row = await archivePrompt({
     port,
