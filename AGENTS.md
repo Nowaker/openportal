@@ -628,7 +628,7 @@ curl -sS http://100.105.229.19:5000/api/instance/self | jq .presence
 
 ## Settings UI structure
 
-`/settings` is split into seven tabs, hash-routed so deep links like
+`/settings` is split into eight tabs, hash-routed so deep links like
 `/settings#chat` jump directly to the relevant pane. Tab list,
 hash array, and TabPanel ids all live in
 `apps/web/src/routes/_app/settings.tsx`:
@@ -640,7 +640,8 @@ hash array, and TabPanel ids all live in
 | `composer` | Enter-key behaviour, auto-approve permissions (global default + per-session overrides). |
 | `chat` | Date/time format (locale / 12h / 24h), link opening behavior, per-icon visibility grid, hover info toggle, info icon toggle, markdown rendering. |
 | `tools` | The system + custom tool catalog with enable / edit / reset, project-init ordering. |
-| `performance` | Live updates strategy (per-platform), tool output byte cap. |
+| `content` | Content visibility — what types of content show in the chat log and how (tool output byte cap; Section I will expand this into a per-content-type visibility table). |
+| `performance` | Live updates strategy (per-platform) and other UI responsiveness knobs. |
 | `diagnostics` | Health + presence + companion plugin state. |
 
 Heading hierarchy: each `<TabPanel>` has its own `<h2>` for the tab

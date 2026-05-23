@@ -15,6 +15,7 @@ import {
   ChatBubbleLeftEllipsisIcon,
   ChatBubbleLeftRightIcon,
   BoltIcon,
+  EyeIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
@@ -1540,6 +1541,7 @@ function SettingsPage() {
       "composer",
       "chat",
       "tools",
+      "content",
       "performance",
       "diagnostics",
     ].includes(hash)
@@ -1558,6 +1560,7 @@ function SettingsPage() {
           "composer",
           "chat",
           "tools",
+          "content",
           "performance",
           "diagnostics",
         ].includes(hash)
@@ -1608,6 +1611,10 @@ function SettingsPage() {
           <Tab id="tools" data-test="portal-settings-tab-tools">
             <WrenchScrewdriverIcon className="size-4" data-slot="icon" />
             Tools
+          </Tab>
+          <Tab id="content" data-test="portal-settings-tab-content">
+            <EyeIcon className="size-4" data-slot="icon" />
+            Content
           </Tab>
           <Tab id="performance" data-test="portal-settings-tab-performance">
             <BoltIcon className="size-4" data-slot="icon" />
@@ -1894,13 +1901,29 @@ function SettingsPage() {
           </div>
         </TabPanel>
 
+        <TabPanel id="content" className="pt-6">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-lg font-semibold">Content</h2>
+              <p className="text-xs text-muted-fg pt-1">
+                What shows in the chat log and how. Visibility caps, per-content-type
+                truncation, on-demand loading.
+              </p>
+            </div>
+            <ToolOutputCapSetting />
+          </div>
+        </TabPanel>
+
         <TabPanel id="performance" className="pt-6">
           <div className="space-y-10">
             <div>
               <h2 className="text-lg font-semibold">Performance</h2>
+              <p className="text-xs text-muted-fg pt-1">
+                Knobs that trade off responsiveness vs. resource usage. Affect how
+                the UI behaves, not what content it shows.
+              </p>
             </div>
             <LiveUpdatesSetting />
-            <ToolOutputCapSetting />
           </div>
         </TabPanel>
 
