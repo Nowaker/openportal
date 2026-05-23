@@ -36,8 +36,8 @@ export function useBuildMismatch(): boolean {
           logSystemMessage(
             "version",
             "info",
-            "New OpenPortal version detected - reload to upgrade",
-            `Current tab is running build ${ours}; backend is on ${theirs}.`,
+            `OpenPortal upgraded: this tab is running ${ours}, latest is ${theirs}`,
+            `This browser tab loaded OpenPortal build ${ours}.\nThe backend is now serving build ${theirs}.\nReload (Ctrl+R / Cmd+R) to upgrade the tab.\n\nNote: builds are content-hashed (not sequential), so we cannot show 'N versions behind' - only the loaded vs latest build IDs.`,
           );
         }
       } catch {
