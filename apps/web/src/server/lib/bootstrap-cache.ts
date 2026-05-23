@@ -1,19 +1,23 @@
-// Stale-while-revalidate cache for opencode bootstrap data
-// (agents, providers, config). Keyed by `${port}:${kind}`.
+// Caching-proxy cache for opencode bootstrap data (agents, providers,
+// config). Keyed by `${port}:${kind}`. Per the user's caching-proxy
+// directive: once we've seen the data, we cache it. Only AUTHORITATIVE
+// opencode responses update the cache. Timeouts/errors NEVER clear it
+// and NEVER propagate up to the caller as long as we have any cached
+// entry.
 //
 // Semantics:
-//   - First call:       awaits the upstream fetch, stores the result.
-//   - Subsequent calls within FRESH_MS:
-//                       returns cached data immediately, no upstream call.
-//   - Subsequent calls between FRESH_MS and STALE_MS:
-//                       returns cached data immediately AND fires a
-//                       background revalidation. Caller never waits.
-//   - Subsequent calls after STALE_MS:
-//                       awaits a fresh fetch (treated like first call).
-//
-// Errors during background revalidation are swallowed - the cached data
-// stays, the next refresh will retry. Errors during the awaited fetches
-// propagate to the caller.
+//   - First call (cold, no cache): awaits the upstream fetch,
+//     stores the result. On failure, propagates error (no cache to
+//     fall back to).
+//   - Within FRESH_MS: returns cached, no upstream call.
+//   - Between FRESH_MS and STALE_MS: returns cached + kicks off
+//     background revalidation. Caller never waits.
+//   - Past STALE_MS but cache exists: returns cached + kicks off
+//     background revalidation (NOT a blocking refresh - that was the
+//     pre-caching-proxy behavior that 502'd the frontend on every
+//     poll after opencode hung for 5+ minutes).
+//   - Background revalidation failure: cached entry stays, no error
+//     propagates. Next caller still gets the stale data.
 
 const FRESH_MS = 5_000;
 const STALE_MS = 5 * 60_000;
@@ -33,12 +37,18 @@ export async function bootstrapCacheGet<T>(
   const now = Date.now();
   const entry = store.get(key) as Entry<T> | undefined;
 
-  if (!entry || now - entry.fetchedAt > STALE_MS) {
+  if (!entry) {
     const data = await fetcher();
     store.set(key, { data, fetchedAt: Date.now(), refreshing: null });
     return data;
   }
 
+  // Any cached entry triggers background refresh (no blocking await,
+  // never propagates errors). The pre-caching-proxy version would
+  // synchronously refetch past STALE_MS and 502 the frontend when
+  // opencode hung; the user's invariant ('openportal must be a
+  // caching proxy... if it takes forever, so be it') means we always
+  // serve cache and reconcile in the background.
   if (now - entry.fetchedAt > FRESH_MS && !entry.refreshing) {
     entry.refreshing = (async () => {
       try {
