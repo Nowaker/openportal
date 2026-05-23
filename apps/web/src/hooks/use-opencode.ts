@@ -56,10 +56,22 @@ export function usePortalConfig() {
 }
 
 export function useProjectPaths() {
+  // Periodic rescan over the configured baseDirs (cheap: top-level
+  // readdir of each base). The user expects newly-created project
+  // directories to surface in the sidebar without a manual reload;
+  // a 60s poll keeps the listing fresh without busy-watching the
+  // filesystem. revalidateOnFocus also picks up changes the moment
+  // the user tabs back. The 30s dedupingInterval prevents two
+  // consumers (sidebar header + Cmd palette) from double-firing
+  // within the same window.
   return useSWR<{ paths: string[]; errors: { base: string; error: string }[] }>(
     "/api/fs/projects",
     fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+    {
+      revalidateOnFocus: true,
+      refreshInterval: 60_000,
+      dedupingInterval: 30_000,
+    },
   );
 }
 

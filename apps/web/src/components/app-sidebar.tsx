@@ -2,6 +2,7 @@ import {
   ChevronUpDownIcon,
   ChevronRightIcon,
   ArchiveBoxIcon,
+  ArrowPathIcon,
   ChatBubbleLeftIcon,
   ServerStackIcon,
   ArchiveBoxArrowDownIcon,
@@ -11,6 +12,7 @@ import {
   CodeBracketIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { mutate as globalSWRMutate } from "swr";
 import { useSystemMessagesStore } from "@/stores/system-messages-store";
 import { useCmdStore } from "@/stores/cmd-store";
 import {
@@ -822,12 +824,7 @@ function ProjectsList({
       {sections.map((section, idx) => (
         <Fragment key={section.basePath || `unset-${idx}`}>
           {section.basePath && (
-            <div
-              className="col-span-full pt-2 pb-1 px-3 text-[11px] text-muted-fg"
-              title={section.basePath}
-            >
-              <CompactPath path={section.basePath} home={home} />
-            </div>
+            <WorkspaceHeader basePath={section.basePath} home={home} />
           )}
           <TreeChildren
             nodes={section.nodes}
@@ -855,6 +852,48 @@ function ProjectsList({
         currentSessionId={currentSessionId}
       />
     </>
+  );
+}
+
+function WorkspaceHeader({
+  basePath,
+  home,
+}: {
+  basePath: string;
+  home: string;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await globalSWRMutate("/api/fs/projects");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  return (
+    <div
+      className="col-span-full pt-2 pb-1 px-3 text-[11px] text-muted-fg flex items-center gap-1 min-w-0"
+      title={basePath}
+    >
+      <span className="flex-1 min-w-0 truncate">
+        <CompactPath path={basePath} home={home} />
+      </span>
+      <button
+        type="button"
+        onClick={() => void handleRefresh()}
+        disabled={refreshing}
+        aria-label={`Refresh directory listing for ${basePath}`}
+        title="Rescan this workspace for new directories"
+        className="shrink-0 inline-flex size-4 items-center justify-center rounded text-muted-fg hover:text-fg hover:bg-muted/40 disabled:opacity-40"
+        data-test="portal-workspace-refresh"
+      >
+        <ArrowPathIcon
+          className={`size-3 ${refreshing ? "animate-spin" : ""}`}
+        />
+      </button>
+    </div>
   );
 }
 
