@@ -3,6 +3,7 @@ import {
   ChevronRightIcon,
   ArchiveBoxIcon,
   ArrowPathIcon,
+  BookOpenIcon,
   ChatBubbleLeftIcon,
   ServerStackIcon,
   ArchiveBoxArrowDownIcon,
@@ -1692,6 +1693,16 @@ export default function AppSidebar(
                   {systemMessagesUnread > 99 ? "99+" : systemMessagesUnread}
                 </span>
               )}
+            </MenuItem>
+            <MenuItem
+              data-test="portal-sidebar-docs"
+              onAction={() => {
+                setIsOpenOnMobile(false);
+                navigate({ to: "/docs" });
+              }}
+            >
+              <BookOpenIcon />
+              Documentation
             </MenuItem>
             <MenuItem
               data-test="portal-sidebar-settings"
