@@ -13,7 +13,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { remarkFileLinks } from "@/lib/remark-file-links";
 import { remarkIdLinks } from "@/lib/remark-id-links";
-import useSWR from "swr";
+import useSWR, { mutate as globalSWRMutate } from "swr";
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import { OmoBlockView } from "@/components/omo-block-view";
 import { ThinkingSelect } from "@/components/thinking-select";
 import { MessageInfoModal } from "@/components/message-info-modal";
 import { ForkDialog } from "@/components/fork-dialog";
+import { ArchivedSessionOverlay } from "@/components/archived-session-overlay";
 import { parseOmoBlocks } from "@/lib/omo-injection";
 import {
   FileMentionPopover,
@@ -5429,6 +5430,33 @@ function SessionPage() {
           className="border-t border-border shrink-0 relative flex flex-col overflow-hidden"
           style={{ maxHeight: `${composerMaxHeight}px` }}
         >
+          {(() => {
+            const archivedTs = (
+              currentSession as
+                | (typeof currentSession & {
+                    time?: { archived?: number };
+                  })
+                | undefined
+            )?.time?.archived;
+            const sessionIsArchived =
+              typeof archivedTs === "number" && archivedTs > 0;
+            return sessionIsArchived ? (
+              <ArchivedSessionOverlay
+                port={port}
+                sessionId={sessionId}
+                onUnarchived={() => {
+                  void globalSWRMutate(
+                    (key) =>
+                      typeof key === "string" &&
+                      (key.includes("/sessions") ||
+                        key.endsWith(`/session/${sessionId}`)),
+                    undefined,
+                    { revalidate: true },
+                  );
+                }}
+              />
+            ) : null;
+          })()}
           <>
             <div className="flex items-center gap-0.5 sm:gap-1 px-1 py-1 text-[10px] sm:text-sm [&_button[data-slot=control]]:py-0.5 sm:[&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:px-1.5 sm:[&_button[data-slot=control]]:px-2.5 [&_button[data-slot=control]]:text-[10px] sm:[&_button[data-slot=control]]:text-sm">
               <div data-test="portal-composer-agent" className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
