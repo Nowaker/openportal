@@ -137,6 +137,134 @@ interface SessionSearch {
   prompts?: 1;
 }
 
+// Plugin-driven stuck banner (Section B). The local stallVerdict
+// continues to render its two banners for backward compat when the
+// plugin isn't loaded; this one renders ONLY when the plugin's
+// verdict made it through and stallVerdict didn't already match.
+// Cause copy + action map per the STUCK_DETECTION_INCORPORATION
+// directive's Section B table.
+function StuckBanner({
+  cause,
+  retry,
+  sessionID,
+  onRestoreToComposer,
+}: {
+  cause: string;
+  retry: {
+    attempt: number;
+    next_ms: number | null;
+    message: string | null;
+    overdue: boolean;
+  } | null;
+  sessionID: string;
+  onRestoreToComposer: (() => void) | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  const dispatch = async (causeArg: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/stuck-detector/unstuck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionID, cause: causeArg }),
+      });
+      const body = (await r.json().catch(() => null)) as {
+        ok?: boolean;
+        body?: { reason?: string };
+      } | null;
+      if (r.ok && body?.ok) {
+        toast.success("Stuck-detector action dispatched.");
+      } else {
+        toast.error(
+          body?.body?.reason ??
+            `Stuck-detector dispatch failed (HTTP ${r.status}).`,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Network error dispatching unstuck",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  let title: string;
+  let actionLabel: string | null = null;
+  let actionCause = cause;
+  let secondaryButton: React.ReactNode = null;
+  switch (cause) {
+    case "no-dispatch":
+      title = "Prompt accepted but never dispatched.";
+      actionLabel = "Resubmit";
+      if (onRestoreToComposer) {
+        secondaryButton = (
+          <button
+            type="button"
+            onClick={onRestoreToComposer}
+            className="text-xs underline underline-offset-2 text-fg hover:text-primary"
+            title="Paste the prompt back into the composer"
+          >
+            Restore to composer
+          </button>
+        );
+      }
+      break;
+    case "stale-stream":
+      title = "Generation stalled.";
+      actionLabel = "Abort + Retry";
+      break;
+    case "stale-compaction":
+      title = "Compaction stalled.";
+      actionLabel = "Abort";
+      break;
+    case "question-with-queue":
+      title = "Question is blocking the queue.";
+      break;
+    case "no-runner":
+      title = "Generation runner died.";
+      actionLabel = "Restart";
+      break;
+    case "compaction-overflow":
+      title =
+        "Compaction overflowed context. Configure a larger compaction model or trim history.";
+      break;
+    case "retry-overdue":
+      title = retry
+        ? `Provider retry wedged (attempt ${retry.attempt}, due ${
+            retry.next_ms
+              ? Math.max(0, Math.round((Date.now() - retry.next_ms) / 1000))
+              : "?"
+          }s ago).`
+        : "Provider retry wedged.";
+      actionLabel = "Bump";
+      actionCause = "retry-overdue";
+      break;
+    default:
+      title = `Stuck: ${cause}`;
+      actionLabel = "Unstuck";
+  }
+
+  return (
+    <div className="py-3 px-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-warning-subtle-fg">{title}</span>
+        {actionLabel && (
+          <button
+            type="button"
+            onClick={() => void dispatch(actionCause)}
+            disabled={busy}
+            className="text-xs underline underline-offset-2 text-fg hover:text-primary disabled:opacity-50"
+          >
+            {busy ? "Dispatching…" : actionLabel}
+          </button>
+        )}
+        {secondaryButton}
+      </div>
+    </div>
+  );
+}
+
 export const Route = createFileRoute("/_app/session/$id")({
   component: SessionRouteWrapper,
   validateSearch: (raw: Record<string, unknown>): SessionSearch => ({
@@ -5100,6 +5228,26 @@ function SessionPage() {
             </div>
           </div>
         )}
+        {sessionIndicator?.stuck_verdict === "stuck" &&
+          sessionIndicator.stuck_cause &&
+          stallVerdict === null && (
+            <StuckBanner
+              cause={sessionIndicator.stuck_cause}
+              retry={sessionIndicator.retry}
+              sessionID={sessionId}
+              onRestoreToComposer={
+                pendingPrompt
+                  ? () => {
+                      if (textareaRef.current) {
+                        textareaRef.current.value = pendingPrompt;
+                        setHasContent(pendingPrompt.length > 0);
+                        textareaRef.current.focus();
+                      }
+                    }
+                  : null
+              }
+            />
+          )}
       </div>
         {/* Vertical stack of nav buttons in the bottom-right of the chat
             scroll area:
