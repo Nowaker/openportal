@@ -2,6 +2,7 @@ import * as React from "react";
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
+import { ContentVisibilityTable } from "@/components/content-visibility-table";
 import { DiagnosticsPanel } from "@/components/diagnostics-panel";
 import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
@@ -1906,10 +1907,11 @@ function SettingsPage() {
             <div>
               <h2 className="text-lg font-semibold">Content</h2>
               <p className="text-xs text-muted-fg pt-1">
-                What shows in the chat log and how. Visibility caps, per-content-type
-                truncation, on-demand loading.
+                What shows in the chat log and how. Per-content-type visibility,
+                byte caps, on-demand loading.
               </p>
             </div>
+            <ContentVisibilityTable />
             <ToolOutputCapSetting />
           </div>
         </TabPanel>
