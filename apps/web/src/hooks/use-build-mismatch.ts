@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { logSystemMessage } from "@/stores/system-messages-store";
 
 declare const __OPENPORTAL_BUILD_ID__: string;
 
@@ -30,7 +31,15 @@ export function useBuildMismatch(): boolean {
         const res = await fetch(POLL_URL, { cache: "no-store" });
         if (cancelled) return;
         const theirs = res.headers.get(HEADER);
-        if (theirs && theirs !== ours) setMismatched(true);
+        if (theirs && theirs !== ours) {
+          setMismatched(true);
+          logSystemMessage(
+            "version",
+            "info",
+            "New OpenPortal version detected - reload to upgrade",
+            `Current tab is running build ${ours}; backend is on ${theirs}.`,
+          );
+        }
       } catch {
         // network blip - unrelated to build mismatch
       }
