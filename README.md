@@ -181,8 +181,15 @@ anything that needs a tracker on GitLab.
   scrollable body + fixed footer, dismissable via backdrop click,
   Escape, or the X button. Opening any entry point also marks all
   shown messages as acknowledged so the unread-count badge clears.
-- In-memory ring buffer holds the last 200 events per browser tab;
-  reload clears it (localStorage persistence is a v2 follow-up).
+- Ring buffer holds the last 200 events. State persists to
+  localStorage under `openportal-system-messages-v1` so the audit
+  log survives reloads. Cross-tab sync via the `storage` window
+  event - opening openportal in a second tab on the same origin
+  shows the same buffer; new events fire in both. Storage is
+  defensively try/catch-wrapped on both read and write so SSR,
+  private mode, sandboxed iframes, corrupted JSON, and quota-
+  exceeded all degrade to in-memory-only operation rather than
+  crashing the app shell.
 - Each entry carries a category badge, timestamp, level icon
   (info / warning / error / success), short message, and an
   expandable details block for full error text / stack traces.
