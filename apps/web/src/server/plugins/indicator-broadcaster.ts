@@ -30,6 +30,7 @@ import { listConfiguredServers } from "../lib/server-registry";
 import { resolveLiveEndpointById } from "../lib/server-resolver";
 import { basicAuthHeader } from "../lib/server-discovery";
 import { invalidateMessagesCache } from "../lib/messages-cache";
+import { invalidateSessionsCache } from "../lib/sessions-cache";
 import {
   applyOpencodeEvent,
   setServerConnected,
@@ -45,6 +46,16 @@ const MESSAGE_DELTA_EVENTS = new Set<string>([
   "message.part.removed",
   "message.updated",
   "message.removed",
+]);
+
+// Session-lifecycle events from opencode SSE. These are the
+// AUTHORITATIVE signal that the sessions list changed - per the
+// user's caching-proxy directive, the cache only flips on real
+// opencode events, never on timeouts or transient errors.
+const SESSION_LIFECYCLE_EVENTS = new Set<string>([
+  "session.created",
+  "session.updated",
+  "session.deleted",
 ]);
 
 interface ConnHandle {
@@ -97,6 +108,9 @@ async function processStream(
             typeof ev.properties?.sessionID === "string"
           ) {
             invalidateMessagesCache(ev.properties.sessionID);
+          }
+          if (ev.type && SESSION_LIFECYCLE_EVENTS.has(ev.type)) {
+            invalidateSessionsCache(port);
           }
         } catch (err) {
           console.warn(

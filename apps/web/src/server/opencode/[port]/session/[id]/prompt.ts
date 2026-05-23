@@ -32,6 +32,7 @@ import {
   parseBody,
 } from "../../../../lib/validation";
 import { invalidateMessagesCache } from "../../../../lib/messages-cache";
+import { invalidateSessionsCache } from "../../../../lib/sessions-cache";
 import { archivePrompt } from "../../../../lib/prompt-archive";
 import { detectStuckFromRestart } from "../../../../lib/stuck-detector-bridge";
 import { wakePendingPromptWorker } from "../../../../plugins/pending-prompt-worker";
@@ -148,6 +149,7 @@ export default defineHandler(async (event) => {
         >[0]["body"],
       });
       invalidateMessagesCache(id);
+        invalidateSessionsCache(port);
       return {
         accepted: true,
         status: "delivered" as const,
@@ -163,6 +165,7 @@ export default defineHandler(async (event) => {
 
   wakePendingPromptWorker();
   invalidateMessagesCache(id);
+    invalidateSessionsCache(port);
   return {
     accepted: true,
     id: row.id,

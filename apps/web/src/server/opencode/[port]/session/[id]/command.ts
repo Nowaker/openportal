@@ -8,6 +8,7 @@ import {
   parseBody,
 } from "../../../../lib/validation";
 import { invalidateMessagesCache } from "../../../../lib/messages-cache";
+import { invalidateSessionsCache } from "../../../../lib/sessions-cache";
 import { archivePrompt } from "../../../../lib/prompt-archive";
 
 const commandBodySchema = z.object({
@@ -78,6 +79,7 @@ export default defineHandler(async (event) => {
       messageID: opencodeMessageId,
     });
     invalidateMessagesCache(sessionID);
+    invalidateSessionsCache(port);
     return { accepted: true, info: result.data?.info, parts: result.data?.parts };
   } catch (error) {
     throw new HTTPError(

@@ -1,4 +1,4 @@
-import { defineHandler, getQuery } from "nitro/h3";
+import { defineHandler, getQuery, setResponseHeader } from "nitro/h3";
 import { resolve } from "node:path";
 import {
   fetchOpencode,
@@ -7,6 +7,11 @@ import {
 } from "../../lib/opencode-client";
 import { parsePort } from "../../lib/validation";
 import { readPortalConfig } from "../../lib/portal-config";
+import {
+  getCachedSessions,
+  getStaleSessions,
+  setCachedSessions,
+} from "../../lib/sessions-cache";
 
 type Session = { directory?: string; [k: string]: unknown };
 
@@ -17,10 +22,21 @@ function isUnder(sessionDir: string | undefined, scope: string): boolean {
   return d === s || d.startsWith(s + "/");
 }
 
-export default defineHandler(async (event) => {
-  const port = parsePort(event);
-  const query = getQuery(event);
+// Single-flight per port: multiple concurrent SWR polls share one
+// upstream SDK call instead of stacking N requests on a slow opencode.
+const INFLIGHT = new Map<number, Promise<Session[]>>();
 
+async function fetchSessionsFromOpencode(port: number): Promise<Session[]> {
+  const inflight = INFLIGHT.get(port);
+  if (inflight) return inflight;
+  const promise = doFetchSessions(port).finally(() => {
+    INFLIGHT.delete(port);
+  });
+  INFLIGHT.set(port, promise);
+  return promise;
+}
+
+async function doFetchSessions(port: number): Promise<Session[]> {
   let sessions: Session[];
   try {
     const res = await fetchOpencode(
@@ -30,42 +46,59 @@ export default defineHandler(async (event) => {
     if (res.ok) {
       sessions = (await res.json()) as Session[];
     } else if (res.status === 502) {
-      // fetchOpencode returns a synthetic 502 when the upstream is
-      // unreachable. The SDK fallback would just hit the same dead
-      // endpoint and throw; surface the 502 directly so the error
-      // handler can rewrite it. Throwing here lets the existing
-      // error-handler.ts pipeline pick it up consistently.
       throw new Error("ConnectionRefused");
     } else {
       throw new Error(`upstream ${res.status}`);
     }
   } catch {
-    // Non-502 failures (experimental route missing on an older
-    // opencode) fall through to the v1 SDK's session.list, which we
-    // wrap so a connection error becomes the structured 502 rather
-    // than an unhandled 500.
-    try {
-      sessions = (((await (await getOpencodeClient(port)).session.list()).data ?? [])) as Session[];
-    } catch (e) {
-      // Re-throw with a code the error-handler recognises so the
-      // response shape stays consistent across both proxy paths.
-      if (
-        e instanceof Error &&
-        (e.message.includes("ConnectionRefused") ||
-          e.message.includes("Unable to connect"))
-      ) {
+    sessions = (((await (await getOpencodeClient(port)).session.list()).data ?? [])) as Session[];
+  }
+  setCachedSessions(port, sessions);
+  return sessions;
+}
+
+export default defineHandler(async (event) => {
+  const port = parsePort(event);
+  const query = getQuery(event);
+
+  // Caching-proxy semantics: serve cache (fresh OR stale) immediately,
+  // refresh in background. Only block on cold load with no cache. On
+  // upstream failure, stale cache stays in place - opencode slowness
+  // never clears openportal's view.
+  let sessions: Session[] | null = getCachedSessions(port) as Session[] | null;
+  if (sessions === null) {
+    const stale = getStaleSessions(port) as Session[] | null;
+    if (stale !== null) {
+      sessions = stale;
+      void fetchSessionsFromOpencode(port).catch(() => {
+      });
+    } else {
+      try {
+        sessions = await fetchSessionsFromOpencode(port);
+      } catch (e) {
+        if (
+          e instanceof Error &&
+          (e.message.includes("ConnectionRefused") ||
+            e.message.includes("Unable to connect"))
+        ) {
+          throw e;
+        }
         throw e;
       }
-      throw e;
     }
   }
 
-  const scopes = pickScopes(query, port);
-  if (!scopes || scopes.length === 0) return sessions;
+  if (sessions === null) sessions = [];
 
-  return sessions.filter((s) =>
-    scopes.some((scope) => isUnder(s.directory, scope)),
-  );
+  const scopes = pickScopes(query, port);
+  const filtered =
+    !scopes || scopes.length === 0
+      ? sessions
+      : sessions.filter((s) =>
+          scopes.some((scope) => isUnder(s.directory, scope)),
+        );
+  setResponseHeader(event, "X-Sessions-Total", String(sessions.length));
+  return filtered;
 });
 
 function pickScopes(
