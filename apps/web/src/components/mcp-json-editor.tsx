@@ -249,6 +249,137 @@ interface PopoverState {
   anchor: { top: number; left: number; height: number };
 }
 
+type SyntaxToken = {
+  kind: "string-key" | "string-value" | "number" | "keyword" | "punct" | "plain";
+  text: string;
+};
+
+function tokenizeJson(text: string): SyntaxToken[] {
+  const out: SyntaxToken[] = [];
+  let plain = "";
+  const flushPlain = () => {
+    if (plain) {
+      out.push({ kind: "plain", text: plain });
+      plain = "";
+    }
+  };
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '"') {
+      flushPlain();
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (text[j] === '"') break;
+        if (text[j] === "\n") break;
+        j++;
+      }
+      const endIdx = j < text.length && text[j] === '"' ? j + 1 : j;
+      let k = endIdx;
+      while (k < text.length && /\s/.test(text[k])) k++;
+      const isKey = text[k] === ":";
+      out.push({
+        kind: isKey ? "string-key" : "string-value",
+        text: text.substring(i, endIdx),
+      });
+      i = endIdx;
+      continue;
+    }
+    if (
+      (c === "-" || (c >= "0" && c <= "9")) &&
+      (i === 0 || !/[a-zA-Z0-9_]/.test(text[i - 1]))
+    ) {
+      flushPlain();
+      let j = i;
+      if (text[j] === "-") j++;
+      while (j < text.length && /[0-9]/.test(text[j])) j++;
+      if (text[j] === ".") {
+        j++;
+        while (j < text.length && /[0-9]/.test(text[j])) j++;
+      }
+      if (text[j] === "e" || text[j] === "E") {
+        j++;
+        if (text[j] === "+" || text[j] === "-") j++;
+        while (j < text.length && /[0-9]/.test(text[j])) j++;
+      }
+      if (j > i) {
+        out.push({ kind: "number", text: text.substring(i, j) });
+        i = j;
+        continue;
+      }
+    }
+    if (
+      text.startsWith("true", i) &&
+      (i === 0 || !/[a-zA-Z0-9_]/.test(text[i - 1])) &&
+      !/[a-zA-Z0-9_]/.test(text[i + 4] ?? "")
+    ) {
+      flushPlain();
+      out.push({ kind: "keyword", text: "true" });
+      i += 4;
+      continue;
+    }
+    if (
+      text.startsWith("false", i) &&
+      (i === 0 || !/[a-zA-Z0-9_]/.test(text[i - 1])) &&
+      !/[a-zA-Z0-9_]/.test(text[i + 5] ?? "")
+    ) {
+      flushPlain();
+      out.push({ kind: "keyword", text: "false" });
+      i += 5;
+      continue;
+    }
+    if (
+      text.startsWith("null", i) &&
+      (i === 0 || !/[a-zA-Z0-9_]/.test(text[i - 1])) &&
+      !/[a-zA-Z0-9_]/.test(text[i + 4] ?? "")
+    ) {
+      flushPlain();
+      out.push({ kind: "keyword", text: "null" });
+      i += 4;
+      continue;
+    }
+    if (c === "{" || c === "}" || c === "[" || c === "]" || c === "," || c === ":") {
+      flushPlain();
+      out.push({ kind: "punct", text: c });
+      i++;
+      continue;
+    }
+    plain += c;
+    i++;
+  }
+  flushPlain();
+  return out;
+}
+
+const TOKEN_COLOR_CLASSES: Record<SyntaxToken["kind"], string> = {
+  "string-key": "text-sky-400",
+  "string-value": "text-emerald-400",
+  number: "text-amber-400",
+  keyword: "text-violet-400",
+  punct: "text-fg/70",
+  plain: "text-fg/90",
+};
+
+function HighlightedJsonOverlay({ text }: { text: string }) {
+  const tokens = useMemo(() => tokenizeJson(text), [text]);
+  return (
+    <>
+      {tokens.map((t, i) => (
+        <span key={i} className={TOKEN_COLOR_CLASSES[t.kind]}>
+          {t.text}
+        </span>
+      ))}
+      {/* Trailing newline marker so the overlay matches textarea
+          line-height even when text ends in \n */}
+      {"\n"}
+    </>
+  );
+}
+
 export function McpJsonEditor({
   value,
   onChange,
@@ -371,8 +502,24 @@ export function McpJsonEditor({
     };
   }, []);
 
+  const overlayRef = useRef<HTMLPreElement | null>(null);
+  const handleScroll = () => {
+    const ta = taRef.current;
+    const ov = overlayRef.current;
+    if (!ta || !ov) return;
+    ov.scrollTop = ta.scrollTop;
+    ov.scrollLeft = ta.scrollLeft;
+  };
+
   return (
-    <div className="relative">
+    <div className="relative w-full rounded-md border border-border bg-bg overflow-hidden focus-within:border-primary">
+      <pre
+        ref={overlayRef}
+        aria-hidden="true"
+        className="absolute inset-0 m-0 p-3 font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words overflow-hidden pointer-events-none"
+      >
+        <HighlightedJsonOverlay text={value} />
+      </pre>
       <textarea
         ref={taRef}
         value={value}
@@ -380,13 +527,19 @@ export function McpJsonEditor({
         onKeyDown={handleKeyDown}
         onClick={handleSelect}
         onSelect={handleSelect}
+        onScroll={handleScroll}
         onBlur={() => setTimeout(close, 120)}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
         rows={computedRows}
         aria-label={ariaLabel}
-        className={className}
+        style={{
+          WebkitTextFillColor: "transparent",
+          caretColor: "currentColor",
+          background: "transparent",
+        }}
+        className="relative block w-full m-0 p-3 font-mono text-[12px] leading-[1.5] outline-none border-0 resize-none text-fg"
         data-test="portal-mcp-json-textarea"
       />
       {popover && popover.anchor && (
