@@ -53,6 +53,8 @@ import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { mutate as globalSWRMutate } from "swr";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useTitleBarActionsStore } from "@/stores/title-bar-actions-store";
@@ -137,6 +139,8 @@ export function AppSidebarNav() {
   const [showExportSession, setShowExportSession] = useHashOpen("export");
   const [mcpInfoName, setMcpInfoName] = useHashValue("mcp");
   const [pluginInfoSpec, setPluginInfoSpec] = useHashValue("plugin");
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
   // Hamburger menu open state. Hash-tracked so the Android hardware
   // back button (which dispatches popstate with the previous hash)
   // closes the menu instead of navigating away from the page. Same
@@ -222,6 +226,49 @@ export function AppSidebarNav() {
   const handleTogglePin = () => {
     if (!sessionId) return;
     void togglePinTopbar(sessionId, isPinnedHere ? "unpin" : "pin");
+  };
+
+  // opencode's Session type doesn't surface time.archived yet, but the
+  // PATCH endpoint accepts it and the unarchive route writes archived: 0
+  // as the sentinel for "not archived". Cast through the SDK shape to
+  // read it safely.
+  const archivedTs = (currentSession as Session & { time?: { archived?: number } } | null | undefined)?.time?.archived;
+  const isArchived = typeof archivedTs === "number" && archivedTs > 0;
+
+  const handleArchiveToggle = async () => {
+    if (!port || !sessionId) return;
+    setArchiveBusy(true);
+    try {
+      const route = isArchived ? "unarchive" : "archive";
+      const r = await fetch(
+        `/api/opencode/${port}/session/${encodeURIComponent(sessionId)}/${route}`,
+        { method: "POST" },
+      );
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        toast.error(
+          body?.error ?? `${isArchived ? "Unarchive" : "Archive"} failed (HTTP ${r.status}).`,
+        );
+        return;
+      }
+      toast.success(isArchived ? "Session unarchived." : "Session archived.");
+      await globalSWRMutate(
+        (key) =>
+          typeof key === "string" &&
+          (key.includes("/sessions") || key.endsWith(`/session/${sessionId}`)),
+        undefined,
+        { revalidate: true },
+      );
+      setShowArchiveConfirm(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Archive request failed.",
+      );
+    } finally {
+      setArchiveBusy(false);
+    }
   };
 
   const { data: mcpStatus } = useMcpStatus();
@@ -693,6 +740,13 @@ export function AppSidebarNav() {
                     />
                     Compact session
                   </MenuItem>
+                  <MenuItem
+                    onAction={() => setShowArchiveConfirm(true)}
+                    data-test={`portal-hamburger-${isArchived ? "unarchive" : "archive"}`}
+                  >
+                    <ArchiveBoxIcon className="size-4" data-slot="icon" />
+                    {isArchived ? "Unarchive session" : "Archive session"}
+                  </MenuItem>
                   {isMobile && sessionTitle && (
                     <MenuItem onAction={startEditTitle}>
                       <PencilSquareIcon
@@ -856,6 +910,22 @@ export function AppSidebarNav() {
         spec={pluginInfoSpec}
         onOpenChange={(open) => {
           if (!open) setPluginInfoSpec(null);
+        }}
+      />
+      <ConfirmDialog
+        isOpen={showArchiveConfirm}
+        title={isArchived ? "Unarchive this session?" : "Archive this session?"}
+        description={
+          isArchived
+            ? `"${sessionTitle ?? sessionId}" will return to the active sessions list.`
+            : `"${sessionTitle ?? sessionId}" will be moved to the archived sessions list. Unarchive any time from the same menu.`
+        }
+        confirmLabel={isArchived ? "Unarchive" : "Archive"}
+        tone="default"
+        busy={archiveBusy}
+        onConfirm={handleArchiveToggle}
+        onClose={() => {
+          if (!archiveBusy) setShowArchiveConfirm(false);
         }}
       />
       {vscodeModal}
