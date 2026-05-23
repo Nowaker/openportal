@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -9,11 +9,20 @@ import {
 } from "react-aria-components";
 import {
   ArrowPathIcon,
+  ArrowUturnLeftIcon,
   ChevronRightIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useConfig } from "@/hooks/use-opencode";
 import { useMcpStatus } from "@/hooks/use-mcp";
+import {
+  useMcpConfig,
+  useUpdateMcpEntry,
+  useMarkMcpRestarted,
+  type McpConfigEntry,
+} from "@/hooks/use-mcp-config";
 import { useInstanceStore } from "@/stores/instance-store";
 
 interface Props {
@@ -219,19 +228,6 @@ function statusDot(kind: string): string {
   return "bg-muted-fg";
 }
 
-interface OpencodeConfig {
-  mcp?: Record<string, McpConfigEntry>;
-}
-
-interface McpConfigEntry {
-  type?: "local" | "remote";
-  enabled?: boolean;
-  command?: string[];
-  url?: string;
-  headers?: Record<string, string>;
-  env?: Record<string, string>;
-}
-
 // Three-step OAuth handshake for an MCP server in `needsAuth` state.
 // Manual code paste because the OAuth provider's redirect lands on
 // the user's browser machine, not on the host running opencode -
@@ -401,6 +397,8 @@ function McpAuthSection({
   );
 }
 
+type Tab = "view" | "json";
+
 function Body({
   mcpName,
   onClose,
@@ -410,19 +408,115 @@ function Body({
 }) {
   const port = useInstanceStore((s) => s.instance?.port ?? null);
   const { data: status } = useMcpStatus();
-  const { data: config } = useConfig();
+  const { data: mcpConfigData, isLoading: configLoading } = useMcpConfig();
+  const updateEntry = useUpdateMcpEntry();
+  const markRestarted = useMarkMcpRestarted();
   const {
     data: response,
     error: detailsError,
     mutate: revalidateDetails,
   } = useMcpDetails(mcpName);
   const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [tab, setTab] = useState<Tab>("view");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<McpConfigEntry | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+
   const details = response?.details;
   const refreshing = response?.refreshing ?? false;
   const detailsLoading = !response || (response.details === null && refreshing);
-  const cfg = (config as OpencodeConfig | undefined)?.mcp?.[mcpName];
+
+  const currentEntry: McpConfigEntry | null =
+    (mcpConfigData?.current?.[mcpName] as McpConfigEntry | undefined) ?? null;
+  const activeEntry: McpConfigEntry | null =
+    (mcpConfigData?.active?.[mcpName] as McpConfigEntry | undefined) ?? null;
+  const isPendingThis = Boolean(
+    mcpConfigData &&
+      (mcpConfigData.diff.modified.includes(mcpName) ||
+        mcpConfigData.diff.added.includes(mcpName) ||
+        mcpConfigData.diff.removed.includes(mcpName)),
+  );
+  const globalPending = mcpConfigData?.pending ?? false;
+
   const stat = status?.[mcpName];
   const kind = stat?.status ?? "unknown";
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(null);
+      setSaveError(null);
+    }
+  }, [editing, mcpName]);
+
+  const startEdit = () => {
+    const seed: McpConfigEntry = currentEntry
+      ? JSON.parse(JSON.stringify(currentEntry))
+      : { type: "remote", enabled: true };
+    setDraft(seed);
+    setEditing(true);
+    setSaveError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+  };
+
+  const saveDraft = async () => {
+    if (!draft) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateEntry(mcpName, draft);
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const revertToActive = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateEntry(mcpName, activeEntry);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restart = async () => {
+    if (
+      !window.confirm(
+        "Restart opencode to apply MCP changes? In-flight tool calls will be interrupted.",
+      )
+    ) {
+      return;
+    }
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      const r = await fetch("/api/servers/restart-opencode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`HTTP ${r.status}: ${txt}`);
+      }
+      await markRestarted();
+    } catch (err) {
+      setRestartError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRestarting(false);
+    }
+  };
 
   const handleManualRefresh = async () => {
     setManualRefreshing(true);
@@ -440,6 +534,28 @@ function Body({
         <h2 className="flex-1 min-w-0 truncate text-sm font-semibold">
           {mcpName}
         </h2>
+        {isPendingThis && (
+          <span
+            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-amber-500/60 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400"
+            title="Config on disk differs from what opencode is running. Restart to apply."
+          >
+            Pending restart
+          </span>
+        )}
+        {globalPending && (
+          <button
+            type="button"
+            onClick={() => void restart()}
+            disabled={restarting}
+            title="Restart opencode so the latest config takes effect"
+            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-emerald-500/60 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50"
+          >
+            <ArrowPathIcon
+              className={`size-3.5 ${restarting ? "animate-spin" : ""}`}
+            />
+            {restarting ? "Restarting..." : "Restart opencode"}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void handleManualRefresh()}
@@ -461,58 +577,220 @@ function Body({
           <XMarkIcon className="size-4" />
         </button>
       </header>
+
+      {restartError && (
+        <div className="shrink-0 border-b border-border bg-red-500/10 px-4 py-2 text-xs text-danger break-words">
+          Restart failed: {restartError}
+        </div>
+      )}
+
+      <div className="shrink-0 flex items-center gap-1 border-b border-border px-4 text-xs">
+        <TabButton active={tab === "view"} onClick={() => setTab("view")}>
+          View
+        </TabButton>
+        <TabButton active={tab === "json"} onClick={() => setTab("json")}>
+          JSON
+        </TabButton>
+      </div>
+
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
-        {details?.serverInfo && (
-          <div className="text-sm">
-            <span className="font-medium">
-              {details.serverInfo.name ?? mcpName}
-            </span>
-            {details.serverInfo.version && (
-              <span className="ml-2 text-muted-fg">
-                v{details.serverInfo.version}
-              </span>
+        {configLoading && !mcpConfigData ? (
+          <div className="flex items-center justify-center py-8 text-muted-fg">
+            <ArrowPathIcon className="size-5 animate-spin" />
+          </div>
+        ) : tab === "view" ? (
+          <>
+            {details?.serverInfo && (
+              <div className="text-sm">
+                <span className="font-medium">
+                  {details.serverInfo.name ?? mcpName}
+                </span>
+                {details.serverInfo.version && (
+                  <span className="ml-2 text-muted-fg">
+                    v{details.serverInfo.version}
+                  </span>
+                )}
+              </div>
             )}
-          </div>
-        )}
 
-        {details?.instructions && (
-          <div className="text-sm text-fg/90 whitespace-pre-wrap">
-            {details.instructions}
-          </div>
-        )}
+            {details?.instructions && (
+              <div className="text-sm text-fg/90 whitespace-pre-wrap">
+                {details.instructions}
+              </div>
+            )}
 
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-fg">Status</span>
+              <span
+                className={`size-2 rounded-full ${statusDot(kind)}`}
+                aria-hidden
+              />
+              <span>{statusLabel(kind)}</span>
+            </div>
+
+            {editing && draft ? (
+              <EditForm
+                draft={draft}
+                setDraft={setDraft}
+                onSave={() => void saveDraft()}
+                onCancel={cancelEdit}
+                saving={saving}
+                error={saveError}
+              />
+            ) : (
+              <PrettyView
+                cfg={currentEntry}
+                onEdit={startEdit}
+                canEdit={Boolean(currentEntry)}
+              />
+            )}
+
+            {isPendingThis && !editing && (
+              <PendingDiffPanel
+                active={activeEntry}
+                current={currentEntry}
+                onRevert={() => void revertToActive()}
+                reverting={saving}
+              />
+            )}
+
+            {kind === "needsAuth" && (
+              <McpAuthSection mcpName={mcpName} port={port} />
+            )}
+
+            <div className="border-t border-border pt-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-muted-fg mb-2">
+                Tools
+              </h3>
+              {detailsLoading && (
+                <p className="text-sm text-muted-fg">
+                  Introspecting MCP server\u2026
+                </p>
+              )}
+              {!detailsLoading && detailsError && (
+                <p className="text-sm text-danger">
+                  Failed to fetch:{" "}
+                  {detailsError instanceof Error
+                    ? detailsError.message
+                    : String(detailsError)}
+                </p>
+              )}
+              {!detailsLoading && details?.toolsError && (
+                <p className="text-sm text-danger break-words">
+                  {details.toolsError}
+                </p>
+              )}
+              {!detailsLoading &&
+                !details?.toolsError &&
+                details?.tools &&
+                details.tools.length === 0 && (
+                  <p className="text-sm text-muted-fg">
+                    No tools registered by this MCP server.
+                  </p>
+                )}
+              {!detailsLoading &&
+                details?.tools &&
+                details.tools.length > 0 && (
+                  <div className="space-y-2">
+                    {details.tools.map((tool) => (
+                      <ToolRow key={tool.name} tool={tool} />
+                    ))}
+                  </div>
+                )}
+            </div>
+          </>
+        ) : (
+          <JsonTab
+            mcpName={mcpName}
+            currentEntry={currentEntry}
+            activeEntry={activeEntry}
+            isPendingThis={isPendingThis}
+            onSave={async (entry) => {
+              await updateEntry(mcpName, entry);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`-mb-px border-b-2 px-3 py-2 font-medium transition-colors ${
+        active
+          ? "border-fg text-fg"
+          : "border-transparent text-muted-fg hover:text-fg"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PrettyView({
+  cfg,
+  onEdit,
+  canEdit,
+}: {
+  cfg: McpConfigEntry | null;
+  onEdit: () => void;
+  canEdit: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+          Configuration
+        </h3>
+        <button
+          type="button"
+          onClick={onEdit}
+          disabled={!canEdit}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
+          data-test="portal-mcp-edit"
+        >
+          <PencilSquareIcon className="size-3.5" />
+          Edit
+        </button>
+      </div>
+      {!cfg ? (
+        <p className="text-xs text-muted-fg">
+          No config entry found in opencode.json. Status comes from the
+          running server only.
+        </p>
+      ) : (
         <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-sm">
-          <dt className="text-muted-fg">Status</dt>
-          <dd className="flex items-center gap-2">
-            <span
-              className={`size-2 rounded-full ${statusDot(kind)}`}
-              aria-hidden
-            />
-            {statusLabel(kind)}
-          </dd>
-
-          {cfg?.type && (
+          {cfg.type && (
             <>
               <dt className="text-muted-fg">Type</dt>
-              <dd>{cfg.type}</dd>
+              <dd>{String(cfg.type)}</dd>
             </>
           )}
-
-          {typeof cfg?.enabled === "boolean" && (
+          {typeof cfg.enabled === "boolean" && (
             <>
-              <dt className="text-muted-fg">Config enabled</dt>
+              <dt className="text-muted-fg">Enabled</dt>
               <dd>{cfg.enabled ? "true" : "false"}</dd>
             </>
           )}
-
-          {cfg?.url && (
+          {cfg.url && (
             <>
               <dt className="text-muted-fg">URL</dt>
               <dd className="break-all font-mono text-xs">{cfg.url}</dd>
             </>
           )}
-
-          {cfg?.command && cfg.command.length > 0 && (
+          {cfg.command && cfg.command.length > 0 && (
             <>
               <dt className="text-muted-fg">Command</dt>
               <dd className="break-all font-mono text-xs">
@@ -520,84 +798,501 @@ function Body({
               </dd>
             </>
           )}
-
-          {cfg?.headers && Object.keys(cfg.headers).length > 0 && (
+          {cfg.headers && Object.keys(cfg.headers).length > 0 && (
             <>
               <dt className="self-start text-muted-fg">Headers</dt>
               <dd className="font-mono text-xs space-y-0.5">
-                {Object.entries(cfg.headers).map(([k]) => (
+                {Object.entries(cfg.headers).map(([k, v]) => (
                   <div key={k} className="break-all">
-                    {k}: <span className="text-muted-fg">(set)</span>
+                    {k}: <span className="text-muted-fg">{v}</span>
                   </div>
                 ))}
               </dd>
             </>
           )}
-
-          {cfg?.env && Object.keys(cfg.env).length > 0 && (
+          {((cfg.environment && Object.keys(cfg.environment).length > 0) ||
+            (cfg.env && Object.keys(cfg.env).length > 0)) && (
             <>
-              <dt className="self-start text-muted-fg">Env</dt>
+              <dt className="self-start text-muted-fg">Environment</dt>
               <dd className="font-mono text-xs space-y-0.5">
-                {Object.entries(cfg.env).map(([k]) => (
+                {Object.entries({
+                  ...(cfg.environment ?? {}),
+                  ...(cfg.env ?? {}),
+                }).map(([k, v]) => (
                   <div key={k} className="break-all">
-                    {k}: <span className="text-muted-fg">(set)</span>
+                    {k}: <span className="text-muted-fg">{v}</span>
                   </div>
                 ))}
               </dd>
             </>
           )}
         </dl>
+      )}
+    </div>
+  );
+}
 
-        {!cfg && (
-          <p className="text-xs text-muted-fg">
-            No config entry found for this MCP in opencode.json. Status comes
-            from the running server only.
-          </p>
-        )}
+const KNOWN_TYPES = ["local", "remote"] as const;
 
-        {kind === "needsAuth" && (
-          <McpAuthSection mcpName={mcpName} port={port} />
-        )}
+function EditForm({
+  draft,
+  setDraft,
+  onSave,
+  onCancel,
+  saving,
+  error,
+}: {
+  draft: McpConfigEntry;
+  setDraft: (next: McpConfigEntry) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  error: string | null;
+}) {
+  const setField = (k: keyof McpConfigEntry, v: unknown) =>
+    setDraft({ ...draft, [k]: v });
 
-        <div className="border-t border-border pt-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-muted-fg mb-2">
-            Tools
-          </h3>
-          {detailsLoading && (
-            <p className="text-sm text-muted-fg">Introspecting MCP server\u2026</p>
+  const currentType = typeof draft.type === "string" ? draft.type : "";
+  const typeIsCustom = currentType && !KNOWN_TYPES.includes(currentType as "local" | "remote");
+
+  const setCommand = (next: string[]) => setField("command", next);
+  const command: string[] = Array.isArray(draft.command) ? draft.command : [];
+  const envObj: Record<string, string> = useMemo(
+    () => ({ ...(draft.environment ?? {}), ...(draft.env ?? {}) }),
+    [draft.environment, draft.env],
+  );
+  const envEntries = Object.entries(envObj);
+
+  const setEnv = (next: Record<string, string>) => {
+    const cleaned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(next)) {
+      if (k.trim() !== "") cleaned[k] = v;
+    }
+    const merged: McpConfigEntry = { ...draft };
+    delete merged.env;
+    merged.environment = cleaned;
+    setDraft(merged);
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+        Edit configuration
+      </h3>
+
+      <Field label="Type">
+        <div className="flex gap-1">
+          <select
+            value={typeIsCustom ? "__custom__" : currentType}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "__custom__") {
+                setField("type", "custom");
+              } else {
+                setField("type", v);
+              }
+            }}
+            className="rounded-md border border-border bg-bg px-2 py-1 text-xs outline-none focus:border-primary"
+          >
+            <option value="">(unset)</option>
+            {KNOWN_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+            <option value="__custom__">custom...</option>
+          </select>
+          {typeIsCustom && (
+            <input
+              type="text"
+              value={currentType}
+              onChange={(e) => setField("type", e.target.value)}
+              placeholder="custom type"
+              className="flex-1 min-w-0 rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs outline-none focus:border-primary"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+            />
           )}
-          {!detailsLoading && detailsError && (
-            <p className="text-sm text-danger">
-              Failed to fetch:{" "}
-              {detailsError instanceof Error
-                ? detailsError.message
-                : String(detailsError)}
-            </p>
+        </div>
+      </Field>
+
+      <Field label="Enabled">
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={draft.enabled !== false}
+            onChange={(e) => setField("enabled", e.target.checked)}
+            className="size-4"
+          />
+          <span>{draft.enabled !== false ? "true" : "false"}</span>
+        </label>
+      </Field>
+
+      <Field label="URL">
+        <input
+          type="text"
+          value={typeof draft.url === "string" ? draft.url : ""}
+          onChange={(e) => setField("url", e.target.value)}
+          placeholder="https://..."
+          className="w-full rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs outline-none focus:border-primary"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+        />
+        <p className="mt-0.5 text-[10px] text-muted-fg">
+          Used when type is "remote". Ignored for "local".
+        </p>
+      </Field>
+
+      <Field label="Command (argv)">
+        <div className="space-y-1">
+          {command.map((arg, i) => (
+            <div key={i} className="flex gap-1">
+              <input
+                type="text"
+                value={arg}
+                onChange={(e) => {
+                  const next = [...command];
+                  next[i] = e.target.value;
+                  setCommand(next);
+                }}
+                className="flex-1 min-w-0 rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs outline-none focus:border-primary"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+              />
+              <button
+                type="button"
+                aria-label="Remove argument"
+                onClick={() => {
+                  const next = command.filter((_, j) => j !== i);
+                  setCommand(next);
+                }}
+                className="shrink-0 rounded-md border border-border bg-bg p-1 text-muted-fg hover:bg-muted hover:text-fg"
+              >
+                <TrashIcon className="size-3.5" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setCommand([...command, ""])}
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-fg hover:bg-muted hover:text-fg"
+          >
+            <PlusIcon className="size-3" />
+            Add argument
+          </button>
+        </div>
+        <p className="mt-0.5 text-[10px] text-muted-fg">
+          Used when type is "local". Ignored for "remote".
+        </p>
+      </Field>
+
+      <Field label="Environment">
+        <div className="space-y-1">
+          {envEntries.map(([k, v], i) => (
+            <div key={`${i}-${k}`} className="flex gap-1">
+              <input
+                type="text"
+                value={k}
+                onChange={(e) => {
+                  const next = { ...envObj };
+                  delete next[k];
+                  next[e.target.value] = v;
+                  setEnv(next);
+                }}
+                placeholder="KEY"
+                className="w-1/3 min-w-0 rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs outline-none focus:border-primary"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+              />
+              <input
+                type="text"
+                value={v}
+                onChange={(e) => {
+                  const next = { ...envObj };
+                  next[k] = e.target.value;
+                  setEnv(next);
+                }}
+                placeholder="value"
+                className="flex-1 min-w-0 rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs outline-none focus:border-primary"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+              />
+              <button
+                type="button"
+                aria-label={`Remove ${k}`}
+                onClick={() => {
+                  const next = { ...envObj };
+                  delete next[k];
+                  setEnv(next);
+                }}
+                className="shrink-0 rounded-md border border-border bg-bg p-1 text-muted-fg hover:bg-muted hover:text-fg"
+              >
+                <TrashIcon className="size-3.5" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setEnv({ ...envObj, "": "" })}
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-fg hover:bg-muted hover:text-fg"
+          >
+            <PlusIcon className="size-3" />
+            Add env var
+          </button>
+        </div>
+      </Field>
+
+      {error && (
+        <p className="text-xs text-danger break-words">{error}</p>
+      )}
+
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="rounded-md border border-border bg-bg px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent/90 disabled:opacity-50"
+          data-test="portal-mcp-save"
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] font-medium uppercase tracking-wide text-muted-fg mb-1">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function PendingDiffPanel({
+  active,
+  current,
+  onRevert,
+  reverting,
+}: {
+  active: McpConfigEntry | null;
+  current: McpConfigEntry | null;
+  onRevert: () => void;
+  reverting: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+          Changes pending restart
+        </h4>
+        <button
+          type="button"
+          onClick={onRevert}
+          disabled={reverting}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+          title="Restore the configuration opencode is currently running"
+        >
+          <ArrowUturnLeftIcon className="size-3.5" />
+          {reverting ? "Reverting..." : "Revert to active"}
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+        <DiffColumn label="Active (running)" entry={active} />
+        <DiffColumn label="Saved (pending)" entry={current} />
+      </div>
+    </div>
+  );
+}
+
+function DiffColumn({
+  label,
+  entry,
+}: {
+  label: string;
+  entry: McpConfigEntry | null;
+}) {
+  return (
+    <div>
+      <div className="text-muted-fg mb-1">{label}</div>
+      <pre className="rounded-md border border-border/50 bg-bg/60 p-2 font-mono text-[11px] text-fg/80 overflow-x-auto whitespace-pre-wrap break-words leading-snug">
+        {entry === null ? "(removed)" : <JsonNode value={entry} />}
+      </pre>
+    </div>
+  );
+}
+
+function JsonTab({
+  mcpName,
+  currentEntry,
+  activeEntry,
+  isPendingThis,
+  onSave,
+}: {
+  mcpName: string;
+  currentEntry: McpConfigEntry | null;
+  activeEntry: McpConfigEntry | null;
+  isPendingThis: boolean;
+  onSave: (entry: McpConfigEntry | null) => Promise<void>;
+}) {
+  const baseText = useMemo(
+    () =>
+      currentEntry === null
+        ? "null"
+        : JSON.stringify(currentEntry, null, 2),
+    [currentEntry],
+  );
+  const [text, setText] = useState(baseText);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editing) setText(baseText);
+  }, [baseText, editing]);
+
+  const startEdit = () => {
+    setText(baseText);
+    setEditing(true);
+    setError(null);
+  };
+
+  const cancel = () => {
+    setEditing(false);
+    setError(null);
+    setText(baseText);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const parsed: unknown =
+        text.trim() === "" || text.trim() === "null"
+          ? null
+          : JSON.parse(text);
+      if (parsed !== null && (typeof parsed !== "object" || Array.isArray(parsed))) {
+        throw new Error("MCP entry must be a JSON object (or null to delete)");
+      }
+      await onSave(parsed as McpConfigEntry | null);
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+          {editing ? "Editing JSON" : "JSON"}
+          {isPendingThis && !editing && (
+            <span className="ml-2 text-amber-600 dark:text-amber-400 normal-case">
+              (saved, pending restart)
+            </span>
           )}
-          {!detailsLoading && details?.toolsError && (
-            <p className="text-sm text-danger break-words">
-              {details.toolsError}
-            </p>
+        </h3>
+        <div className="flex items-center gap-1">
+          {!editing && (
+            <button
+              type="button"
+              onClick={startEdit}
+              disabled={!currentEntry}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted disabled:opacity-40"
+              data-test="portal-mcp-json-edit"
+            >
+              <PencilSquareIcon className="size-3.5" />
+              Edit JSON
+            </button>
           )}
-          {!detailsLoading &&
-            !details?.toolsError &&
-            details?.tools &&
-            details.tools.length === 0 && (
-              <p className="text-sm text-muted-fg">
-                No tools registered by this MCP server.
-              </p>
-            )}
-          {!detailsLoading &&
-            details?.tools &&
-            details.tools.length > 0 && (
-              <div className="space-y-2">
-                {details.tools.map((tool) => (
-                  <ToolRow key={tool.name} tool={tool} />
-                ))}
-              </div>
-            )}
         </div>
       </div>
+
+      {!editing ? (
+        <pre className="rounded-md border border-border/50 bg-bg/60 p-3 font-mono text-[12px] text-fg/90 overflow-x-auto whitespace-pre leading-relaxed">
+          <JsonNode value={currentEntry} />
+        </pre>
+      ) : (
+        <>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            rows={Math.max(8, Math.min(24, text.split("\n").length + 1))}
+            className="w-full rounded-md border border-border bg-bg p-3 font-mono text-[12px] outline-none focus:border-primary"
+            data-test="portal-mcp-json-textarea"
+          />
+          <p className="text-[10px] text-muted-fg">
+            Set to <code>null</code> to delete this MCP. Known type values:{" "}
+            <code>"local"</code>, <code>"remote"</code>. Custom values are
+            accepted - opencode validates at load.
+          </p>
+          {error && (
+            <p className="text-xs text-danger break-words">{error}</p>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={cancel}
+              disabled={saving}
+              className="rounded-md border border-border bg-bg px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent/90 disabled:opacity-50"
+              data-test="portal-mcp-json-save"
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {isPendingThis && !editing && activeEntry && (
+        <div className="border-t border-border pt-3 space-y-1">
+          <h4 className="text-xs font-bold uppercase tracking-widest text-muted-fg">
+            Active (running) JSON
+          </h4>
+          <pre className="rounded-md border border-border/50 bg-bg/60 p-3 font-mono text-[12px] text-fg/70 overflow-x-auto whitespace-pre leading-relaxed">
+            <JsonNode value={activeEntry} />
+          </pre>
+        </div>
+      )}
+
+      <p className="text-[10px] text-muted-fg italic">
+        Writes go to <code>~/.config/opencode/opencode.json</code> ({mcpName}).
+        Restart opencode (top of modal) to apply.
+      </p>
     </div>
   );
 }
