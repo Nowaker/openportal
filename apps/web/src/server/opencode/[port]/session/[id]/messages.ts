@@ -16,6 +16,11 @@ import { putOmoBody } from "../../../../lib/omo-strip-cache";
 import { getDecisionsForMessage } from "../../../../lib/permission-audit";
 import { getToolOutputMaxBytes } from "../../../../lib/instance-settings-state";
 import {
+  getContentSettings,
+  type ContentRule,
+  type ContentSettings,
+} from "../../../../lib/content-settings-state";
+import {
   listPendingPromptsForSession,
   listVisiblePromptsForSession,
   type PromptRow,
@@ -498,24 +503,36 @@ function stripOmoFromUserText(messages: unknown, sessionId: string): void {
 // its parsed todo array there and lib/todos.ts reads it.
 function stripPartBloat(messages: unknown): void {
   if (!Array.isArray(messages)) return;
-  const outputCap = getToolOutputMaxBytes();
+  const legacyCap = getToolOutputMaxBytes();
+  const content = getContentSettings();
   for (const msg of messages) {
     const parts = (msg as { parts?: unknown }).parts;
     if (!Array.isArray(parts)) continue;
     for (const part of parts) {
-      stripOnePartBloat(part, outputCap);
+      stripOnePartBloat(part, legacyCap, content);
     }
   }
 }
 
-function stripOnePartBloat(part: unknown, outputCap: number | null): void {
+function stripOnePartBloat(
+  part: unknown,
+  legacyCap: number | null,
+  content: ContentSettings,
+): void {
   if (!part || typeof part !== "object") return;
   const p = part as Record<string, unknown> & {
     type?: string;
+    text?: string;
     state?: Record<string, unknown> & { metadata?: Record<string, unknown> };
-    data?: { state?: Record<string, unknown> & { metadata?: Record<string, unknown> }; snapshot?: unknown };
+    data?: {
+      state?: Record<string, unknown> & { metadata?: Record<string, unknown> };
+      text?: string;
+      snapshot?: unknown;
+    };
     metadata?: { anthropic?: { signature?: unknown } };
     snapshot?: unknown;
+    synthetic?: unknown;
+    ignored?: unknown;
   };
 
   if (p.type === "reasoning") {
@@ -525,6 +542,7 @@ function stripOnePartBloat(part: unknown, outputCap: number | null): void {
     const inner = (p.data as { metadata?: { anthropic?: { signature?: unknown } } } | undefined)
       ?.metadata?.anthropic;
     if (inner && "signature" in inner) delete inner.signature;
+    applyTextRule(p, content.rules.reasoning, "reasoning");
   }
 
   if (p.type === "step-start" || p.type === "step-finish") {
@@ -532,14 +550,20 @@ function stripOnePartBloat(part: unknown, outputCap: number | null): void {
     if (p.data && "snapshot" in p.data) delete p.data.snapshot;
   }
 
+  if (p.type === "text" && p.synthetic === true && p.ignored === true) {
+    applyTextRule(p, content.rules["synthetic-marker"], "synthetic-marker");
+  }
+
   for (const state of partStates(p)) {
     if (!state || typeof state !== "object") continue;
-    capOrDropOutput(state, "output", outputCap);
+    const outputRule = content.rules["tool-call-output"];
+    const outputCap = effectiveCap(outputRule, legacyCap);
+    applyValueRule(state, "output", outputRule, outputCap, "tool-call-output");
     if ("title" in state) delete state.title;
     stripHeavyInputFields(state, p.type);
     const meta = state.metadata as Record<string, unknown> | undefined;
     if (meta && typeof meta === "object") {
-      capOrDropOutput(meta, "output", outputCap);
+      applyValueRule(meta, "output", outputRule, outputCap, "tool-call-output");
       for (const k of ["description", "diff", "filediff", "filepath", "preview"]) {
         if (k in meta) delete meta[k];
       }
@@ -547,29 +571,82 @@ function stripOnePartBloat(part: unknown, outputCap: number | null): void {
   }
 }
 
-function capOrDropOutput(
-  obj: Record<string, unknown>,
-  key: string,
-  cap: number | null,
+// Pre-Section-I behavior: legacyCap was the single global tool-output cap.
+// Post-Section-I-2: the per-content-type rule wins when set; legacyCap is
+// the fallback used only when the rule for "tool-call-output" is at its
+// show-fully default. This preserves backwards compat for users who have
+// only the legacy knob configured, without double-truncating users who
+// have set the new rule.
+function effectiveCap(rule: ContentRule, legacyCap: number | null): number | null {
+  if (rule.visibility === "show-fully") return legacyCap;
+  if (rule.visibility === "hide" || rule.visibility === "ajax-only") return 0;
+  return rule.maxBytes;
+}
+
+function applyTextRule(
+  part: Record<string, unknown>,
+  rule: ContentRule,
+  hint: string,
 ): void {
-  if (!(key in obj)) return;
-  // cap === null means "no cap" per the settings UI label "Leave blank for
-  // no cap (forwards full output)". Before this fix, null deleted the
-  // output entirely, which silently broke tool output rendering on every
-  // fresh install (the default is null). Keep the value as-is.
-  if (cap === null) return;
-  const v = obj[key];
-  if (typeof v === "string") {
-    if (v.length > cap) {
-      obj[key] =
-        v.slice(0, cap) +
-        `\n\n[...truncated ${v.length - cap} bytes - configure cap in Settings -> Content]`;
-    }
+  if (rule.visibility === "show-fully") return;
+  const text = typeof part.text === "string" ? part.text : null;
+  if (text === null) return;
+  if (rule.visibility === "hide") {
+    part.text = "";
+    part._stripped = { hint, reason: "hide" };
     return;
   }
-  // Non-string output (tool returned an object/array). The cap doesn't
-  // apply to non-string shapes; keep them intact so the renderer can
-  // decide what to do.
+  if (rule.visibility === "ajax-only") {
+    part._stripped = { hint, reason: "ajax-only", bytes: text.length };
+    part.text = "";
+    return;
+  }
+  if (rule.maxBytes !== null && text.length > rule.maxBytes) {
+    part.text =
+      text.slice(0, rule.maxBytes) +
+      `\n\n[...truncated ${text.length - rule.maxBytes} bytes - configure in Settings -> Content]`;
+    if (rule.visibility === "show-max-bytes-with-ajax") {
+      part._stripped = {
+        hint,
+        reason: "truncated-with-ajax",
+        bytes: text.length,
+      };
+    }
+  }
+}
+
+function applyValueRule(
+  obj: Record<string, unknown>,
+  key: string,
+  rule: ContentRule,
+  effective: number | null,
+  hint: string,
+): void {
+  if (!(key in obj)) return;
+  if (effective === null) return;
+  if (effective === 0) {
+    delete obj[key];
+    obj[`_${key}_stripped`] = {
+      hint,
+      reason: rule.visibility === "hide" ? "hide" : "ajax-only",
+    };
+    return;
+  }
+  const v = obj[key];
+  if (typeof v === "string") {
+    if (v.length > effective) {
+      obj[key] =
+        v.slice(0, effective) +
+        `\n\n[...truncated ${v.length - effective} bytes - configure in Settings -> Content]`;
+      if (rule.visibility === "show-max-bytes-with-ajax") {
+        obj[`_${key}_stripped`] = {
+          hint,
+          reason: "truncated-with-ajax",
+          bytes: v.length,
+        };
+      }
+    }
+  }
 }
 
 // Tool-specific heavy input-field stripping. The per-part ajax endpoint

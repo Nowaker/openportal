@@ -1139,6 +1139,11 @@ function TtsSetting() {
   );
 }
 
+// Legacy global tool-output cap. Section I-2 moved server-side trimming
+// to the per-content-type rules table above. This single-knob setting
+// remains as a fallback ONLY for the "tool-call-output" content type
+// when its rule is at the default (show-fully + null maxBytes). Once
+// users migrate to the table, this control can be removed.
 function ToolOutputCapSetting() {
   const { settings, isLoading } = useInstanceSettings();
   const current = settings.toolOutputMaxBytes;
