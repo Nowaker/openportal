@@ -2248,6 +2248,23 @@ function MessageMarkdown({
   sessionDirectory?: string;
 }) {
   const { isMobile } = useMediaQuery();
+  const navigate = useNavigate();
+  const { data: sessionsData } = useSessions();
+  // Short-prefix resolver for remark-id-links. Required to keep
+  // ambiguous prefixes from producing wrong links: when multiple
+  // cached sessions start with the same `ses_<9-19 char>` prefix,
+  // we return null so the plugin leaves the prefix as plain text
+  // instead of linking to a guess.
+  const resolveSessionId = useMemo(() => {
+    const sessions = sessionsData ?? [];
+    return (partial: string): string | null => {
+      if (!partial.startsWith("ses_")) return null;
+      const exact = sessions.find((s) => s.id === partial);
+      if (exact) return exact.id;
+      const matches = sessions.filter((s) => s.id.startsWith(partial));
+      return matches.length === 1 ? matches[0].id : null;
+    };
+  }, [sessionsData]);
   const components = useMemo(
     () => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2305,13 +2322,49 @@ function MessageMarkdown({
             </FileExistenceLink>
           );
         }
-        const isAnchor = typeof href === "string" && href.startsWith("#");
-        const isMailto = typeof href === "string" && href.startsWith("mailto:");
-        const openInNewTab = !!href && !isAnchor && !isMailto;
+        const hrefStr = typeof href === "string" ? href : "";
+        const isAnchor = hrefStr.startsWith("#");
+        const isMailto = hrefStr.startsWith("mailto:");
+        const isOpenPortalInternal = (() => {
+          if (!hrefStr || isAnchor || isMailto) return false;
+          if (hrefStr.startsWith("file://")) return false;
+          if (hrefStr.startsWith("/")) return true;
+          if (typeof window === "undefined") return false;
+          try {
+            const u = new URL(hrefStr, window.location.origin);
+            return u.origin === window.location.origin;
+          } catch {
+            return false;
+          }
+        })();
+        if (isOpenPortalInternal) {
+          return (
+            <a
+              {...rest}
+              href={hrefStr}
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                if (e.button !== 0) return;
+                e.preventDefault();
+                try {
+                  const u = new URL(hrefStr, window.location.origin);
+                  void navigate({
+                    to: (u.pathname + u.search + u.hash) as string,
+                  });
+                } catch {
+                  window.location.href = hrefStr;
+                }
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+        const openInNewTab = !!hrefStr && !isAnchor && !isMailto;
         return (
           <a
             {...rest}
-            href={href}
+            href={hrefStr}
             target={openInNewTab ? "_blank" : undefined}
             rel={openInNewTab ? "noreferrer noopener" : undefined}
           >
@@ -2320,11 +2373,11 @@ function MessageMarkdown({
         );
       },
     }),
-    [isMobile, sessionDirectory],
+    [isMobile, sessionDirectory, navigate],
   );
 
   return (
-    <Markdown remarkPlugins={[...remarkPlugins, remarkFileLinks, remarkIdLinks]} components={components}>
+    <Markdown remarkPlugins={[...remarkPlugins, remarkFileLinks, [remarkIdLinks, { resolveSessionId }]]} components={components}>
       {text}
     </Markdown>
   );

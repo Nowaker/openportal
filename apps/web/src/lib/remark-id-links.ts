@@ -1,27 +1,34 @@
 import { visit, SKIP } from "unist-util-visit";
 
 // Detect opencode session IDs (ses_*) and message IDs (msg_*) in chat
-// text and rewrite them into internal links. Both kinds carry openportal
-// significance:
+// text and rewrite them into internal links. Two flavours:
 //
-//   ses_<sid>           -> /session/<sid> (open that session in the portal)
-//   msg_<mid>           -> the current session, scrolled to that message
-//                          (the markdown renderer can't see what session
-//                          we're in from the plugin context, so we emit
-//                          a relative `#msg-<mid>` hash and let the
-//                          message-permalink loader resolve it when
-//                          the link is clicked inside the same session).
+//   ses_<full-id>       -> /session/<full-id>. Full IDs are 20-32
+//                          alphanumeric chars; always linkized.
+//   ses_<prefix>        -> /session/<resolved-full-id>. Short prefixes
+//                          (9-19 alphanumeric chars) only linkize when
+//                          options.resolveSessionId() can map the
+//                          prefix back to a full ID via the portal's
+//                          sessions cache. Ambiguous (multi-match) or
+//                          unknown prefixes stay as text rather than
+//                          producing dead /session/<short> links.
+//   msg_<mid>           -> #msg-<mid> hash on the current session
+//                          (the markdown renderer can't see what
+//                          session we're in from plugin context).
 //
-// Pattern is anchored on word-boundary delimiters so we don't munge
+// Pattern anchored on word-boundary delimiters so we don't munge
 // arbitrary identifiers that happen to contain "ses" or "msg".
 //
-// Both link targets are openportal-internal. The custom `a` component
-// in MessageMarkdown (apps/web/src/routes/_app/session/$id.tsx ~ line
-// 2004 onwards) already distinguishes internal anchors (no target=_blank)
-// from external ones, so the emitted href just needs to be relative or
-// same-origin.
+// Link targets are openportal-internal. MessageMarkdown's `a`
+// component override routes them through tanstack SPA nav.
 const ID_REGEX =
-  /(^|[\s'"\[\]{}()=:,;.])((?:ses_[A-Za-z0-9]{20,32})|(?:msg_[A-Za-z0-9]{20,32}))(?=$|[\s'"\[\]{}().,:;?!])/g;
+  /(^|[\s'"\[\]{}()=:,;.])((?:ses_[A-Za-z0-9]{9,32})|(?:msg_[A-Za-z0-9]{20,32}))(?=$|[\s'"\[\]{}().,:;?!])/g;
+
+const FULL_SES_MIN_CHARS = 20;
+
+export interface RemarkIdLinksOptions {
+  resolveSessionId?: (partialOrFullId: string) => string | null;
+}
 
 interface MdastNode {
   type?: string;
@@ -30,7 +37,7 @@ interface MdastNode {
   url?: string;
 }
 
-export const remarkIdLinks = () => {
+export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
   return (tree: MdastNode) => {
     visit(tree, (node: MdastNode, index: number | undefined, parent: MdastNode | undefined) => {
       if (
@@ -52,6 +59,23 @@ export const remarkIdLinks = () => {
         const matchStart = match.index + match[1].length;
         const matchEnd = matchStart + id.length;
 
+        let targetId: string | null = id;
+        if (id.startsWith("ses_")) {
+          const charCount = id.length - "ses_".length;
+          if (charCount < FULL_SES_MIN_CHARS) {
+            targetId = options?.resolveSessionId?.(id) ?? null;
+          }
+        }
+
+        if (targetId === null) {
+          // Short prefix that the cache can't resolve unambiguously.
+          // Leave the match as literal text - splicing into newChildren
+          // below would still happen if there are later resolvable
+          // matches; the unresolved span is captured by the pre-text
+          // slice on the next iteration's matchStart.
+          continue;
+        }
+
         if (matchStart > lastIndex) {
           newChildren.push({
             type: "text",
@@ -59,7 +83,9 @@ export const remarkIdLinks = () => {
           });
         }
 
-        const href = id.startsWith("ses_") ? `/session/${id}` : `#msg-${id}`;
+        const href = id.startsWith("ses_")
+          ? `/session/${targetId}`
+          : `#msg-${id}`;
         newChildren.push({
           type: "link",
           url: href,
