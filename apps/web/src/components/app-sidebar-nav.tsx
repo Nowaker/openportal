@@ -20,6 +20,7 @@ import {
   ArrowDownTrayIcon,
   ArrowLeftIcon,
   ArrowPathRoundedSquareIcon,
+  BellIcon,
   BoltIcon,
   BoltSlashIcon,
   CheckIcon,
@@ -57,6 +58,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DirectoryPicker } from "@/components/directory-picker/directory-picker";
 import { mutate as globalSWRMutate } from "swr";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
+import { useSystemMessagesStore } from "@/stores/system-messages-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useTitleBarActionsStore } from "@/stores/title-bar-actions-store";
 import { useVscodeOpener } from "@/components/vscode-link";
@@ -167,6 +169,7 @@ export function AppSidebarNav() {
   const sessions: Session[] = sessionsData ?? [];
   const currentSession = sessions.find((s) => s.id === sessionId);
   const sessionTitle = currentSession?.title ?? null;
+  const systemMessagesUnread = useSystemMessagesStore((s) => s.unreadCount);
   const projectLabel = projectLabelFromDirectory(currentSession?.directory);
   // Subagent sessions: opencode sets parentID on child sessions and appends
   // a `(@<agent> subagent)` marker to the title. The marker carries the
@@ -777,6 +780,23 @@ export function AppSidebarNav() {
               >
                 <FolderOpenIcon className="size-4" data-slot="icon" />
                 File browser
+              </MenuItem>
+              <MenuItem
+                onAction={() => {
+                  const dir = currentSession?.directory ?? null;
+                  useSystemMessagesStore
+                    .getState()
+                    .openProjectFiltered(dir);
+                }}
+                data-test="portal-hamburger-system-messages"
+              >
+                <BellIcon className="size-4" data-slot="icon" />
+                System messages
+                {systemMessagesUnread > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500/90 text-white text-[10px] font-semibold min-w-4 h-4 px-1">
+                    {systemMessagesUnread > 99 ? "99+" : systemMessagesUnread}
+                  </span>
+                )}
               </MenuItem>
             </MenuSection>
             {sessionId && <MenuSeparator />}

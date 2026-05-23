@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSWRConfig } from "swr";
+import { logSystemMessage } from "@/stores/system-messages-store";
 
 const PROBE_INTERVAL_MS = 10_000;
 const PROBE_INTERVAL_WHILE_DOWN_MS = 2_000;
@@ -159,6 +160,36 @@ export function useConnectionMonitor(): ConnectionStatus {
         console.log(
           `[connection-monitor] state transition: ${prev} → ${next}`,
         );
+        // Mirror every state transition to the durable system-messages
+        // drawer so the user can audit connectivity history past the
+        // 4s toast dwell. System-wide (projectDirectory omitted) so
+        // they show under both hamburger (project-filtered) and
+        // sidebar (unfiltered) entry points.
+        if (next === "connected") {
+          logSystemMessage(
+            "connection",
+            "success",
+            prev === "openportal-down"
+              ? "OpenPortal reconnected"
+              : prev === "opencode-down"
+                ? "OpenCode reconnected"
+                : "Connection restored",
+          );
+        } else if (next === "openportal-down") {
+          logSystemMessage(
+            "connection",
+            "error",
+            "OpenPortal disconnected",
+            "Periodic /api/instance/self probe failed past the failure threshold.",
+          );
+        } else if (next === "opencode-down") {
+          logSystemMessage(
+            "connection",
+            "warning",
+            "OpenCode unreachable",
+            "OpenPortal is up but its bound opencode is reporting health=down. Local data still renders; live opencode reads degrade.",
+          );
+        }
         if (next === "connected" && prev !== "connected") {
           console.log(
             "[connection-monitor] firing global SWR mutate(() => true) to refetch all keys",

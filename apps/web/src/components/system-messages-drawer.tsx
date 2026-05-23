@@ -1,5 +1,10 @@
 import * as React from "react";
 import {
+  Modal,
+  ModalOverlay,
+  Dialog as PrimitiveDialog,
+} from "react-aria-components";
+import {
   BellIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
@@ -44,121 +49,114 @@ function formatTime(ts: number): string {
 }
 
 export function SystemMessagesDrawer() {
-  const messages = useSystemMessagesStore((s) => s.messages);
-  const unreadCount = useSystemMessagesStore((s) => s.unreadCount);
+  const allMessages = useSystemMessagesStore((s) => s.messages);
+  const isOpen = useSystemMessagesStore((s) => s.isOpen);
+  const filter = useSystemMessagesStore((s) => s.filter);
   const acknowledgeAll = useSystemMessagesStore((s) => s.acknowledgeAll);
+  const closeDrawer = useSystemMessagesStore((s) => s.closeDrawer);
   const clear = useSystemMessagesStore((s) => s.clear);
-  const [open, setOpen] = React.useState(false);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
-  // Close on Escape + outside-click. Outside-click via backdrop layer
-  // beneath the drawer; the drawer itself stops pointerdown from
-  // bubbling so clicks inside don't close it.
   React.useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+    if (isOpen) acknowledgeAll();
+  }, [isOpen, acknowledgeAll]);
 
-  React.useEffect(() => {
-    if (open) acknowledgeAll();
-  }, [open, acknowledgeAll]);
+  const messages = React.useMemo(() => {
+    if (!filter) return allMessages;
+    const dir = filter.projectDirectory;
+    if (!dir) return allMessages.filter((m) => !m.projectDirectory);
+    return allMessages.filter(
+      (m) => !m.projectDirectory || m.projectDirectory === dir,
+    );
+  }, [allMessages, filter]);
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="System messages"
-        title="OpenPortal system messages"
-        className="fixed bottom-3 left-3 z-30 inline-flex items-center justify-center size-8 rounded-md border border-border bg-bg shadow hover:bg-muted text-muted-fg hover:text-fg"
-        data-test="portal-system-messages-trigger"
-      >
-        <BellIcon className="size-4" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 inline-flex items-center justify-center size-4 rounded-full bg-red-500 text-[10px] font-semibold text-white">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <>
-          <div
-            aria-hidden
-            className="fixed inset-0 z-[39] bg-transparent"
-            onPointerDown={() => setOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-label="System messages"
-            onPointerDown={(e) => e.stopPropagation()}
-            className="fixed bottom-14 left-3 z-40 flex flex-col w-[90vw] sm:w-[28rem] max-h-[70vh] rounded-md border border-border bg-bg shadow-xl overflow-hidden"
-            data-test="portal-system-messages-drawer"
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <BellIcon className="size-4 text-muted-fg" />
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) closeDrawer();
+      }}
+      isDismissable
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/50"
+    >
+      <Modal className="outline-none w-full max-w-md max-h-[90vh]">
+        <PrimitiveDialog
+          role="dialog"
+          aria-label="System messages"
+          className="relative outline-none rounded-xl bg-bg shadow-2xl border border-border/50 flex flex-col max-h-[90vh]"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2 shrink-0">
+            <div className="flex items-center gap-2 text-sm font-semibold min-w-0">
+              <BellIcon className="size-4 text-muted-fg shrink-0" />
+              <span className="truncate">
                 System messages
-                <span className="text-xs text-muted-fg font-normal">
-                  ({messages.length})
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                {messages.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clear}
-                    className="text-xs text-muted-fg hover:text-fg px-1.5 py-0.5 rounded hover:bg-muted/40"
-                    title="Clear all"
-                  >
-                    Clear
-                  </button>
+                {filter ? (
+                  <span className="ml-1 text-xs text-muted-fg font-normal">
+                    ({filter.projectDirectory
+                      ? `scope: ${filter.projectDirectory}`
+                      : "system-only"}
+                    )
+                  </span>
+                ) : (
+                  <span className="ml-1 text-xs text-muted-fg font-normal">
+                    (all)
+                  </span>
                 )}
+              </span>
+              <span className="text-xs text-muted-fg font-normal shrink-0">
+                {messages.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {messages.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close"
-                  className="text-muted-fg hover:text-fg p-0.5 rounded hover:bg-muted/40"
+                  onClick={clear}
+                  className="text-xs text-muted-fg hover:text-fg px-1.5 py-0.5 rounded hover:bg-muted/40"
+                  title="Clear all"
                 >
-                  <XMarkIcon className="size-4" />
+                  Clear
                 </button>
-              </div>
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {messages.length === 0 ? (
-                <div className="px-3 py-6 text-center text-xs text-muted-fg">
-                  No system messages yet.
-                  <div className="mt-1 opacity-70">
-                    Connection events, service restarts, plugin installs, and
-                    other portal-side notifications land here.
-                  </div>
-                </div>
-              ) : (
-                <ul className="divide-y divide-border/40">
-                  {messages.map((m) => (
-                    <MessageRow
-                      key={m.id}
-                      message={m}
-                      expanded={expandedId === m.id}
-                      onToggle={() =>
-                        setExpandedId((cur) => (cur === m.id ? null : m.id))
-                      }
-                    />
-                  ))}
-                </ul>
               )}
+              <button
+                type="button"
+                onClick={closeDrawer}
+                aria-label="Close"
+                className="text-muted-fg hover:text-fg p-0.5 rounded hover:bg-muted/40"
+              >
+                <XMarkIcon className="size-4" />
+              </button>
             </div>
           </div>
-        </>
-      )}
-    </>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {messages.length === 0 ? (
+              <div className="px-3 py-6 text-center text-xs text-muted-fg">
+                {filter
+                  ? "No matching system messages."
+                  : "No system messages yet."}
+                <div className="mt-1 opacity-70">
+                  Connection events, service restarts, plugin installs, version
+                  mismatches, and other portal-side notifications land here.
+                </div>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border/40">
+                {messages.map((m) => (
+                  <MessageRow
+                    key={m.id}
+                    message={m}
+                    expanded={expandedId === m.id}
+                    onToggle={() =>
+                      setExpandedId((cur) => (cur === m.id ? null : m.id))
+                    }
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </PrimitiveDialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 

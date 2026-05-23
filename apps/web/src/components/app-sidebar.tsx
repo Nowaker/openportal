@@ -6,9 +6,11 @@ import {
   ArchiveBoxArrowDownIcon,
   ArrowUturnLeftIcon,
   BellAlertIcon,
+  BellIcon,
   CodeBracketIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { useSystemMessagesStore } from "@/stores/system-messages-store";
 import {
   Cog6ToothIcon,
   PlusIcon,
@@ -1336,6 +1338,7 @@ export default function AppSidebar(
   const pinnedSessionIds = pinnedData?.sessions ?? [];
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const systemMessagesUnread = useSystemMessagesStore((s) => s.unreadCount);
   const [notifPermission, setNotifPermission] =
     useState<NotificationPermission>(
       typeof window !== "undefined" && "Notification" in window
@@ -1614,6 +1617,21 @@ export default function AppSidebar(
             >
               <ServerStackIcon />
               Server list
+            </MenuItem>
+            <MenuItem
+              data-test="portal-sidebar-system-messages"
+              onAction={() => {
+                setIsOpenOnMobile(false);
+                useSystemMessagesStore.getState().openUnfiltered();
+              }}
+            >
+              <BellIcon />
+              System messages
+              {systemMessagesUnread > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500/90 text-white text-[10px] font-semibold min-w-4 h-4 px-1">
+                  {systemMessagesUnread > 99 ? "99+" : systemMessagesUnread}
+                </span>
+              )}
             </MenuItem>
             <MenuItem
               data-test="portal-sidebar-settings"
