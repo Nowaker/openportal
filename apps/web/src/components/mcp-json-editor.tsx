@@ -130,7 +130,7 @@ function walkBufferToCursor(
       depth--;
       parentStack.pop();
       pendingKey = undefined;
-    } else if (c === "," || c === ":") {
+    } else if (c === ",") {
       pendingKey = undefined;
     }
   }
