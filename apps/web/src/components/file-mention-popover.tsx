@@ -384,6 +384,7 @@ interface UseMentionResult {
   searchQuery: string;
   selectedIndex: number;
   mentionStart: number | null;
+  triggerChar: "@" | "~";
   handleInputChange: (value: string, cursorPosition: number) => void;
   handleKeyDown: (e: React.KeyboardEvent, filesCount: number) => boolean;
   handleSelect: (filePath: string, currentValue: string) => string;
@@ -391,29 +392,46 @@ interface UseMentionResult {
   setSelectedIndex: (index: number) => void;
 }
 
+// Dual-trigger version. Detects either `@<query>` (file mention, inserts
+// `@<filePath>`) or `~/<query>` / `~<query>` (home-relative completion,
+// inserts the raw resolved path). The popover's file search is the same
+// underlying call for both - filtering by query is done client-side.
+// Tilde-trigger differs only in the insertion format (no `@` prefix)
+// and the search query has the `~/` segment stripped before filtering.
 export function useFileMention(): UseMentionResult {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [triggerChar, setTriggerChar] = useState<"@" | "~">("@");
 
   const handleInputChange = (value: string, cursorPosition: number) => {
     const textBeforeCursor = value.slice(0, cursorPosition);
-    const atIndex = textBeforeCursor.lastIndexOf("@");
 
-    if (atIndex !== -1) {
-      const textAfterAt = textBeforeCursor.slice(atIndex + 1);
-      const charBeforeAt = atIndex > 0 ? textBeforeCursor[atIndex - 1] : " ";
+    const atIndex = textBeforeCursor.lastIndexOf("@");
+    const tildeIndex = textBeforeCursor.lastIndexOf("~");
+    const triggerIndex = Math.max(atIndex, tildeIndex);
+
+    if (triggerIndex !== -1) {
+      const trigger = triggerIndex === atIndex ? "@" : "~";
+      const textAfter = textBeforeCursor.slice(triggerIndex + 1);
+      const charBefore =
+        triggerIndex > 0 ? textBeforeCursor[triggerIndex - 1] : " ";
 
       if (
-        (charBeforeAt === " " || charBeforeAt === "\n" || atIndex === 0) &&
-        !textAfterAt.includes(" ") &&
-        !textAfterAt.includes("\n")
+        (charBefore === " " || charBefore === "\n" || triggerIndex === 0) &&
+        !textAfter.includes(" ") &&
+        !textAfter.includes("\n")
       ) {
-        setSearchQuery(textAfterAt);
-        setMentionStart(atIndex);
+        const query =
+          trigger === "~" && textAfter.startsWith("/")
+            ? textAfter.slice(1)
+            : textAfter;
+        setSearchQuery(query);
+        setMentionStart(triggerIndex);
         setSelectedIndex(0);
         setIsOpen(true);
+        setTriggerChar(trigger);
         return;
       }
     }
@@ -458,10 +476,22 @@ export function useFileMention(): UseMentionResult {
     if (mentionStart === null) return currentValue;
 
     const beforeMention = currentValue.slice(0, mentionStart);
-    const afterMention = currentValue.slice(
-      mentionStart + 1 + searchQuery.length,
-    );
-    const newValue = `${beforeMention}@${filePath} ${afterMention}`;
+    // For tilde-trigger, the prefix the user typed was `~/<query>` or
+    // `~<query>`. Both consume the same range (1 + searchQuery.length is
+    // wrong when there's a `/` between `~` and the query - account for
+    // that here so the resulting substring removes the whole prefix).
+    let consumedLength: number;
+    if (triggerChar === "~") {
+      const tail = currentValue.slice(mentionStart + 1);
+      const slash = tail.startsWith("/") ? 1 : 0;
+      consumedLength = 1 + slash + searchQuery.length;
+    } else {
+      consumedLength = 1 + searchQuery.length;
+    }
+    const afterMention = currentValue.slice(mentionStart + consumedLength);
+
+    const inserted = triggerChar === "~" ? `~/${filePath} ` : `@${filePath} `;
+    const newValue = `${beforeMention}${inserted}${afterMention}`;
 
     close();
     return newValue;
@@ -472,6 +502,7 @@ export function useFileMention(): UseMentionResult {
     setSearchQuery("");
     setMentionStart(null);
     setSelectedIndex(0);
+    setTriggerChar("@");
   };
 
   return {
@@ -479,6 +510,7 @@ export function useFileMention(): UseMentionResult {
     searchQuery,
     selectedIndex,
     mentionStart,
+    triggerChar,
     handleInputChange,
     handleKeyDown,
     handleSelect,
