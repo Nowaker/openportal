@@ -133,10 +133,26 @@ export default function Cmd() {
   ): Array<{ session: Session; match: MatchResult }> => {
     const trimmed = query.trim();
     const out: Array<{ session: Session; match: MatchResult }> = [];
+    // Session-ID-prefix path: when the query looks like a session id
+    // (`ses_<chars>`), match it as a prefix against session.id and
+    // return a synthetic high-score MatchResult so the matched session
+    // pops to the top. Falls through to the regular title/project
+    // fuzzy match for the same session so a partial ID hit is never
+    // worse than a partial title hit.
+    const idQuery = trimmed.startsWith("ses_") ? trimmed.toLowerCase() : null;
     for (const s of list) {
       const title = s.title || `Session ${s.id.slice(0, 8)}`;
       const project = projectLabelForSession(s);
-      const m = scoreItem(title, project, trimmed);
+      const titleMatch = scoreItem(title, project, trimmed);
+      const idMatch =
+        idQuery !== null && s.id.toLowerCase().startsWith(idQuery)
+          ? {
+              score: 10_000 + idQuery.length,
+              titleRanges: [] as Array<[number, number]>,
+              projectRanges: [] as Array<[number, number]>,
+            }
+          : null;
+      const m = idMatch ?? titleMatch;
       if (m) out.push({ session: s, match: m });
     }
     if (trimmed) {

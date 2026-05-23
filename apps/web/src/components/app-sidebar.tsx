@@ -581,10 +581,13 @@ function ProjectsList({
   const hasMatchingPin = useMemo(() => {
     if (!searchQuery) return false;
     const q = searchQuery.toLowerCase();
+    const isIdQuery = q.startsWith("ses_");
     const pinnedIds = pinnedData?.sessions ?? [];
     for (const id of pinnedIds) {
       const s = sessions.find((x) => x.id === id);
-      if (s && (s.title ?? "").toLowerCase().includes(q)) return true;
+      if (!s) continue;
+      if ((s.title ?? "").toLowerCase().includes(q)) return true;
+      if (isIdQuery && s.id.toLowerCase().startsWith(q)) return true;
     }
     return false;
   }, [pinnedData, sessions, searchQuery]);
@@ -657,17 +660,19 @@ function ProjectsList({
   const filteredGroups = useMemo<ProjectBin[]>(() => {
     if (!searchQuery) return groups;
     const q = searchQuery.toLowerCase();
+    const isIdQuery = q.startsWith("ses_");
+    const matchesSession = (s: Session): boolean => {
+      if ((s.title ?? "").toLowerCase().includes(q)) return true;
+      if (isIdQuery && s.id.toLowerCase().startsWith(q)) return true;
+      return false;
+    };
     const out: ProjectBin[] = [];
     for (const g of groups) {
       const projectMatches = projectBasename(g.dir)
         .toLowerCase()
         .includes(q);
-      const matchedSessions = g.sessions.filter((s) =>
-        (s.title ?? "").toLowerCase().includes(q),
-      );
-      const matchedArchived = g.archivedSessions.filter((s) =>
-        (s.title ?? "").toLowerCase().includes(q),
-      );
+      const matchedSessions = g.sessions.filter(matchesSession);
+      const matchedArchived = g.archivedSessions.filter(matchesSession);
       if (projectMatches) {
         out.push(g);
       } else if (matchedSessions.length || matchedArchived.length) {
