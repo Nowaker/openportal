@@ -1,19 +1,9 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useIndicator, type SessionIndicatorState } from "@/hooks/use-indicators";
 import { useInstanceStore } from "@/stores/instance-store";
-
-// Priority-selected status badge that surfaces the most-actionable
-// runtime state for a session, sourced exclusively from the SSE
-// indicator broadcaster (apps/web/src/server/lib/indicator-state.ts).
-//
-// Priority chain (top first):
-//   ERROR > QUESTION > PERMISSION > COMPACTING > TOOL > THINKING
-//   > QUEUED > none
-//
-// Colors track the sidebar dot palette already established for these
-// states: danger for ERROR, sky for QUESTION/PERMISSION, violet for
-// COMPACTING, warning for TOOL/THINKING, muted for QUEUED.
+import { logSystemMessage } from "@/stores/system-messages-store";
+import { toast } from "@/components/ui/toast";
 
 type BadgeKind =
   | "error"
@@ -37,16 +27,11 @@ interface BadgeRender {
 //   ERROR > STUCK > QUESTION > PERMISSION > COMPACTING > TOOL > THINKING
 //   > QUEUED > none
 //
-// STUCK is sourced from the stuck-detector verdict (state.stuck_verdict
-// === "stuck"). Surfaces when opencode's runtime is wedged - a state
-// the event-stream-based .busy signal can NOT detect because by
-// definition no events arrive when the runner is stuck.
-//
-// THINKING uses .busy OR stuck_verdict === "in-progress" so the badge
-// fires even when opencode misses firing message.created (the
-// long-standing bug where the yellow badge would stay invisible).
-// stuck-detector probes the runtime directly and is authoritative
-// for "is something actually running".
+// STUCK comes from the stuck-detector verdict. Its event-stream-based
+// `.busy` signal can't detect 'wedged' (by definition no events arrive
+// when the runner is stuck). THINKING uses .busy OR
+// stuck_verdict === "in-progress" so the badge fires even when opencode
+// misses firing message.created.
 export function pickBadge(state: SessionIndicatorState | null): BadgeRender | null {
   if (!state) return null;
 
@@ -143,12 +128,87 @@ export function SessionStatusBadge({
   const serverId = instance?.id;
   const indicator = useIndicator(serverId, sessionId);
   const badge = useMemo(() => pickBadge(indicator), [indicator]);
+  const [unsticking, setUnsticking] = useState(false);
+
+  // STUCK gets a click-to-unstuck affordance; other badges stay passive
+  // (span). Posts to /api/stuck-detector/unstuck which forwards to the
+  // plugin's /unstuck/<sid>. User invariant: 'STUCK badge present but
+  // nothing actionable about it. stuck badge should be clickable, and
+  // offer action to unstuck it.'
+  const onUnstuck = useCallback(async () => {
+    if (unsticking) return;
+    const cause = indicator?.stuck_cause ?? "manual-from-badge";
+    const ok = window.confirm(
+      `Unstuck this session?\n\nReason: ${cause}\n\nThis tells the stuck-detector plugin to abort the wedged runner. The session itself stays; only the stuck runner is killed.`,
+    );
+    if (!ok) return;
+    setUnsticking(true);
+    try {
+      const res = await fetch("/api/stuck-detector/unstuck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionID: sessionId, cause }),
+      });
+      const body = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        status?: number;
+      } | null;
+      if (res.ok && body?.ok) {
+        toast.success("Unstuck dispatched");
+        logSystemMessage(
+          "stuck-detector",
+          "success",
+          "Unstuck dispatched from STUCK badge",
+          `Session: ${sessionId}\nCause: ${cause}`,
+          undefined,
+          sessionId,
+        );
+      } else {
+        const err = body?.error ?? `HTTP ${res.status}`;
+        toast.error(`Unstuck failed: ${err}`);
+        logSystemMessage(
+          "stuck-detector",
+          "error",
+          "Unstuck request failed",
+          `Session: ${sessionId}\nError: ${err}`,
+          undefined,
+          sessionId,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "network error";
+      toast.error(`Unstuck failed: ${msg}`);
+    } finally {
+      setUnsticking(false);
+    }
+  }, [indicator?.stuck_cause, sessionId, unsticking]);
+
   if (!badge) return null;
+
+  const sharedClass = `inline-flex items-center rounded px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide leading-4 whitespace-nowrap ${badge.className} ${extraClassName}`;
+
+  if (badge.kind === "stuck") {
+    return (
+      <button
+        type="button"
+        onClick={onUnstuck}
+        disabled={unsticking}
+        title={`${badge.title}\nClick to dispatch unstuck.`}
+        aria-label={`${badge.title} - click to unstuck`}
+        className={`${sharedClass} cursor-pointer hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-60 disabled:cursor-wait`}
+        data-test="portal-session-status-badge-stuck"
+      >
+        {unsticking ? "UNSTICKING..." : badge.label}
+      </button>
+    );
+  }
+
   return (
     <span
       title={badge.title}
       aria-label={badge.title}
-      className={`inline-flex items-center rounded px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide leading-4 whitespace-nowrap ${badge.className} ${extraClassName}`}
+      className={sharedClass}
     >
       {badge.label}
     </span>

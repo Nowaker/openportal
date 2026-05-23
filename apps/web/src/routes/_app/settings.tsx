@@ -928,8 +928,9 @@ function SoundCategoryRow({
           setSound(category, id);
           playSoundById(id);
         }}
+        className="shrink-0"
       >
-        <SelectTrigger className="min-w-[10rem]" />
+        <SelectTrigger className="w-40" />
         <SelectContent
           className="max-h-[min(60vh,20rem)]"
           popover={{
