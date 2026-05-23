@@ -5470,7 +5470,7 @@ function SessionPage() {
           </button>
         )}
         {messages.length > 0 && (
-          <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
+          <div className="absolute top-1/2 -translate-y-1/2 right-3 z-30 flex flex-col gap-2">
             {messages.some((m) => m.info.role === "user") && (
               <button
                 type="button"
