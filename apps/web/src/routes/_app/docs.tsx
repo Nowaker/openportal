@@ -51,6 +51,11 @@ function BadgesSection() {
           desc="The assistant's last turn ended with an error. Needs your attention - click to see the error block."
         />
         <BadgeRow
+          label="STUCK"
+          className="bg-danger text-danger-fg animate-pulse"
+          desc="OpenPortal's stuck-detector probe reports the runner is wedged (no-runner, stale-stream, etc.). Sourced from the runtime probe, not the event stream, so it surfaces wedged sessions the event-stream-based busy signal would miss."
+        />
+        <BadgeRow
           label="QUESTION"
           className="bg-sky-500 text-white animate-pulse"
           desc="The assistant is asking you a question and is blocked on your answer. Scroll the chat - the question widget is somewhere in view."
@@ -73,7 +78,7 @@ function BadgesSection() {
         <BadgeRow
           label="THINKING"
           className="bg-warning text-warning-fg animate-pulse"
-          desc="The assistant is generating a response. Yellow pulse signals 'busy, not waiting on you'."
+          desc="The assistant is generating a response. Yellow pulse signals 'busy, not waiting on you'. Fires when either the event stream reports busy=true OR the stuck-detector verdict is in-progress, so the badge shows reliably even when opencode misses firing message.created."
         />
         <BadgeRow
           label="QUEUED"
