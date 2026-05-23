@@ -183,11 +183,23 @@ async function loadFullMessages(
   }
   const visible = listVisiblePromptsForSession(id);
   if (visible.length === 0) return real;
-  // Dedup: drop any virtual whose raw_text matches a real user
-  // message that landed AFTER the prompt was captured. Without this
-  // the user briefly sees their submission TWICE - once as the
-  // server-emitted message, once as the still-grace-windowed virtual.
+  // Dedup pass 1: text match. Drop any virtual whose raw_text
+  // matches a real user message that landed AFTER the prompt was
+  // captured. Without this the user briefly sees their submission
+  // TWICE - once as the server-emitted message, once as the
+  // still-grace-windowed virtual.
+  //
+  // Dedup pass 2 (slash-command defence): drop virtuals whose
+  // raw_text starts with '/' when ANY real user message arrived
+  // after the archive timestamp. Slash commands cause opencode to
+  // expand the template and emit a user message with text that
+  // does NOT match the archived '/foo bar' string, so pass 1 fails
+  // for them. Without pass 2 the user sees the literal slash
+  // command alongside the expanded prompt - the dup-prompt bug.
+  // A 2s grace window absorbs sub-second race between portal's
+  // ts_ms and opencode's created (clocks + ordering).
   const realUserSnippets = new Set<string>();
+  let latestRealUserMs = 0;
   for (const m of real) {
     if (!m || typeof m !== "object") continue;
     const msg = m as {
@@ -198,9 +210,20 @@ async function loadFullMessages(
     const text = collectUserText(msg.parts).trim();
     if (text.length === 0) continue;
     realUserSnippets.add(text);
+    const created = msg.info?.time?.created ?? 0;
+    if (created > latestRealUserMs) latestRealUserMs = created;
   }
   const filtered = visible
-    .filter((row) => !realUserSnippets.has(row.raw_text.trim()))
+    .filter((row) => {
+      if (realUserSnippets.has(row.raw_text.trim())) return false;
+      if (
+        row.raw_text.startsWith("/") &&
+        latestRealUserMs >= row.ts_ms - 2_000
+      ) {
+        return false;
+      }
+      return true;
+    })
     .map(toVirtualUserMessage);
   return filtered.length === 0 ? real : [...real, ...filtered];
 }

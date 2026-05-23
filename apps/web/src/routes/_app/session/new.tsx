@@ -310,24 +310,62 @@ function NewSessionPage() {
         const pickedModel = overridingModel
           ? resolveModel(null, instanceId)
           : null;
-        const body = {
-          text: message,
-          ...(pendingAttachments.length > 0
-            ? { attachments: pendingAttachments }
-            : {}),
-          ...(pickedAgent ? { agent: pickedAgent } : {}),
-          ...(pickedModel ? { model: pickedModel } : {}),
-          ...(pickedThinking ? { thinking: pickedThinking } : {}),
-        };
 
-        const res = await fetch(
-          `/api/opencode/${port}/session/${sessionId}/prompt`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          },
-        );
+        // Slash-command detection - mirrors the in-session submit
+        // path in routes/_app/session/$id.tsx. Without this, a /foo
+        // bar typed into the new-session form was POSTed as plain
+        // chat text to /prompt. Opencode would still recognise it
+        // as a command and expand the template, but the dedup
+        // between portal's archived raw text ('/foo bar') and
+        // opencode's emitted user message (the expanded template)
+        // failed - the user saw their submission twice.
+        let slashDispatch: { command: string; arguments: string } | null = null;
+        if (message.startsWith("/")) {
+          const m = message.match(/^\/(\S+)\s*([\s\S]*)$/);
+          if (m) {
+            const name = m[1];
+            const argsTail = m[2];
+            const known = (commandsData ?? []).some((c) => c.name === name);
+            if (known) {
+              slashDispatch = { command: name, arguments: argsTail };
+            }
+          }
+        }
+
+        const res = slashDispatch
+          ? await fetch(
+              `/api/opencode/${port}/session/${sessionId}/command`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  command: slashDispatch.command,
+                  arguments: slashDispatch.arguments,
+                  agent: pickedAgent,
+                  model:
+                    pickedModel != null
+                      ? `${pickedModel.providerID}/${pickedModel.modelID}`
+                      : undefined,
+                  variant: pickedThinking || undefined,
+                }),
+              },
+            )
+          : await fetch(
+              `/api/opencode/${port}/session/${sessionId}/prompt`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  text: message,
+                  ...(pendingAttachments.length > 0
+                    ? { attachments: pendingAttachments }
+                    : {}),
+                  ...(pickedAgent ? { agent: pickedAgent } : {}),
+                  ...(pickedModel ? { model: pickedModel } : {}),
+                  ...(pickedThinking ? { thinking: pickedThinking } : {}),
+                }),
+              },
+            );
         if (!res.ok) {
           throw new Error(`prompt failed: ${res.status}`);
         }
@@ -363,6 +401,10 @@ function NewSessionPage() {
       navigate,
       instanceId,
       resolveDefaultAgent,
+      commandsData,
+      resolveModel,
+      resolveThinking,
+      isOverridingDefault,
     ],
   );
 
