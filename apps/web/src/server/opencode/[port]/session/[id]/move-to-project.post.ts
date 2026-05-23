@@ -8,10 +8,17 @@ const execFileAsync = promisify(execFile);
 const MOVE_LOCAL_CLI =
   "/home/nowaker/projekty/nowaker/opencode-tools/move-local.ts";
 
+// move-local (opencode-tools master, commit 25af6fb) now auto-classifies
+// in-flight candidates via the stuck-detector plugin:
+//   stuck (no-runner / stale-stream) -> auto-skip, move proceeds
+//   live (opencode_runtime_busy=true) -> refuse with structured error
+// Portal toggles --abort when the user explicitly opts in to aborting
+// the live runner. --allow-in-flight is intentionally NOT exposed by
+// portal (CLI-only debug knob per the opencode-tools maintainer).
 interface RequestBody {
   targetPath?: unknown;
   dryRun?: unknown;
-  allowInFlight?: unknown;
+  abort?: unknown;
 }
 
 export default defineHandler(async (event) => {
@@ -20,7 +27,7 @@ export default defineHandler(async (event) => {
   const targetPath =
     typeof body?.targetPath === "string" ? body.targetPath.trim() : "";
   const dryRun = body?.dryRun === true;
-  const allowInFlight = body?.allowInFlight === true;
+  const abort = body?.abort === true;
 
   if (!targetPath) {
     setResponseStatus(event, 400);
@@ -43,7 +50,7 @@ export default defineHandler(async (event) => {
     targetPath,
   ];
   if (dryRun) args.push("--dry-run");
-  if (allowInFlight) args.push("--allow-in-flight");
+  if (abort) args.push("--abort");
 
   try {
     const { stdout, stderr } = await execFileAsync("bun", args, {
@@ -59,13 +66,25 @@ export default defineHandler(async (event) => {
       message?: string;
     };
     const stderr = e.stderr ?? "";
-    const inFlight =
-      stderr.includes("in-flight") || stderr.includes("--allow-in-flight");
-    setResponseStatus(event, inFlight ? 409 : 500);
+    // move-local's structured live-runner error per opencode-tools 25af6fb:
+    //   refusing to move N actively-running session(s): ses_A, ses_B
+    //   [(M stuck subagent(s) would have been auto-skipped).]
+    //   Re-run with --abort to abort live runners first, ...
+    const liveMatch = stderr.match(
+      /refusing to move (\d+) actively-running session\(s\):\s*([^.\n]+)/,
+    );
+    const liveRunner = liveMatch !== null;
+    setResponseStatus(event, liveRunner ? 409 : 500);
     return {
       ok: false,
       dryRun,
-      inFlight,
+      liveRunner,
+      liveSessionIds: liveRunner
+        ? liveMatch![2]
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        : [],
       error: stderr || e.message || "move-local CLI failed",
       stdout: e.stdout ?? "",
       stderr,

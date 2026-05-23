@@ -148,9 +148,10 @@ export function AppSidebarNav() {
     dryRunStdout: string;
   } | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
-  const [moveInFlightPrompt, setMoveInFlightPrompt] = useState<{
+  const [moveLiveRunnerPrompt, setMoveLiveRunnerPrompt] = useState<{
     targetPath: string;
     reason: string;
+    liveSessionIds: string[];
   } | null>(null);
   // Hamburger menu open state. Hash-tracked so the Android hardware
   // back button (which dispatches popstate with the previous hash)
@@ -248,7 +249,7 @@ export function AppSidebarNav() {
 
   const callMoveLocal = async (
     targetPath: string,
-    options: { dryRun?: boolean; allowInFlight?: boolean } = {},
+    options: { dryRun?: boolean; abort?: boolean } = {},
   ) => {
     if (!port || !sessionId) {
       throw new Error("no session selected");
@@ -261,7 +262,7 @@ export function AppSidebarNav() {
         body: JSON.stringify({
           targetPath,
           dryRun: options.dryRun === true,
-          allowInFlight: options.allowInFlight === true,
+          abort: options.abort === true,
         }),
       },
     );
@@ -270,13 +271,21 @@ export function AppSidebarNav() {
       stdout?: string;
       stderr?: string;
       error?: string;
-      inFlight?: boolean;
+      liveRunner?: boolean;
+      liveSessionIds?: string[];
     } | null;
     if (!r.ok || !json?.ok) {
       const err = new Error(
         json?.error ?? `move failed (HTTP ${r.status})`,
-      ) as Error & { inFlight?: boolean; stdout?: string };
-      err.inFlight = json?.inFlight === true;
+      ) as Error & {
+        liveRunner?: boolean;
+        liveSessionIds?: string[];
+        stdout?: string;
+      };
+      err.liveRunner = json?.liveRunner === true;
+      err.liveSessionIds = Array.isArray(json?.liveSessionIds)
+        ? (json.liveSessionIds as string[])
+        : [];
       err.stdout = json?.stdout ?? "";
       throw err;
     }
@@ -291,9 +300,16 @@ export function AppSidebarNav() {
       const result = await callMoveLocal(targetPath, { dryRun: true });
       setMovePending({ targetPath, dryRunStdout: result.stdout });
     } catch (err) {
-      const e = err as Error & { inFlight?: boolean };
-      if (e.inFlight) {
-        setMoveInFlightPrompt({ targetPath, reason: e.message });
+      const e = err as Error & {
+        liveRunner?: boolean;
+        liveSessionIds?: string[];
+      };
+      if (e.liveRunner) {
+        setMoveLiveRunnerPrompt({
+          targetPath,
+          reason: e.message,
+          liveSessionIds: e.liveSessionIds ?? [],
+        });
       } else {
         toast.error(e.message);
       }
@@ -325,15 +341,15 @@ export function AppSidebarNav() {
     }
   };
 
-  const handleMoveInFlightOverride = async () => {
-    if (!moveInFlightPrompt) return;
-    const targetPath = moveInFlightPrompt.targetPath;
-    setMoveInFlightPrompt(null);
+  const handleMoveAbortAndProceed = async () => {
+    if (!moveLiveRunnerPrompt) return;
+    const targetPath = moveLiveRunnerPrompt.targetPath;
+    setMoveLiveRunnerPrompt(null);
     setMoveBusy(true);
     try {
       const result = await callMoveLocal(targetPath, {
         dryRun: true,
-        allowInFlight: true,
+        abort: true,
       });
       setMovePending({ targetPath, dryRunStdout: result.stdout });
     } catch (err) {
@@ -1072,19 +1088,23 @@ export function AppSidebarNav() {
         }}
       />
       <ConfirmDialog
-        isOpen={moveInFlightPrompt !== null}
-        title="Session has an in-flight runner"
+        isOpen={moveLiveRunnerPrompt !== null}
+        title="Session has a live runner"
         description={
-          moveInFlightPrompt
-            ? `Aborting first is safer. Override only if you know the runner is wedged.\n\nDry-run error:\n${moveInFlightPrompt.reason.slice(0, 600)}`
+          moveLiveRunnerPrompt
+            ? `${
+                moveLiveRunnerPrompt.liveSessionIds.length > 0
+                  ? `Live session(s): ${moveLiveRunnerPrompt.liveSessionIds.join(", ")}\n\n`
+                  : ""
+              }Abort the live runner(s) and move? Any stuck subagent sessions will be auto-skipped.\n\nDetails:\n${moveLiveRunnerPrompt.reason.slice(0, 600)}`
             : ""
         }
-        confirmLabel="Override (allow in-flight)"
+        confirmLabel="Abort and move"
         tone="danger"
         busy={moveBusy}
-        onConfirm={handleMoveInFlightOverride}
+        onConfirm={handleMoveAbortAndProceed}
         onClose={() => {
-          if (!moveBusy) setMoveInFlightPrompt(null);
+          if (!moveBusy) setMoveLiveRunnerPrompt(null);
         }}
       />
       {vscodeModal}
