@@ -33,6 +33,11 @@ import {
   formatMessageTime,
 } from "@/lib/format-time";
 import { useInstanceStore } from "@/stores/instance-store";
+import {
+  clearPendingSubmission,
+  usePendingSubmissions,
+  type PendingPromptEntry,
+} from "@/lib/pending-prompts";
 
 interface PromptsSearch {
   focus?: string;
@@ -302,6 +307,7 @@ function PromptsPage() {
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-2 sm:px-4">
+        <PendingSubmissionsBanner />
         {isLoading && (
           <div className="flex flex-1 min-h-0 items-center justify-center">
             <Loader className="size-6" />
@@ -858,12 +864,104 @@ function RefireModal({
                       {s.directory}
                     </span>
                   )}
-                </button>
-              </li>
+              </button>
+            </li>
             ))}
           </ul>
         </PrimitiveDialog>
       </Modal>
     </ModalOverlay>
+  );
+}
+
+// Bulletproof prompt history Phase 2: render pending localStorage
+// entries above the backend archive list. Each entry persists in
+// localStorage until backend 2xx confirms the prompt landed in the
+// archive. Entries shown here are prompts whose submit attempt failed
+// (network, openportal down, 5xx) - the prompt was captured client-
+// side BEFORE the fetch so it can't be lost. User invariant: 'No
+// prompts, ever, must be lost. Even if openportal is down, for a
+// brief moment or for hours!'
+function PendingSubmissionsBanner() {
+  const pending = usePendingSubmissions();
+  if (pending.length === 0) return null;
+  return (
+    <div
+      className="mb-3 rounded-md border border-warning/40 bg-warning-bg/30 p-2 text-xs"
+      data-test="portal-prompts-pending-banner"
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="font-medium text-warning-subtle-fg">
+          {pending.length} prompt
+          {pending.length === 1 ? "" : "s"} captured locally — not sent to
+          backend
+        </span>
+        <span className="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-subtle-fg">
+          not sent
+        </span>
+      </div>
+      <ul className="space-y-1.5">
+        {pending.map((entry) => (
+          <PendingEntryRow key={entry.localId} entry={entry} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PendingEntryRow({ entry }: { entry: PendingPromptEntry }) {
+  const submittedAt = new Date(entry.submittedAt);
+  const ageMs = Date.now() - entry.submittedAt;
+  const ageLabel =
+    ageMs < 60_000
+      ? `${Math.floor(ageMs / 1000)}s ago`
+      : ageMs < 3_600_000
+        ? `${Math.floor(ageMs / 60_000)}m ago`
+        : ageMs < 86_400_000
+          ? `${Math.floor(ageMs / 3_600_000)}h ago`
+          : `${Math.floor(ageMs / 86_400_000)}d ago`;
+  return (
+    <li className="flex items-start gap-2 rounded border border-warning/20 bg-bg/50 p-1.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-[10px] text-muted-fg">
+          <span title={submittedAt.toLocaleString()}>{ageLabel}</span>
+          <span>·</span>
+          <span className="font-mono">
+            {entry.sessionId.slice(0, 12)}…
+          </span>
+          {entry.attempts > 1 && (
+            <span className="text-danger">
+              ×{entry.attempts} attempts
+            </span>
+          )}
+          {entry.lastError && (
+            <span
+              className="truncate text-danger"
+              title={entry.lastError}
+            >
+              {entry.lastError}
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 whitespace-pre-wrap break-words text-sm text-fg">
+          {entry.kind === "command" && (
+            <span className="font-mono text-accent">/{entry.commandName}</span>
+          )}
+          {entry.kind === "command" ? " " : ""}
+          {entry.text.length > 200
+            ? `${entry.text.slice(0, 200)}…`
+            : entry.text}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => clearPendingSubmission(entry.localId)}
+        className="shrink-0 rounded border border-border bg-bg px-1.5 py-0.5 text-[10px] hover:bg-muted"
+        title="Remove this entry from local storage (the prompt has been seen / acknowledged)"
+        data-test="portal-prompts-pending-delete"
+      >
+        Drop
+      </button>
+    </li>
   );
 }

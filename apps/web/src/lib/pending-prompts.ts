@@ -164,3 +164,24 @@ export function subscribePendingSubmissions(cb: Listener): () => void {
   }
   return () => listeners.delete(cb);
 }
+
+import { useEffect, useState } from "react";
+
+export function usePendingSubmissions(
+  sessionId?: string,
+): PendingPromptEntry[] {
+  const [entries, setEntries] = useState<PendingPromptEntry[]>(() =>
+    listPendingSubmissions(sessionId),
+  );
+  useEffect(() => {
+    setEntries(listPendingSubmissions(sessionId));
+    return subscribePendingSubmissions((all) => {
+      setEntries(
+        sessionId === undefined
+          ? all
+          : all.filter((e) => e.sessionId === sessionId),
+      );
+    });
+  }, [sessionId]);
+  return entries;
+}
