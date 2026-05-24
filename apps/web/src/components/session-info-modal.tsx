@@ -210,10 +210,14 @@ function Body({
   } = useSessionMessages(sessionId, { loadAll: true });
   const { data: sessions, isLoading: sessionsLoading } = useSessions();
   const { data: providersData, isLoading: providersLoading } = useProviders();
-  const isLoading =
-    (messagesLoading && (!messages || messages.length === 0)) ||
-    (sessionsLoading && !sessions) ||
-    (providersLoading && !providersData);
+  // Per user spec: 'show immediately all that is already known, and each
+  // value that needs an update from server, an individual spinner as a
+  // value, before it populated.' We render the modal body unconditionally
+  // and use per-field loading flags below.
+  const sessionPending = sessionsLoading && !sessions;
+  const messagesPending = messagesLoading && (!messages || messages.length === 0);
+  const modelPending =
+    messagesPending || (providersLoading && !providersData);
 
   const session = useMemo(
     () =>
@@ -398,13 +402,7 @@ function Body({
         </button>
       </div>
       <div className="overflow-y-auto p-4 space-y-5">
-        {isLoading && (
-          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-fg">
-            <Loader className="size-5" />
-            <span>Loading session info…</span>
-          </div>
-        )}
-        {!isLoading && finishReason && (
+        {finishReason && (
           <div className="rounded-md border border-danger/40 bg-danger-subtle/30 p-3 text-xs text-danger-subtle-fg">
             <div className="font-semibold">{finishReason.title}</div>
             {finishReason.detail && (
@@ -414,46 +412,90 @@ function Body({
             )}
           </div>
         )}
-        {!isLoading && (
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-          <Field label="Title" value={session?.title ?? "—"} />
+          <Field
+            label="Title"
+            value={session?.title ?? "—"}
+            loading={sessionPending && !session}
+          />
           <Field label="Session ID" value={sessionId} />
-          <Field label="Messages" value={fmt(stats.messages)} />
-          <Field label="Provider" value={modelInfo?.providerName ?? "—"} />
-          <Field label="Model" value={modelInfo?.modelName ?? "—"} />
-          <Field label="Context Limit" value={fmt(modelInfo?.contextLimit)} />
-          <Field label="Total Tokens" value={fmt(stats.totalTokens)} />
+          <Field
+            label="Messages"
+            value={fmt(stats.messages)}
+            loading={messagesPending}
+          />
+          <Field
+            label="Provider"
+            value={modelInfo?.providerName ?? "—"}
+            loading={modelPending && !modelInfo}
+          />
+          <Field
+            label="Model"
+            value={modelInfo?.modelName ?? "—"}
+            loading={modelPending && !modelInfo}
+          />
+          <Field
+            label="Context Limit"
+            value={fmt(modelInfo?.contextLimit)}
+            loading={modelPending && !modelInfo}
+          />
+          <Field
+            label="Total Tokens"
+            value={fmt(stats.totalTokens)}
+            loading={messagesPending}
+          />
           <Field
             label="Usage"
             value={usagePct === null ? "—" : `${usagePct}%`}
+            loading={messagesPending}
           />
-          <Field label="Input Tokens" value={fmt(stats.inputSum)} />
-          <Field label="Output Tokens" value={fmt(stats.outputSum)} />
+          <Field
+            label="Input Tokens"
+            value={fmt(stats.inputSum)}
+            loading={messagesPending}
+          />
+          <Field
+            label="Output Tokens"
+            value={fmt(stats.outputSum)}
+            loading={messagesPending}
+          />
           <Field
             label="Reasoning Tokens"
             value={fmt(stats.reasoningSum)}
+            loading={messagesPending}
           />
           <Field
             label="Cache Tokens (read/write)"
             value={`${fmt(stats.cacheReadSum)} / ${fmt(stats.cacheWriteSum)}`}
+            loading={messagesPending}
           />
-          <Field label="User Messages" value={fmt(stats.userCount)} />
+          <Field
+            label="User Messages"
+            value={fmt(stats.userCount)}
+            loading={messagesPending}
+          />
           <Field
             label="Assistant Messages"
             value={fmt(stats.assistantCount)}
+            loading={messagesPending}
           />
-          <Field label="Total Cost" value={fmtMoney(stats.totalCost)} />
+          <Field
+            label="Total Cost"
+            value={fmtMoney(stats.totalCost)}
+            loading={messagesPending}
+          />
           <Field
             label="Session Created"
             value={fmtDate(session?.time?.created)}
+            loading={sessionPending && !session}
           />
           <Field
             label="Last Activity"
             value={fmtDate(session?.time?.updated)}
+            loading={sessionPending && !session}
           />
         </div>
-        )}
-        {!isLoading && breakdown.length > 0 && (
+        {breakdown.length > 0 && (
           <div className="space-y-2">
             <div className="text-xs text-muted-fg">Context Breakdown</div>
             <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -488,8 +530,8 @@ function Body({
             </div>
           </div>
         )}
-        {!isLoading && <McpSection />}
-        {!isLoading && <ExportSection sessionId={sessionId} />}
+        <McpSection />
+        <ExportSection sessionId={sessionId} />
       </div>
     </>
   );
@@ -743,11 +785,21 @@ export function ExportSessionModal({
   );
 }
 
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
+function Field({
+  label,
+  value,
+  loading,
+}: {
+  label: string;
+  value: React.ReactNode;
+  loading?: boolean;
+}) {
   return (
     <div>
       <div className="text-xs text-muted-fg">{label}</div>
-      <div className="text-sm font-mono tabular-nums break-all">{value}</div>
+      <div className="text-sm font-mono tabular-nums break-all">
+        {loading ? <Loader className="size-3 inline-block" /> : value}
+      </div>
     </div>
   );
 }
