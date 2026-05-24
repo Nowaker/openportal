@@ -49,6 +49,11 @@ import {
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+import {
+  clearPendingSubmission,
+  recordFailedAttempt,
+  recordPendingSubmission,
+} from "@/lib/pending-prompts";
 
 interface PromptAttachment {
   mime: string;
@@ -332,43 +337,69 @@ function NewSessionPage() {
           }
         }
 
-        const res = slashDispatch
-          ? await fetch(
-              `/api/opencode/${port}/session/${sessionId}/command`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  command: slashDispatch.command,
-                  arguments: slashDispatch.arguments,
-                  agent: pickedAgent,
-                  model:
-                    pickedModel != null
-                      ? `${pickedModel.providerID}/${pickedModel.modelID}`
-                      : undefined,
-                  variant: pickedThinking || undefined,
-                }),
-              },
-            )
-          : await fetch(
-              `/api/opencode/${port}/session/${sessionId}/prompt`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  text: message,
-                  ...(pendingAttachments.length > 0
-                    ? { attachments: pendingAttachments }
-                    : {}),
-                  ...(pickedAgent ? { agent: pickedAgent } : {}),
-                  ...(pickedModel ? { model: pickedModel } : {}),
-                  ...(pickedThinking ? { thinking: pickedThinking } : {}),
-                }),
-              },
-            );
-        if (!res.ok) {
-          throw new Error(`prompt failed: ${res.status}`);
+        // Bulletproof prompt history (Phase 3): localStorage capture
+        // BEFORE the fetch for the new-session create flow.
+        const pendingLocalId = recordPendingSubmission({
+          sessionId,
+          port,
+          text: message,
+          model: pickedModel ?? undefined,
+          agent: pickedAgent ?? undefined,
+          variant: pickedThinking ?? undefined,
+          attachmentsCount: pendingAttachments.length,
+          kind: slashDispatch ? "command" : "prompt",
+          commandName: slashDispatch?.command,
+          commandArguments: slashDispatch?.arguments,
+        });
+        let res: Response;
+        try {
+          res = slashDispatch
+            ? await fetch(
+                `/api/opencode/${port}/session/${sessionId}/command`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    command: slashDispatch.command,
+                    arguments: slashDispatch.arguments,
+                    agent: pickedAgent,
+                    model:
+                      pickedModel != null
+                        ? `${pickedModel.providerID}/${pickedModel.modelID}`
+                        : undefined,
+                    variant: pickedThinking || undefined,
+                  }),
+                },
+              )
+            : await fetch(
+                `/api/opencode/${port}/session/${sessionId}/prompt`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    text: message,
+                    ...(pendingAttachments.length > 0
+                      ? { attachments: pendingAttachments }
+                      : {}),
+                    ...(pickedAgent ? { agent: pickedAgent } : {}),
+                    ...(pickedModel ? { model: pickedModel } : {}),
+                    ...(pickedThinking ? { thinking: pickedThinking } : {}),
+                  }),
+                },
+              );
+        } catch (fetchErr) {
+          recordFailedAttempt(
+            pendingLocalId,
+            fetchErr instanceof Error ? fetchErr.message : "network error",
+          );
+          throw fetchErr;
         }
+        if (!res.ok) {
+          const msg = `prompt failed: ${res.status}`;
+          recordFailedAttempt(pendingLocalId, msg);
+          throw new Error(msg);
+        }
+        clearPendingSubmission(pendingLocalId);
 
         setSendingStatus("Prompt accepted. Opening the session...");
         submittedRef.current = true;

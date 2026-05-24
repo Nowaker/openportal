@@ -54,6 +54,11 @@ import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
+import {
+  clearPendingSubmission,
+  recordFailedAttempt,
+  recordPendingSubmission,
+} from "@/lib/pending-prompts";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DirectoryPicker } from "@/components/directory-picker/directory-picker";
 import { mutate as globalSWRMutate } from "swr";
@@ -266,8 +271,16 @@ export function AppSidebarNav() {
       return;
     }
     setRunningToolId(toolId);
+    const selectedModel = resolveModel(sessionId, instanceId);
+    const pendingLocalId = recordPendingSubmission({
+      sessionId,
+      port,
+      text: prompt,
+      model: selectedModel ?? undefined,
+      attachmentsCount: 0,
+      kind: "prompt",
+    });
     try {
-      const selectedModel = resolveModel(sessionId, instanceId);
       const response = await fetch(
         `/api/opencode/${port}/session/${sessionId}/prompt`,
         {
@@ -276,11 +289,19 @@ export function AppSidebarNav() {
           body: JSON.stringify({ text: prompt, model: selectedModel }),
         },
       );
-      if (!response.ok) throw new Error("Failed to send request");
+      if (!response.ok) {
+        recordFailedAttempt(pendingLocalId, `HTTP ${response.status}`);
+        throw new Error("Failed to send request");
+      }
+      clearPendingSubmission(pendingLocalId);
       mutateSessionMessages(port, sessionId);
       mutateSessions();
       toast.success(`${label} request sent`);
     } catch (err) {
+      recordFailedAttempt(
+        pendingLocalId,
+        err instanceof Error ? err.message : "network error",
+      );
       console.error(`Failed to run ${label}:`, err);
       toast.error(`Failed to send ${label} request`);
     } finally {
