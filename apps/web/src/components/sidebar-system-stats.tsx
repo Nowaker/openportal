@@ -175,6 +175,60 @@ export function SidebarSystemStats() {
           tone="neutral"
         />
       )}
+      <SseLatencyRow worstLagMs={stats.sseLatency?.worstLagMs ?? null} />
     </div>
   );
 }
+
+// Compact short-form for sidebar fit. Thresholds match the user spec
+// in the dispatch (ITEM 2): <1s ok, 1-5s warning, 5-30s amber, >30s red.
+function formatLag(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
+  return `${Math.floor(ms / 3_600_000)}h`;
+}
+
+function lagTone(ms: number): "neutral" | "warning" | "danger" {
+  if (ms >= 30_000) return "danger";
+  if (ms >= 1_000) return "warning";
+  return "neutral";
+}
+
+// Single SSE-freshness row. 'null' worstLag = no SSE traffic ever
+// observed by this openportal process (just started, or no opencodes
+// configured). Render dash + neutral tone in that case rather than
+// claiming '0ms' which would imply 'connected and fresh'.
+function SseLatencyRow({ worstLagMs }: { worstLagMs: number | null }) {
+  const ms = worstLagMs;
+  const detail = ms === null ? "—" : formatLag(ms);
+  const tone = ms === null ? "neutral" : lagTone(ms);
+  const toneClass =
+    tone === "danger"
+      ? "text-danger"
+      : tone === "warning"
+        ? "text-warning"
+        : "text-muted-fg";
+  return (
+    <div
+      className="flex justify-between text-[10px]"
+      data-test="portal-sidebar-sse-latency"
+      title={
+        ms === null
+          ? "No opencode SSE traffic observed yet."
+          : ms >= 30_000
+            ? "opencode SSE pipeline saturated or stuck (no event in >30s)."
+            : ms >= 5_000
+              ? "opencode SSE pipeline lagging (no event in >5s)."
+              : ms >= 1_000
+                ? "opencode SSE pipeline mildly behind."
+                : "opencode SSE pipeline fresh."
+      }
+    >
+      <span className={toneClass}>sse</span>
+      <span className={`tabular-nums ${toneClass}`}>{detail}</span>
+    </div>
+  );
+}
+
+

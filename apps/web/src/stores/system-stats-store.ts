@@ -17,6 +17,16 @@ export interface DiskStat {
   usedPercent: number;
 }
 
+export interface SseLatencyPerServer {
+  lastEventMs: number;
+  lagMs: number;
+}
+
+export interface SseLatency {
+  perServer: Record<string, SseLatencyPerServer>;
+  worstLagMs: number | null;
+}
+
 export interface SystemStats {
   load: { one: number; five: number; fifteen: number } | null;
   memory: {
@@ -28,6 +38,7 @@ export interface SystemStats {
   cpu: { totalPercent: number; iowaitPercent: number } | null;
   disks: DiskStat[];
   opencodeProcesses: OpencodeProcess[];
+  sseLatency: SseLatency;
   observedAt: number;
 }
 
@@ -37,6 +48,7 @@ const EMPTY: SystemStats = {
   cpu: null,
   disks: [],
   opencodeProcesses: [],
+  sseLatency: { perServer: {}, worstLagMs: null },
   observedAt: 0,
 };
 

@@ -64,6 +64,27 @@ interface ConnHandle {
 
 const conns = new Map<string, ConnHandle>();
 
+// Per-server timestamp of the most recent SSE frame we received from
+// opencode. Used by the sidebar SSE-latency metric to surface when
+// opencode's SSE pipeline is lagging (LLM-pegged event loop, GC pause,
+// upstream restart). 'now - lastEventMs' is the freshness lag.
+// null = never connected (process just started, or server never had
+//        any traffic). undefined-key = never seen this server.
+const lastEventMs = new Map<string, number>();
+
+export function getLastEventMs(serverId: string): number | null {
+  const v = lastEventMs.get(serverId);
+  return v === undefined ? null : v;
+}
+
+export function getAllLastEventMs(): Record<string, number> {
+  return Object.fromEntries(lastEventMs);
+}
+
+function markEvent(serverId: string): void {
+  lastEventMs.set(serverId, Date.now());
+}
+
 interface OpencodeFrame {
   type?: string;
   properties?: { sessionID?: unknown };
@@ -100,6 +121,7 @@ async function processStream(
         } catch {
           continue;
         }
+        markEvent(serverId);
         try {
           applyOpencodeEvent(serverId, port, ev);
           if (

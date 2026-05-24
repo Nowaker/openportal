@@ -3,6 +3,7 @@ import { execSync } from "child_process";
 import { readFileSync, statSync, statfsSync } from "fs";
 import { cpus } from "node:os";
 import { readPortalConfig } from "./lib/portal-config";
+import { getAllLastEventMs } from "./plugins/indicator-broadcaster";
 
 interface DiskStat {
   path: string;
@@ -28,6 +29,13 @@ interface SystemStats {
     cpuPercent: number;
     cmdline: string;
   }>;
+  // Per-server SSE freshness lag, computed from the indicator-broadcaster's
+  // last_event_ms map. Empty when no opencode SSE traffic has been
+  // observed (process just started, or no events flowing yet).
+  sseLatency: {
+    perServer: Record<string, { lastEventMs: number; lagMs: number }>;
+    worstLagMs: number | null;
+  };
   observedAt: number;
 }
 
@@ -329,6 +337,19 @@ export default defineHandler(async () => {
           },
     disks: readDiskStats(),
     opencodeProcesses: sampled.opencodeProcesses,
+    sseLatency: (() => {
+      const now = Date.now();
+      const all = getAllLastEventMs();
+      const perServer: Record<string, { lastEventMs: number; lagMs: number }> =
+        {};
+      let worst: number | null = null;
+      for (const [serverId, ts] of Object.entries(all)) {
+        const lag = now - ts;
+        perServer[serverId] = { lastEventMs: ts, lagMs: lag };
+        if (worst === null || lag > worst) worst = lag;
+      }
+      return { perServer, worstLagMs: worst };
+    })(),
     observedAt: Date.now(),
   };
   return stats;
