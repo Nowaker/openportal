@@ -1,5 +1,6 @@
 import { defineHandler, readBody, setResponseStatus } from "nitro/h3";
 import { fetchOpencode } from "../../../../lib/opencode-client";
+import { resolveOwner } from "../../../../lib/prompt-routing";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
 
 interface CompactBody {
@@ -33,8 +34,16 @@ export default defineHandler(async (event) => {
       error: "providerID and modelID required (opencode /summarize spec).",
     };
   }
+  // session.summarize/compact kicks off compaction work on a SPECIFIC
+  // opencode instance (the one running the live runner). If we send it
+  // to the user's selected active-server but the runner is on a
+  // different cohort member, two parallel compaction jobs spawn for the
+  // same session. Same bug class as P0 prompt-routing - resolve owner
+  // first.
+  const owner = await resolveOwner(sessionId);
+  const targetPort = owner?.port ?? port;
   const res = await fetchOpencode(
-    port,
+    targetPort,
     `/session/${encodeURIComponent(sessionId)}/summarize`,
     {
       method: "POST",
