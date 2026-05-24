@@ -874,16 +874,40 @@ function RefireModal({
   );
 }
 
-// Bulletproof prompt history Phase 2: render pending localStorage
-// entries above the backend archive list. Each entry persists in
-// localStorage until backend 2xx confirms the prompt landed in the
-// archive. Entries shown here are prompts whose submit attempt failed
-// (network, openportal down, 5xx) - the prompt was captured client-
-// side BEFORE the fetch so it can't be lost. User invariant: 'No
+// Bulletproof prompt history Phase 2+3: render pending localStorage
+// entries above the backend archive list AND auto-reconcile orphans
+// older than ORPHAN_RECONCILE_AFTER_MS to /api/prompts/persist-orphan
+// so they survive a browser localStorage clear. User invariant: 'No
 // prompts, ever, must be lost. Even if openportal is down, for a
 // brief moment or for hours!'
+const ORPHAN_RECONCILE_AFTER_MS = 60_000;
+const reconcileInFlight = new Set<string>();
+async function reconcileOrphan(entry: PendingPromptEntry): Promise<void> {
+  if (reconcileInFlight.has(entry.localId)) return;
+  reconcileInFlight.add(entry.localId);
+  try {
+    const res = await fetch("/api/prompts/persist-orphan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    if (res.ok) {
+      clearPendingSubmission(entry.localId);
+    }
+  } catch {
+  } finally {
+    reconcileInFlight.delete(entry.localId);
+  }
+}
 function PendingSubmissionsBanner() {
   const pending = usePendingSubmissions();
+  useEffect(() => {
+    const now = Date.now();
+    for (const entry of pending) {
+      if (now - entry.submittedAt < ORPHAN_RECONCILE_AFTER_MS) continue;
+      void reconcileOrphan(entry);
+    }
+  }, [pending]);
   if (pending.length === 0) return null;
   return (
     <div

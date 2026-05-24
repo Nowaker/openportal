@@ -26,7 +26,12 @@ export interface ArchiveInput {
   parentSessionIdOverride?: string | null;
 }
 
-export type PromptStatus = "pending" | "delivered" | "failed" | "sent";
+export type PromptStatus =
+  | "pending"
+  | "delivered"
+  | "failed"
+  | "sent"
+  | "history-only";
 
 export interface PromptRow {
   id: string;
