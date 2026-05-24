@@ -14,6 +14,7 @@ export default defineConfig({
     "./src/server/plugins/session-prefetcher.ts",
     "./src/server/plugins/stuck-detector-client.ts",
     "./src/server/plugins/stuck-detector-journal-client.ts",
+    "./src/server/plugins/cohort-poller.ts",
   ],
   handlers: [
     {
