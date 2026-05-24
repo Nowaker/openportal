@@ -29,6 +29,8 @@
 // localId (crypto.randomUUID() or fallback) so concurrent writes don't
 // race.
 
+import { useEffect, useState } from "react";
+
 const STORAGE_KEY = "openportal-pending-prompts-v1";
 
 export interface PendingPromptEntry {
@@ -164,8 +166,6 @@ export function subscribePendingSubmissions(cb: Listener): () => void {
   }
   return () => listeners.delete(cb);
 }
-
-import { useEffect, useState } from "react";
 
 export function usePendingSubmissions(
   sessionId?: string,
