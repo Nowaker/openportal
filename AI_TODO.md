@@ -1026,7 +1026,7 @@ Design notes:
 - 0df212d: bumped userBgClass from bg-accent/10 → bg-accent/30 (3x light-mode tint), dark:bg-accent/8 → /25, border-accent/50 → /80.
 - a1d7336: added border-l-4 + border-l-accent so each user message has the canonical chat-UI left-stripe accent (Slack/Discord pattern) on top of the brightened body.
 
-### 59. P0 cohort prompt-routing: resolve owner via plugin /verdicts/<sid>.owner_instance_url (CRITICAL CORRECTNESS) (DONE - 2fa0d94 + f26dcc3)
+### 59. P0 cohort owner-routing across every runner-targeted command (CRITICAL CORRECTNESS) (DONE - 2fa0d94 + f26dcc3 + 7dd0b64)
 
 User prompt (P0 from cohort-architecture dispatch):
 
@@ -1034,7 +1034,8 @@ User prompt (P0 from cohort-architecture dispatch):
 
 Design notes:
 - 2fa0d94: new apps/web/src/server/lib/prompt-routing.ts exports resolveOwner(sessionId) which queries the plugin's authoritative aggregator at /verdicts/<sid> and parses owner_instance_url into {host, port}. 5s TTL cache so prompt bursts hit plugin once. Wired into pending-prompt-worker.ts + /prompt.ts + /command.ts. console.log records every rerouting decision.
-- f26dcc3: same pattern applied to session.abort. Same bug class - aborts from non-owner instance no-op while runner keeps generating on owner. Future follow-ups queued for session.compact/summarize (kicks off work on a specific instance).
+- f26dcc3: same pattern applied to session.abort. Same bug class - aborts from non-owner instance no-op while runner keeps generating on owner.
+- 7dd0b64: same pattern applied to session.summarize/compact. Compaction kicks off work on a specific instance; non-owner dispatch would spawn a second parallel compaction job. Now ALL runner-targeted opencode commands route via cohort owner: session.promptAsync, session.command, session.abort, session.summarize. DB-write commands (delete/archive/unarchive/revert/fork) stay on user's active-server since shared SQLite means any instance writes propagate.
 - DEFERRED: per-cohort plugin URL (today everything goes to 127.0.0.1:4098; eventually plugin will run per cohort). SDK auth handoff if owner instance requires non-default auth (today everything is loopback unauthenticated so getOpencodeClient works for any port portal can reach).
 
 ### 60. P1 cohort registry + sidebar partitioning (DONE - 2d506bc + d5d2eeb)
@@ -1048,20 +1049,25 @@ Design notes:
 - d5d2eeb: new apps/web/src/stores/cohort-store.ts SWR hook + sidebar-system-stats.tsx partitions opencodeProcesses into 'cohort×N' (matching ports in cohort) + 'other ocs×M' (different cohorts on host - sandbox-local, docker, ad-hoc). Sidebar-stats cohort metric no longer inflated by unrelated opencode-serve instances per user spec.
 - Remaining P1 items (deferred for explicit scope direction): /servers UI redesign (cohort grouping + primary selector), routing abstraction (cohort handle instead of instance URL), instance/server/cohort vocabulary refactor.
 
-### 61. Bulletproof prompt history: localStorage first bastion + reconciliation (Q-PENDING)
+### 61. Bulletproof prompt history: localStorage first bastion + reconciliation (PHASES 1+2 DONE - 142632f + fc37d72; PHASE 3 PENDING)
 
-User prompt:
+User prompt (verbatim):
 
 > End of queue: inspect draft clearing code. I once submitted a prompt and it went nowhere. It showed on the chat log for a while. But not in prompt history. Clicking the button should ALWAYS put it in the history. If message gets lost somehow in routing, whatever, it still must be in prompt history. I've an idea. Local storage as the first bastion for prompt history. It goes there. Then send to openportal backend. Only when openportal backend accepts it and gives us an ID back (means it was saved), then frontend can clear it from local storage. If for some reason there's leftover local. Storage entries, they should be shown in between "legit" backend derived prompts. And on prompt history render, when front end notices it, should send it to backend as "history only entry, not a prompt to submit". So it's persisted. In prompt history list it should show as "not sent" or some other descriptive label. But it needs to have all the Metadata eg datetime is when user clicked submit prompt. Make it bullet proof. No prompts, ever, must be lost. Even if openportal is down, for a brief moment or for hours!
 
-Design notes:
-- Client-side new flow: composer Submit handler stores draft in localStorage IMMEDIATELY (before any fetch) with metadata { id (uuid), sessionId, text, submittedAt, attempt }.
-- Fetch /api/prompt as normal; on success (response carries archive row ID), clear the localStorage entry by uuid.
-- On failure / network error / opencode-down / openportal-restart-mid-submit: localStorage entry persists.
-- Prompts-history page render: on mount, scan localStorage for entries, render them inline-merged with backend-fetched prompts (sorted by submittedAt), labeled with "not sent" pill + retry button.
-- New POST /api/prompts/persist-orphan endpoint: takes the localStorage payload + writes a row to prompt-archive table with status='history-only' (new status). On success, frontend clears the localStorage entry.
-- Status='history-only' rows are visible in prompts list but never picked up by pending-prompt-worker (which scans status='pending' only).
-- Bulletproof: even if openportal is down for HOURS, localStorage holds the entries. When portal comes back, the next history render reconciles them.
+Phase 1 (142632f, DONE): localStorage capture before fetch.
+- New `apps/web/src/lib/pending-prompts.ts` single-key store (`openportal-pending-prompts-v1`) holding `PendingPromptEntry[]` with full metadata: `{localId, sessionId, port, text, model, agent, variant, attachmentsCount, submittedAt, lastError, attempts, kind, commandName?, commandArguments?}`.
+- Main composer submit at `$id.tsx` wrapped: `recordPendingSubmission` IMMEDIATELY before fetch; on 2xx -> `clearPendingSubmission`; on failure -> `recordFailedAttempt` with error text + rethrow.
+- Cross-tab sync via `storage` event. Defensive try/catch on read+write so SSR/private-mode/quota-exceeded degrade gracefully.
+
+Phase 2 (fc37d72, DONE): /prompts UI surface.
+- `usePendingSubmissions()` hook subscribes to localStorage changes.
+- New `PendingSubmissionsBanner` at top of /prompts scrollable area, shown when count > 0. Per-entry row: relative age, session-id prefix, attempt count, last-error tooltip, text (truncated 200), Drop button. "not sent" pill in warning yellow.
+
+Phase 3 (PENDING):
+- Wire remaining 4 submit sites into the same record/clear pattern: `$id.tsx:870` (question-fallback prompt), `$id.tsx:4634` (stuck-busy auto-retry), `new.tsx:354` (new-session create), `app-sidebar-nav.tsx:272` (sidebar pin submit).
+- New POST `/api/prompts/persist-orphan` backend endpoint: archives orphan localStorage payload with `status='history-only'` (new status, NOT picked up by pending-prompt-worker). On 2xx, frontend clears the localStorage entry — entry now backend-persisted for cross-device durability + survives browser cache clear.
+- Render-time reconciler in `PendingSubmissionsBanner`: for entries older than N seconds without a backend match, auto-POST to `/persist-orphan`. Backoff on failure.
 
 ### 62. Session info modal: incremental rendering with per-field spinners (Q-PENDING)
 
