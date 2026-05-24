@@ -872,17 +872,36 @@ function QuestionAnswerForm({
       }
 
       const fallbackText = formatAnswersAsPrompt(questions, answers);
-      const promptRes = await fetch(
-        `/api/opencode/${port}/session/${sessionId}/prompt`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: fallbackText }),
-        },
-      );
-      if (!promptRes.ok) {
-        throw new Error(await readErrorMessage(promptRes));
+      const fallbackPendingId = recordPendingSubmission({
+        sessionId,
+        port,
+        text: fallbackText,
+        attachmentsCount: 0,
+        kind: "prompt",
+      });
+      let promptRes: Response;
+      try {
+        promptRes = await fetch(
+          `/api/opencode/${port}/session/${sessionId}/prompt`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: fallbackText }),
+          },
+        );
+      } catch (fetchErr) {
+        recordFailedAttempt(
+          fallbackPendingId,
+          fetchErr instanceof Error ? fetchErr.message : "network error",
+        );
+        throw fetchErr;
       }
+      if (!promptRes.ok) {
+        const msg = await readErrorMessage(promptRes);
+        recordFailedAttempt(fallbackPendingId, msg);
+        throw new Error(msg);
+      }
+      clearPendingSubmission(fallbackPendingId);
       setSubmittedAt(Date.now());
       mutateSessionMessages(port, sessionId);
     } catch (err) {

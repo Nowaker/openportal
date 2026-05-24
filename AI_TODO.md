@@ -1049,7 +1049,7 @@ Design notes:
 - d5d2eeb: new apps/web/src/stores/cohort-store.ts SWR hook + sidebar-system-stats.tsx partitions opencodeProcesses into 'cohort×N' (matching ports in cohort) + 'other ocs×M' (different cohorts on host - sandbox-local, docker, ad-hoc). Sidebar-stats cohort metric no longer inflated by unrelated opencode-serve instances per user spec.
 - Remaining P1 items (deferred for explicit scope direction): /servers UI redesign (cohort grouping + primary selector), routing abstraction (cohort handle instead of instance URL), instance/server/cohort vocabulary refactor.
 
-### 61. Bulletproof prompt history: localStorage first bastion + reconciliation (PHASES 1+2 DONE - 142632f + fc37d72; PHASE 3 PENDING)
+### 61. Bulletproof prompt history: localStorage first bastion + reconciliation (PHASES 1+2+3 DONE - 142632f + fc37d72 + 52596da + 7cabf07)
 
 User prompt (verbatim):
 
@@ -1064,10 +1064,23 @@ Phase 2 (fc37d72, DONE): /prompts UI surface.
 - `usePendingSubmissions()` hook subscribes to localStorage changes.
 - New `PendingSubmissionsBanner` at top of /prompts scrollable area, shown when count > 0. Per-entry row: relative age, session-id prefix, attempt count, last-error tooltip, text (truncated 200), Drop button. "not sent" pill in warning yellow.
 
-Phase 3 (PENDING):
-- Wire remaining 4 submit sites into the same record/clear pattern: `$id.tsx:870` (question-fallback prompt), `$id.tsx:4634` (stuck-busy auto-retry), `new.tsx:354` (new-session create), `app-sidebar-nav.tsx:272` (sidebar pin submit).
-- New POST `/api/prompts/persist-orphan` backend endpoint: archives orphan localStorage payload with `status='history-only'` (new status, NOT picked up by pending-prompt-worker). On 2xx, frontend clears the localStorage entry — entry now backend-persisted for cross-device durability + survives browser cache clear.
-- Render-time reconciler in `PendingSubmissionsBanner`: for entries older than N seconds without a backend match, auto-POST to `/persist-orphan`. Backoff on failure.
+Phase 3a (52596da, DONE): wrapped 2 more submit sites with the record/clear pattern — new-session create at `new.tsx`, sidebar runTool helper at `app-sidebar-nav.tsx`. The retry-only sites (`$id.tsx:4634` stuck-busy auto-retry) are intentionally skipped since the original submit already captured the prompt; wrapping would dupe entries.
+
+Phase 3b (7cabf07, DONE):
+- `PromptStatus` type extended with `history-only` (`prompt-archive.ts`). `listPendingPrompts` already filters by `status='pending'` so the worker auto-ignores history-only rows.
+- New POST `/api/prompts/persist-orphan` endpoint (`apps/web/src/server/prompts/persist-orphan.post.ts`) takes a PendingPromptEntry-shaped body and archives via `archivePrompt` with `status='history-only'`. Validates sessionId+port+text non-empty.
+- Render-time reconciler in `PendingSubmissionsBanner`: on every render, scans entries older than ORPHAN_RECONCILE_AFTER_MS (60s) and POSTs them to `/persist-orphan`. `reconcileInFlight` Set prevents duplicate posts. On 2xx, the localStorage entry is cleared — entry is now durably in backend SQLite, surviving browser cache clears, multi-device, hours of openportal downtime.
+
+Phase 3c (last sub-task, ALSO DONE - question-fallback wrap):
+- `$id.tsx:870` question-fallback prompt wrapped with the same record/clear pattern. The remaining unwrapped submit site is `$id.tsx:4634` (stuck-busy auto-retry), which is portal-initiated automated retry of a prompt that was ALREADY captured during the original user submit; wrapping would duplicate the localStorage entry.
+
+End-to-end flow now BULLETPROOF:
+1. User clicks Submit -> `recordPendingSubmission` writes to localStorage IMMEDIATELY. Even if browser tab crashes 1ms later, the entry survives.
+2. fetch `/api/prompt`. 2xx -> `clearPendingSubmission`. Failure -> `recordFailedAttempt` records error + attempt count.
+3. `/prompts` banner shows surviving entries as "not sent" pill.
+4. After 60s, render-time reconciler POSTs orphan to `/persist-orphan` which archives `status='history-only'`. localStorage entry cleared. Row is now in backend SQLite. Visible in `/prompts` forever, surviving browser cache clears, multi-device, hours of openportal downtime.
+
+User invariant met verbatim: "No prompts, ever, must be lost. Even if openportal is down, for a brief moment or for hours!"
 
 ### 62. Session info modal: incremental rendering with per-field spinners (Q-PENDING)
 
