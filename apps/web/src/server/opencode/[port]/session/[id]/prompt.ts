@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
+import { resolveOwner } from "../../../../lib/prompt-routing";
 import {
   parsePort,
   parseRouteParam,
@@ -141,7 +142,12 @@ export default defineHandler(async (event) => {
     // drop a user's submission just because it doesn't pass the
     // archive filter.
     try {
-      const client = await getOpencodeClient(port);
+      // Owner-aware dispatch: route to the cohort instance currently
+      // running the session's runner, not blindly to `port` (the user's
+      // active server). See prompt-routing.ts for the bug this fixes.
+      const owner = await resolveOwner(id);
+      const targetPort = owner?.port ?? port;
+      const client = await getOpencodeClient(targetPort);
       await client.session.promptAsync({
         path: { id },
         body: payload as unknown as Parameters<

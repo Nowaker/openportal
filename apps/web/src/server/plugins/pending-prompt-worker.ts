@@ -26,6 +26,7 @@
 
 import { definePlugin } from "nitro";
 import { getOpencodeClient } from "../lib/opencode-client";
+import { resolveOwner } from "../lib/prompt-routing";
 import {
   backoffMsForAttempts,
   listPendingPrompts,
@@ -61,7 +62,20 @@ async function deliverOne(row: PromptRow): Promise<void> {
   }
 
   try {
-    const client = await getOpencodeClient(row.port);
+    // Cross-instance owner resolution. Without this, the worker dispatches
+    // to row.port (the active server the user picked at archive time)
+    // even when the session's live runner is on a DIFFERENT instance in
+    // the same cohort - opencode then spawns a second runner. See
+    // prompt-routing.ts header for the full bug description.
+    const owner = await resolveOwner(row.session_id);
+    const targetPort = owner?.port ?? row.port;
+    const client = await getOpencodeClient(targetPort);
+    if (owner && targetPort !== row.port) {
+      console.log(
+        `[pending-prompt-worker] sid=${row.session_id} rerouted from ` +
+          `archived port ${row.port} to owner ${owner.host}:${owner.port}`,
+      );
+    }
     await client.session.promptAsync({
       path: { id: row.session_id },
       body: payload as unknown as Parameters<

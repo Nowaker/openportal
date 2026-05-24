@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/validation";
 import { invalidateMessagesCache } from "../../../../lib/messages-cache";
 import { invalidateSessionsCache } from "../../../../lib/sessions-cache";
+import { resolveOwner } from "../../../../lib/prompt-routing";
 import { archivePrompt } from "../../../../lib/prompt-archive";
 
 const commandBodySchema = z.object({
@@ -67,7 +68,12 @@ export default defineHandler(async (event) => {
   // (which carries an expanded template, NOT the literal '/foo bar').
   const opencodeMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
 
-  const client = await getOpencodeClientV2(port);
+  // Owner-aware dispatch: route to the cohort instance currently
+  // running the session's runner, not blindly to `port` (the user's
+  // active server). See prompt-routing.ts for the bug this fixes.
+  const ownerTarget = await resolveOwner(sessionID);
+  const targetPort = ownerTarget?.port ?? port;
+  const client = await getOpencodeClientV2(targetPort);
   try {
     const result = await client.session.command({
       sessionID,
