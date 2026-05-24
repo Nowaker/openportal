@@ -2789,7 +2789,7 @@ const MessageItem = memo(function MessageItem({
     : "";
   const userBgClass = isSyntheticMarker
     ? "bg-muted/30 border-t border-b border-muted/50 [[data-role=user]+&]:border-t-0"
-    : "bg-accent/30 dark:bg-accent/25 border-t border-b border-accent/80 [[data-role=user]+&]:border-t-0";
+    : "bg-accent/30 dark:bg-accent/25 border-t border-b border-l-4 border-accent/80 border-l-accent [[data-role=user]+&]:border-t-0";
   return (
     <div
       className={`${decoration} relative px-3 py-3 ${
