@@ -1,5 +1,6 @@
 import { useInstanceStore } from "@/stores/instance-store";
 import { useSystemStats } from "@/stores/system-stats-store";
+import { useCohort } from "@/stores/cohort-store";
 
 function formatSize(kb: number): string {
   if (kb >= 1024 * 1024 * 1024)
@@ -46,6 +47,7 @@ function Bar({
 
 export function SidebarSystemStats() {
   const { stats, isLoading } = useSystemStats();
+  const { cohort } = useCohort();
   const activePort = useInstanceStore((s) => s.instance?.port ?? null);
   const activeHostname = useInstanceStore((s) => s.instance?.hostname ?? null);
   if (isLoading && !stats.load) return null;
@@ -105,6 +107,31 @@ export function SidebarSystemStats() {
     (sum, p) => sum + p.cpuPercent,
     0,
   );
+
+  // Cohort partitioning: an opencode process belongs to the user's
+  // current cohort iff its --port flag matches a worker reported by
+  // the cohort plugin at /api/cohort. The plugin is authoritative for
+  // cohort membership (every worker registered to the same plugin
+  // leader shares a DB by construction). Processes NOT in the cohort
+  // are different cohorts on the same host (sandbox-local, docker,
+  // ad-hoc spawns) and get their own row.
+  const cohortPorts = new Set(cohort.workers.map((w) => w.port));
+  const cohortProcesses = stats.opencodeProcesses.filter((p) => {
+    const m = p.cmdline.match(/--port\s+(\d+)/);
+    if (m) return cohortPorts.has(parseInt(m[1], 10));
+    return cohortPorts.has(4096);
+  });
+  const otherProcesses = stats.opencodeProcesses.filter(
+    (p) => !cohortProcesses.includes(p),
+  );
+  const cohortRssKb = cohortProcesses.reduce((sum, p) => sum + p.rssKb, 0);
+  const cohortCpu = cohortProcesses.reduce((sum, p) => sum + p.cpuPercent, 0);
+  const cohortMemPercent =
+    memTotalKb > 0 ? (cohortRssKb / memTotalKb) * 100 : 0;
+  const otherRssKb = otherProcesses.reduce((sum, p) => sum + p.rssKb, 0);
+  const otherCpu = otherProcesses.reduce((sum, p) => sum + p.cpuPercent, 0);
+  const otherMemPercent =
+    memTotalKb > 0 ? (otherRssKb / memTotalKb) * 100 : 0;
 
   return (
     <div
@@ -167,14 +194,31 @@ export function SidebarSystemStats() {
           tone="neutral"
         />
       )}
-      {stats.opencodeProcesses.length > 0 && (
+      {cohortProcesses.length > 0 && (
         <Bar
-          label={`all ocs×${stats.opencodeProcesses.length}`}
-          percent={opencodeMemPercent}
-          detail={`${formatSize(totalOpencodeRssKb)}, ${Math.round(totalOpencodeCpu)}% CPU`}
+          label={`cohort×${cohortProcesses.length}`}
+          percent={cohortMemPercent}
+          detail={`${formatSize(cohortRssKb)}, ${Math.round(cohortCpu)}% CPU`}
           tone="neutral"
         />
       )}
+      {otherProcesses.length > 0 && (
+        <Bar
+          label={`other ocs×${otherProcesses.length}`}
+          percent={otherMemPercent}
+          detail={`${formatSize(otherRssKb)}, ${Math.round(otherCpu)}% CPU`}
+          tone="neutral"
+        />
+      )}
+      {cohortProcesses.length === 0 && otherProcesses.length === 0 &&
+        stats.opencodeProcesses.length > 0 && (
+          <Bar
+            label={`all ocs×${stats.opencodeProcesses.length}`}
+            percent={opencodeMemPercent}
+            detail={`${formatSize(totalOpencodeRssKb)}, ${Math.round(totalOpencodeCpu)}% CPU`}
+            tone="neutral"
+          />
+        )}
       <SseLatencyRow worstLagMs={stats.sseLatency?.worstLagMs ?? null} />
     </div>
   );
