@@ -150,22 +150,41 @@ function RestartOpencodeButton() {
         message?: string;
       };
       if (data.ok) {
-        setResult(
-          `Restarted ${data.unitName}. Reconnecting...`,
+        const successMsg = `Restarted ${data.unitName}. Reconnecting...`;
+        setResult(successMsg);
+        logSystemMessage(
+          "restart",
+          "success",
+          `Restarted ${data.unitName ?? "opencode"}`,
+          data.output,
         );
         setTimeout(() => {
           setOpen(false);
           setResult(null);
         }, 2500);
       } else {
-        setResult(
+        const errMsg =
           data.message ??
-            data.output ??
-            "Restart failed - see OpenPortal logs for details.",
+          data.output ??
+          "Restart failed - see OpenPortal logs for details.";
+        setResult(errMsg);
+        logSystemMessage(
+          "restart",
+          "error",
+          `Restart failed: ${unitName ?? "opencode"}`,
+          errMsg,
         );
       }
     } catch (err) {
-      setResult(err instanceof Error ? err.message : "Restart request failed.");
+      const errMsg =
+        err instanceof Error ? err.message : "Restart request failed.";
+      setResult(errMsg);
+      logSystemMessage(
+        "restart",
+        "error",
+        `Restart request failed: ${unitName ?? "opencode"}`,
+        errMsg,
+      );
     } finally {
       setBusy(false);
     }
