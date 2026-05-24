@@ -129,6 +129,11 @@ import { useConnectionMonitor } from "@/hooks/use-connection-monitor";
 import useMediaQuery from "@/hooks/use-media-query";
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import type { Session } from "@opencode-ai/sdk";
+import {
+  clearPendingSubmission,
+  recordFailedAttempt,
+  recordPendingSubmission,
+} from "@/lib/pending-prompts";
 
 // Search params on this route are best-effort. Stale URL state from
 // history transitions or copy-pasted links MUST NOT crash the router
@@ -4886,40 +4891,70 @@ function SessionPage() {
           ? selectedModel
           : undefined;
 
-      const response = slashDispatch
-        ? await fetch(
-            `/api/opencode/${port}/session/${sessionId}/command`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                command: slashDispatch.command,
-                arguments: slashDispatch.arguments,
-                agent: effectiveAgent,
-                model: effectiveModelFlat,
-                variant: thinkingEffort || undefined,
-              }),
-            },
-          )
-        : await fetch(
-            `/api/opencode/${port}/session/${sessionId}/prompt`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                text: messageText,
-                attachments: attachmentsForMessage.length
-                  ? attachmentsForMessage
-                  : undefined,
-                model: effectiveModelObject,
-                agent: effectiveAgent,
-                variant: thinkingEffort || undefined,
-              }),
-            },
-          );
-      if (!response.ok) {
-        throw new Error(await readErrorMessage(response));
+      // Bulletproof prompt history: write to localStorage BEFORE the
+      // fetch. Cleared only after backend 2xx. On any failure (network,
+      // openportal down, browser tab restart mid-submit) the entry
+      // persists and is rendered in /prompts as 'not sent' so the
+      // prompt is never lost. Per user invariant: "No prompts, ever,
+      // must be lost. Even if openportal is down, for a brief moment
+      // or for hours!"
+      const pendingLocalId = recordPendingSubmission({
+        sessionId,
+        port,
+        text: messageText,
+        model: effectiveModelObject,
+        agent: effectiveAgent,
+        variant: thinkingEffort || undefined,
+        attachmentsCount: attachmentsForMessage.length,
+        kind: slashDispatch ? "command" : "prompt",
+        commandName: slashDispatch?.command,
+        commandArguments: slashDispatch?.arguments,
+      });
+      let response: Response;
+      try {
+        response = slashDispatch
+          ? await fetch(
+              `/api/opencode/${port}/session/${sessionId}/command`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  command: slashDispatch.command,
+                  arguments: slashDispatch.arguments,
+                  agent: effectiveAgent,
+                  model: effectiveModelFlat,
+                  variant: thinkingEffort || undefined,
+                }),
+              },
+            )
+          : await fetch(
+              `/api/opencode/${port}/session/${sessionId}/prompt`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  text: messageText,
+                  attachments: attachmentsForMessage.length
+                    ? attachmentsForMessage
+                    : undefined,
+                  model: effectiveModelObject,
+                  agent: effectiveAgent,
+                  variant: thinkingEffort || undefined,
+                }),
+              },
+            );
+      } catch (fetchErr) {
+        const msg =
+          fetchErr instanceof Error ? fetchErr.message : "network error";
+        recordFailedAttempt(pendingLocalId, msg);
+        throw fetchErr;
       }
+      if (!response.ok) {
+        const errMsg = await readErrorMessage(response);
+        recordFailedAttempt(pendingLocalId, errMsg);
+        throw new Error(errMsg);
+      }
+      clearPendingSubmission(pendingLocalId);
       // 202 from portal means portal has DURABLY stored the prompt -
       // not that opencode has it yet. Phase stays at 'submitting'
       // until the upcoming /messages refresh brings back the virtual
