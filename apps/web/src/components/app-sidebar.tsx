@@ -1448,7 +1448,7 @@ export default function AppSidebar(
       await mutateSessions();
       toast.success("Session archived");
       if (currentSessionId === sessionId) {
-        navigate({ to: "/" });
+        navigate({ to: "/", search: (prev) => prev });
       }
     } catch (error) {
       console.error("Failed to archive session:", error);
@@ -1673,7 +1673,7 @@ export default function AppSidebar(
               data-test="portal-sidebar-servers"
               onAction={() => {
                 setIsOpenOnMobile(false);
-                navigate({ to: "/servers" });
+                navigate({ to: "/servers", search: (prev) => prev });
               }}
             >
               <ServerStackIcon />
@@ -1700,7 +1700,7 @@ export default function AppSidebar(
               data-test="portal-sidebar-docs"
               onAction={() => {
                 setIsOpenOnMobile(false);
-                navigate({ to: "/docs" });
+                navigate({ to: "/docs", search: (prev) => prev });
               }}
             >
               <BookOpenIcon />

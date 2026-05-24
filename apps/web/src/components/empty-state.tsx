@@ -88,7 +88,11 @@ export default function EmptyState() {
     try {
       const newSession = await createSession();
       await mutate();
-      navigate({ to: "/session/$id", params: { id: newSession.id } });
+      navigate({
+        to: "/session/$id",
+        params: { id: newSession.id },
+        search: (prev) => prev,
+      });
     } catch (err) {
       console.error("Failed to create session:", err);
     } finally {

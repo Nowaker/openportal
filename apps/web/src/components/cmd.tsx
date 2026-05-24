@@ -233,7 +233,11 @@ export default function Cmd() {
       const newSession = await createSession();
       await mutate();
       toast.success("Session created");
-      navigate({ to: "/session/$id", params: { id: newSession.id } });
+      navigate({
+        to: "/session/$id",
+        params: { id: newSession.id },
+        search: (prev) => prev,
+      });
     } catch (err) {
       console.error("Failed to create session:", err);
       toast.error("Failed to create session");
@@ -247,7 +251,7 @@ export default function Cmd() {
     navigate({
       to: "/session/$id",
       params: { id: sessionId },
-      search: { focus: "composer" },
+      search: (prev) => ({ ...prev, focus: "composer" }),
     });
   }
 
@@ -317,7 +321,7 @@ export default function Cmd() {
             textValue="Other Portals"
             onAction={() => {
               setIsOpen(false);
-              navigate({ to: "/instances" });
+              navigate({ to: "/instances", search: (prev) => prev });
             }}
           >
             <IconManageInstances className="size-4 mr-2" />
@@ -327,7 +331,7 @@ export default function Cmd() {
             textValue="Servers"
             onAction={() => {
               setIsOpen(false);
-              navigate({ to: "/servers" });
+              navigate({ to: "/servers", search: (prev) => prev });
             }}
           >
             <ServerIcon className="size-4 mr-2" />

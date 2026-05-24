@@ -380,7 +380,11 @@ function NewSessionPage() {
             typeof key === "string" &&
             key.startsWith(`/api/opencode/${port}/session/${sessionId}/messages`),
         );
-        navigate({ to: "/session/$id", params: { id: sessionId } });
+        navigate({
+          to: "/session/$id",
+          params: { id: sessionId },
+          search: (prev) => prev,
+        });
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to start session",

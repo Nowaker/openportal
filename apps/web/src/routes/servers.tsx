@@ -224,7 +224,7 @@ function ServersPage() {
         // navigating so the home route sees the fresh active server
         // on first render.
         await globalMutate("/api/instance/self");
-        void navigate({ to: "/" });
+        void navigate({ to: "/", search: (prev) => prev });
       } catch (e) {
         setError(e instanceof Error ? e.message : "activate failed");
       } finally {
@@ -456,7 +456,7 @@ function ServersPage() {
                 activateAfter: false,
               })
             }
-            onOpen={() => void navigate({ to: "/" })}
+            onOpen={() => void navigate({ to: "/", search: (prev) => prev })}
             onConfigureDirs={() =>
               setDirectoriesTarget({ serverId: s.id, label: s.label })
             }

@@ -601,7 +601,7 @@ export function AppSidebarNav() {
               if (typeof window !== "undefined" && window.history.length > 1) {
                 window.history.back();
               } else {
-                void navigate({ to: "/" });
+                void navigate({ to: "/", search: (prev) => prev });
               }
             }}
             aria-label="Back"
