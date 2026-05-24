@@ -962,6 +962,118 @@ Design notes:
 - Fix: new tagged `FetchTimeoutError` thrown ONLY by the 3s race reject path. New `MessagesUnavailableError` thrown by `loadFullMessages` when `real === null` AND `visible.length === 0` AND `opencodeTimedOut === true`. Outer handler catches → 503 + `X-OpenPortal-OpenCode-Down: true`. Client fetcher throws on `!response.ok` → SWR's default error-retains-data path preserves the loaded log; the user sees nothing flash. Next successful poll refreshes normally.
 - Scoping narrow: 404 / SDK schema rejection / 5xx from the raw fetchOpencode fallback still throw plain `Error` → still return `[]` (legacy behavior for nonexistent sessions). Only true network timeouts trip the 503 path.
 
+### 54. Caching-proxy major refactor: stale-while-revalidate everywhere + STUCK badge clickable + sound dropdown width capped (DONE - 6679f61 + faf3d24 + 495e6a7 + ef5fe93 + a6cdbcf)
+
+User prompt (full directive):
+
+> Shit is totally destroyed when opencode has high latency 502 bad gateway all the fucking time. If it takes forever for something to load, so be it, it's okay. Don't just timeout and say "no messages" and "Live session messages can't load until OpenCode is back. The connection monitor is retrying every 10 seconds. Prompts archive, settings, and the server list still work in the meantime." and failed to fetch, all in one session over 3 minutes time. This is pure fucking nonsense. It wasn't like that before. Inspect git history and your memories to figure out what changes were done, and reason about it. THIS MUST BE FIXED. openportal must be a caching proxy for opencode. If you see msgid 1 in sesid 1, you cache it! You know it's there. Only when you hear from opencode AUTHORITATIVELY (not a fucking timeout or empty array due to a bug or something) that it's not there, should you update your cache and no longer display. Openportal MUST NOT be a dumb proxy where all shit gets forwarded to opencode, and if it's down or slow, openportal is slow. No. Maintain your own view of the world, and update it as opencode is giving you modifications. THIS APPLIES TO EVERYTHING. Projects list in sidebar. In progress status of session (derived from stuck detector, the most accurate source of status). Session title. Tool calls, Ai responses, user prompts. ALL THE SHIT MUST GO THROUGH OPENPORTAL AND BE CACHED FOR HIGH LATENCY SITUATIONS. Wherever user can submit things, it also goes to cache and stays there until reconciled with opencode, eg the user submitted message came back with message id = good.
+
+Plus inline UI items:
+> 1. Notification sounds dropdown for filename is enormous. it causes the text in first column to be multiline (7 lines wtf)
+> 2. STUCK badge present but nothing actionable about it. stuck badge should be clickable, and offer action to unstuck it.
+
+Design notes (architecture, multi-commit):
+- 6679f61: caching proxy messages + opencode probe — removed the 3s Promise.race timeout in fetchAndCache, added stale-while-revalidate to loadFullMessages, single-flight INFLIGHT map, probe-cache.ts with UP=60s/DOWN=5s. /api/instance/self stops flapping to opencode-down on slow probes.
+- faf3d24: caching proxy sessions list (sidebar) — new sessions-cache.ts module, mirrored pattern. Invalidates on SSE session.* events + /prompt + /command.
+- 495e6a7: bootstrap (agents/config/providers) past-STALE_MS returns cached + background refresh instead of blocking + throwing. Never 502s a cached endpoint.
+- ef5fe93: single-session GET reads from sessions-cache fast path. Modal opens instantly from cache, no opencode round-trip.
+- a6cdbcf: STUCK badge clickable to dispatch unstuck via existing /api/stuck-detector/unstuck + sound dropdown SelectTrigger width capped at w-40 so long filenames don't blow out the row layout.
+
+### 55. File browser dir listing aside scrolls past viewport on desktop (DONE - 2bbc71a)
+
+User prompt:
+
+> file browser: I only see directories up to letter j, scroll past it...
+
+Design notes:
+- Root cause: aside had max-h-[50vh] for mobile + md:max-h-none for desktop. On desktop the cap was removed but no fallback height was set, so the aside took its CONTENT's natural height (= all entries stacked). Its own overflow-auto never triggered. Parent's overflow-hidden clipped the bottom of the aside.
+- Fix: add md:h-full so aside takes parent's full height (limited by parent's overflow-hidden), then its overflow-y-auto kicks in when content exceeds.
+
+### 56. Permalinks preserve ?server= across navigate() + highlight more visible + spec-matching comment (DONE - 695ae79 + 667b6d5)
+
+User prompts (sub-items from #5/6 in PENDING):
+
+> links in sidebar don't include server permalink. screen other places where server permalink missing.
+
+> after clicking permalink ... must highlight very visibly the message permalinked.
+
+> permalinks: click to copy and open... uhm, what, click to copy? click is open, not copy. right click copy, or on phone hold and copy, is how you copy. click to copy is nonsense.
+
+Design notes:
+- 695ae79: every navigate() call site that previously omitted search (cmd.tsx new-session + session-select + instances + servers, empty-state.tsx, app-sidebar.tsx home + servers + docs, app-sidebar-nav.tsx home, routes/servers.tsx 2 sites, session/new.tsx) now uses `search: (prev) => prev` to preserve ?server=. Session-palette select merges via `search: (prev) => ({ ...prev, focus: 'composer' })`.
+- 667b6d5: permalink-pulse CSS keyframes bumped from peak alpha 22%/4px ring to 45%/6px at peak + held a sustained 25%/4px ring through 60% before fading. Duration 2.4s -> 3.6s. The stale block comment above MessagePermalinkTimestamp described an old "copy + open in new tab" click semantic; replaced with verbatim user-spec quote to prevent future agents from "restoring" the click-to-copy anti-pattern. Click semantics already correct in code: in-page click -> scroll + flashMessageHighlight (no nav); out-of-page click -> default <a> nav same-tab; right-click / long-press -> copy.
+
+### 57. Stuck-detector multi-part dispatch: SSE independence + PUT /config audit + label rename + presets + SSE latency sidebar metric (ITEMs 1-5 from msg_e575eb73f) (DONE - 4e543bd + b6571bb; ITEM 1 + 4 + 5 verification-only)
+
+User prompt (5-part dispatch summary):
+
+> Multi-part stuck-detector portal-side work. ITEM 1 (ses_1aa08841d verification post-restart, no portal code). ITEM 2 (SSE-latency sidebar metric). ITEM 3 (settings UI labels + 'Set all to automatic' + 'Set all to passive' presets). ITEM 4 (verify stuck-detector SSE subscription stays alive when opencode unreachable). ITEM 5 (PUT /config wrapper sends full body + surfaces validation errors + refresh after save).
+
+Design notes:
+- ITEM 4: VERIFIED no code needed. stuck-detector-client.ts + stuck-detector-journal-client.ts both subscribe to 127.0.0.1:4098 directly with no gating on opencode reachability. Independent of opencode HTTP availability.
+- ITEM 5: VERIFIED no code needed. updateStuckDetectorConfig already sends complete config object, server wrapper passes through plugin's validation errors to UI (toast.error), and globalMutate(KEY, body) refreshes SWR cache with canonicalized response.
+- ITEM 3 (4e543bd): renamed CauseAction labels for self-documenting clarity: "Disable cause entirely" / "Just log (passive observer)" / "Automatic recovery (resumer)" / "Auto-bump (retry-overdue only)". New AUTOMATIC_PRESET + PASSIVE_PRESET constants. New 'Set all to automatic' + 'Set all to passive (log only)' buttons fire one atomic PUT carrying every cause's new action.
+- ITEM 2 (b6571bb): per-server lastEventMs Map in indicator-broadcaster, stamped on every SSE frame. Exposed via getLastEventMs(serverId) + getAllLastEventMs(). New sseLatency field on /api/system-stats: { perServer: {<sid>: {lastEventMs, lagMs}}, worstLagMs }. Sidebar 'sse' row with color thresholds (<1s neutral, 1-30s warning, >30s danger). Tooltip carries exact band.
+- ITEM 1: AWAITS user's next opencode-serve restart. Plugin-side already shipped scanDbStuckCauses pass in 65fbbf2; portal verification step happens once the new plugin code is live.
+
+### 58. User-prompt accent brightness + 4px left stripe (DONE - 0df212d + a1d7336)
+
+User prompt:
+
+> Enqueue to end: make user prompts in chat log much brighter accent color. Current one can be barely distinguished from ai messages.
+
+Design notes:
+- 0df212d: bumped userBgClass from bg-accent/10 → bg-accent/30 (3x light-mode tint), dark:bg-accent/8 → /25, border-accent/50 → /80.
+- a1d7336: added border-l-4 + border-l-accent so each user message has the canonical chat-UI left-stripe accent (Slack/Discord pattern) on top of the brightened body.
+
+### 59. P0 cohort prompt-routing: resolve owner via plugin /verdicts/<sid>.owner_instance_url (CRITICAL CORRECTNESS) (DONE - 2fa0d94 + f26dcc3)
+
+User prompt (P0 from cohort-architecture dispatch):
+
+> Today portal sends POST /session/<sid>/prompt_async to whichever opencode instance the user has selected as 'active server'. If a session is running on instance B (its owner) but the user's UI shows instance A as active, portal will deliver the prompt to A. A then spawns a SECOND runner for the same session, parallel to B's existing one. Outcome: Two concurrent assistant messages on the same session ID. Interleaved part writes -> garbled chat output, potential FK violations. Double model-API costs. opencode has no cross-instance prompt-routing mutex. The DB doesn't coordinate. THIS IS A REAL BUG, hits any user with multi-instance setups (tailscale + LAN + sandbox + docker). FIX: every prompt dispatch goes through a 'resolve owner' step: 1. Query plugin: GET 127.0.0.1:4098/verdicts/<sid>. 2. Read verdict.owner_instance_url. 3. If non-null: route POST /prompt_async to that URL, not the user-selected active-server URL. 4. If null (no current runner): route to user's selected active-server URL.
+
+Design notes:
+- 2fa0d94: new apps/web/src/server/lib/prompt-routing.ts exports resolveOwner(sessionId) which queries the plugin's authoritative aggregator at /verdicts/<sid> and parses owner_instance_url into {host, port}. 5s TTL cache so prompt bursts hit plugin once. Wired into pending-prompt-worker.ts + /prompt.ts + /command.ts. console.log records every rerouting decision.
+- f26dcc3: same pattern applied to session.abort. Same bug class - aborts from non-owner instance no-op while runner keeps generating on owner. Future follow-ups queued for session.compact/summarize (kicks off work on a specific instance).
+- DEFERRED: per-cohort plugin URL (today everything goes to 127.0.0.1:4098; eventually plugin will run per cohort). SDK auth handoff if owner instance requires non-default auth (today everything is loopback unauthenticated so getOpencodeClient works for any port portal can reach).
+
+### 60. P1 cohort registry + sidebar partitioning (DONE - 2d506bc + d5d2eeb)
+
+User prompt (P1 from cohort-architecture dispatch):
+
+> NEW CONCEPT: instance vs server (cohort). Today /servers conflates 'running opencode process' with 'logical server group'. Split the vocabulary: Instance = single opencode-serve process. Identified by <host>:<port>. Server (cohort) = logical group of instances sharing the same SQLite DB. One PRIMARY (user-picked, used for default operations like /messages routing when ownership doesn't apply), rest are SECONDARY (used for failover, SSE subscriptions, sidebar-stats aggregation). Owner = the instance within a cohort currently holding the live runner for a given session.
+
+Design notes:
+- 2d506bc: new apps/web/src/server/lib/cohort-registry.ts polls plugin GET /workers every 30s, parses each worker {workerID, instanceUrl, lastSeen} into typed CohortWorker with parsed host+port. Exposed via getCohortSnapshot() + new Nitro plugin cohort-poller.ts that starts the loop on server boot. New GET /api/cohort endpoint returns the snapshot for frontend consumers.
+- d5d2eeb: new apps/web/src/stores/cohort-store.ts SWR hook + sidebar-system-stats.tsx partitions opencodeProcesses into 'cohort×N' (matching ports in cohort) + 'other ocs×M' (different cohorts on host - sandbox-local, docker, ad-hoc). Sidebar-stats cohort metric no longer inflated by unrelated opencode-serve instances per user spec.
+- Remaining P1 items (deferred for explicit scope direction): /servers UI redesign (cohort grouping + primary selector), routing abstraction (cohort handle instead of instance URL), instance/server/cohort vocabulary refactor.
+
+### 61. Bulletproof prompt history: localStorage first bastion + reconciliation (Q-PENDING)
+
+User prompt:
+
+> End of queue: inspect draft clearing code. I once submitted a prompt and it went nowhere. It showed on the chat log for a while. But not in prompt history. Clicking the button should ALWAYS put it in the history. If message gets lost somehow in routing, whatever, it still must be in prompt history. I've an idea. Local storage as the first bastion for prompt history. It goes there. Then send to openportal backend. Only when openportal backend accepts it and gives us an ID back (means it was saved), then frontend can clear it from local storage. If for some reason there's leftover local. Storage entries, they should be shown in between "legit" backend derived prompts. And on prompt history render, when front end notices it, should send it to backend as "history only entry, not a prompt to submit". So it's persisted. In prompt history list it should show as "not sent" or some other descriptive label. But it needs to have all the Metadata eg datetime is when user clicked submit prompt. Make it bullet proof. No prompts, ever, must be lost. Even if openportal is down, for a brief moment or for hours!
+
+Design notes:
+- Client-side new flow: composer Submit handler stores draft in localStorage IMMEDIATELY (before any fetch) with metadata { id (uuid), sessionId, text, submittedAt, attempt }.
+- Fetch /api/prompt as normal; on success (response carries archive row ID), clear the localStorage entry by uuid.
+- On failure / network error / opencode-down / openportal-restart-mid-submit: localStorage entry persists.
+- Prompts-history page render: on mount, scan localStorage for entries, render them inline-merged with backend-fetched prompts (sorted by submittedAt), labeled with "not sent" pill + retry button.
+- New POST /api/prompts/persist-orphan endpoint: takes the localStorage payload + writes a row to prompt-archive table with status='history-only' (new status). On success, frontend clears the localStorage entry.
+- Status='history-only' rows are visible in prompts list but never picked up by pending-prompt-worker (which scans status='pending' only).
+- Bulletproof: even if openportal is down for HOURS, localStorage holds the entries. When portal comes back, the next history render reconciles them.
+
+### 62. Session info modal: incremental rendering with per-field spinners (Q-PENDING)
+
+User prompt:
+
+> Session info modal: instead of having to wait for any info to show, show immediately all that is already known, and each value that needs an update from server, an individual spinner as a value, before it populated.
+
+Design notes:
+- Today the modal blocks the whole pane on initial load and shows '—' or empty cells until the SDK call returns. Should be: render the row labels + any value we already have from sessions-cache / SWR previousData / opencode-version-store IMMEDIATELY. For values still loading (cost-breakdown, latest-message metadata, custom queries), render a small spinner in the value cell.
+- Each row's loader state is independent so the modal feels live and never blank.
+- Consumes the existing single-session-cache fast path (#54 last bullet) for the structural fields (id, title, directory, time, archived, parentID) and adds smaller per-field hooks for the slow ones.
+
 ---
 
 ## [Q4] SESSION_WEDGED_BANNER decision (Q-DEFERRED)
