@@ -1999,20 +1999,25 @@ function CopyMarkdownButton({ text }: { text: string }) {
   );
 }
 
-// Per-message timestamp rendered as a permalink anchor. Click does two
-// things in one gesture (mirroring the user's spec: "copy + open in new
-// tab"):
-//   1. writeText() the absolute URL to the clipboard.
-//   2. window.open() the same URL in a new tab.
-// Both run from the same synchronous click handler so the popup blocker
-// still trusts the gesture. preventDefault() stops the default <a>
-// navigation in the current tab (which would scroll the current view
-// elsewhere and lose state). Right-click "Open in new tab" still works
-// natively because the href is a real URL.
+// Per-message timestamp rendered as a permalink anchor. Per the user
+// spec: 'click is open, not copy. right click copy, or on phone hold
+// and copy, is how you copy. click to copy is nonsense.'
 //
-// The href shape is always <current-pathname>#msg-<messageId>. The
-// route reads the hash in SessionPage and switches into permalink mode
-// (see useSessionMessagesAround in use-session-messages.ts).
+// Click semantics:
+//   - In-page (message is already rendered in the current window):
+//     scroll-into-view + flashMessageHighlight, NO navigation. Per
+//     user spec: 'you see that message, you click on it, you open it,
+//     but it is in front of you anyway, so just highlight it and that
+//     is it.' The hash IS updated via history.replaceState so the URL
+//     stays shareable.
+//   - Not in page (different session / outside the current window):
+//     default <a> navigation runs - same tab, hash kicks the route
+//     into permalink-window mode.
+// Copy semantics:
+//   - Right-click on desktop -> contextmenu handler copies + toasts.
+//   - Long-press on mobile (>=600ms) -> same.
+//   - Native browser 'Copy link address' still works because href is
+//     a real URL.
 // Highlight a message in the current document by flashing a CSS class
 // on its container for a brief window. Works for both in-page jumps
 // (click on a permalink whose target is already in the rendered chat)

@@ -1524,11 +1524,12 @@ body {
 
 @keyframes permalink-pulse {
   0%   { background-color: oklch(0.768 0.233 130 / 0); box-shadow: 0 0 0 0 oklch(0.768 0.233 130 / 0); }
-  10%  { background-color: oklch(0.768 0.233 130 / 0.22); box-shadow: 0 0 0 4px oklch(0.768 0.233 130 / 0.4); }
+  8%   { background-color: oklch(0.768 0.233 130 / 0.45); box-shadow: 0 0 0 6px oklch(0.768 0.233 130 / 0.6); }
+  60%  { background-color: oklch(0.768 0.233 130 / 0.25); box-shadow: 0 0 0 4px oklch(0.768 0.233 130 / 0.35); }
   100% { background-color: oklch(0.768 0.233 130 / 0); box-shadow: 0 0 0 0 oklch(0.768 0.233 130 / 0); }
 }
 
 .permalink-highlight {
-  animation: permalink-pulse 2.4s ease-out;
+  animation: permalink-pulse 3.6s ease-out;
   border-radius: 0.5rem;
 }
