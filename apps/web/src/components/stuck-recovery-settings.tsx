@@ -3,7 +3,9 @@ import {
   ACTIONS_BY_CAUSE,
   ACTION_LABELS,
   ALL_STUCK_CAUSES,
+  AUTOMATIC_PRESET,
   CAUSE_LABELS,
+  PASSIVE_PRESET,
   updateStuckDetectorConfig,
   useStuckDetectorConfig,
   type CauseAction,
@@ -22,6 +24,9 @@ import { toast } from "@/components/ui/toast";
 export function StuckRecoverySettings() {
   const { data, isLoading } = useStuckDetectorConfig();
   const [busyCause, setBusyCause] = React.useState<StuckCause | null>(null);
+  const [presetBusy, setPresetBusy] = React.useState<
+    null | "automatic" | "passive"
+  >(null);
 
   if (isLoading || !data) {
     return (
@@ -74,6 +79,49 @@ export function StuckRecoverySettings() {
     }
   };
 
+  // Apply a preset (Automatic / Passive). One PUT call carries every
+  // cause's new action at once - the plugin's PUT /config expects the
+  // full config object and replaces wholesale, which is exactly what
+  // we want here (atomic flip, no half-applied intermediate state).
+  const applyPreset = async (kind: "automatic" | "passive") => {
+    if (presetBusy) return;
+    setPresetBusy(kind);
+    try {
+      const preset = kind === "automatic" ? AUTOMATIC_PRESET : PASSIVE_PRESET;
+      const nextActions: StuckDetectorConfig["stuck_actions"] = {};
+      for (const cause of ALL_STUCK_CAUSES) {
+        const current = config.stuck_actions[cause] ?? {
+          action: "log",
+          min_idle_seconds: 30,
+          cooloff_seconds: 60,
+        };
+        nextActions[cause] = { ...current, action: preset[cause] };
+      }
+      const next: StuckDetectorConfig = {
+        ...config,
+        stuck_actions: nextActions,
+      };
+      const r = await updateStuckDetectorConfig(next);
+      if (!r.ok) {
+        toast.error(r.error ?? "Plugin rejected the preset.");
+      } else {
+        toast.success(
+          kind === "automatic"
+            ? "All causes set to automatic recovery."
+            : "All causes set to passive (log only).",
+        );
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to apply stuck-detector preset",
+      );
+    } finally {
+      setPresetBusy(null);
+    }
+  };
+
   return (
     <section className="space-y-3">
       <div>
@@ -86,6 +134,35 @@ export function StuckRecoverySettings() {
           </code>
           ; the plugin owns the file and watches it for live reloads.
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void applyPreset("automatic")}
+          disabled={presetBusy !== null}
+          data-test="portal-stuck-recovery-preset-automatic"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-muted disabled:opacity-50 disabled:cursor-wait"
+        >
+          {presetBusy === "automatic" ? (
+            <Loader className="size-3.5" />
+          ) : null}
+          Set all to automatic
+        </button>
+        <button
+          type="button"
+          onClick={() => void applyPreset("passive")}
+          disabled={presetBusy !== null}
+          data-test="portal-stuck-recovery-preset-passive"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-muted disabled:opacity-50 disabled:cursor-wait"
+        >
+          {presetBusy === "passive" ? <Loader className="size-3.5" /> : null}
+          Set all to passive (log only)
+        </button>
+        <span className="text-[11px] text-muted-fg">
+          One-click bulk flip. Per-cause selectors below still work for
+          individual overrides afterwards.
+        </span>
       </div>
 
       <div className="overflow-x-auto">

@@ -43,11 +43,43 @@ export const CAUSE_LABELS: Record<StuckCause, string> = {
   "retry-overdue": "Provider retry wedged",
 };
 
+// Self-explanatory action labels per the user spec ("Add 'Set all to
+// automatic' preset" item). 'automatic' is the recovery one - it tells
+// the plugin to act without user intervention. 'log' is passive. The
+// labels carry the semantic in the text so the user doesn't have to
+// remember which action triggers which behaviour.
 export const ACTION_LABELS: Record<CauseAction, string> = {
-  "nothing": "Do nothing (silent)",
-  "log": "Log only (no action)",
-  "unstuck": "Auto-unstuck (abort+resume)",
-  "bump-overdue": "Bump the overdue retry",
+  "nothing": "Disable cause entirely",
+  "log": "Just log (passive observer)",
+  "unstuck": "Automatic recovery (resumer)",
+  "bump-overdue": "Auto-bump (retry-overdue only)",
+};
+
+// 'Set all to automatic' preset - user's chosen mapping per the dispatch.
+// Causes whose only safe handling is 'log' (the UX requires a human to
+// decide, or there's no good auto fix yet) get 'log'. Recovery-capable
+// causes get 'unstuck'. retry-overdue gets its dedicated 'bump-overdue'
+// since that's the action that exists for it.
+export const AUTOMATIC_PRESET: Record<StuckCause, CauseAction> = {
+  "no-runner": "unstuck",
+  "stale-stream": "unstuck",
+  "stale-compaction": "log",
+  "no-dispatch": "unstuck",
+  "question-with-queue": "log",
+  "compaction-overflow": "log",
+  "retry-overdue": "bump-overdue",
+};
+
+// 'Set all to passive (log)' preset - flips every cause to 'log'. Used
+// for quickly reverting from automatic recovery if it's misbehaving.
+export const PASSIVE_PRESET: Record<StuckCause, CauseAction> = {
+  "no-runner": "log",
+  "stale-stream": "log",
+  "stale-compaction": "log",
+  "no-dispatch": "log",
+  "question-with-queue": "log",
+  "compaction-overflow": "log",
+  "retry-overdue": "log",
 };
 
 export interface PerCauseConfig {
