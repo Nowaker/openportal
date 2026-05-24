@@ -881,10 +881,15 @@ function RefireModal({
 // prompts, ever, must be lost. Even if openportal is down, for a
 // brief moment or for hours!'
 const ORPHAN_RECONCILE_AFTER_MS = 60_000;
+const RECONCILE_BACKOFF_MS = 30_000;
 const reconcileInFlight = new Set<string>();
+const reconcileLastAttempt = new Map<string, number>();
 async function reconcileOrphan(entry: PendingPromptEntry): Promise<void> {
   if (reconcileInFlight.has(entry.localId)) return;
+  const lastAt = reconcileLastAttempt.get(entry.localId) ?? 0;
+  if (Date.now() - lastAt < RECONCILE_BACKOFF_MS) return;
   reconcileInFlight.add(entry.localId);
+  reconcileLastAttempt.set(entry.localId, Date.now());
   try {
     const res = await fetch("/api/prompts/persist-orphan", {
       method: "POST",
@@ -893,6 +898,7 @@ async function reconcileOrphan(entry: PendingPromptEntry): Promise<void> {
     });
     if (res.ok) {
       clearPendingSubmission(entry.localId);
+      reconcileLastAttempt.delete(entry.localId);
     }
   } catch {
   } finally {
