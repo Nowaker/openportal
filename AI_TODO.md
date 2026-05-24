@@ -1082,16 +1082,26 @@ End-to-end flow now BULLETPROOF:
 
 User invariant met verbatim: "No prompts, ever, must be lost. Even if openportal is down, for a brief moment or for hours!"
 
-### 62. Session info modal: incremental rendering with per-field spinners (Q-PENDING)
+### 62. Session info modal: incremental rendering with per-field spinners (DONE - d7a7d9f)
 
 User prompt:
 
 > Session info modal: instead of having to wait for any info to show, show immediately all that is already known, and each value that needs an update from server, an individual spinner as a value, before it populated.
 
-Design notes:
-- Today the modal blocks the whole pane on initial load and shows '—' or empty cells until the SDK call returns. Should be: render the row labels + any value we already have from sessions-cache / SWR previousData / opencode-version-store IMMEDIATELY. For values still loading (cost-breakdown, latest-message metadata, custom queries), render a small spinner in the value cell.
-- Each row's loader state is independent so the modal feels live and never blank.
-- Consumes the existing single-session-cache fast path (#54 last bullet) for the structural fields (id, title, directory, time, archived, parentID) and adds smaller per-field hooks for the slow ones.
+Design notes (d7a7d9f, DONE):
+- Replaced the all-or-nothing `isLoading` gate that blocked the entire body behind a single "Loading session info..." spinner with three independent per-source loading flags:
+    sessionPending  : sessionsLoading && !sessions
+    messagesPending : messagesLoading && (!messages || messages.length === 0)
+    modelPending    : messagesPending || (providersLoading && !providersData)
+- `Field` component extended with optional `loading?: boolean` prop. When loading and no value yet, renders a small inline `<Loader className="size-3" />` instead of the value. Each field's loader clears independently as its source lands.
+- Field <-> source mapping:
+    Title / Session Created / Last Activity     -> sessionPending
+    Provider / Model / Context Limit            -> modelPending
+    Messages / *Tokens / Usage / Cost / Cache /
+        User+Assistant counts                   -> messagesPending
+    Session ID                                  -> never loading (route param)
+    McpSection / ExportSection                  -> own internal loading
+- Combined with the sessions-cache fast-path (commit ef5fe93), most fields are already populated from cache when the modal opens, so even the spinners are typically short-lived blips.
 
 ---
 
