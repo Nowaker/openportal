@@ -384,16 +384,17 @@ Design notes:
 - Screen the language-detection area for related bugs and fix all in one pass.
 - Extension-driven match takes priority over content sniffing. Only fall through to content detection when the extension yields no answer AND the filename has no recognizable pattern (no `*rc`, no leading-dot dotfile match).
 
-### 23. Systemctl restart alert vanishes too fast
+### 23. Systemctl restart alert vanishes too fast (DONE - 65f2e85)
 
 User prompt:
 
 > systemctl restart via alert box doesn't work. it showed me error but before i could read it disappeared. (wtf, it can't disappear just because) you are running inside tailscale instance so inspect against a different instance so your work doesn't get interrupted if it succeeds.
 
-Design notes:
-- Toast / alert messages for systemctl restart errors must be persistent (or at least long-dwell + dismiss-on-click); NEVER auto-vanish in <5s without explicit user dismissal.
-- Test path: drive the restart flow against `opencode-serve-lan.service` (NOT `opencode-serve-tailscale.service` which carries this session's runtime; per `~/.config/opencode/AGENTS.md` AI must never restart user-managed opencode-serve-tailscale).
-- Verify error rendering: error string visible, copy-friendly, dismiss button present.
+Design notes (65f2e85):
+- Root cause: the OpenCode-restart popover in `_app.tsx` rendered the result text inline; the popover closes on outside-click (React Aria default), losing the inline error if the user clicked elsewhere after seeing it.
+- Fix: `doRestart` now calls `logSystemMessage('restart', ...)` on every outcome (success / HTTP-error / network-error), mirroring the companion-telemetry-panel pattern that was already in place for the OTHER restart surface. Audit trail survives popover-close + page navigation since the system-messages drawer holds the durable record (last 200 events, localStorage-persisted at `openportal-system-messages-v1`).
+- The success path keeps its 2500ms auto-close timer (correct behavior — success is informational), but the success is also logged so the user can see "restarted X at HH:MM" later if they want to audit.
+- AGENTS.md restart-hygiene rule honored: AI is forbidden from restarting `opencode-serve-tailscale` (this session's runtime) — that's only ever a user-initiated action through this popover.
 
 ### 24. OpenPortal system-messages drawer (always-accessible from bottom-left)
 
