@@ -963,7 +963,7 @@ Design notes:
 - Fix: new tagged `FetchTimeoutError` thrown ONLY by the 3s race reject path. New `MessagesUnavailableError` thrown by `loadFullMessages` when `real === null` AND `visible.length === 0` AND `opencodeTimedOut === true`. Outer handler catches → 503 + `X-OpenPortal-OpenCode-Down: true`. Client fetcher throws on `!response.ok` → SWR's default error-retains-data path preserves the loaded log; the user sees nothing flash. Next successful poll refreshes normally.
 - Scoping narrow: 404 / SDK schema rejection / 5xx from the raw fetchOpencode fallback still throw plain `Error` → still return `[]` (legacy behavior for nonexistent sessions). Only true network timeouts trip the 503 path.
 
-### 54. Caching-proxy major refactor: stale-while-revalidate everywhere + STUCK badge clickable + sound dropdown width capped (DONE - 6679f61 + faf3d24 + 495e6a7 + ef5fe93 + a6cdbcf)
+### 54. Caching-proxy major refactor: stale-while-revalidate everywhere + STUCK badge clickable + sound dropdown width capped + SQLite persistence across restarts (DONE - 6679f61 + faf3d24 + 495e6a7 + ef5fe93 + a6cdbcf + 357c8e4)
 
 User prompt (full directive):
 
@@ -979,6 +979,7 @@ Design notes (architecture, multi-commit):
 - 495e6a7: bootstrap (agents/config/providers) past-STALE_MS returns cached + background refresh instead of blocking + throwing. Never 502s a cached endpoint.
 - ef5fe93: single-session GET reads from sessions-cache fast path. Modal opens instantly from cache, no opencode round-trip.
 - a6cdbcf: STUCK badge clickable to dispatch unstuck via existing /api/stuck-detector/unstuck + sound dropdown SelectTrigger width capped at w-40 so long filenames don't blow out the row layout.
+- 357c8e4 (this iteration): SQLite-backed persistence for messages-cache + sessions-cache via migration 0004 (messages_cache + sessions_cache tables, MAX_PERSISTED_SESSIONS=1000). setCachedMessages/setCachedSessions write memory + SQLite inline; getStaleMessages/getStaleSessions hydrate from SQLite on memory miss, populating the in-memory LRU so subsequent reads stay fast. Closes the deferred items at the bottom of the 6679f61 commit message ("SQLite-backed cache that survives openportal restart, append-only message semantics that never remove cached items based on a transient empty response"). Plus shrink guard: setCachedMessages/setCachedSessions refuse to overwrite a cached list with a SHORTER one - suspicious partial response per the authoritative-only invariant. Legitimate trims still work because invalidateMessagesCache/invalidateSessionsCache drop the row first; subsequent fetches repopulate from scratch with no shrink check. Plus frontend fix in routes/_app/session/$id.tsx:5270: "OpenCode is unreachable" panel only renders when `messages.length === 0` in addition to `opencodeUnreachable` so a loaded chat log (memory OR SQLite hydrated) no longer gets obscured by the panel. Remaining deferred (would ship if user still sees gaps): append-only per-message merge (today we replace the whole entry on shrink-passing writes; opencode never trims from the middle in practice) and bootstrap-cache.ts (agents/config/providers) SQLite persistence (memory-only today, smaller cold-load impact than messages/sessions).
 
 ### 55. File browser dir listing aside scrolls past viewport on desktop (DONE - 2bbc71a)
 
