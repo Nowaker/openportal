@@ -78,6 +78,7 @@ import {
 } from "@/lib/project-path";
 
 import {
+  newSessionDraftKey,
   sessionHasDraft,
   sessionHasNewContent,
   SessionStatusDot,
@@ -251,10 +252,16 @@ function ProjectGroup({
   // the signal. The empty-slot placeholders inside DraftIndicator /
   // SessionStatusDot keep the title's x-coordinate stable across
   // expanded/collapsed transitions.
+  //
+  // Exception: the new-session draft is keyed to the project's directory
+  // (no in-tree session row owns it), so its indicator shows on the
+  // project header in BOTH collapsed and expanded states. Without it,
+  // an expanded project hides the fact that the user has unsent text
+  // staged for "new session here".
   let aggBusy = false;
   let aggRetry = false;
   let aggNewContent = false;
-  let aggDraft = false;
+  let aggDraft = sessionHasDraft(newSessionDraftKey(directory));
   let aggQuestion = false;
   let aggError = false;
   if (!isExpanded) {
@@ -1082,6 +1089,7 @@ function aggregateNodeStatus(
   const visit = (n: ProjectTreeNode<ProjectBin>) => {
     if (n.bin) {
       acc.sessionCount += n.bin.sessions.length;
+      if (sessionHasDraft(newSessionDraftKey(n.bin.dir))) acc.draft = true;
       for (const s of n.bin.sessions) {
         const t = statusMap?.[s.id]?.type;
         if (t === "busy") acc.status = "busy";

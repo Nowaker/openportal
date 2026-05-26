@@ -135,6 +135,11 @@ import {
   recordFailedAttempt,
   recordPendingSubmission,
 } from "@/lib/pending-prompts";
+import {
+  DRAFT_MIN_BYTES,
+  readDraft,
+  writeDraft,
+} from "@/lib/session-indicators";
 
 // Search params on this route are best-effort. Stale URL state from
 // history transitions or copy-pasted links MUST NOT crash the router
@@ -3340,8 +3345,6 @@ function ModelOverrideControl({
   );
 }
 
-const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
-const DRAFT_MIN_BYTES = 10;
 // BroadcastChannel name for cross-tab composer sync. When any tab submits
 // a draft to opencode, it posts the submitted text on this channel; other
 // tabs viewing the same session clear their input ONLY if their staged
@@ -3363,10 +3366,6 @@ interface ComposerSyncMessage {
 const PENDING_PROMPT_KEY_PREFIX = "opencode-pending-prompt:";
 
 const ATTACHMENTS_KEY_PREFIX = "opencode-composer-attachments:";
-
-function getDraftKey(sessionId: string) {
-  return `${DRAFT_KEY_PREFIX}${sessionId}`;
-}
 
 function getPendingPromptKey(sessionId: string) {
   return `${PENDING_PROMPT_KEY_PREFIX}${sessionId}`;
@@ -3411,29 +3410,6 @@ function writeAttachments(
     );
   } catch {
     return;
-  }
-}
-
-function readDraft(sessionId: string): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return window.localStorage.getItem(getDraftKey(sessionId)) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function writeDraft(sessionId: string, value: string) {
-  if (typeof window === "undefined") return;
-  try {
-    if (value) {
-      window.localStorage.setItem(getDraftKey(sessionId), value);
-    } else {
-      window.localStorage.removeItem(getDraftKey(sessionId));
-    }
-  } catch {
-    // localStorage can throw under quota / privacy modes; the draft is
-    // best-effort, never a hard requirement.
   }
 }
 

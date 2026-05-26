@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -54,6 +55,12 @@ import {
   recordFailedAttempt,
   recordPendingSubmission,
 } from "@/lib/pending-prompts";
+import {
+  DRAFT_MIN_BYTES,
+  newSessionDraftKey,
+  readDraft,
+  writeDraft,
+} from "@/lib/session-indicators";
 
 interface PromptAttachment {
   mime: string;
@@ -168,14 +175,26 @@ function NewSessionPage() {
     return checkedInOrder.map((t) => t.prompt).join("\n\n---\n\n");
   }, [order, selected]);
 
-  const [text, setText] = useState(autoPrompt ?? composedAutoPrompt);
+  const draftKey = directory ? newSessionDraftKey(directory) : null;
+
+  const [text, setText] = useState(() => {
+    if (autoPrompt) return autoPrompt;
+    if (draftKey) {
+      const d = readDraft(draftKey);
+      if (d) return d;
+    }
+    return composedAutoPrompt;
+  });
   const [sending, setSending] = useState(false);
   const [sendingStatus, setSendingStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submittedRef = useRef(false);
   const autoSubmittedRef = useRef(false);
-  const hasUserEditedRef = useRef(false);
+  const hasUserEditedRef = useRef(
+    Boolean(!autoPrompt && draftKey && readDraft(draftKey)),
+  );
+  const draftSaveTimerRef = useRef<number | null>(null);
 
   const [pendingAttachments, setPendingAttachments] = useState<
     PromptAttachment[]
@@ -271,8 +290,25 @@ function NewSessionPage() {
   useEffect(() => {
     if (autoPrompt) return;
     if (hasUserEditedRef.current) return;
+    if (draftKey && readDraft(draftKey)) return;
     setText(composedAutoPrompt);
-  }, [composedAutoPrompt, autoPrompt]);
+  }, [composedAutoPrompt, autoPrompt, draftKey]);
+
+  // When the user navigates from /session/new?directory=A to ?directory=B
+  // (sidebar + on a different project) the component stays mounted and
+  // draftKey switches. Load B's draft into the composer; useLayoutEffect
+  // (not useEffect) so the swap happens before paint without a flash of
+  // A's text. Synchronous restore on initial mount already happened in
+  // the useState initializer; this effect handles the in-mount change.
+  useLayoutEffect(() => {
+    if (autoPrompt) return;
+    if (!draftKey) return;
+    const d = readDraft(draftKey);
+    if (d) {
+      setText(d);
+      hasUserEditedRef.current = true;
+    }
+  }, [draftKey, autoPrompt]);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -405,6 +441,11 @@ function NewSessionPage() {
         submittedRef.current = true;
         setPendingAttachments([]);
         clearStore();
+        if (draftKey) writeDraft(draftKey, "");
+        if (draftSaveTimerRef.current != null) {
+          window.clearTimeout(draftSaveTimerRef.current);
+          draftSaveTimerRef.current = null;
+        }
         await globalMutate(`/api/opencode/${port}/sessions`);
         mutateSWR(
           (key) =>
@@ -440,6 +481,7 @@ function NewSessionPage() {
       resolveModel,
       resolveThinking,
       isOverridingDefault,
+      draftKey,
     ],
   );
 
@@ -460,6 +502,7 @@ function NewSessionPage() {
       const insert = `${sepBefore}${transcript}${sepAfter}`;
       const next = before + insert + after;
       setText(next);
+      scheduleDraftSave(next);
       setTimeout(() => {
         const ref = textareaRef.current;
         if (!ref) return;
@@ -542,6 +585,50 @@ function NewSessionPage() {
 
   const { isMobile } = useMediaQuery();
   const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
+
+  const persistShortIfNoPrior = useCallback(
+    (value: string) => {
+      if (!draftKey) return false;
+      if (value.length === 0) return false;
+      if (value.length >= DRAFT_MIN_BYTES) return true;
+      return readDraft(draftKey).length === 0;
+    },
+    [draftKey],
+  );
+
+  const scheduleDraftSave = useCallback(
+    (value: string) => {
+      if (!draftKey) return;
+      if (!persistShortIfNoPrior(value)) return;
+      if (!isMobile) {
+        writeDraft(draftKey, value);
+        return;
+      }
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+      }
+      draftSaveTimerRef.current = window.setTimeout(() => {
+        writeDraft(draftKey, value);
+        draftSaveTimerRef.current = null;
+      }, 5000);
+    },
+    [draftKey, persistShortIfNoPrior, isMobile],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      if (submittedRef.current) return;
+      if (!draftKey) return;
+      const value = textareaRef.current?.value ?? "";
+      if (persistShortIfNoPrior(value)) {
+        writeDraft(draftKey, value);
+      }
+    };
+  }, [draftKey, persistShortIfNoPrior]);
 
   useEffect(() => {
     if (autoSubmittedRef.current) return;
@@ -818,6 +905,7 @@ function NewSessionPage() {
               if (textareaRef.current) {
                 textareaRef.current.value = newValue;
                 setText(newValue);
+                scheduleDraftSave(newValue);
               }
             }}
           />
@@ -839,6 +927,7 @@ function NewSessionPage() {
               if (textareaRef.current) {
                 textareaRef.current.value = newValue;
                 setText(newValue);
+                scheduleDraftSave(newValue);
                 textareaRef.current.focus();
                 const cursorPos = newValue.length;
                 textareaRef.current.setSelectionRange(cursorPos, cursorPos);
@@ -878,6 +967,7 @@ function NewSessionPage() {
                     hasUserEditedRef.current = true;
                     const value = e.target.value;
                     setText(value);
+                    scheduleDraftSave(value);
                     if (sttTimeoutProgress !== null) {
                       cancelSttTimeout();
                       if (speechRecognition.isListening) {

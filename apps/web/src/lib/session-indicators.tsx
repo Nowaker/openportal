@@ -2,12 +2,61 @@ import * as React from "react";
 import type { Session } from "@opencode-ai/sdk";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 
+// Composer-draft storage. Persisting the in-progress text of the
+// composer textarea so the user doesn't lose work navigating away.
+// Single source of truth - both the per-session composer ($id.tsx) and
+// the new-session composer (routes/_app/session/new.tsx) read/write
+// these keys via the helpers below. The new-session composer uses
+// `newSessionDraftKey(directory)` as the "session id" argument, which
+// resolves to `opencode-composer-draft:new:<directory>` - same storage
+// shape, same helpers, no duplication.
 const DRAFT_KEY_PREFIX = "opencode-composer-draft:";
+const NEW_SESSION_DRAFT_PREFIX = "new:";
+
+// Drafts shorter than this only persist when there's NO existing prior
+// draft for the same key. Prevents a second tab mounting with an
+// empty/short textarea and clobbering the first tab's longer draft.
+export const DRAFT_MIN_BYTES = 10;
+
+export function getDraftKey(sessionId: string): string {
+  return `${DRAFT_KEY_PREFIX}${sessionId}`;
+}
+
+// Synthetic "session id" for the new-session composer at a given
+// directory. Returned value is meant to be passed to the same
+// getDraftKey/readDraft/writeDraft/sessionHasDraft helpers that real
+// session ids go through.
+export function newSessionDraftKey(directory: string): string {
+  return `${NEW_SESSION_DRAFT_PREFIX}${directory}`;
+}
+
+export function readDraft(sessionId: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(getDraftKey(sessionId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function writeDraft(sessionId: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      window.localStorage.setItem(getDraftKey(sessionId), value);
+    } else {
+      window.localStorage.removeItem(getDraftKey(sessionId));
+    }
+  } catch {
+    // localStorage can throw under quota / privacy modes; the draft is
+    // best-effort, never a hard requirement.
+  }
+}
 
 export function sessionHasDraft(sessionId: string): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const v = window.localStorage.getItem(DRAFT_KEY_PREFIX + sessionId);
+    const v = window.localStorage.getItem(getDraftKey(sessionId));
     return Boolean(v && v.length > 0);
   } catch {
     return false;

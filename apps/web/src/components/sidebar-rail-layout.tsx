@@ -9,6 +9,7 @@ import {
   type BaseDirEntry,
 } from "@/lib/project-path";
 import {
+  newSessionDraftKey,
   sessionHasDraft,
   sessionHasNewContent,
   SessionStatusDot,
@@ -217,7 +218,7 @@ function aggregateBinSignals(
   let busy = false;
   let retry = false;
   let newContent = false;
-  let draft = false;
+  let draft = sessionHasDraft(newSessionDraftKey(bin.dir));
   let question = false;
   let error = false;
   let childBusy = false;
