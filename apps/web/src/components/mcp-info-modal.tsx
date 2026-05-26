@@ -239,26 +239,55 @@ function statusDot(kind: string): string {
 // (one-click flow rather than knob -> modal -> Start OAuth handshake).
 const AUTO_AUTH_KEY = "openportal-mcp-auto-auth";
 
+// Match URLs like https://google-calendar-new.mcp.dh-int.com/sse/...
+// DreamHost's MCP gateways use a custom path-token auth scheme (the
+// trailing token in the SSE URL is what expires). Re-auth is done via
+// <origin>/auth/google which redirects to Google OAuth and returns a
+// new SSE URL the user pastes back here. Opencode's generic
+// /mcp/<name>/auth endpoint doesn't know this flow so we fall back to
+// it when opencode returns UnknownError on a dh-int.com host.
+function deriveDhAuthUrl(mcpUrl: string | undefined): string | null {
+  if (!mcpUrl) return null;
+  try {
+    const u = new URL(mcpUrl);
+    if (!u.hostname.endsWith(".mcp.dh-int.com")) return null;
+    return `${u.origin}/auth/google`;
+  } catch {
+    return null;
+  }
+}
+
 function McpAuthSection({
   mcpName,
   port,
+  mcpUrl,
+  currentEntry,
 }: {
   mcpName: string;
   port: number | null;
+  mcpUrl?: string;
+  currentEntry: McpConfigEntry | null;
 }) {
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [dhNewUrl, setDhNewUrl] = useState("");
+  const [dhSaving, setDhSaving] = useState(false);
+  const [dhSaved, setDhSaved] = useState(false);
   const { mutate: revalidateStatus } = useMcpStatus();
+  const updateEntry = useUpdateMcpEntry();
+  const dhAuthUrl = deriveDhAuthUrl(mcpUrl);
 
   useEffect(() => {
     try {
       const auto = sessionStorage.getItem(AUTO_AUTH_KEY);
       if (auto === mcpName) {
         sessionStorage.removeItem(AUTO_AUTH_KEY);
-        if (port && !authUrl && !success && !busy) {
+        if (dhAuthUrl) {
+          window.open(dhAuthUrl, "_blank", "noopener,noreferrer,popup=yes");
+        } else if (port && !authUrl && !success && !busy) {
           void startFlow();
         }
       }
@@ -266,7 +295,24 @@ function McpAuthSection({
       // sessionStorage can throw in some sandboxed contexts; just no-op
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mcpName, port]);
+  }, [mcpName, port, dhAuthUrl]);
+
+  const saveDhUrl = async () => {
+    const trimmed = dhNewUrl.trim();
+    if (!trimmed || !currentEntry) return;
+    setDhSaving(true);
+    setError(null);
+    try {
+      await updateEntry(mcpName, { ...currentEntry, url: trimmed });
+      setDhSaved(true);
+      setDhNewUrl("");
+      await revalidateStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setDhSaving(false);
+    }
+  };
 
   const startFlow = async () => {
     if (!port) return;
@@ -339,6 +385,75 @@ function McpAuthSection({
       setBusy(false);
     }
   };
+
+  if (dhAuthUrl) {
+    return (
+      <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+          DreamHost re-authentication required
+        </div>
+        {!dhSaved && (
+          <>
+            <p className="text-sm text-fg/90">
+              The session token in this MCP's SSE URL has expired. Re-authenticate
+              at DreamHost to get a fresh URL, then paste it below and save.
+            </p>
+            <a
+              href={dhAuthUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent/90"
+              data-test="portal-mcp-dh-auth-open"
+            >
+              Re-authenticate at DreamHost
+            </a>
+            <div className="text-[10px] text-muted-fg break-all">
+              Opens <code className="text-xs">{dhAuthUrl}</code> in a new tab.
+              After Google sign-in, DreamHost shows you a new SSE URL.
+            </div>
+            <div className="space-y-2 pt-1">
+              <label className="block text-[11px] font-medium uppercase tracking-wide text-muted-fg">
+                New SSE URL
+              </label>
+              <textarea
+                value={dhNewUrl}
+                onChange={(e) => setDhNewUrl(e.target.value)}
+                placeholder={mcpUrl ?? "https://...mcp.dh-int.com/sse/<email>/<new-token>"}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                rows={3}
+                className="w-full rounded-md border border-border bg-bg p-2 font-mono text-[11px] outline-none focus:border-primary break-all"
+                data-test="portal-mcp-dh-new-url"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveDhUrl()}
+                  disabled={dhSaving || !dhNewUrl.trim() || !currentEntry}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:bg-accent/90 disabled:opacity-50"
+                  data-test="portal-mcp-dh-save"
+                >
+                  {dhSaving ? "Saving..." : "Save new URL"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+        {dhSaved && (
+          <>
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
+              New URL saved to <code>~/.config/opencode/opencode.json</code>.
+              Restart opencode (top of modal) for the change to take effect.
+            </p>
+          </>
+        )}
+        {error && (
+          <p className="text-sm text-danger break-words">{error}</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 space-y-3">
@@ -677,7 +792,12 @@ function Body({
             )}
 
             {kind === "needsAuth" && (
-              <McpAuthSection mcpName={mcpName} port={port} />
+              <McpAuthSection
+                mcpName={mcpName}
+                port={port}
+                mcpUrl={typeof currentEntry?.url === "string" ? currentEntry.url : undefined}
+                currentEntry={currentEntry}
+              />
             )}
 
             <div className="border-t border-border pt-3">
