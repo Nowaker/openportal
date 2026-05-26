@@ -51,6 +51,67 @@ projects), follow this protocol:
    reference - update it in place rather than re-writing the
    explanation inline. Treat the directory as the canonical record.
 
+## AI_TODO.md is the canonical task queue (binding)
+
+`AI_TODO.md` at the repo root is the durable cross-session task
+queue for this project. The user's personal
+`~/.config/opencode/AGENTS.md` defines the schema; this section is
+the project-specific enforcement contract.
+
+**Every user prompt that maps to a queueable task MUST land in
+`AI_TODO.md` in the same turn it's accepted.** Skipping the sync
+because "I'll batch later" is a contract violation. Compaction
+wipes the in-memory todo list; `AI_TODO.md` is the only thing that
+survives.
+
+Required format per entry (matches the existing #1-#72 entries):
+
+```
+### N. <Short title> (<status: PENDING | DONE - <commit> | Q-DEFERRED>)
+
+User prompt (verbatim):
+
+> <copy-paste the user's exact words, no paraphrase, no trimming>
+
+Design notes:
+- <what the task means>
+- <implementation approach>
+- <deferred follow-ups, file paths, dependencies>
+```
+
+Operational rules:
+
+- **Append-only by number.** Pick the next integer after the highest
+  existing entry (currently #72). Never re-use numbers. Never edit
+  shipped entries except to flip `PENDING` to `DONE - <commit>` or
+  add a follow-up commit reference.
+- **Batch sync for the same turn.** When a single user prompt
+  enqueues multiple items, each item gets its own numbered entry.
+  When you fall behind (multiple prompts arrived without a sync),
+  catch up in the next AI_TODO sync commit and reference the
+  prompts that triggered them.
+- **Status discipline.** New work starts `(PENDING - <reason>)`.
+  In-flight work flips to `(IN PROGRESS - <reason>)` only if the
+  user is watching a long task; otherwise jump straight to
+  `(DONE - <commit>)` on landing. `Q-DEFERRED` for open user
+  questions whose decision is awaited.
+- **Dedicated AI_TODO commit.** When the only change is the
+  AI_TODO entry (no code), the commit subject MUST start with
+  `AI_TODO.md:` so the user can scan history for queue mutations.
+  Code commits that ship the work and update AI_TODO at the same
+  time fold both into one atomic commit; mention the AI_TODO
+  update in the body.
+- **Position keywords.** Honour the user's queue-position words:
+  `enqueue at end` (default), `enqueue as next` (right after the
+  in-progress item), `next`, `before X`, `after X`, `now`,
+  `immediately`. The numbered order in the file reflects
+  chronological order of acceptance; the actual work order is
+  whatever the in-memory todo list says. Re-ordering across
+  entries is fine; renumbering is not.
+
+If the user reminds you to sync (as in 2026-05-26
+msg_e6580ef5b...), you're already late. Stop, sync, then resume.
+
 ## Operational patterns
 
 ### Where openportal runs from (per branch)

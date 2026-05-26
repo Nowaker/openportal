@@ -1138,6 +1138,105 @@ Design notes (9ce45c7):
 - Render site: `SessionLevelErrorBox` rendered immediately after `{messageNodes}` in the chat list container, so the box appears at the BOTTOM (where the user is likely scrolled when something just went wrong).
 - The existing per-message ErrorBox is unchanged - assistant messages with `info.error` keep their inline red banner. The two coexist; if opencode emits both signals for the same event the user sees two boxes (inline + bottom), which is acceptable over-communication for the rarer overlap case. The much more common case is the pre-message session.error (no message exists at all), which now has the chat-log surface it needed.
 
+### 65. Compaction events render as chat log entries (DONE - e99fc88)
+
+User prompt (verbatim):
+
+> enqueue after current: ses_229d7083fffem6lkaEj69adZ7H when viewed in opencode web ui, i see a lot of compaction events. openportal does not show them at all. every compaction event trigger should be seen as a chat log entry.
+
+Design notes (e99fc88, DONE):
+- Verified on `ses_229d7083fffem6lkaEj69adZ7H`: 156 compaction parts in the message stream. Each is a user-role message with a SINGLE `type:"compaction"` part (shape `{id, sessionID, messageID, type:"compaction", auto: bool, overflow?: bool, tail_start_id?: string}`). `hasVisibleContent` returned false for those messages (no text/tool/file part), so they were filtered out before reaching `MessageItem`.
+- `isCompactionPart` predicate added alongside `isToolPart` / `isFilePart`. `CompactionPartShape` captures the extra fields opencode emits but `@opencode-ai/sdk@1.14.50`'s `CompactionPart` is missing (overflow + tail_start_id).
+- `hasVisibleContent` now includes `hasCompactions`; `compactionParts` derived in `MessageItem` alongside toolCalls/fileParts.
+- `CompactionEventRow` component renders a horizontal dashed divider with a centered chip: `ArchiveBoxIcon` + "Auto-compaction" / "Manual compaction" label + optional "overflow" pill when `overflow=true`. Tooltip explains the full state (auto/manual, overflow, tail_start_id).
+- Render site: after permission decisions, before the errorDescription `ErrorBox` — so the marker sits at the chronological end of the message but above any failure banner.
+- Chat log now matches opencode web UI parity for compaction visibility.
+
+### 66. Session info modal: opening should produce a permalink (PENDING - enqueued as next)
+
+User prompt (verbatim):
+
+> enque as next tasks: opening session info modal does not result in a permalink.
+
+Design notes:
+- Portal AGENTS.md `Everything is a permalink` section already says Session Info modal should use `useHashOpen("info")` at `/session/<id>#info`. User reports the hash is NOT appearing when the modal opens — either the modal stopped using `useHashOpen`, or `useHashOpen` regressed and stopped writing to `location.hash`.
+- Investigation steps: find current open-the-modal call site (search for "Session info" / SessionInfoModal openers). Verify it routes through `useHashOpen("info")`. If it's calling a separate state hook (useState), swap to `useHashOpen`. Cross-check the close path too — Esc / backdrop / X-button should `history.back()` or remove the hash so back-navigation lands on the prior URL, not on a sibling `#` state.
+- Acceptance test: open the modal → URL gains `#info` → reload the URL → modal opens automatically → click X → URL drops `#info` → back button works as expected.
+
+### 67. Session info modal: expose owner/runner instance info (PENDING - enqueued as next)
+
+User prompt (verbatim):
+
+> in session info modal, expose information about the owner/runner of that session. the instance that claims that owns the dispatch of it.
+
+Design notes:
+- Cohort-registry plus stuck-detector plugin's `/verdicts/<sid>` are the authoritative sources for "which opencode instance owns this session right now". `apps/web/src/server/lib/prompt-routing.ts` already resolves the owner instance URL per session (2fa0d94); same data should be surfaced in the Session Info modal.
+- New `Field` rows in the modal: **Owner instance** (host:port from verdict.owner_instance_url, or "—" when verdict has no owner) and **Cohort** (which configured server the owner instance belongs to, derived from the cohort-registry snapshot).
+- Loading state per Diagnostics protocol: render `<Loader />` until the verdict + cohort fetches resolve; show "(no runner)" rather than spinner if the verdict authoritatively reports no current runner.
+- Don't add a NEW API endpoint; reuse the existing `/api/cohort` (`d5d2eeb`) and the existing stuck-detector probe endpoint that frontend already calls. New owner-info field on `/api/instance/self` is also fine if needed.
+- Backend invariant: when the plugin is unreachable, fall back to the user-selected active-server URL with a "(plugin offline; showing active server)" label so the field is never blank.
+
+### 68. Prompt-submit transient disappear+reappear bug; distinct badges per phase (PENDING - enqueued before ^K work)
+
+User prompt (verbatim):
+
+> enqueue before ^K work: there's a brief moment when prompt is submitted -> sent to opencode -> SOMETIMES: disappears from chat log -> reappears again as queued. OR maybe, i can't recall prompt is submitted -> sent to opencode -> queued -> SOMETIMES: disappears from chat log -> reappears again. i can't tell which one, but one of them for sure. MUST be aware that opencode has latency and sometimes a list of messages comes back and it's out of date with our submission. so openportal must ALWAYS be aware of that, and keep anything that opencode confirmed as received, but not yet coming back to us with a certain badge. do not reuse "queued". each situation must be distinct from each other. tooltip on badge of each situation should explain what each situation means.
+
+Design notes:
+- Root cause hypothesis: messages from opencode come back BEFORE the user's submission has been flushed to opencode's DB. The virtual prompt entry (from prompt-archive) renders, then a fresh `/messages` poll returns an older snapshot without it, then the next poll catches up. SWR `keepPreviousData` doesn't help because the merge logic replaces the array; the virtual-prompt-merge in `messages.ts` (`loadFullMessages`) needs an additional gate: "if a virtual prompt has a confirmed opencode messageID we already saw in EARLIER polls, keep it on screen even if THIS poll's snapshot is missing it".
+- Define explicit per-phase badges. NO reuse of "QUEUED" beyond the original meaning. Proposed taxonomy (each MUST have a distinct visual style + tooltip):
+  - **DRAFT** (gray): localStorage-captured only; not yet POSTed to openportal. Tooltip: "Captured in your browser. Not yet sent to OpenPortal."
+  - **PORTAL-ACK** (light blue): openportal accepted, archive row created, not yet POSTed to opencode. Tooltip: "OpenPortal accepted your prompt. About to send to OpenCode."
+  - **SENT-TO-OPENCODE** (sky-blue, no animation): pending-prompt-worker received 2xx from opencode's `/prompt_async`. Tooltip: "OpenCode accepted the prompt. Waiting to start the assistant turn."
+  - **QUEUED** (existing muted-gray pulse): opencode has it queued behind another running turn (mode === "queued" or pendingPromptIds detected on the indicator). Tooltip: "OpenCode is busy with an earlier turn. Your prompt is queued."
+  - **RECONCILING** (yellow): we have the prompt locally + sent confirmation but a recent `/messages` snapshot is missing it. Tooltip: "OpenCode confirmed the submission but its latest snapshot hasn't caught up yet. Holding the message visible to avoid blinking it away."
+- Backend change: track the highest "last seen" opencode messageID per session in memory; when a fresh `/messages` response is MISSING a virtual prompt's opencode messageID that was in an earlier response within N seconds (say 30s), keep the virtual visible with phase=RECONCILING instead of dropping it.
+- Frontend change: virtual-message renderer picks badge from `_pending.phase` map; styles + tooltips defined in one constant table so tooltip text never drifts.
+
+### 69. Ctrl+K palette: match by full or partial session ID (PENDING - enqueued after compaction)
+
+User prompt (verbatim):
+
+> after: ^K should also work by session id, e.g. i paste ses_229d7083fffem6lkaEj69adZ7H and my match is the session with that session id.
+
+Design notes:
+- Existing prefix-match in `cmd.tsx rankSessions` was shipped at `2eba984` (entry #36 — "Quick search by partial session ID"). User reports it doesn't match for FULL pasted session IDs. Investigate: likely the matcher's prefix branch requires query.length < session.id.length, or the matcher only triggers on `ses_` prefix and not the full ID.
+- Acceptance: pasting `ses_229d7083fffem6lkaEj69adZ7H` matches THAT session (no other). Pasting `ses_229d7083f` matches the same session as a prefix. Pasting `ses_` lists all sessions sorted by activity.
+
+### 70. Fork-to-different-project: fork stayed in source dir (PENDING - enqueued after ^K)
+
+User prompt (verbatim):
+
+> then: forking into a different project did not result in a fork moved to the target project/directory. inspect why.
+
+Design notes:
+- Section L (entry #1 in PENDING) shipped the Fork dialog with project picker. User reports the fork backend isn't actually relocating the forked session to the chosen target directory — it stays in the source session's directory.
+- Inspect `/api/opencode/[port]/session/[id]/fork` handler: opencode's `/session/{id}/fork` accepts the body but session.directory may be IMMUTABLE per the opencode public API (see prompt-archive.ts:91-93). If immutable, forking + then move-local-style relocation is required. Confirm with opencode SDK.
+- Likely fix: chain fork → moveLocal(forkId, targetPath) when targetPath differs from source. Reuse the existing move-to-project endpoint plumbing (move-local.ts + the section M backend). On success, route browser to the new session in the new directory.
+
+### 71. Right hamburger #menu hash should NOT be a permalink/pushState (PENDING - enqueued at end)
+
+User prompt (verbatim):
+
+> enqueue at the end: #menu for right hamburger being opened should not be a permalink / pushState entry. this is because when i go to burger > prompt history, then go back, i want to go back to my current session, and not to open the burger.
+
+Design notes:
+- The "everything is a permalink" rule has an exception for transient UI surfaces that are NOT shareable state: hamburger menus, dropdown popovers, mode toggles. These should NOT pollute browser history because back-button semantics expect to return to the previously meaningful URL, not to a transient toggle.
+- Find the right-hamburger menu open/close handler. If it currently uses `useHashOpen("menu")` or otherwise pushes `#menu` to history, swap to a pure-React-state toggle (`useState` or a zustand store). Verify back-button on `/session/<id>?...` ← `/prompts` round trip ignores the menu state.
+- Update portal AGENTS.md `Everything is a permalink` section to call out this exception list explicitly so future agents don't try to re-add `#menu` permalink.
+
+### 72. Prompt history page: slow cold load; render openportal data immediately + spinner per opencode-dependent field (PENDING - enqueued at end)
+
+User prompt (verbatim):
+
+> enqueue at the end: burger > prompt history takes LONG to load. it is almost entirely openportal only data. so why is that? remember the rule: when something is loading, show an indication. but the entire screen isn't even changing to prompt history window for 15-30 seconds. if there is any specific opencode api that prompt history needs, well, it should spinner that piece of data, and show everything else that's known right away. this is the base rule of this project, if unclear update agents.md.
+
+Design notes:
+- `/prompts` route loads from openportal SQLite (FTS5 prompt archive). That's 100% local data; should render instantly. The 15-30s delay implies a blocking opencode call in the page load path — likely `useSessions()` to materialize session titles, or providers/agents for filter chips.
+- Fix per the existing Loading-feedback rule (portal AGENTS.md): render the prompts list IMMEDIATELY from the archive endpoint; per-row session-title hydration uses an inline `<Loader />` until the per-session lookup resolves. NEVER block the route render on opencode-data-dependent fields.
+- Audit `/api/prompts/...` server-side: if the handler calls into the opencode SDK at all, defer those calls to background fill rather than blocking the response.
+- Portal AGENTS.md `Loading feedback` rule already says "keep the previous data visible during silent refresh (keepPreviousData: true) so the spinner only appears on cold load, not on every revalidation" and "Lists MUST show a spinner row (or skeleton placeholders) until the response lands". Reinforce that the rule applies AT ROUTE-LOAD TIME too: a route MUST render its own data within one paint, opencode-dependent enrichment fields render with their own per-cell spinners.
+
 ---
 
 ## [Q4] SESSION_WEDGED_BANNER decision (Q-DEFERRED)
