@@ -239,7 +239,7 @@ User prompt:
 
 Concrete audit task: walk every `<a>` / `navigate(...)` in the codebase; flag any that omits the `?server=<id>` query param. Use a `linkTo(...)` helper that auto-injects active server.
 
-### 7. Permalink + scroll-down-stickiness coherence (msg_e5296431a, 2026-05-17)
+### 7. Permalink + scroll-down-stickiness coherence (DONE - `External-chrome safety net` at apps/web/src/routes/_app/session/$id.tsx:4341-4364 wires a ResizeObserver on chatContainerRef itself, NOT just the inner messages list. When a banner injects above the chat (ConnectionStatusBanner, BuildMismatchBanner, NotificationPermissionBanner, stuck-detector banner) the container's clientHeight shrinks, the observer fires, and isStuckToBottomRef-guarded scrollToBottom + a next-frame retry re-pin to the new bottom. Banner disappear path: same mechanism, container grows, observer fires, re-pin. Verified by code inspection that the observer attaches to the container (not the inner list), so every kind of sibling-banner injection on the outer flex tree triggers a re-pin. Documented in code with a multi-line comment naming each banner source.)
 
 User prompt:
 
