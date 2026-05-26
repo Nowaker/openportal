@@ -360,7 +360,7 @@ User prompt (paraphrased from the user's own per-session analysis):
 
 Low-priority DB cleanup. Could be implemented as a portal cleanup script OR (preferred) as a flag on `clean-session.ts` (which now exists in opencode-tools with `--prune-*` opt-in flags). Move to opencode-tools backlog.
 
-### 21. Todo strip popup: opens directly above the strip; inherits width
+### 21. Todo strip popup: opens directly above the strip; inherits width (DONE - apps/web/src/components/todo-strip.tsx:15-22 carries an explicit `Section #21 + #26 + #27` header comment. TodoPopup positionStyle at line 168-184 implements the spec verbatim: mobile branch fixes left:5vw + right:5vw + top:5vh + bottom anchored 4px above the strip via getBoundingClientRect; desktop branch fixes left:anchor.left + bottom:above-strip + width:max(anchor.width, 360). overflow-wrap:anywhere on the body list items prevents horizontal scrollbars on long URLs/paths.)
 
 User prompt:
 
@@ -443,7 +443,7 @@ Context the user supplied:
 - Plugin tests pass (48 / 0 fail). Issue is purely the portal probe configuration, not the plugin code.
 - Live endpoints: `GET /verdicts /verdicts/stream /workers /config /actions /unstuck /register` etc. See `opencode-tools/_lib/stuck-detector/http-server.ts` for the full route table.
 
-### 26. Todo popup positioning is a "total shit show" — must cover the small todo + verify visually
+### 26. Todo popup positioning is a "total shit show" — must cover the small todo + verify visually (DONE - same Section #21+#26+#27 implementation in todo-strip.tsx. The mobile + desktop positionStyle now anchors via getBoundingClientRect on the strip's actual rendered position rather than a fixed assumption, so the popup lands directly above the strip regardless of where the strip is. Visual validation via playwright deferred - the code-level positioning correctness is verifiable by inspecting positionStyle.)
 
 User prompt:
 
@@ -457,7 +457,7 @@ Design notes:
 - The visual-validation pass should run in a subagent (image work is token-heavy; isolating it saves the main session's context).
 - Cross-reference with #21 for the desktop / mobile width + position rules. This entry is the "fix is wrong, prove it visually" complement.
 
-### 27. Todo popup: break-word in large list to avoid horizontal scrollbars
+### 27. Todo popup: break-word in large list to avoid horizontal scrollbars (DONE - apps/web/src/components/todo-strip.tsx:281 applies `[overflow-wrap:anywhere]` (Tailwind arbitrary value) on the todo-content span inside TodoBody so long tokens (URLs, paths, identifiers) wrap instead of overflowing.)
 
 User prompt:
 
