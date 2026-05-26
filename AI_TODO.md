@@ -1163,7 +1163,7 @@ Design notes:
 - Investigation steps: find current open-the-modal call site (search for "Session info" / SessionInfoModal openers). Verify it routes through `useHashOpen("info")`. If it's calling a separate state hook (useState), swap to `useHashOpen`. Cross-check the close path too — Esc / backdrop / X-button should `history.back()` or remove the hash so back-navigation lands on the prior URL, not on a sibling `#` state.
 - Acceptance test: open the modal → URL gains `#info` → reload the URL → modal opens automatically → click X → URL drops `#info` → back button works as expected.
 
-### 67. Session info modal: expose owner/runner instance info (PENDING - enqueued as next)
+### 67. Session info modal: expose owner/runner instance info (DONE - to be filled by commit hash)
 
 User prompt (verbatim):
 

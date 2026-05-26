@@ -12,8 +12,10 @@ import {
 import { useSessionMessages } from "@/hooks/use-session-messages";
 import { useSessions, useProviders } from "@/hooks/use-opencode";
 import { useMcpStatus, useToggleMcp } from "@/hooks/use-mcp";
+import { useSessionVerdict } from "@/hooks/use-session-verdict";
 import { useHashValue } from "@/hooks/use-hash-open";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useCohort, type CohortWorker } from "@/stores/cohort-store";
 import { McpRow } from "@/components/app-sidebar-nav";
 import { Loader } from "@/components/ui/loader";
 
@@ -148,6 +150,53 @@ function fmtDate(ms: number | undefined | null): string {
   return new Date(ms).toLocaleString();
 }
 
+interface OwnerInfo {
+  display: string;
+  detail: string | null;
+  workerID: string | null;
+}
+
+// Resolve the human-friendly owner label from the plugin verdict +
+// cohort registry. owner_instance_url is the canonical signal (the
+// only thing in the system that knows which opencode instance is
+// currently dispatching this session across multi-instance cohorts).
+// When the verdict reports an owner URL that matches a known cohort
+// worker (by host:port), show the worker's stable label
+// (<host>-<pid>-<port>); otherwise fall back to plain host:port.
+function deriveOwnerInfo(
+  verdict: { owner_instance_url?: string | null } | null,
+  workers: CohortWorker[],
+  verdictNotFound: boolean,
+): OwnerInfo {
+  if (verdictNotFound) {
+    return { display: "no current runner", detail: null, workerID: null };
+  }
+  const url = verdict?.owner_instance_url;
+  if (!url || typeof url !== "string") {
+    return verdict
+      ? { display: "no current runner", detail: null, workerID: null }
+      : { display: "—", detail: null, workerID: null };
+  }
+  let host = "";
+  let port = 0;
+  try {
+    const u = new URL(url);
+    host = u.hostname;
+    port = u.port ? Number(u.port) : u.protocol === "https:" ? 443 : 80;
+  } catch {
+    return { display: url, detail: null, workerID: null };
+  }
+  const match = workers.find((w) => w.host === host && w.port === port);
+  if (match) {
+    return {
+      display: `${host}:${port}`,
+      detail: match.workerID,
+      workerID: match.workerID,
+    };
+  }
+  return { display: `${host}:${port}`, detail: null, workerID: null };
+}
+
 function describeFinishReason(finish: string): { title: string; detail?: string } {
   switch (finish) {
     case "content-filter":
@@ -218,6 +267,30 @@ function Body({
   const messagesPending = messagesLoading && (!messages || messages.length === 0);
   const modelPending =
     messagesPending || (providersLoading && !providersData);
+  const { verdict, isLoading: verdictLoading, notFound: verdictNotFound } =
+    useSessionVerdict(sessionId);
+  const { cohort, isLoading: cohortLoading } = useCohort();
+  const ownerInfo = useMemo(
+    () => deriveOwnerInfo(verdict, cohort.workers, verdictNotFound),
+    [verdict, cohort.workers, verdictNotFound],
+  );
+  const cohortLabel = useMemo(() => {
+    if (cohort.workers.length === 0) {
+      return cohort.pluginReachable ? "1 instance" : "—";
+    }
+    const n = cohort.workers.length;
+    return `${n} instance${n === 1 ? "" : "s"}`;
+  }, [cohort.workers, cohort.pluginReachable]);
+  const verdictLabel = useMemo(() => {
+    if (verdictNotFound) return "idle (no verdict cached)";
+    if (!verdict) return "—";
+    const v = typeof verdict.verdict === "string" ? verdict.verdict : null;
+    if (!v) return "—";
+    if (verdict.cause && (v === "stuck" || v === "in-progress")) {
+      return `${v} (${verdict.cause})`;
+    }
+    return v;
+  }, [verdict, verdictNotFound]);
 
   const session = useMemo(
     () =>
@@ -493,6 +566,30 @@ function Body({
             label="Last Activity"
             value={fmtDate(session?.time?.updated)}
             loading={sessionPending && !session}
+          />
+          <Field
+            label="Owner instance"
+            value={
+              <span title={ownerInfo.detail ?? undefined}>
+                {ownerInfo.display}
+                {ownerInfo.workerID && (
+                  <span className="ml-2 text-[10px] text-muted-fg">
+                    {ownerInfo.workerID}
+                  </span>
+                )}
+              </span>
+            }
+            loading={verdictLoading}
+          />
+          <Field
+            label="Verdict"
+            value={verdictLabel}
+            loading={verdictLoading}
+          />
+          <Field
+            label="Cohort"
+            value={cohortLabel}
+            loading={cohortLoading}
           />
         </div>
         {breakdown.length > 0 && (
