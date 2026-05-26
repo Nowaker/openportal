@@ -352,7 +352,7 @@ curl -sS -D - -o /dev/null http://100.105.229.19:5000/assets/index-FAKEHASH.js |
 # expect: X-OpenPortal-Asset-Source: shim
 ```
 
-### 20. Compaction-summary GC for older summaries (line 2453 of dump — self-authored analysis section)
+### 20. Compaction-summary GC for older summaries (DEFERRED-TO-OPENCODE-TOOLS - low-priority DB cleanup. Implemented as opt-in `clean-session.ts --prune-*` flags in opencode-tools (master). Not portal-side work.)
 
 User prompt (paraphrased from the user's own per-session analysis):
 
