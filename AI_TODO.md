@@ -321,7 +321,7 @@ User prompt:
 
 **EXPLICITLY DEFERRED by user**: openportal as a fully-loadable offline cache (smart cache TTLs, opencode-compatible API bridge). Design doc at `ai-analysis-requests/OFFLINE_CACHE_DESIGN.md` is the record. Keep on list for visibility; do NOT pick up without user reactivation.
 
-### 17. LFS / git push --force workaround for "fork status" (msg_e52967aa6, 2026-05-21)
+### 17. LFS / git push --force workaround for "fork status" (DONE - canonical-gitlab hard fork shipped via 7bc0285; this session's continuous push activity (cf8e96e through 7b950fd) to both origin (gitlab) + github confirms no LFS-lock interference. The 'Locking support detected on remote origin' notice still appears on each push but doesn't block.)
 
 User prompt:
 
@@ -329,7 +329,7 @@ User prompt:
 
 Investigate the LFS-related "fork status off" issue (was about canonical-gitlab hard-fork setup — see `7bc0285 docs: AGENTS.md + README rewrite for canonical-gitlab hard fork`). May already be resolved as part of that doc work. Verify.
 
-### 18. GitLab API to unprotect a branch (msg_e52967b5f, 2026-05-21)
+### 18. GitLab API to unprotect a branch (DONE - operational task, completed during the canonical-gitlab fork setup. Verified by this session's free pushes to main-nowaker without protection rejection.)
 
 User prompt:
 
@@ -482,7 +482,7 @@ Design notes:
 - This codifies the convention I've been following organically across the queue (Sections L, M, N, #21-#27).
 - Check whether an analogous rule already exists in AGENTS.md (or its delegated rules) before adding a duplicate. If a related rule exists, EXTEND it rather than duplicate.
 
-### 29. Archived-session UX: visible-but-disabled controls + centered Unarchive
+### 29. Archived-session UX: visible-but-disabled controls + centered Unarchive (DONE - ArchivedSessionOverlay component in apps/web/src/components/archived-session-overlay.tsx renders over the composer area when session.time?.archived is set, with centered "Session archived" title + Unarchive button + ResizeObserver-based icon-hide for short viewports. Refinement #39 (DONE - 68d9ede) trimmed the "Controls below stay visible" copy. Duplicate entry below intentionally retained for the audit trail.)
 
 User prompt:
 
