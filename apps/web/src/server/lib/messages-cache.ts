@@ -89,24 +89,76 @@ function storeEntry(
   ttlMs: number,
 ): void {
   const existing = cache.get(sessionId);
-  if (existing && messages.length < existing.messages.length) {
-    console.warn(
-      `[messages-cache] suspicious shrink for ${sessionId}: ` +
-        `new=${messages.length} cached=${existing.messages.length}. ` +
-        `Keeping cached data per authoritative-only invariant. ` +
-        `Call invalidateMessagesCache(sessionId) explicitly for legitimate trims.`,
-    );
-    cache.set(sessionId, {
-      fetchedAt: Date.now(),
-      ttlMs: existing.ttlMs,
-      messages: existing.messages,
-    });
-    return;
-  }
+  const merged = mergeByMessageId(existing?.messages ?? [], messages);
   cache.delete(sessionId);
-  cache.set(sessionId, { fetchedAt: Date.now(), ttlMs, messages });
+  cache.set(sessionId, { fetchedAt: Date.now(), ttlMs, messages: merged });
   evictIfFull();
-  persistToDb(sessionId, messages);
+  persistToDb(sessionId, merged);
+}
+
+// Append-only merge: new messages from opencode REPLACE existing
+// entries with the same info.id (content may have grown - streaming
+// parts arrive incrementally), but existing entries NOT in the new
+// list are KEPT with `_reconciling: true` set on info. This protects
+// against opencode returning a stale-but-same-length snapshot that
+// would otherwise overwrite a message we just authoritatively received.
+//
+// User invariant (verbatim, #68 in AI_TODO.md): 'MUST be aware that
+// opencode has latency and sometimes a list of messages comes back
+// and it's out of date with our submission. so openportal must
+// ALWAYS be aware of that, and keep anything that opencode confirmed
+// as received, but not yet coming back to us with a certain badge.'
+//
+// Legitimate trims (revert / delete / session.deleted SSE) flow
+// through invalidateMessagesCache() which drops the whole cache
+// entry. Subsequent fetches repopulate from scratch with no merge.
+// The merge only triggers on a fresh setCachedMessages call when the
+// cache already has data - i.e. the SWR poll cycle.
+function mergeByMessageId(
+  existing: unknown[],
+  fresh: unknown[],
+): unknown[] {
+  if (existing.length === 0) return fresh;
+  const freshIds = new Set<string>();
+  for (const m of fresh) {
+    const id = messageIdOf(m);
+    if (id) freshIds.add(id);
+  }
+  const reconciling: unknown[] = [];
+  for (const m of existing) {
+    const id = messageIdOf(m);
+    if (!id) continue;
+    if (freshIds.has(id)) continue;
+    reconciling.push(markReconciling(m));
+  }
+  if (reconciling.length === 0) return fresh;
+  const out = [...fresh, ...reconciling];
+  out.sort(byTimeCreated);
+  return out;
+}
+
+function messageIdOf(m: unknown): string | null {
+  if (!m || typeof m !== "object") return null;
+  const id = (m as { info?: { id?: unknown } }).info?.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+function markReconciling(m: unknown): unknown {
+  if (!m || typeof m !== "object") return m;
+  const obj = m as { info?: Record<string, unknown> };
+  if (obj.info && obj.info._reconciling === true) return m;
+  return {
+    ...m,
+    info: { ...(obj.info ?? {}), _reconciling: true },
+  };
+}
+
+function byTimeCreated(a: unknown, b: unknown): number {
+  const ta =
+    (a as { info?: { time?: { created?: number } } }).info?.time?.created ?? 0;
+  const tb =
+    (b as { info?: { time?: { created?: number } } }).info?.time?.created ?? 0;
+  return ta - tb;
 }
 
 export function setCachedMessages(

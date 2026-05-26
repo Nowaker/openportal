@@ -2876,15 +2876,17 @@ const MessageItem = memo(function MessageItem({
             still has it" from "opencode has it but isn't working
             on it yet".
           */}
+          {(message.info as { _reconciling?: boolean })._reconciling === true && (
+            <span
+              title="OpenCode confirmed this message earlier but its latest /messages snapshot dropped it. OpenPortal is holding the message visible while waiting for OpenCode's snapshot to catch up. The message is safe on disk - this is a stale-poll guard against blink-away."
+              className="mb-1 inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+            >
+              <Loader className="size-3 mr-1" />
+              Reconciling
+            </span>
+          )}
           {!isAssistant && isPending && pendingMeta && (
             (() => {
-              // Submission state-journey badge. The optimistic row carries
-              // a `_pending.phase` that walks through "submitting" -> "opencode-
-              // accepted" -> (real message replaces it). Each phase picks a
-              // shade in a blue progression - distinct from the warning yellow
-              // and danger red dot-indicators the sidebar uses for session
-              // status, so the user can tell at a glance the badge is about
-              // THIS prompt (not the session as a whole).
               const phase = pendingMeta.phase ?? "submitting";
               const cls =
                 phase === "opencode-accepted"
@@ -2894,8 +2896,12 @@ const MessageItem = memo(function MessageItem({
                 phase === "opencode-accepted"
                   ? "Sent to OpenCode"
                   : "Submitting";
+              const title =
+                phase === "opencode-accepted"
+                  ? "OpenPortal handed the prompt to OpenCode and got a 2xx response. Waiting for OpenCode to echo the user-message back via /messages or SSE so this virtual entry can be replaced with the real one."
+                  : "OpenPortal accepted the prompt and durably stored it. The pending-prompt worker has not yet handed it to OpenCode (typically <1s, longer if OpenCode is unreachable - in which case the worker retries with backoff).";
               return (
-                <span className={cls}>
+                <span className={cls} title={title}>
                   <Loader className="size-3 mr-1" />
                   {label}
                   {pendingMeta.attempts > 0
@@ -2906,7 +2912,15 @@ const MessageItem = memo(function MessageItem({
             })()
           )}
           {!isAssistant && !isPending && message.isQueued && (
-            <Badge intent="warning" className="mb-1">
+            <Badge
+              intent="warning"
+              className="mb-1"
+              title={
+                isQuestionBlocked
+                  ? "OpenCode has this user message but the assistant is blocked on a question above. Answer the question to let OpenCode proceed."
+                  : "OpenCode has this user message as a real entry in its own stream, but the assistant has not yet produced a response. Queued behind earlier turns or an in-flight tool call."
+              }
+            >
               {isQuestionBlocked
                 ? "Queued - blocked on question above"
                 : "Queued"}

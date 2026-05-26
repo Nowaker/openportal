@@ -1176,7 +1176,7 @@ Design notes:
 - Don't add a NEW API endpoint; reuse the existing `/api/cohort` (`d5d2eeb`) and the existing stuck-detector probe endpoint that frontend already calls. New owner-info field on `/api/instance/self` is also fine if needed.
 - Backend invariant: when the plugin is unreachable, fall back to the user-selected active-server URL with a "(plugin offline; showing active server)" label so the field is never blank.
 
-### 68. Prompt-submit transient disappear+reappear bug; distinct badges per phase (PENDING - enqueued before ^K work)
+### 68. Prompt-submit transient disappear+reappear bug; distinct badges per phase (DONE - to be filled by commit hash)
 
 User prompt (verbatim):
 
