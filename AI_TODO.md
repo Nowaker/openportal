@@ -279,7 +279,7 @@ User prompt:
 
 Permission request in subagent doesn't cascade red indicator to parent session in pinned list / navbar. Indicator cascading was added (`2a25573` ranks by indicator-presence at tree levels) but subagent → parent cascade specifically may not be wired. Verify + fix.
 
-### 12. Regression check: "Why does my systemctl --user start openportal AGAIN spawn opencode on port 4000?!" (msg_e5295c080, 2026-05-13)
+### 12. Regression check: "Why does my systemctl --user start openportal AGAIN spawn opencode on port 4000?!" (DONE - verified 2026-05-26 via `pgrep -af "opencode serve --port 4000"` returning empty + openportal child PIDs are bun runner only, no opencode-serve children. `--configless` mode (a44b131 / #44) holds: openportal never spawns opencode.)
 
 User prompt:
 
