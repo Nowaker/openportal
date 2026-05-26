@@ -96,6 +96,7 @@ import {
 import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
+import { useFileHistoryStore } from "@/stores/file-history-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useSttModeStore } from "@/stores/stt-mode-store";
 import { useSttEngine } from "@/hooks/use-stt-engine";
@@ -5846,6 +5847,7 @@ function SessionPage() {
                   textareaRef.current.value = newValue;
                   setHasContent(newValue.length > 0);
                 }
+                useFileHistoryStore.getState().recordMention(filePath, false);
               }}
             />
             <SlashCommandPopover

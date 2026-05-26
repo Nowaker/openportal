@@ -24,9 +24,11 @@ export interface FileHistoryEntry {
 
 interface FileHistoryState {
   recentlyOpened: FileHistoryEntry[];
+  recentlyMentioned: FileHistoryEntry[];
   bookmarks: FileHistoryEntry[];
   maxDisplay: number;
   recordOpened: (path: string, isDir: boolean) => void;
+  recordMention: (path: string, isDir?: boolean) => void;
   toggleBookmark: (path: string, isDir: boolean) => void;
   isBookmarked: (path: string) => boolean;
   removeBookmark: (path: string) => void;
@@ -47,6 +49,7 @@ export const useFileHistoryStore = create<FileHistoryState>()(
   persist(
     (set, get) => ({
       recentlyOpened: [],
+      recentlyMentioned: [],
       bookmarks: [],
       maxDisplay: 20,
       setMaxDisplay: (n) =>
@@ -54,6 +57,14 @@ export const useFileHistoryStore = create<FileHistoryState>()(
       recordOpened: (path, isDir) =>
         set((s) => ({
           recentlyOpened: dedupAndPrepend(s.recentlyOpened, {
+            path,
+            isDir,
+            ts: Date.now(),
+          }).slice(0, 20 * STORAGE_HEADROOM_FACTOR),
+        })),
+      recordMention: (path, isDir = false) =>
+        set((s) => ({
+          recentlyMentioned: dedupAndPrepend(s.recentlyMentioned, {
             path,
             isDir,
             ts: Date.now(),

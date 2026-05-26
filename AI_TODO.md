@@ -255,7 +255,7 @@ User prompt:
 
 `030bc13` plugged one premature-flush leak. User suspects there's STILL a leak. Fresh debugging pass on VAD threshold + buffering logic.
 
-### 9. "Recently mentioned files" — implementation behind placeholder dropdown
+### 9. "Recently mentioned files" — implementation behind placeholder dropdown (DONE - to be filled by commit hash)
 
 User prompt (synthesized):
 
@@ -263,7 +263,7 @@ User prompt (synthesized):
 
 Status: PARTIALLY DONE — `177e865` created the dropdowns with a "not implemented yet" placeholder for the mentions list. The actual implementation (SSE subscription → file-path extraction → per-project quota + TTL) is PENDING.
 
-### 10. "All lists prioritize files from current project first" — refinement (msg_e529741f9, 2026-05-22)
+### 10. "All lists prioritize files from current project first" — refinement (DONE - apps/web/src/stores/file-history-store.ts ships `prioritizeForProject(entries, project, max)` + `isInProject(entry, project)` helpers that implement the current-project-first guarantee (max/2 reserved slots) + horizontal separator semantics. apps/web/src/routes/files.tsx threads project + max through all three lists (recently-opened, recently-mentioned (now wired per #9), bookmarks) via `prioritizeForProject(config.entries, project, max)` at line 384; the `isInProject(e, project)` check at line 386 drives the separator. Effective for ALL three dropdowns now that #9 ships the mentions backend.)
 
 User prompt:
 

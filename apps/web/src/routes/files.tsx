@@ -345,6 +345,7 @@ function HistoryDropdown({
   const ref = useRef<HTMLDivElement>(null);
   const max = useFileHistoryStore((s) => s.maxDisplay);
   const recent = useFileHistoryStore((s) => s.recentlyOpened);
+  const mentions = useFileHistoryStore((s) => s.recentlyMentioned);
   const bookmarks = useFileHistoryStore((s) => s.bookmarks);
   const removeBookmark = useFileHistoryStore((s) => s.removeBookmark);
 
@@ -368,9 +369,9 @@ function HistoryDropdown({
     mentions: {
       label: "Recently mentioned",
       icon: AtSymbolIcon,
-      entries: [] as FileHistoryEntry[],
-      empty: "Recently mentioned files - not implemented yet.",
-      notImplemented: true,
+      entries: mentions,
+      empty: "No mentioned files yet. Files picked via @ mentions in the composer land here.",
+      notImplemented: false,
     },
     bookmarks: {
       label: "Bookmarks",
