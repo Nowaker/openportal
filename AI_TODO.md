@@ -1105,6 +1105,39 @@ Design notes (d7a7d9f, DONE):
     McpSection / ExportSection                  -> own internal loading
 - Combined with the sessions-cache fast-path (commit ef5fe93), most fields are already populated from cache when the modal opens, so even the spinners are typically short-lived blips.
 
+### 63. SQLite-persisted caching proxy + ERR_INSUFFICIENT_RESOURCES spam fix (DONE - 357c8e4 + cf8e96e)
+
+User prompts (chained, all about the same caching-proxy directive plus its follow-up regression):
+
+> Shit is totally destroyed when opencode has high latency 502 bad gateway all the fucking time. ... openportal must be a caching proxy for opencode. If you see msgid 1 in sesid 1, you cache it! ... Only when you hear from opencode AUTHORITATIVELY (not a fucking timeout or empty array due to a bug or something) that it's not there, should you update your cache. ... THIS APPLIES TO EVERYTHING. Projects list in sidebar. ... All shit must go through openportal and be cached for high latency situations.
+
+> index-DMCrwyIF.js:58 GET /api/opencode/4096/session/.../messages net::ERR_INSUFFICIENT_RESOURCES ... a spam of messages, in tens per second. /api/state/last-viewed in 20-40 per second. fix asap.
+
+Design notes:
+
+- 357c8e4 (SQLite persistence): Migration 0004 adds two tables: `messages_cache(session_id, fetched_at, message_count, messages_json)` keyed per-session, and `sessions_cache(port, fetched_at, session_count, sessions_json)` keyed per-port. messages-cache.ts + sessions-cache.ts now write memory + SQLite inline on every `setCachedMessages` / `setCachedSessions`; `getStaleMessages` / `getStaleSessions` hydrate from SQLite on memory miss and populate the in-memory LRU so subsequent reads stay fast. MAX_PERSISTED_SESSIONS=1000 LRU on disk (oldest fetched_at evicted). Shrink guard: setCachedMessages/setCachedSessions refuse to overwrite a cached list with a SHORTER one (suspicious partial response per the authoritative-only invariant). Legitimate trims (revert, delete, session.deleted SSE event) flow through invalidateMessagesCache/invalidateSessionsCache which drop the SQLite row + clear the throttle map so the next set writes fresh. Frontend fix in `routes/_app/session/$id.tsx`: "OpenCode is unreachable" panel only renders when `messages.length === 0` in addition to `opencodeUnreachable`, so a loaded chat log (memory or SQLite-hydrated) is never obscured.
+
+- cf8e96e (spam regression hotfix): Two independent failure modes ganged up post-357c8e4. (a) The 12,802-message session's messages_json blob is ~35 MB; without throttling, SWR poll + SSE-driven fetchAndCache stacked tens of MB of SQLite writes per second, blocking the Bun event loop and exhausting the browser's per-host pool. Fixed with `PERSIST_THROTTLE_MS = 30_000` per cache key (in-memory LRU still updates on every set; SQLite write fires at most once per 30s per session/port). (b) `useMarkViewed` returned a fresh closure on every render so the useEffect at `$id.tsx:3508` (deps include the function ref) re-fired every render — 20-40 POSTs/sec to `/api/state/last-viewed` on busy sessions. Fixed by wrapping `useMarkViewed` + `useMarkManyViewed` in `useCallback` (stable ref across renders) AND adding `MARK_VIEWED_THROTTLE_MS = 5_000` per sessionId so even effect re-fires hit a cheap Map-lookup early-return.
+
+Remaining deferred (would ship if needed): append-only per-message merge on shrink-passing writes (opencode never trims from the middle in practice; explicit invalidate covers revert/delete); bootstrap-cache.ts (agents/config/providers) SQLite persistence (memory-only today, much smaller cold-load impact than messages/sessions).
+
+### 64. Session-level errors surface in chat log (DONE - 9ce45c7)
+
+User prompt:
+
+> why do i see this error badge from stuck detector, but not in the session chat log? fix that. ALL errors coming from the session surface in the chat log. i'm not asking that stuck detector stuff be shown there (it should) - but if there's any api errors or internal errors from opencode or provider, they must be surfaced on their own in the chat log, even when stuck detector is turned off or not working.
+
+Root cause: opencode emits a `session.error` event for session-wide failures (ProviderModelNotFoundError, ProviderAuthError, etc. thrown BEFORE any assistant message gets created). `indicator-state.ts` writes that to `state.lastError` on the indicator and `session-status-badge.tsx` surfaces it as the red ERROR pill. But the chat log only renders per-message ErrorBox for assistant messages whose `info.error` is set OR whose `finish` reason is bad - which never matches a pre-message session-level error. So the user saw a tooltip on the badge with a meaningful error payload, but the chat log itself stayed empty.
+
+Design notes (9ce45c7):
+- `parseSessionLevelError(raw)` extracts a readable title + detail from opencode's `{ name, data: { message } }` envelope JSON-stringified into `indicator.lastError`. Falls back gracefully when the indicator stored a plain string instead of JSON.
+- `hashSessionError(raw)` derives the acknowledge id from the error CONTENT (simple 32-bit string hash, base36-encoded). Same error string always hashes to the same id, so re-emitted errors don't re-surface after acknowledge; a genuinely new error (different text) gets a different id and re-fires the box.
+- `SessionLevelErrorBox` component wraps the existing `ErrorBox`, reading `sessionIndicator.lastError`, computing the hash id, and honoring the existing `useSessionErrorStore.acknowledge` flow.
+- New `useIndicator(instance?.id, sessionId)` subscription `sessionIndicatorForErrors` lifted to right before the `setSessionError` effect (kept the existing one at line 4179 untouched to minimize risk - they share the same module-level store via `useSyncExternalStore`).
+- `setSessionError` effect now prefers session-level error when present (passes the hash id); falls back to the existing failed-assistant-message scan. Sidebar red dot now lights up for session-level errors too, not just message-level ones.
+- Render site: `SessionLevelErrorBox` rendered immediately after `{messageNodes}` in the chat list container, so the box appears at the BOTTOM (where the user is likely scrolled when something just went wrong).
+- The existing per-message ErrorBox is unchanged - assistant messages with `info.error` keep their inline red banner. The two coexist; if opencode emits both signals for the same event the user sees two boxes (inline + bottom), which is acceptable over-communication for the rarer overlap case. The much more common case is the pre-message session.error (no message exists at all), which now has the chat-log surface it needed.
+
 ---
 
 ## [Q4] SESSION_WEDGED_BANNER decision (Q-DEFERRED)
