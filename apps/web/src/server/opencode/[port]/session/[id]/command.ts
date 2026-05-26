@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
-import { getOpencodeClientV2 } from "../../../../lib/opencode-client";
+import {
+  getOpencodeClientV2,
+  resolveSessionDirectory,
+} from "../../../../lib/opencode-client";
 import {
   parsePort,
   parseRouteParam,
@@ -74,9 +77,15 @@ export default defineHandler(async (event) => {
   const ownerTarget = await resolveOwner(sessionID);
   const targetPort = ownerTarget?.port ?? port;
   const client = await getOpencodeClientV2(targetPort);
+  // Directory threading is required for the same reason as prompt.ts:
+  // without it opencode's workspace-routing middleware resolves the
+  // request to process.cwd() and the shell tool runs in the wrong cwd.
+  // See resolveSessionDirectory's banner in opencode-client.ts.
+  const directory = await resolveSessionDirectory(targetPort, sessionID);
   try {
     const result = await client.session.command({
       sessionID,
+      directory,
       command: body.command,
       arguments: body.arguments ?? "",
       agent: body.agent,

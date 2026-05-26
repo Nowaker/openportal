@@ -327,6 +327,82 @@ export async function getOpencodeBaseUrl(port: number): Promise<string> {
   return `http://${target.host}:${target.port}`;
 }
 
+// opencode's workspace-routing middleware (in
+// packages/opencode/src/server/routes/instance/httpapi/middleware/
+// workspace-routing.ts at v1.15.10) decides the per-request
+// `InstanceContext.directory` via this fallback chain:
+//
+//   url.searchParams.get("directory")
+//     || request.headers["x-opencode-directory"]
+//     || process.cwd()
+//
+// The session looked up by id contributes only its `workspaceID`, never
+// its `directory`. So for a session whose `workspace_id` is NULL
+// (the default openportal setup - configless mode, no remote workspace)
+// every request that omits the directory query/header falls back to
+// opencode's `process.cwd()`. Under the user's systemd unit that's
+// `WorkingDirectory=%h/projekty` = `/home/<user>/projekty`, NOT the
+// session's actual project worktree.
+//
+// Concrete failure mode: the shell tool's cwd is
+// `instanceCtx.directory` (packages/opencode/src/tool/shell.ts line
+// 615). So a session created in /home/<user>/projekty/webapps/portal
+// runs `pwd` and gets /home/<user>/projekty, then the AI thrashes
+// trying to figure out which project it is in - which is exactly the
+// session at ses_199f94180ffeYBjaI0fuz5pfGw on 2026-05-26.
+//
+// Fix: every session-scoped POST to opencode (`/prompt`, `/command`,
+// etc.) must carry the directory. We look it up once per (port, sid)
+// via GET `/session/<id>` - opencode treats that as a "local action"
+// (server/shared/workspace-routing.ts RULES), so it does NOT itself
+// need a directory header, breaking the chicken-and-egg cycle. The
+// result is cached for 5 minutes because a session's directory is
+// immutable for practical purposes (move-to-project is the only
+// mutation, and that path invalidates explicitly).
+const sessionDirectoryCache = new Map<
+  string,
+  { directory: string; ts: number }
+>();
+const SESSION_DIRECTORY_TTL_MS = 5 * 60 * 1000;
+
+export async function resolveSessionDirectory(
+  port: number,
+  sessionId: string,
+): Promise<string | undefined> {
+  const key = `${port}:${sessionId}`;
+  const cached = sessionDirectoryCache.get(key);
+  if (cached && Date.now() - cached.ts < SESSION_DIRECTORY_TTL_MS) {
+    return cached.directory;
+  }
+  try {
+    const res = await fetchOpencode(
+      port,
+      `/session/${encodeURIComponent(sessionId)}`,
+    );
+    if (!res.ok) return undefined;
+    const body = (await res.json().catch(() => null)) as
+      | { directory?: unknown }
+      | null;
+    const directory =
+      body && typeof body.directory === "string" && body.directory.length > 0
+        ? body.directory
+        : undefined;
+    if (directory) {
+      sessionDirectoryCache.set(key, { directory, ts: Date.now() });
+    }
+    return directory;
+  } catch {
+    return undefined;
+  }
+}
+
+export function invalidateSessionDirectory(
+  port: number,
+  sessionId: string,
+): void {
+  sessionDirectoryCache.delete(`${port}:${sessionId}`);
+}
+
 // Synchronous variant for code paths that just need a string and don't
 // care about ephemeral re-resolution. Returns the stored host:port, never
 // the rediscovered one.

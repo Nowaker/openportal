@@ -25,7 +25,10 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
-import { getOpencodeClient } from "../../../../lib/opencode-client";
+import {
+  getOpencodeClient,
+  resolveSessionDirectory,
+} from "../../../../lib/opencode-client";
 import { resolveOwner } from "../../../../lib/prompt-routing";
 import {
   parsePort,
@@ -114,7 +117,11 @@ export default defineHandler(async (event) => {
     try {
       if (await detectStuckFromRestart(port, id)) {
         const client = await getOpencodeClient(port);
-        await client.session.abort({ path: { id } });
+        const directory = await resolveSessionDirectory(port, id);
+        await client.session.abort({
+          path: { id },
+          query: directory ? { directory } : undefined,
+        });
       }
     } catch {
       // background; failures here MUST NOT block the /prompt path
@@ -148,8 +155,10 @@ export default defineHandler(async (event) => {
       const owner = await resolveOwner(id);
       const targetPort = owner?.port ?? port;
       const client = await getOpencodeClient(targetPort);
+      const directory = await resolveSessionDirectory(targetPort, id);
       await client.session.promptAsync({
         path: { id },
+        query: directory ? { directory } : undefined,
         body: payload as unknown as Parameters<
           typeof client.session.promptAsync
         >[0]["body"],

@@ -25,7 +25,10 @@
 // handles late-recoveries (Portal up but opencode briefly down, etc.).
 
 import { definePlugin } from "nitro";
-import { getOpencodeClient } from "../lib/opencode-client";
+import {
+  getOpencodeClient,
+  resolveSessionDirectory,
+} from "../lib/opencode-client";
 import { resolveOwner } from "../lib/prompt-routing";
 import {
   backoffMsForAttempts,
@@ -76,8 +79,20 @@ async function deliverOne(row: PromptRow): Promise<void> {
           `archived port ${row.port} to owner ${owner.host}:${owner.port}`,
       );
     }
+    // resolveSessionDirectory is what fixes the bash-tool-cwd bug. See
+    // the helper's banner comment in opencode-client.ts for the full
+    // explanation of why every session-scoped POST must carry the
+    // directory. Best-effort: on miss we fall through with no directory
+    // and opencode resolves it via process.cwd() - which is the
+    // pre-fix behaviour, so worst case the bug just doesn't get fixed
+    // for this one delivery.
+    const directory = await resolveSessionDirectory(
+      targetPort,
+      row.session_id,
+    );
     await client.session.promptAsync({
       path: { id: row.session_id },
+      query: directory ? { directory } : undefined,
       body: payload as unknown as Parameters<
         typeof client.session.promptAsync
       >[0]["body"],
