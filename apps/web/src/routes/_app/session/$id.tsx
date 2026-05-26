@@ -66,6 +66,7 @@ import {
   XMarkIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
+  ArchiveBoxIcon,
 } from "@heroicons/react/24/outline";
 import { ShieldCheckIcon as ShieldCheckIconSolid } from "@heroicons/react/24/solid";
 import {
@@ -384,6 +385,18 @@ function isToolPart(part: Part): part is ToolPart {
 
 function isFilePart(part: Part): part is FilePart {
   return part.type === "file";
+}
+
+type CompactionPartShape = {
+  id: string;
+  type: "compaction";
+  auto?: boolean;
+  overflow?: boolean;
+  tail_start_id?: string;
+};
+
+function isCompactionPart(part: Part): part is Part & CompactionPartShape {
+  return (part as { type?: string }).type === "compaction";
 }
 
 function safeJsonParse(
@@ -2747,6 +2760,7 @@ const MessageItem = memo(function MessageItem({
   const [showInfoModal, setShowInfoModal] = useState(false);
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
+  const compactionParts = message.parts.filter(isCompactionPart);
   const omoBlocks = useMemo(
     () => (isAssistant ? [] : parseOmoBlocks(textContent)),
     [isAssistant, textContent],
@@ -3067,6 +3081,13 @@ const MessageItem = memo(function MessageItem({
           </div>
         );
       })()}
+      {compactionParts.length > 0 && (
+        <div className="space-y-1">
+          {compactionParts.map((part) => (
+            <CompactionEventRow key={part.id} part={part} />
+          ))}
+        </div>
+      )}
       {errorDescription && (
         <ErrorBox
           sessionId={sessionId}
@@ -3092,12 +3113,13 @@ function hasVisibleContent(message: MessageWithParts): boolean {
   const textContent = getMessageContent(message.parts);
   const hasToolCalls = message.parts.some(isToolPart);
   const hasFiles = message.parts.some(isFilePart);
+  const hasCompactions = message.parts.some(isCompactionPart);
   // An assistant turn that fails before producing any text or tool call still
   // carries info.error and must remain visible, otherwise a failed prompt
   // looks indistinguishable from the assistant being idle.
   const isFailed =
     message.info.role === "assistant" && isFailedAssistant(message.info);
-  return !!(textContent || hasToolCalls || hasFiles || isFailed);
+  return !!(textContent || hasToolCalls || hasFiles || hasCompactions || isFailed);
 }
 
 // Single source of truth for "this assistant turn failed and deserves the
@@ -3223,6 +3245,45 @@ function hashSessionError(raw: string): string {
     h = (h * 31 + raw.charCodeAt(i)) | 0;
   }
   return `session-error::${(h >>> 0).toString(36)}`;
+}
+
+function CompactionEventRow({
+  part,
+}: {
+  part: Part & {
+    id: string;
+    type: "compaction";
+    auto?: boolean;
+    overflow?: boolean;
+    tail_start_id?: string;
+  };
+}) {
+  const label = part.auto ? "Auto-compaction" : "Manual compaction";
+  const titleLines = [
+    `${label}${part.overflow ? " (overflowed context)" : ""}`,
+    "OpenCode summarized older history into a compaction block here.",
+    part.tail_start_id
+      ? `Tail starts at message ${part.tail_start_id}.`
+      : null,
+  ].filter(Boolean);
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className="flex-1 border-t border-dashed border-border" />
+      <span
+        title={titleLines.join("\n")}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium text-muted-fg"
+      >
+        <ArchiveBoxIcon className="size-3" />
+        <span>{label}</span>
+        {part.overflow && (
+          <span className="rounded bg-warning/20 px-1 text-[10px] uppercase tracking-wide text-warning-fg">
+            overflow
+          </span>
+        )}
+      </span>
+      <div className="flex-1 border-t border-dashed border-border" />
+    </div>
+  );
 }
 
 function SessionLevelErrorBox({
