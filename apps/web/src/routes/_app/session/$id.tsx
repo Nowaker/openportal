@@ -3184,6 +3184,72 @@ function describeMessageError(
   }
 }
 
+// session.error opencode events surface in indicator.lastError as a
+// JSON-stringified blob ({ name, data: { message, ... } } shape per
+// opencode's error envelope). Extract a readable title + body for the
+// chat-log ErrorBox.
+function parseSessionLevelError(raw: string): { title: string; detail: string } {
+  try {
+    const parsed = JSON.parse(raw) as {
+      name?: unknown;
+      data?: { message?: unknown };
+    };
+    if (parsed && typeof parsed === "object") {
+      const name = typeof parsed.name === "string" ? parsed.name : null;
+      const msg =
+        parsed.data && typeof parsed.data.message === "string"
+          ? parsed.data.message
+          : null;
+      if (msg) {
+        const firstLine = msg.split("\n")[0].trim();
+        const title = firstLine.length > 0 ? firstLine : name ?? "Session error";
+        return { title, detail: msg };
+      }
+      if (name) return { title: name, detail: raw };
+    }
+  } catch {
+    /* indicator stored a plain string, not JSON */
+  }
+  return { title: "Session error", detail: raw };
+}
+
+// Stable acknowledge ID derived from error CONTENT, not arrival time.
+// The same error string always hashes to the same id, so re-emitted
+// errors do not re-surface after acknowledge; a genuinely new error
+// (different text) gets a different id and re-fires the box.
+function hashSessionError(raw: string): string {
+  let h = 0;
+  for (let i = 0; i < raw.length; i++) {
+    h = (h * 31 + raw.charCodeAt(i)) | 0;
+  }
+  return `session-error::${(h >>> 0).toString(36)}`;
+}
+
+function SessionLevelErrorBox({
+  sessionId,
+  lastError,
+}: {
+  sessionId: string;
+  lastError: string;
+}) {
+  const errorId = useMemo(() => hashSessionError(lastError), [lastError]);
+  const acknowledgedId = useSessionErrorStore(
+    (s) => s.acknowledged[sessionId],
+  );
+  const parsed = useMemo(() => parseSessionLevelError(lastError), [lastError]);
+  if (acknowledgedId === errorId) return null;
+  return (
+    <ErrorBox
+      sessionId={sessionId}
+      messageId={errorId}
+      isLastError={true}
+      gutter="mx-3 my-3"
+      title={parsed.title}
+      detail={parsed.detail}
+    />
+  );
+}
+
 function ModelOverrideControl({
   sessionId,
   instanceId,
@@ -3554,22 +3620,35 @@ function SessionPage() {
     }
   }, [sessionId]);
 
+  const sessionIndicatorForErrors = useIndicator(instance?.id, sessionId);
   const setSessionError = useSessionErrorStore((s) => s.setError);
   useEffect(() => {
     if (loading) return;
     if (!sessionId) return;
     let hasError = false;
     let errorMessageId: string | undefined;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.info.role === "assistant") {
-        hasError = isFailedAssistant(m.info);
-        if (hasError) errorMessageId = m.info.id;
-        break;
+    if (sessionIndicatorForErrors?.lastError) {
+      hasError = true;
+      errorMessageId = hashSessionError(sessionIndicatorForErrors.lastError);
+    }
+    if (!hasError) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.info.role === "assistant") {
+          hasError = isFailedAssistant(m.info);
+          if (hasError) errorMessageId = m.info.id;
+          break;
+        }
       }
     }
     setSessionError(sessionId, hasError, errorMessageId);
-  }, [sessionId, loading, messages, setSessionError]);
+  }, [
+    sessionId,
+    loading,
+    messages,
+    setSessionError,
+    sessionIndicatorForErrors?.lastError,
+  ]);
 
   // Mirror opencode's per-turn variant back into the local thinking store.
   // opencode copies user.model.variant onto AssistantMessage.variant at
@@ -5355,6 +5434,12 @@ function SessionPage() {
             </>
           )}
           {messageNodes}
+          {sessionIndicatorForErrors?.lastError && (
+            <SessionLevelErrorBox
+              sessionId={sessionId}
+              lastError={sessionIndicatorForErrors.lastError}
+            />
+          )}
           {permalinkMode && permalinkWindow.loading.after && (
             <div className="px-3 py-2 flex items-center justify-center gap-2 text-xs text-muted-fg">
               <Loader className="size-4" />
