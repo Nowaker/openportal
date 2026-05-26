@@ -96,6 +96,15 @@ export default function Cmd() {
     }
     return arr;
   }, [pinnedData?.sessions, sessionsById]);
+  // Session-id prefix queries (`ses_...`) bypass the 300-session cap
+  // applied to the Recent list. Without this, pasting a known session
+  // ID never matched if that session was outside the 300 most-recent
+  // ones - the user's verbatim bug report (#69 in AI_TODO.md):
+  // 'i paste ses_229d7083fffem6lkaEj69adZ7H and my match is the
+  // session with that session id'. Exact / prefix match on session.id
+  // is a precise filter; even at 10k+ sessions the work stays bounded.
+  const trimmedQuery = query.trim();
+  const isIdQuery = trimmedQuery.toLowerCase().startsWith("ses_");
   const recentSessions = useMemo(() => {
     const sorted = [...sessions]
       .filter((s) => !pinnedIds.has(s.id))
@@ -104,8 +113,8 @@ export default function Cmd() {
         const tb = (b.time as { updated?: number })?.updated ?? 0;
         return tb - ta;
       });
-    return sorted.slice(0, 300);
-  }, [sessions, pinnedIds]);
+    return isIdQuery ? sorted : sorted.slice(0, 300);
+  }, [sessions, pinnedIds, isIdQuery]);
 
   const baseDirs = portalConfig?.baseDirs ?? [];
   const homeDir = portalConfig?.home ?? "";

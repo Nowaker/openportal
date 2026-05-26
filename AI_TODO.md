@@ -1193,7 +1193,7 @@ Design notes:
 - Backend change: track the highest "last seen" opencode messageID per session in memory; when a fresh `/messages` response is MISSING a virtual prompt's opencode messageID that was in an earlier response within N seconds (say 30s), keep the virtual visible with phase=RECONCILING instead of dropping it.
 - Frontend change: virtual-message renderer picks badge from `_pending.phase` map; styles + tooltips defined in one constant table so tooltip text never drifts.
 
-### 69. Ctrl+K palette: match by full or partial session ID (PENDING - enqueued after compaction)
+### 69. Ctrl+K palette: match by full or partial session ID (DONE - to be filled by commit hash)
 
 User prompt (verbatim):
 
