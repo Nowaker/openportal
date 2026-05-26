@@ -219,11 +219,23 @@ export function AppSidebarNav() {
     reason: string;
     liveSessionIds: string[];
   } | null>(null);
-  // Hamburger menu open state. Hash-tracked so the Android hardware
-  // back button (which dispatches popstate with the previous hash)
-  // closes the menu instead of navigating away from the page. Same
-  // pattern as the SessionInfoModal.
-  const [menuOpen, setMenuOpen] = useHashOpen("menu");
+  // Hamburger menu open state. Plain React state - NOT hash-tracked.
+  // Two reasons:
+  //   1. Transient toggle: opening/closing the menu is not shareable
+  //      state, doesn't belong in the URL.
+  //   2. Permalink race: when the menu is open with `#menu` and the
+  //      user picks "Session Info", the MenuItem onAction first
+  //      pushes `#info`, then React Aria auto-closes the menu which
+  //      pushes `""`, overwriting the `#info` hash. The modal opens
+  //      in React state but the URL has no permalink.
+  //   3. Back-navigation: hash-tracking the menu means a flow like
+  //      burger -> Prompt History (navigates away) -> back button
+  //      re-opens the burger (because the prior history entry had
+  //      `#menu`), which is exactly the wrong behavior - the user
+  //      expects to return to the prior session view, not the menu.
+  // Android hardware-back closing the menu is now handled implicitly
+  // by React Aria's Menu component on Escape / outside-tap.
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const sessionMatch = useMatch({
     from: "/_app/session/$id",
