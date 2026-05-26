@@ -1,7 +1,9 @@
 import { defineHandler, readBody, setResponseStatus } from "nitro/h3";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { parseRouteParam } from "../../../../lib/validation";
+import { parsePort, parseRouteParam } from "../../../../lib/validation";
+import { invalidateSessionsCache } from "../../../../lib/sessions-cache";
+import { invalidateMessagesCache } from "../../../../lib/messages-cache";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +24,7 @@ interface RequestBody {
 }
 
 export default defineHandler(async (event) => {
+  const port = parsePort(event);
   const sessionId = parseRouteParam(event, "id");
   const body = (await readBody(event).catch(() => null)) as RequestBody | null;
   const targetPath =
@@ -57,6 +60,10 @@ export default defineHandler(async (event) => {
       timeout: 60_000,
       maxBuffer: 4 * 1024 * 1024,
     });
+    if (!dryRun) {
+      invalidateSessionsCache(port);
+      invalidateMessagesCache(sessionId);
+    }
     return { ok: true, dryRun, stdout, stderr };
   } catch (err) {
     const e = err as {

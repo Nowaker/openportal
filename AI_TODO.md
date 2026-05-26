@@ -1203,7 +1203,7 @@ Design notes:
 - Existing prefix-match in `cmd.tsx rankSessions` was shipped at `2eba984` (entry #36 — "Quick search by partial session ID"). User reports it doesn't match for FULL pasted session IDs. Investigate: likely the matcher's prefix branch requires query.length < session.id.length, or the matcher only triggers on `ses_` prefix and not the full ID.
 - Acceptance: pasting `ses_229d7083fffem6lkaEj69adZ7H` matches THAT session (no other). Pasting `ses_229d7083f` matches the same session as a prefix. Pasting `ses_` lists all sessions sorted by activity.
 
-### 70. Fork-to-different-project: fork stayed in source dir (PENDING - enqueued after ^K)
+### 70. Fork-to-different-project: fork stayed in source dir (DONE - to be filled by commit hash)
 
 User prompt (verbatim):
 
