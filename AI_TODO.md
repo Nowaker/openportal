@@ -1225,7 +1225,7 @@ Design notes:
 - Find the right-hamburger menu open/close handler. If it currently uses `useHashOpen("menu")` or otherwise pushes `#menu` to history, swap to a pure-React-state toggle (`useState` or a zustand store). Verify back-button on `/session/<id>?...` ← `/prompts` round trip ignores the menu state.
 - Update portal AGENTS.md `Everything is a permalink` section to call out this exception list explicitly so future agents don't try to re-add `#menu` permalink.
 
-### 72. Prompt history page: slow cold load; render openportal data immediately + spinner per opencode-dependent field (PENDING - enqueued at end)
+### 72. Prompt history page: slow cold load; render openportal data immediately + spinner per opencode-dependent field (DONE - to be filled by commit hash)
 
 User prompt (verbatim):
 

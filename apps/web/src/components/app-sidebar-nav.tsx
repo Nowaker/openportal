@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import {
   DndContext,
@@ -834,10 +834,12 @@ export function AppSidebarNav() {
             <MenuSection>
               <MenuItem
                 onAction={() => {
-                  void navigate({
-                    to: "/prompts",
-                    search: (prev) =>
-                      sessionId ? { ...prev, focus: sessionId } : { ...prev },
+                  startTransition(() => {
+                    void navigate({
+                      to: "/prompts",
+                      search: (prev) =>
+                        sessionId ? { ...prev, focus: sessionId } : { ...prev },
+                    });
                   });
                 }}
               >
@@ -846,7 +848,9 @@ export function AppSidebarNav() {
               </MenuItem>
               <MenuItem
                 onAction={() => {
-                  void navigate({ to: "/pinned", search: (prev) => prev });
+                  startTransition(() => {
+                    void navigate({ to: "/pinned", search: (prev) => prev });
+                  });
                 }}
               >
                 <StarIcon className="size-4" data-slot="icon" />

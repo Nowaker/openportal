@@ -437,6 +437,28 @@ Rules:
   (`keepPreviousData: true` in SWR) so the spinner only appears on
   cold load, not on every revalidation.
 
+The rule applies AT ROUTE-LOAD TIME too. A route MUST render its
+own data shell within one paint after navigation - the user must
+see the route header, layout, and a loading indicator on the data
+region immediately. NEVER block the route render waiting for an
+opencode-dependent enrichment field (session titles, model name,
+provider id, owner instance). Render the base data from openportal
+state (SQLite archives, instance settings, sidebar tree) IMMEDIATELY
+and let per-cell `<Loader />` spinners fill in opencode-sourced
+fields as their fetches resolve. A 15-30s blank-screen wait while
+SWR pulls in 12k session metadata records is a CONTRACT VIOLATION,
+not "the page is loading" - it means the route blocks itself on a
+field it could render lazily.
+
+Heavy outgoing-route unmounts (e.g. navigating away from a session
+with 12k MessageItem components) block React's commit phase and
+freeze the new route's first paint behind the old route's
+teardown. Wrap user-initiated navigation calls in
+`startTransition(() => navigate({...}))` so React can yield to the
+browser during the unmount and the new route's loading shell
+appears within the next paint instead of after the full
+synchronous teardown.
+
 ### Async-action feedback (mandatory)
 
 Distinct from the read-side rule above. Any user-initiated action
