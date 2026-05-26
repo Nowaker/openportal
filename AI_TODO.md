@@ -171,7 +171,7 @@ Landed: `0be1285`, `1c65167`.
 
 ## PENDING (genuine remaining work, ordered by priority + size)
 
-### 1. Section L — Fork dialog with project picker + progress indication (NEW, dispatched 2026-05-22 23:12)
+### 1. Section L — Fork dialog with project picker + progress indication (DONE - ForkDialog component + multi-phase status + auto-move via move-to-project; verified working end-to-end via #70 fix)
 
 User prompt (from current session, dispatched via prompt_async on the moved session — msg_e53093eda001lP62KebXqWBQSM):
 
@@ -185,7 +185,7 @@ Design notes:
 - Multi-phase status text per portal AGENTS.md async-action-feedback rules: "Asking opencode to fork session..." → "Session forked. Cloning N messages..." → "Done. Opening the new session..."
 - Placeholder session view opens immediately on opencode returning the new session ID; draft prompts persist keyed to that ID.
 
-### 2. Section M — Move session feature with shared hybrid directory picker (NEW, dispatched 2026-05-22 23:12)
+### 2. Section M — Move session feature with shared hybrid directory picker (DONE - move-to-project.post.ts + DirectoryPicker + ConfirmDialog flow + Section M follow-up #30 a829a24 + cache-invalidate fix #70 3ad3c59)
 
 User prompts (synthesized from two messages):
 
@@ -201,7 +201,7 @@ Design notes:
 - In-flight refusal handling with explicit override option ("Session has a live runner. Abort first to move, or check 'allow in-flight' (advanced)").
 - Multi-phase status: "Validating target...", "Moving session + N subagents...", "Updating on-disk artifacts...", "Done. Refreshing session list..."
 
-### 3. Section N — Archive session in right hamburger (NEW, dispatched 2026-05-22 23:12)
+### 3. Section N — Archive session in right hamburger (DONE - ArchivedSessionOverlay shipped via #29 + #39 archive/unarchive endpoint live)
 
 User prompt:
 
@@ -212,7 +212,7 @@ Design notes:
 - Backend: PATCH `/session/<sid>` with `{ time: { archived: <ms-or-null> } }` — opencode's UpdatePayload supports this (verified at opencode `session.ts:173`).
 - Confirmation dialog; SWR mutate after.
 
-### 4. File-browser "letter j" scroll cap (msg_e52967b61, 2026-05-21)
+### 4. File-browser "letter j" scroll cap (DONE - 2bbc71a; see entry #55)
 
 User prompt:
 
@@ -220,7 +220,7 @@ User prompt:
 
 The file browser appears to cap the listing alphabetically. Need pagination OR cap removal. Investigate the listing endpoint + FE rendering.
 
-### 5. "After clicking permalink, the message must highlight very visibly" + permalink-UX (msg_e529650c8 + msg_e529651d6, lines 6159-6162)
+### 5. "After clicking permalink, the message must highlight very visibly" + permalink-UX (DONE - 695ae79 + 667b6d5; see entry #56)
 
 User prompt:
 
@@ -231,7 +231,7 @@ User prompt:
 
 Items 2-4 = permalink-UX work (highlight on arrival, no-op on in-view, no "click to copy" semantic). Item 5 = audit pass for missing `?server=` queries.
 
-### 6. Server-permalink missing in sidebar links (subset of #5 item 5)
+### 6. Server-permalink missing in sidebar links (DONE - 695ae79; subset of #5 / #56)
 
 User prompt:
 
@@ -287,7 +287,7 @@ User prompt:
 
 The user is on externalOpencode lifecycle mode — this should NOT happen. Smoke test next session: `systemctl --user restart openportal` then `pgrep -af "opencode serve"` should show ONLY user-managed opencodes (no portal-spawned children).
 
-### 13. Click-on-session-context-fullness-indicator → Session Info regression check (msg_e52967f2f, 2026-05-21)
+### 13. Click-on-session-context-fullness-indicator → Session Info regression check (DONE - context dial onClick wires setShowSessionInfo via useHashOpen("info") at app-sidebar-nav.tsx:811; regression resolved after #66+#71 d76a96c removed the menu-pushState race)
 
 User prompt:
 
@@ -337,7 +337,7 @@ User prompt:
 
 Operational — likely done as part of the fork operation. Verify branch protection state if any GitLab branch ops queued.
 
-### 19. Sweep for "OpenPortal failed to load assets" residual cases (msg_e5295b4c6, 2026-05-12 + msg_e5295b507, 2026-05-12)
+### 19. Sweep for "OpenPortal failed to load assets" residual cases (DONE - the 3-layer asset-fallback architecture in scripts/build.sh + middleware/asset-fallback.ts + error.ts shim makes stale-asset 500s structurally impossible. Verified by the `curl -D -` smoke test documented in AGENTS.md `Stale asset 500s are impossible by construction`)
 
 User prompts:
 
