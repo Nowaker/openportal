@@ -5267,7 +5267,7 @@ function SessionPage() {
           </div>
         )}
 
-        {!loading && !error && opencodeUnreachable && (
+        {!loading && !error && opencodeUnreachable && messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="text-base font-medium text-fg">
               OpenCode is unreachable
