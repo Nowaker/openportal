@@ -21,6 +21,8 @@ import { getPromptDb } from "./prompt-db";
 
 const SHORT_TTL_MS = 30_000;
 const MAX_ENTRIES = 32;
+const PERSIST_THROTTLE_MS = 30_000;
+const lastPersistMs = new Map<number, number>();
 
 interface CacheEntry {
   fetchedAt: number;
@@ -82,6 +84,10 @@ export function invalidateSessionsCache(port?: number): void {
 }
 
 function persistToDb(port: number, sessions: unknown[]): void {
+  const now = Date.now();
+  const last = lastPersistMs.get(port) ?? 0;
+  if (now - last < PERSIST_THROTTLE_MS) return;
+  lastPersistMs.set(port, now);
   try {
     const db = getPromptDb();
     const json = JSON.stringify(sessions);
@@ -92,7 +98,7 @@ function persistToDb(port: number, sessions: unknown[]): void {
          fetched_at = excluded.fetched_at,
          session_count = excluded.session_count,
          sessions_json = excluded.sessions_json`,
-      [port, Date.now(), sessions.length, json],
+      [port, now, sessions.length, json],
     );
   } catch (e) {
     console.warn(
@@ -121,6 +127,7 @@ function hydrateFromDb(port: number): unknown[] | null {
 }
 
 function deleteFromDb(port: number): void {
+  lastPersistMs.delete(port);
   try {
     const db = getPromptDb();
     db.run(`DELETE FROM sessions_cache WHERE port = ?`, [port]);
@@ -133,6 +140,7 @@ function deleteFromDb(port: number): void {
 }
 
 function deleteAllFromDb(): void {
+  lastPersistMs.clear();
   try {
     const db = getPromptDb();
     db.run(`DELETE FROM sessions_cache`);

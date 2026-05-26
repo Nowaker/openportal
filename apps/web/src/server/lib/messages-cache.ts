@@ -55,6 +55,14 @@ const SHORT_TTL_MS = 30_000;
 const LONG_LIVED_TTL_MS = 5 * 60_000;
 const MAX_ENTRIES = 200;
 const MAX_PERSISTED_SESSIONS = 1_000;
+// Per-session throttle for SQLite writes. The 12k-message session's
+// JSON is ~35 MB; without throttling, SWR poll cadence + SSE-triggered
+// revalidations would write tens of MB to disk per second, block the
+// Bun event loop, and cascade into browser per-host connection-pool
+// exhaustion (ERR_INSUFFICIENT_RESOURCES). 30 s is enough to keep the
+// SQLite copy 'fresh enough' for restart-survival without thrashing.
+const PERSIST_THROTTLE_MS = 30_000;
+const lastPersistMs = new Map<string, number>();
 const cache = new Map<string, CacheEntry>();
 
 function evictIfFull(): void {
@@ -139,6 +147,10 @@ export function getStaleMessages(sessionId: string): unknown[] | null {
 }
 
 function persistToDb(sessionId: string, messages: unknown[]): void {
+  const now = Date.now();
+  const last = lastPersistMs.get(sessionId) ?? 0;
+  if (now - last < PERSIST_THROTTLE_MS) return;
+  lastPersistMs.set(sessionId, now);
   try {
     const db = getPromptDb();
     const json = JSON.stringify(messages);
@@ -149,7 +161,7 @@ function persistToDb(sessionId: string, messages: unknown[]): void {
          fetched_at = excluded.fetched_at,
          message_count = excluded.message_count,
          messages_json = excluded.messages_json`,
-      [sessionId, Date.now(), messages.length, json],
+      [sessionId, now, messages.length, json],
     );
     db.run(
       `DELETE FROM messages_cache WHERE session_id IN (
@@ -186,6 +198,7 @@ function hydrateFromDb(sessionId: string): unknown[] | null {
 }
 
 function deleteFromDb(sessionId: string): void {
+  lastPersistMs.delete(sessionId);
   try {
     const db = getPromptDb();
     db.run(`DELETE FROM messages_cache WHERE session_id = ?`, [sessionId]);
