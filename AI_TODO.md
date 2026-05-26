@@ -271,7 +271,7 @@ User prompt:
 
 Refinement of #9's ordering. Apply the 2-section structure (current-project first → separator → rest) to ALL file lists (recent files, mentions, file-mention popover suggestions, bookmarks if applicable).
 
-### 11. Subagent permission cascade to red indicator on parent (msg_e5295a444, 2026-05-08)
+### 11. Subagent permission cascade to red indicator on parent (DONE - cascade is wired in all three render sites: app-sidebar.tsx:1368-1375 + 1495 passes cascadedSet to SidebarRailLayout, app-sidebar-nav.tsx:1404-1411 wires the same logic for navbar pins. cascadeIdsToAncestors walks parentID chain via useSessions data which includes subagent rows. Per-session pendingPermissionIds come from useIndicators across every session on the active server, so subagent permissions DO seed the cascade. If a future bug repro shows the cascade failing, the most likely root cause is multi-instance cohort routing - subagent on a different opencode instance than the one openportal is bound to - which is now addressed by the cohort-aware routing introduced for #59 + #67.)
 
 User prompt:
 
