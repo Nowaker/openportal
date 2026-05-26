@@ -371,7 +371,7 @@ Design notes:
 - Mobile: opens directly above too, occupies 90% viewport width (5% margin each side), top bound at 5% from viewport top, bottom anchored at the clicked strip (must NOT extend below the minified component).
 - Long lists: vertical scrollbar inside the popup. Never grow past the clicked element on the bottom side.
 
-### 22. File browser language detection bug (sh / rc / dotfile + txt false-positives)
+### 22. File browser language detection bug (sh / rc / dotfile + txt false-positives) (DONE - to be filled by commit hash)
 
 User prompt:
 

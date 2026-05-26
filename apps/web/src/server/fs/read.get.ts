@@ -5,10 +5,31 @@ import { resolveScopedPath } from "../lib/fs-security";
 
 const MAX_TEXT_BYTES = 5 * 1024 * 1024;
 
-// Lookup by extension is "good enough" for the file viewer's syntax-
-// highlighting hint. The viewer falls back to plain text if the
-// language is unknown. This map is INTENTIONALLY minimal and additive
-// only; if a user reports a missing language, add it here.
+// Backend file-language detection. Returns shiki-compatible language
+// ids so the file viewer's picker shows the correct language already
+// selected and the highlighter doesn't fall through to plain text.
+//
+// User report (verbatim, #22 in AI_TODO.md):
+//   '.sh' opened with highlighting set to inexistent 'bash'. had to
+//   switch to shell. all these files get it wrong: gitconfig bashrc
+//   gitignore rvmrc xsessionrc zshrc. ... '.txt' gets interpreted as
+//   lua. content detection must be fixed. use extensions. use *rc.
+//
+// Two fixes:
+//   1. 'bash' -> 'shell' everywhere. shiki has 'shell' in its
+//      bundled grammar list ('bash' is only a flourite/content-
+//      sniffer label, never appears in the picker). The frontend's
+//      FLOURITE_TO_SHIKI maps 'bash' -> 'shell' for content-sniffer
+//      results, but backend file-extension matches bypass that
+//      normalization and need to emit the canonical id directly.
+//   2. Mirror the frontend's full dotfile + *rc coverage so common
+//      config files (gitconfig, gitignore, rvmrc, xsessionrc, etc.)
+//      don't fall through to content sniffing where '.txt' lands on
+//      lua etc.
+//
+// Source-of-truth coverage is at apps/web/src/components/
+// code-block-shiki.tsx (frontend); this server-side copy mirrors it.
+// Keep the two in sync when adding new entries.
 const EXTENSION_TO_LANG: Record<string, string> = {
   ts: "typescript",
   tsx: "tsx",
@@ -17,15 +38,17 @@ const EXTENSION_TO_LANG: Record<string, string> = {
   mjs: "javascript",
   cjs: "javascript",
   json: "json",
-  jsonc: "json",
+  jsonc: "jsonc",
+  json5: "json5",
   md: "markdown",
-  mdx: "markdown",
+  mdx: "mdx",
   py: "python",
   rb: "ruby",
   go: "go",
   rs: "rust",
   java: "java",
   kt: "kotlin",
+  kts: "kotlin",
   swift: "swift",
   c: "c",
   cc: "cpp",
@@ -35,17 +58,29 @@ const EXTENSION_TO_LANG: Record<string, string> = {
   hpp: "cpp",
   cs: "csharp",
   php: "php",
-  sh: "bash",
-  bash: "bash",
-  zsh: "bash",
-  fish: "bash",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
+  ksh: "shell",
+  dash: "shell",
+  ash: "shell",
+  fish: "fish",
+  ps1: "powershell",
+  psm1: "powershell",
+  bat: "bat",
+  cmd: "bat",
+  txt: "text",
+  log: "text",
+  lst: "text",
+  tsv: "text",
+  env: "shell",
   toml: "toml",
   yaml: "yaml",
   yml: "yaml",
-  xml: "markup",
-  html: "markup",
-  htm: "markup",
-  svg: "markup",
+  xml: "xml",
+  html: "html",
+  htm: "html",
+  svg: "xml",
   css: "css",
   scss: "scss",
   sass: "sass",
@@ -76,63 +111,99 @@ const EXTENSION_TO_LANG: Record<string, string> = {
   conf: "ini",
   cfg: "ini",
   desktop: "ini",
+  lock: "yaml",
+  diff: "diff",
+  patch: "diff",
+  csv: "csv",
+  rst: "text",
+  tex: "latex",
 };
 
 const FILENAME_TO_LANG: Record<string, string> = {
+  LICENSE: "text",
+  "LICENSE.txt": "text",
+  "LICENSE.md": "markdown",
+  COPYING: "text",
+  NOTICE: "text",
+  AUTHORS: "text",
+  CONTRIBUTORS: "text",
+  README: "text",
+  "README.md": "markdown",
+  CHANGELOG: "text",
+  "CHANGELOG.md": "markdown",
+  PKGBUILD: "shell",
+  ".SRCINFO": "ini",
   Dockerfile: "docker",
+  "Dockerfile.dev": "docker",
   Makefile: "makefile",
-  ".gitignore": "bash",
-  ".gitattributes": "bash",
+  "Makefile.am": "makefile",
+  "Makefile.in": "makefile",
+  GNUmakefile: "makefile",
+  Procfile: "yaml",
+  Gemfile: "ruby",
+  Rakefile: "ruby",
+  Vagrantfile: "ruby",
+  ".gitconfig": "ini",
+  ".gitignore": "ignore",
+  ".gitattributes": "text",
+  ".dockerignore": "ignore",
+  ".npmignore": "ignore",
+  ".prettierignore": "ignore",
+  ".eslintignore": "ignore",
   ".editorconfig": "ini",
-  ".env": "bash",
-  ".env.local": "bash",
-  ".env.production": "bash",
-  ".env.development": "bash",
+  ".env": "shell",
+  ".env.local": "shell",
+  ".env.production": "shell",
+  ".env.development": "shell",
+  gitconfig: "ini",
+  gitignore: "ignore",
 };
 
 const LOWER_FILENAME_TO_LANG: Record<string, string> = {
-  ".bashrc": "bash",
-  ".zshrc": "bash",
-  ".kshrc": "bash",
-  ".tcshrc": "bash",
-  ".cshrc": "bash",
-  ".profile": "bash",
-  ".bash_profile": "bash",
-  ".zprofile": "bash",
-  ".zlogin": "bash",
-  ".zlogout": "bash",
-  ".envrc": "bash",
-  ".inputrc": "bash",
-  ".dircolors": "bash",
-  ".aliases": "bash",
-  ".functions": "bash",
-  ".exports": "bash",
-  ".extra": "bash",
-  ".curlrc": "bash",
+  ".bashrc": "shell",
+  ".zshrc": "shell",
+  ".kshrc": "shell",
+  ".tcshrc": "shell",
+  ".cshrc": "shell",
+  ".profile": "shell",
+  ".bash_profile": "shell",
+  ".zprofile": "shell",
+  ".zlogin": "shell",
+  ".zlogout": "shell",
+  ".envrc": "shell",
+  ".inputrc": "shell",
+  ".dircolors": "shell",
+  ".aliases": "shell",
+  ".functions": "shell",
+  ".exports": "shell",
+  ".extra": "shell",
+  ".curlrc": "shell",
+  ".rvmrc": "shell",
   ".wgetrc": "ini",
   ".vimrc": "vim",
   ".tmux.conf": "ini",
   ".xresources": "ini",
-  ".xsession": "bash",
-  ".xinitrc": "bash",
-  ".xprofile": "bash",
-  ".xsessionrc": "bash",
-  zshrc: "bash",
-  bashrc: "bash",
+  ".xsession": "shell",
+  ".xinitrc": "shell",
+  ".xprofile": "shell",
+  ".xsessionrc": "shell",
+  zshrc: "shell",
+  bashrc: "shell",
+  rvmrc: "shell",
   xresources: "ini",
-  xsession: "bash",
-  xinitrc: "bash",
-  xprofile: "bash",
-  xsessionrc: "bash",
-  inputrc: "bash",
+  xsession: "shell",
+  xinitrc: "shell",
+  xprofile: "shell",
+  xsessionrc: "shell",
+  inputrc: "shell",
   sudoers: "ini",
   fstab: "ini",
   hosts: "ini",
-  crontab: "bash",
+  crontab: "shell",
 };
 
 const FILENAME_PATTERNS: Array<[RegExp, string]> = [
-  [/^\.[a-z][a-z0-9_-]*rc(\.[a-z0-9._-]+)?$/i, "bash"],
+  [/^\.[a-z][a-z0-9_-]*rc(\.[a-z0-9._-]+)?$/i, "shell"],
 ];
 
 function languageFor(filename: string): string {
