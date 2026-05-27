@@ -410,7 +410,7 @@ Design notes:
 - Update README.md with the concept so the contract is documented (important messages route through the drawer, NOT just toasts).
 - The systemctl-restart-alert fix from #23 should integrate with this drawer once both ship — the restart error should ALSO write to the drawer so it survives toast dismissal.
 
-### 25. Stuck-detector banner: probe timeout too aggressive (false-positive "not loaded")
+### 25. Stuck-detector banner: probe timeout too aggressive (false-positive "not loaded") (DONE - c64912e + banner state machine verified at apps/web/src/components/stuck-detector-install-banner.tsx)
 
 User-provided diagnosis + fix (verbatim):
 
