@@ -417,7 +417,10 @@ export function applyOpencodeEvent(
 // runs at 127.0.0.1:4098 and tracks every session across all opencode
 // instances). Portal's indicator state is keyed by serverId::sessionId,
 // so one verdict can apply to multiple indicator entries when a session
-// shows up under more than one server. Update every matching entry.
+// shows up under more than one server. Update every matching entry; if
+// none match, seed fresh entries from caller-supplied targets so the
+// verdict still reaches the UI for sessions portal hasn't seen any
+// SSE traffic for. See ai-analysis-requests/STUCK_SESSION_VISIBILITY.md.
 export interface StuckVerdictUpdate {
   sessionID: string;
   verdict: "idle" | "in-progress" | "stuck";
@@ -429,6 +432,23 @@ export interface StuckVerdictUpdate {
     message: string | null;
     overdue: boolean;
   } | null;
+  // When no existing indicator entry matches `sessionID`, create one
+  // fresh entry per target so the verdict still reaches the UI.
+  // Omitted / empty array = preserve the pre-fix "drop on miss"
+  // behavior (matters for tests + opt-in callers that don't want
+  // to materialise indicator state).
+  //
+  // The drop-on-miss path is a footgun: opencode's `/session/status`
+  // only returns ACTIVE runners (it's `{}` when nothing is in flight),
+  // so the broadcaster's hydrate seeds nothing for idle/stuck sessions.
+  // And stuck sessions don't emit SSE events the broadcaster could
+  // lazy-create state from. Seeding here is the only path that gets a
+  // STUCK verdict to the UI for sessions that were already stuck
+  // before portal saw any traffic for them. The caller (the
+  // stuck-detector-client plugin) resolves these targets from the
+  // verdict's `owner_instance_url` when known, else fans out to every
+  // configured server.
+  seedTargets?: Array<{ serverId: string; port: number }>;
 }
 
 export function applyStuckVerdict(update: StuckVerdictUpdate): void {
@@ -446,11 +466,17 @@ export function applyStuckVerdict(update: StuckVerdictUpdate): void {
     fanOut({ type: "update", state: next });
     any = true;
   }
-  if (!any) {
-    /* No indicator entry yet for this session. The verdict cache from
-       the plugin includes sessions that haven't yet emitted an event
-       portal subscribes to. Dropped; the verdict re-arrives when the
-       plugin notices a status change. */
+  if (any) return;
+  const targets = update.seedTargets ?? [];
+  for (const t of targets) {
+    const fresh = emptyState(t.serverId, t.port, update.sessionID);
+    fresh.stuck_verdict = update.verdict;
+    fresh.stuck_cause = update.stuck_cause;
+    fresh.stuck_warnings = update.warnings ?? [];
+    fresh.retry = update.retry ?? null;
+    fresh.lastEventAt = Date.now();
+    sessions.set(key(t.serverId, update.sessionID), fresh);
+    fanOut({ type: "update", state: fresh });
   }
 }
 

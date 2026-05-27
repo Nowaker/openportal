@@ -20,6 +20,7 @@ import {
   emitStuckEvent,
   type VerdictKind,
 } from "../lib/stuck-detector-events";
+import { listConfiguredServers } from "../lib/server-registry";
 
 const PLUGIN_URL = "http://127.0.0.1:4098";
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -43,6 +44,47 @@ interface RawVerdict {
     message?: string | null;
     overdue?: boolean;
   } | null;
+  // Carried so we can resolve which portal serverId this session is
+  // owned by (when the plugin knows) or fan out across every configured
+  // server (when it doesn't). The plugin emits both fields on every
+  // verdict; `directory` is currently advisory only - kept here to
+  // future-proof a directory-based resolver if owner_instance_url
+  // ever becomes unreliable.
+  directory?: string | null;
+  owner_instance_url?: string | null;
+}
+
+// Resolve which serverId(s) should host an indicator entry for this
+// verdict's session when portal has none yet. Single source of truth
+// for the seeding-fanout decision; intentionally read-mostly so it's
+// safe to call per verdict.
+function resolveSeedTargets(
+  raw: RawVerdict,
+): Array<{ serverId: string; port: number }> {
+  let registered: ReturnType<typeof listConfiguredServers>;
+  try {
+    registered = listConfiguredServers();
+  } catch {
+    return [];
+  }
+  if (typeof raw.owner_instance_url === "string" && raw.owner_instance_url) {
+    const target = raw.owner_instance_url.replace(/\/+$/, "");
+    const hit = registered.find(
+      (s) => `http://${s.host}:${s.port}` === target,
+    );
+    if (hit) return [{ serverId: hit.id, port: hit.port }];
+    // owner_instance_url is set but unknown to this portal (e.g. a
+    // worker on a host that isn't in our registry). Fall through to
+    // fanout so the verdict still reaches whatever local view the
+    // user has.
+  }
+  // Fan out to every configured server. The browser only renders the
+  // entry under the server it's currently viewing (entries under other
+  // servers are invisible to that browser). Bounded: ~configured-
+  // servers x ~plugin-tracked-sessions (~2 x ~100 = ~200 entries x
+  // ~500B = ~100KB; trivial). See ai-analysis-requests/
+  // STUCK_SESSION_VISIBILITY.md for the rationale.
+  return registered.map((s) => ({ serverId: s.id, port: s.port }));
 }
 
 function normalize(raw: RawVerdict): StuckVerdictUpdate | null {
@@ -73,6 +115,7 @@ function normalize(raw: RawVerdict): StuckVerdictUpdate | null {
           overdue: raw.retry.overdue === true,
         }
       : null,
+    seedTargets: resolveSeedTargets(raw),
   };
 }
 
