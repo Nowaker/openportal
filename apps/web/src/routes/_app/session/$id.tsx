@@ -3674,6 +3674,42 @@ function SessionPage() {
 
   const sessionIndicatorForErrors = useIndicator(instance?.id, sessionId);
   const setSessionError = useSessionErrorStore((s) => s.setError);
+
+  // AI-side mention extraction for #9 'recently mentioned files'. The
+  // user spec said 'by user or ai in prompt'. The user-@-popover side
+  // was wired in 2bda920; this effect covers the AI side by scanning
+  // tool-call inputs in recent messages and recording any absolute or
+  // ~/-prefixed file paths the assistant referenced (read / edit /
+  // write / grep). Bounded to the last 50 messages so very long
+  // sessions stay cheap. A ref-tracked Set of processed tool-part ids
+  // ensures each path is recorded ONCE even on rapid re-renders.
+  const aiMentionScannedToolIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const recordMention = useFileHistoryStore.getState().recordMention;
+    const scanned = aiMentionScannedToolIds.current;
+    const recent = messages.slice(-50);
+    for (const m of recent) {
+      for (const part of m.parts ?? []) {
+        if (!isToolPart(part)) continue;
+        if (scanned.has(part.id)) continue;
+        scanned.add(part.id);
+        const tool = String(part.tool ?? "").toLowerCase();
+        const input = (part.state?.input ?? {}) as Record<string, unknown>;
+        let path: string | null = null;
+        if (tool === "read" || tool === "edit" || tool === "write") {
+          const v = input.filePath ?? input.file;
+          if (typeof v === "string" && v.length > 0) path = v;
+        } else if (tool === "grep" || tool === "list" || tool === "glob") {
+          const v = input.path;
+          if (typeof v === "string" && v.length > 0) path = v;
+        }
+        if (path && (path.startsWith("/") || path.startsWith("~/"))) {
+          recordMention(path, false);
+        }
+      }
+    }
+  }, [messages]);
   useEffect(() => {
     if (loading) return;
     if (!sessionId) return;

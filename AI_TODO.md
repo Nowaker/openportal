@@ -255,7 +255,7 @@ User prompt:
 
 `030bc13` plugged one premature-flush leak. User suspects there's STILL a leak. Fresh debugging pass on VAD threshold + buffering logic.
 
-### 9. "Recently mentioned files" — implementation behind placeholder dropdown (DONE - 2bda920 for user-side @ mentions; AI-side tool-call extraction is a deferred follow-up - see design notes)
+### 9. "Recently mentioned files" — implementation behind placeholder dropdown (DONE - 2bda920 user-side @ mentions + AI-side tool-call extraction follow-up; spec "by user or ai in prompt" now fully covered)
 
 User prompt (synthesized):
 
