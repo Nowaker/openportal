@@ -198,6 +198,31 @@ export function useWhisperRecorder({
       utteranceStartedAtRef.current = null;
       lastVoiceAtRef.current = null;
 
+      // Visibility-change guard: requestAnimationFrame PAUSES when the
+      // browser tab is hidden, but MediaRecorder keeps capturing audio.
+      // When the tab becomes visible again, lastVoiceAtRef is stale (it
+      // holds a timestamp from BEFORE the tab was hidden). On the very
+      // next tick() the silence-since check `now - lastVoiceAtRef >
+      // VAD_SILENCE_MS` fires immediately even though the user may have
+      // resumed speaking the instant they switched back. That's the
+      // 'premature flush' the user reported - the utterance gets cut
+      // off the moment focus returns. Fix: on tab becoming visible,
+      // refresh both timers to NOW so the silence countdown restarts
+      // from a known-good baseline.
+      const onVisibility = () => {
+        if (document.visibilityState !== "visible") return;
+        const now = performance.now();
+        if (lastVoiceAtRef.current !== null) lastVoiceAtRef.current = now;
+        if (utteranceStartedAtRef.current !== null) {
+          utteranceStartedAtRef.current = now;
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      const detachVisibility = () => {
+        document.removeEventListener("visibilitychange", onVisibility);
+      };
+      recorder.addEventListener("stop", detachVisibility, { once: true });
+
       const tick = () => {
         if (!analyserRef.current || !recorderRef.current) return;
         analyser.getFloatTimeDomainData(buffer);
