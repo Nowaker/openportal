@@ -50,7 +50,9 @@ export default defineHandler(async (event) => {
   // creates carries the same ID we store on the archive row. Without
   // this, slash-command expansion would emit text bearing no
   // resemblance to '/foo bar' and the text-based dedup misses it.
-  const messageID = `msg_${randomUUID().replace(/-/g, "")}`;
+  // (See the long banner in prompt.ts for why the `f` prefix is load-
+  // bearing - same bug, same workaround. Touch one, touch both.)
+  const opencodeMessageId = `msg_f${randomUUID().replace(/-/g, "").slice(0, 31)}`;
   void archivePrompt({
     port,
     sessionId: sessionID,
@@ -65,11 +67,6 @@ export default defineHandler(async (event) => {
   }).catch((err) => {
     console.error("[prompt-archive] async failure:", err);
   });
-
-  // Pre-generate the messageID portal-side so messages.ts dedup can
-  // correlate the archived row with opencode's emitted user message
-  // (which carries an expanded template, NOT the literal '/foo bar').
-  const opencodeMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
 
   // Owner-aware dispatch: route to the cohort instance currently
   // running the session's runner, not blindly to `port` (the user's
