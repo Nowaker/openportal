@@ -8,6 +8,7 @@ import {
   CheckIcon,
   ClipboardDocumentIcon,
   ClockIcon,
+  Cog6ToothIcon,
   DocumentIcon,
   DocumentPlusIcon,
   EyeIcon,
@@ -43,6 +44,7 @@ import {
   isInProject,
   type FileHistoryEntry,
 } from "@/stores/file-history-store";
+import { useFileBrowserSettingsStore } from "@/stores/file-browser-settings-store";
 
 interface BrowseEntry {
   name: string;
@@ -115,8 +117,19 @@ const fetcher = async (url: string) => {
 function FilesPage() {
   const search = useSearch({ from: "/files" });
   const navigate = useNavigate();
+  const showHidden = useFileBrowserSettingsStore((s) => s.showHidden);
+  const showModDate = useFileBrowserSettingsStore((s) => s.showModDate);
+  const showFileSize = useFileBrowserSettingsStore((s) => s.showFileSize);
+  const showDirSize = useFileBrowserSettingsStore((s) => s.showDirSize);
 
-  const browseUrl = `/api/fs/browse${search.path ? `?path=${encodeURIComponent(search.path)}` : ""}`;
+  const browseUrl = (() => {
+    const params = new URLSearchParams();
+    if (search.path) params.set("path", search.path);
+    params.set("show_hidden", showHidden ? "1" : "0");
+    if (showDirSize) params.set("with_dir_size", "1");
+    const qs = params.toString();
+    return `/api/fs/browse${qs ? `?${qs}` : ""}`;
+  })();
   const {
     data: browse,
     mutate: mutateBrowse,
@@ -203,10 +216,47 @@ function FilesPage() {
     goTo(abs);
   };
 
+  const pathInputRef = useRef<PathInputHandle>(null);
+
+  // Ctrl/Cmd+Shift+L focuses the address bar - mirrors browser
+  // Ctrl+L (which we cannot intercept because the browser binds it
+  // before we see the event). The shortcut works in three contexts:
+  // standalone /files route, panel-iframe with focus inside it
+  // (this handler), and panel-iframe with focus in the parent chat
+  // (the parent FileBrowserPanel posts fb-focus-address into us,
+  // handled by the postMessage listener below).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "l"
+      ) {
+        e.preventDefault();
+        pathInputRef.current?.selectAll();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      const data = e.data as { type?: string } | null;
+      if (data?.type === "fb-focus-address") {
+        pathInputRef.current?.selectAll();
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
   return (
     <div className="flex h-screen flex-col bg-bg text-fg">
       <TopBar
         pathInput={pathInput}
+        pathInputRef={pathInputRef}
         onPathInputChange={setPathInput}
         onPathSubmit={submitPath}
         entries={browse?.entries ?? []}
@@ -465,6 +515,7 @@ function HistoryDropdown({
 
 function TopBar({
   pathInput,
+  pathInputRef,
   onPathInputChange,
   onPathSubmit,
   entries,
@@ -480,6 +531,7 @@ function TopBar({
   onGoProject,
 }: {
   pathInput: string;
+  pathInputRef: React.RefObject<PathInputHandle | null>;
   onPathInputChange: (next: string) => void;
   onPathSubmit: () => void;
   entries: BrowseEntry[];
@@ -494,7 +546,6 @@ function TopBar({
   onGoTo: (path: string) => void;
   inPanel: boolean;
 }) {
-  const pathInputRef = useRef<PathInputHandle>(null);
   // Close-panel-or-window. In iframe mode (inPanel), the parent
   // listens for postMessage. As a top-level tab, try window.close()
   // (works if the tab was opened by window.open from another tab);
@@ -594,6 +645,7 @@ function TopBar({
           className="w-full rounded-md border border-border bg-muted/20 px-2 py-1 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary sm:text-sm"
         />
       </div>
+      <FileBrowserSettingsCog />
       <button
         type="button"
         onClick={handleClose}
@@ -605,6 +657,111 @@ function TopBar({
         <XMarkIcon className="size-4" />
       </button>
     </header>
+  );
+}
+
+function FileBrowserSettingsCog() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const showHidden = useFileBrowserSettingsStore((s) => s.showHidden);
+  const showModDate = useFileBrowserSettingsStore((s) => s.showModDate);
+  const showFileSize = useFileBrowserSettingsStore((s) => s.showFileSize);
+  const showDirSize = useFileBrowserSettingsStore((s) => s.showDirSize);
+  const setShowHidden = useFileBrowserSettingsStore((s) => s.setShowHidden);
+  const setShowModDate = useFileBrowserSettingsStore((s) => s.setShowModDate);
+  const setShowFileSize = useFileBrowserSettingsStore((s) => s.setShowFileSize);
+  const setShowDirSize = useFileBrowserSettingsStore((s) => s.setShowDirSize);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="File browser settings"
+        aria-label="File browser settings"
+        aria-expanded={open}
+        className="inline-flex size-6 items-center justify-center rounded text-muted-fg hover:bg-muted/30 hover:text-fg"
+        data-test="portal-files-settings-cog"
+      >
+        <Cog6ToothIcon className="size-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-bg shadow-xl">
+          <div className="border-b border-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-fg">
+            View options
+          </div>
+          <ul className="p-2 space-y-1.5 text-xs">
+            <CogToggle
+              checked={showHidden}
+              onChange={setShowHidden}
+              label="Show hidden files"
+              testId="portal-files-toggle-hidden"
+            />
+            <CogToggle
+              checked={showModDate}
+              onChange={setShowModDate}
+              label="Show mod date"
+              testId="portal-files-toggle-moddate"
+            />
+            <CogToggle
+              checked={showFileSize}
+              onChange={setShowFileSize}
+              label="Show file size"
+              testId="portal-files-toggle-filesize"
+            />
+            <CogToggle
+              checked={showDirSize}
+              onChange={setShowDirSize}
+              label="Show directory size"
+              hint="(may be slow)"
+              testId="portal-files-toggle-dirsize"
+            />
+          </ul>
+          <div className="border-t border-border px-3 py-1.5 text-[10px] text-muted-fg">
+            Shortcut: <kbd className="rounded border border-border bg-muted/40 px-1 font-mono">Ctrl+Shift+L</kbd> focus address bar
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CogToggle({
+  checked,
+  onChange,
+  label,
+  hint,
+  testId,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  hint?: string;
+  testId?: string;
+}) {
+  return (
+    <li>
+      <label className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/30 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="size-3.5 accent-accent"
+          data-test={testId}
+        />
+        <span className="flex-1 text-fg">{label}</span>
+        {hint && <span className="text-muted-fg text-[10px]">{hint}</span>}
+      </label>
+    </li>
   );
 }
 
@@ -802,6 +959,9 @@ function FileTree({
   onSelectFile: (name: string) => void;
   parent: string | null;
 }) {
+  const showModDate = useFileBrowserSettingsStore((s) => s.showModDate);
+  const showFileSize = useFileBrowserSettingsStore((s) => s.showFileSize);
+  const showDirSize = useFileBrowserSettingsStore((s) => s.showDirSize);
   // Synthetic '..' entry rendered as the first row when the current
   // directory isn't the user-visible root. Clicking it routes back
   // to `parent` (which the server computed against the configured
@@ -873,13 +1033,21 @@ function FileTree({
                 return <Icon className={`size-4 shrink-0 ${color}`} />;
               })()}
               <span className="truncate flex-1 min-w-0">{e.name}</span>
-              {!e.isDir && typeof e.size === "number" && (
+              {showFileSize && !e.isDir && typeof e.size === "number" && (
                 <span className="shrink-0 text-xs text-muted-fg tabular-nums w-14 text-right">
                   {formatBytes(e.size)}
                 </span>
               )}
-              {e.isDir && <span className="shrink-0 w-14" />}
-              {typeof e.mtimeMs === "number" && (
+              {showFileSize && e.isDir && (
+                showDirSize && typeof e.size === "number" ? (
+                  <span className="shrink-0 text-xs text-muted-fg tabular-nums w-14 text-right">
+                    {formatBytes(e.size)}
+                  </span>
+                ) : (
+                  <span className="shrink-0 w-14" />
+                )
+              )}
+              {showModDate && typeof e.mtimeMs === "number" && (
                 <span
                   className="shrink-0 text-xs text-muted-fg tabular-nums w-10 text-right"
                   title={new Date(e.mtimeMs).toLocaleString()}

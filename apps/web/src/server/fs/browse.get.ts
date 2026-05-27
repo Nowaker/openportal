@@ -16,6 +16,65 @@ interface Entry {
   mtimeMs?: number;
 }
 
+// Recursive size computation for a directory tree. Symlinks are
+// NOT followed (lstat naturally avoids that), so we cannot loop on
+// self-referential symlinks. A global entry-count cap of 50_000
+// stops runaway traversals on top-level paths like /; whichever
+// directory was being processed when the cap is hit returns
+// whatever bytes had accumulated so far, and remaining sibling
+// directories receive size = undefined (not 0 - undefined
+// communicates "did not finish counting").
+//
+// Cap is shared across all directories in a single browse request
+// because the response object is the bounded resource, not any
+// single directory.
+const DIR_SIZE_ENTRY_CAP = 50_000;
+
+interface DirSizeContext {
+  entriesSeen: number;
+  capHit: boolean;
+}
+
+async function computeDirSize(path: string, ctx: DirSizeContext): Promise<number | undefined> {
+  if (ctx.capHit) return undefined;
+  let total = 0;
+  let raw;
+  try {
+    raw = await readdir(path, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  for (const entry of raw) {
+    if (ctx.capHit) return undefined;
+    ctx.entriesSeen += 1;
+    if (ctx.entriesSeen > DIR_SIZE_ENTRY_CAP) {
+      ctx.capHit = true;
+      return undefined;
+    }
+    const child = `${path}/${entry.name}`;
+    let stat;
+    try {
+      stat = await lstat(child);
+    } catch {
+      continue;
+    }
+    if (stat.isSymbolicLink()) {
+      // Symlinks contribute their own link-bytes only, never the
+      // target. lstat reports the link itself, so this is just
+      // stat.size - tiny but real.
+      total += stat.size;
+      continue;
+    }
+    if (stat.isDirectory()) {
+      const sub = await computeDirSize(child, ctx);
+      if (typeof sub === "number") total += sub;
+    } else if (stat.isFile()) {
+      total += stat.size;
+    }
+  }
+  return total;
+}
+
 export default defineHandler(async (event) => {
   const query = getQuery(event);
   const config = readPortalConfig();
@@ -23,6 +82,7 @@ export default defineHandler(async (event) => {
 
   const rawPath = (query.path as string) || (bases[0] ?? homedir());
   const showHidden = query.show_hidden === "1" || query.show_hidden === "true";
+  const withDirSize = query.with_dir_size === "1" || query.with_dir_size === "true";
   const scope = resolveScopedPath(rawPath);
   if (!scope.ok) {
     return { error: scope.error, path: scope.path };
@@ -91,29 +151,38 @@ export default defineHandler(async (event) => {
     };
   }
 
-  // Files included AND directories - the difference from /api/fs/list.
-  // Hidden entries excluded by default to avoid drowning the tree in
-  // .git, .vscode, etc.; show_hidden=1 query param flips that.
+  const filtered = raw.filter((e) => {
+    if (!e.isFile() && !e.isDirectory() && !e.isSymbolicLink()) return false;
+    if (!showHidden && e.name.startsWith(".")) return false;
+    return true;
+  });
+
+  const dirSizeCtx: DirSizeContext = { entriesSeen: 0, capHit: false };
+
   const entries: Entry[] = await Promise.all(
-    raw
-      .filter((e) => {
-        if (!e.isFile() && !e.isDirectory() && !e.isSymbolicLink()) return false;
-        if (!showHidden && e.name.startsWith(".")) return false;
-        return true;
-      })
-      .map(async (e) => {
-        const isDir = e.isDirectory();
-        const entry: Entry = { name: e.name, isDir };
-        try {
-          const s = await lstat(`${path}/${e.name}`);
-          if (!isDir) entry.size = s.size;
-          entry.mtimeMs = s.mtimeMs;
-        } catch {
-          /* stat is best-effort - column shows nothing on failure */
-        }
-        return entry;
-      }),
+    filtered.map(async (e) => {
+      const isDir = e.isDirectory();
+      const entry: Entry = { name: e.name, isDir };
+      const child = `${path}/${e.name}`;
+      try {
+        const s = await lstat(child);
+        if (!isDir) entry.size = s.size;
+        entry.mtimeMs = s.mtimeMs;
+      } catch {
+        /* stat is best-effort - column shows nothing on failure */
+      }
+      return entry;
+    }),
   );
+
+  if (withDirSize) {
+    for (const entry of entries) {
+      if (!entry.isDir) continue;
+      const child = `${path}/${entry.name}`;
+      const total = await computeDirSize(child, dirSizeCtx);
+      if (typeof total === "number") entry.size = total;
+    }
+  }
   entries.sort((a, b) => {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
     return a.name.localeCompare(b.name);

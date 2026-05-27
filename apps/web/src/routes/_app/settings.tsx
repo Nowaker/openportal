@@ -20,6 +20,7 @@ import {
   BoltIcon,
   BellIcon,
   EyeIcon,
+  FolderIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,7 @@ import {
   useInstanceSettings,
   setToolOutputMaxBytes,
 } from "@/stores/instance-settings-store";
+import { useFileBrowserSettingsStore } from "@/stores/file-browser-settings-store";
 import { Input } from "@/components/ui/input";
 import {
   FONT_SIZE_PRESETS,
@@ -1298,6 +1300,87 @@ function UpdateStrategyPicker({
   );
 }
 
+function FilesSettings() {
+  const showHidden = useFileBrowserSettingsStore((s) => s.showHidden);
+  const showModDate = useFileBrowserSettingsStore((s) => s.showModDate);
+  const showFileSize = useFileBrowserSettingsStore((s) => s.showFileSize);
+  const showDirSize = useFileBrowserSettingsStore((s) => s.showDirSize);
+  const setShowHidden = useFileBrowserSettingsStore((s) => s.setShowHidden);
+  const setShowModDate = useFileBrowserSettingsStore((s) => s.setShowModDate);
+  const setShowFileSize = useFileBrowserSettingsStore((s) => s.setShowFileSize);
+  const setShowDirSize = useFileBrowserSettingsStore((s) => s.setShowDirSize);
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-2">
+        <div>
+          <h3 className="text-sm font-semibold">View options</h3>
+          <p className="text-xs text-muted-fg">
+            What the file browser shows by default. Same toggles are
+            available in-place via the cog icon left of the close button
+            in any file browser surface.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Checkbox
+            isSelected={showHidden}
+            onChange={setShowHidden}
+            data-test="portal-settings-files-hidden"
+          >
+            Show hidden files
+          </Checkbox>
+          <Checkbox
+            isSelected={showModDate}
+            onChange={setShowModDate}
+            data-test="portal-settings-files-moddate"
+          >
+            Show mod date column
+          </Checkbox>
+          <Checkbox
+            isSelected={showFileSize}
+            onChange={setShowFileSize}
+            data-test="portal-settings-files-filesize"
+          >
+            Show file size column
+          </Checkbox>
+          <Checkbox
+            isSelected={showDirSize}
+            onChange={setShowDirSize}
+            data-test="portal-settings-files-dirsize"
+          >
+            Show directory size{" "}
+            <span className="text-muted-fg text-xs">(may be slow)</span>
+          </Checkbox>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div>
+          <h3 className="text-sm font-semibold">Keyboard shortcuts</h3>
+          <p className="text-xs text-muted-fg">
+            Active inside any file browser surface, including the
+            side-panel iframe (works whether focus is in the browser or
+            in the parent chat).
+          </p>
+        </div>
+        <ul className="text-xs space-y-1">
+          <li className="flex items-center gap-2">
+            <kbd className="rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono">
+              Ctrl+Shift+L
+            </kbd>
+            <span className="text-muted-fg">(or</span>
+            <kbd className="rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono">
+              Cmd+Shift+L
+            </kbd>
+            <span className="text-muted-fg">)</span>
+            <span>Focus + select the address bar</span>
+          </li>
+        </ul>
+      </section>
+    </div>
+  );
+}
+
 function ComposerSettings() {
   const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
   const setEnterKeyAction = useComposerStore((s) => s.setEnterKeyAction);
@@ -1574,6 +1657,7 @@ function SettingsPage() {
       "prompt",
       "composer",
       "chat",
+      "files",
       "tools",
       "content",
       "notifications",
@@ -1594,6 +1678,7 @@ function SettingsPage() {
           "prompt",
           "composer",
           "chat",
+          "files",
           "tools",
           "content",
           "notifications",
@@ -1643,6 +1728,10 @@ function SettingsPage() {
           <Tab id="chat" data-test="portal-settings-tab-chat">
             <ChatBubbleLeftRightIcon className="size-4" data-slot="icon" />
             Chat
+          </Tab>
+          <Tab id="files" data-test="portal-settings-tab-files">
+            <FolderIcon className="size-4" data-slot="icon" />
+            Files
           </Tab>
           <Tab id="tools" data-test="portal-settings-tab-tools">
             <WrenchScrewdriverIcon className="size-4" data-slot="icon" />
@@ -1929,6 +2018,19 @@ function SettingsPage() {
             <section>
               <TitleBarActionsSetting />
             </section>
+          </div>
+        </TabPanel>
+
+        <TabPanel id="files" className="pt-6">
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-lg font-semibold">Files</h2>
+              <p className="text-xs text-muted-fg pt-1">
+                Defaults for the file browser. Hidden-file visibility,
+                metadata columns, optional directory-size scan.
+              </p>
+            </div>
+            <FilesSettings />
           </div>
         </TabPanel>
 

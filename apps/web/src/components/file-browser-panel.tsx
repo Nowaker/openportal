@@ -51,6 +51,7 @@ export function FileBrowserPanel() {
   const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(
     null,
   );
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [hashValue, setHashValue] = useHashValue("files");
 
   useEffect(() => {
@@ -88,6 +89,26 @@ export function FileBrowserPanel() {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [close, navigated]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "l"
+      ) {
+        e.preventDefault();
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "fb-focus-address" },
+          "*",
+        );
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -162,6 +183,7 @@ export function FileBrowserPanel() {
         aria-orientation="vertical"
       />
       <iframe
+        ref={iframeRef}
         title="File browser"
         src={src}
         className={`h-full w-full flex-1 border-0 ${
