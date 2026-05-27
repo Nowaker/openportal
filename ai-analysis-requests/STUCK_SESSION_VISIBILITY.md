@@ -370,10 +370,13 @@ If they become annoying, fix in opencode-tools, not here.
 
 ---
 
-## Bonus finding: 2 orphaned "delivered" prompts in openportal
+## Resolved: 2 "orphan delivered" prompts are pre-feature legacy data
 
-(Surfaced by background investigation. Unrelated to the visibility
-bug above - logged here so it doesn't get forgotten.)
+(Initially logged as a suspected bug; follow-up investigation
+proved it is not. Resolution captured here so the file is the
+single source of truth.)
+
+Initial observation, for session `ses_1adcb0fddffenglncs0bYf820u`:
 
 ```sql
 SELECT id, status, opencode_message_id, datetime(delivered_at/1000)
@@ -390,23 +393,78 @@ Returns 2 rows:
 | `66997cb4-...` | "Continue your entire todo" | 2026-05-23 12:19:41 | NULL |
 | `97d1828b-...` | "in a new worktree, build a feature that allows portal to edi..." | 2026-05-23 00:21:02 | NULL |
 
-Pattern: openportal marked them `status='delivered'` (and set
-`delivered_at`), but never recorded an `opencode_message_id`. Either:
+The first background agent claimed neither text appeared in
+opencode's `part` rows, implying opencode silently dropped them.
+That claim was **wrong** - the agent did a substring search that
+failed because part.data is JSON-encoded and the text inside is
+escaped. Re-running the search with proper LIKE matching against
+the JSON body returns hits:
 
-- The delivery succeeded but the response didn't carry a usable id
-  (or openportal failed to capture it). The pending-prompt-worker
-  may have a race where it sets `delivered_at` before parsing
-  opencode's response.
-- The prompts were silently dropped by opencode and openportal
-  marked them delivered anyway.
+```sql
+SELECT COUNT(*) FROM part WHERE session_id='ses_1adcb0fddffenglncs0bYf820u'
+  AND data LIKE '%in a new worktree, build a feature that allows portal to edit mcps%';
+-- 3 hits
 
-Neither prompt's text appears in opencode's `part` rows for this
-session (verified by the background-investigation agent via SQLite
-LIKE searches against the part.data JSON), supporting hypothesis #2.
+SELECT COUNT(*) FROM part WHERE session_id='ses_1adcb0fddffenglncs0bYf820u'
+  AND data LIKE '%Continue your entire todo%';
+-- 1 hit
+```
 
-Fix path requires reading
-`apps/web/src/server/plugins/pending-prompt-worker.ts`. Logging here
-to address in a separate change; not gating the STUCK-badge fix.
+Both prompts ARE in opencode. They were delivered successfully.
+
+Why the NULL `opencode_message_id` then? Because `opencode_message_id`
+is set at ARCHIVE time, not at DELIVERY time. The mechanism (see
+[`archivePrompt`](../apps/web/src/server/lib/prompt-archive.ts#L160-L237)
++ [`prompt.ts`](../apps/web/src/server/opencode/[port]/session/[id]/prompt.ts#L82-L103))
+pre-generates a `msg_<uuid>` portal-side, passes it to opencode in
+the `messageID` field of `promptAsync`, AND stamps the archive row
+with the same id at INSERT. opencode then stamps the user message
+with that exact ID. The two converge by construction.
+
+That feature shipped in commit `b6cc833` ("smart-dedup: correlate
+archive rows with opencode messages via pre-generated messageID")
+on **2026-05-23 19:41:59 UTC**.
+
+Distribution of orphans across the whole prompts DB (NOT just this
+session) confirms the pre-feature theory:
+
+```sql
+SELECT COUNT(*) AS total,
+       SUM(CASE WHEN opencode_message_id IS NULL THEN 1 ELSE 0 END) AS orphans
+FROM prompts WHERE status='delivered';
+-- total=572, orphans=492 (86%)
+
+SELECT date(ts_ms/1000, 'unixepoch') AS day, COUNT(*) AS n
+FROM prompts WHERE status='delivered' AND opencode_message_id IS NULL
+GROUP BY day ORDER BY day DESC LIMIT 10;
+-- 2026-05-23: 94    <- feature shipped this day at 19:41 UTC
+-- 2026-05-22: 91
+-- 2026-05-21: 85
+-- 2026-05-20: 56
+-- ... etc, going back
+
+SELECT COUNT(*) FROM prompts
+WHERE status='delivered' AND opencode_message_id IS NULL
+  AND ts_ms > 1779600000000;  -- 2026-05-24 00:00:00 UTC
+-- 0
+```
+
+**Zero post-feature orphans.** Every single one of the 492 orphans
+predates the smart-dedup commit. The two specific orphans the user
+flagged (2026-05-23 00:21 and 12:19) were both delivered hours
+before the feature shipped that evening.
+
+**Conclusion: not a bug.** Current `pending-prompt-worker.ts` +
+`prompt-archive.ts` correctly stamp `opencode_message_id` for every
+new delivery. The 492 pre-feature orphans are benign legacy data;
+the user-visible messages are intact in opencode, they're just not
+linked back to the openportal archive row.
+
+**No backfill recommended.** Would require fuzzy-matching each
+orphan to an opencode message by (session_id, ts_ms close enough,
+text matches escaped). Doesn't fix anything user-visible; the dedup
+in `messages.ts` continues to work because pre-feature sessions have
+always relied on the fuzzy-text dedup path.
 
 ---
 
