@@ -682,6 +682,21 @@ revert any of these without re-reproducing the bug.
   layout MUST first reproduce the mobile bugs on a real phone or a
   Chrome DevTools mobile-emulation viewport.
 
+- **Textarea `min-h` floor MUST accommodate the floating button
+  column.** The column height is `mic-row h-6 (24px) + gap-1.5
+  (6px) + submit size-12 (48px) = 78px`. Add the `bottom-1.5`
+  offset (6px) where the column anchors, plus a matching 6px top
+  inset for symmetric breathing room, and the textarea wrapper
+  needs to be at least 90px tall before the column starts
+  poking out of the top. Current floor is `min-h-[max(6rem,100%)]`
+  (96px) on `session/$id.tsx`, `min-h-[120px]` on `session/new.tsx`
+  — both above the 90px threshold. If you ever shrink either,
+  empty composer + STT-enabled mic button = mic clipped by the
+  textarea's top border ("poked in half"). The 4.5rem (72px) the
+  refactor inherited from the pre-floating-button era was below
+  the threshold and shipped the bug; #94 / `<commit>` raised it
+  to 6rem.
+
 ### Sidebar
 
 - Project tree honors `level` + `level1` config per base directory.

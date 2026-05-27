@@ -6231,7 +6231,7 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="resize-none overflow-y-auto text-sm min-h-[max(4.5rem,100%)] pr-14"
+                    className="resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-14"
                   />
                 <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
                   {(sttMode !== "off" && speechRecognition.isSupported) ||
