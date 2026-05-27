@@ -551,7 +551,7 @@ const SidebarSection = ({ className, ...props }: SidebarSectionProps) => {
       data-slot="sidebar-section"
       className={twMerge(
         "col-span-full flex min-w-0 flex-col gap-y-0.5 **:data-[slot=sidebar-section]:**:gap-y-0",
-        "in-data-[state=collapsed]:p-2 p-4",
+        "in-data-[state=collapsed]:p-2 p-2",
         className,
       )}
       {...props}

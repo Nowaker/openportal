@@ -233,17 +233,15 @@ function ProjectGroup({
   const containsCurrent =
     sessions.some((s) => s.id === currentSessionId) ||
     archivedSessions.some((s) => s.id === currentSessionId);
-  // Project header AND its session rows share the same paddingLeft so the
-  // sessions' indicators (after a chevron-width invisible spacer added
-  // below) line up with the project's indicators above. Only the chevron
-  // and the spacer differ - everything past them is at the same x.
-  const headerPaddingLeft = depth > 0 ? `${0.5 + depth * 0.75}rem` : undefined;
-  const headerStyle = headerPaddingLeft
-    ? { paddingLeft: headerPaddingLeft }
-    : undefined;
-  const sessionRowStyle = headerPaddingLeft
-    ? { paddingLeft: headerPaddingLeft }
-    : undefined;
+  // Every logical depth step in the sidebar tree adds exactly 0.75rem of
+  // left padding: depth N category/project header at `depth * 0.75rem`,
+  // its sessions one step deeper at `(depth + 1) * 0.75rem`, and any
+  // subsessions one more step at `(depth + 2) * 0.75rem`. Same rule
+  // applies whether we're at depth 0 (flush against SidebarSection's p-2
+  // frame) or deep in a nested category tree.
+  const headerPaddingLeft = `${depth * 0.75}rem`;
+  const headerStyle = { paddingLeft: headerPaddingLeft };
+  const sessionRowStyle = { paddingLeft: `${(depth + 1) * 0.75}rem` };
 
   // Indicator cascade rule (per user spec): show the aggregated indicator
   // on the project header only when the project is COLLAPSED, i.e. the
@@ -285,7 +283,7 @@ function ProjectGroup({
   return (
     <>
       <div
-        className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-3" : "px-3"} py-1 rounded hover:bg-muted/20 transition-colors`}
+        className="col-span-full flex items-center gap-1 pr-3 py-1 rounded hover:bg-muted/20 transition-colors"
         style={headerStyle}
         data-current-project={containsCurrent || undefined}
         data-project-dir={directory}
@@ -383,8 +381,8 @@ function ProjectGroup({
         return (
           <Fragment key={session.id}>
             <div
-              className={`col-span-full flex items-center gap-1 ${depth > 0 ? "pr-3" : "pl-3 pr-3"} rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
-              style={depth > 0 ? sessionRowStyle : undefined}
+              className={`col-span-full flex items-center gap-1 pr-3 rounded ${isCurrent ? "bg-primary/15" : "hover:bg-muted/20"}`}
+              style={sessionRowStyle}
               data-current-session={isCurrent || undefined}
               data-test={`portal-sidebar-session-${session.id}`}
             >
@@ -455,7 +453,7 @@ function ProjectGroup({
                       childIsCurrent ? "bg-primary/15" : "hover:bg-muted/20"
                     }`}
                     style={{
-                      paddingLeft: depth > 0 ? `calc(${headerPaddingLeft} + 1.25rem)` : "2rem",
+                      paddingLeft: `${(depth + 2) * 0.75}rem`,
                     }}
                   >
                     <span className="size-3 shrink-0" aria-hidden />
@@ -882,7 +880,7 @@ function WorkspaceHeader({
   };
   return (
     <div
-      className="col-span-full pt-2 pb-1 px-3 text-[11px] text-muted-fg flex items-center gap-1 min-w-0"
+      className="col-span-full pt-2 pb-1 pr-3 text-[11px] text-muted-fg flex items-center gap-1 min-w-0"
       title={basePath}
     >
       <span className="flex-1 min-w-0 truncate">
@@ -938,10 +936,10 @@ function PinnedSection({
   if (rows.length === 0) return null;
   return (
     <Fragment>
-      <div className="col-span-full pt-2 pb-1 px-3 text-[11px] text-muted-fg">
+      <div className="col-span-full pt-2 pb-1 pr-3 text-[11px] text-muted-fg">
         Pinned
       </div>
-      <div className="col-span-full px-1">
+      <div className="col-span-full">
         {rows.map((session) => {
           const status = statusMap?.[session.id]?.type;
           const hasNewContent = sessionHasNewContent(
@@ -956,9 +954,10 @@ function PinnedSection({
           return (
             <div
               key={session.id}
-              className={`group flex items-center gap-1.5 rounded-md px-2 py-1 ${
+              className={`group flex items-center gap-1 rounded-md pr-3 py-1 ${
                 isCurrent ? "bg-primary/15" : "hover:bg-muted/40"
               }`}
+              style={{ paddingLeft: "0.75rem" }}
             >
               <DraftIndicator hasDraft={hasDraft} />
               <SessionStatusDot
@@ -1169,7 +1168,7 @@ function TreeChildren({ nodes, ...rest }: TreeChildrenProps) {
           type="button"
           onClick={() => setEmptyLimit((l) => l + emptyStep)}
           className="col-span-full text-[11px] text-muted-fg hover:text-fg py-0.5 text-left"
-          style={{ paddingLeft: `${0.5 + rest.depth * 0.75}rem` }}
+          style={{ paddingLeft: `${rest.depth * 0.75}rem` }}
         >
           Show {Math.min(emptyStep, remainingEmpty)} more
           {emptyLimit === 0 ? " empty" : ""}
@@ -1268,7 +1267,7 @@ function TreeNodeRow({
     <>
       <div
         className="col-span-full flex items-center gap-1 pr-3 py-1 rounded hover:bg-muted/20 transition-colors"
-        style={{ paddingLeft: `${0.75 + depth * 0.75}rem` }}
+        style={{ paddingLeft: `${depth * 0.75}rem` }}
       >
         <button
           type="button"
