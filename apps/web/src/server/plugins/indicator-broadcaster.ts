@@ -12,10 +12,28 @@
 // connection per server, exponential reconnect backoff capped at 30s,
 // per-frame applyOpencodeEvent() into indicator-state.ts.
 //
-// Side effects beyond indicator state:
-//   - invalidateMessagesCache() on message.part.* (subsumes the
-//     equivalent tap in /api/opencode/[port]/event so we can retire
-//     that proxy later).
+// Side effects beyond indicator state, by event class:
+//
+//   * Authoritative removals - message.removed, message.part.removed:
+//     invalidateMessagesCache(sessionId). These are the ONLY events
+//     that delete cache entries. Per the user's caching-proxy
+//     invariant (see AGENTS.md "Caching proxy + authoritative-only
+//     invariants"), only authoritative "this is gone" signals may
+//     clear the cache.
+//
+//   * Mutation refreshes - message.part.delta, message.part.updated,
+//     message.updated: scheduleRefreshMessages(port, sessionId).
+//     These are "this message changed" signals. The cache stays
+//     populated and a debounced background refresh repopulates it
+//     with the latest authoritative state from opencode. The cache
+//     never goes empty for an active session, so the user returning
+//     to a session sees the latest content immediately - no
+//     blank-window-on-return latency, no synchronous opencode
+//     round-trip against a multi-MB session.
+//
+//   * Session lifecycle - session.created/updated/deleted:
+//     invalidateSessionsCache(port). Same authoritative-only logic
+//     applied to the sessions list cache.
 //
 // Initial-state hydration on (re)connect: after the SSE channel
 // reopens, we fetch /session/status from opencode and seed the
@@ -30,6 +48,7 @@ import { listConfiguredServers } from "../lib/server-registry";
 import { resolveLiveEndpointById } from "../lib/server-resolver";
 import { basicAuthHeader } from "../lib/server-discovery";
 import { invalidateMessagesCache } from "../lib/messages-cache";
+import { scheduleRefreshMessages } from "../lib/messages-refresh";
 import { invalidateSessionsCache } from "../lib/sessions-cache";
 import {
   applyOpencodeEvent,
@@ -40,11 +59,22 @@ const RECONCILE_INTERVAL_MS = 30_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
-const MESSAGE_DELTA_EVENTS = new Set<string>([
+// Events that REFRESH the cache: opencode is telling us "this message
+// changed" / "a part was streamed in" / "the assistant finalised". The
+// cache keeps its current entry; a debounced background fetch lands a
+// fresh snapshot within REFRESH_DEBOUNCE_MS so the cache shadows
+// opencode reality without the cache ever going empty.
+const MESSAGE_REFRESH_EVENTS = new Set<string>([
   "message.part.delta",
   "message.part.updated",
-  "message.part.removed",
   "message.updated",
+]);
+
+// Events that INVALIDATE the cache: authoritative removal. After these,
+// the cache MUST drop the entry because the merge logic would otherwise
+// resurrect the removed message/part on the next refresh.
+const MESSAGE_REMOVAL_EVENTS = new Set<string>([
+  "message.part.removed",
   "message.removed",
 ]);
 
@@ -124,12 +154,16 @@ async function processStream(
         markEvent(serverId);
         try {
           applyOpencodeEvent(serverId, port, ev);
-          if (
-            ev.type &&
-            MESSAGE_DELTA_EVENTS.has(ev.type) &&
+          const sid =
             typeof ev.properties?.sessionID === "string"
-          ) {
-            invalidateMessagesCache(ev.properties.sessionID);
+              ? ev.properties.sessionID
+              : null;
+          if (ev.type && sid) {
+            if (MESSAGE_REMOVAL_EVENTS.has(ev.type)) {
+              invalidateMessagesCache(sid);
+            } else if (MESSAGE_REFRESH_EVENTS.has(ev.type)) {
+              scheduleRefreshMessages(port, sid);
+            }
           }
           if (ev.type && SESSION_LIFECYCLE_EVENTS.has(ev.type)) {
             invalidateSessionsCache(port);

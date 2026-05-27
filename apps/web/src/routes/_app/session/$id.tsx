@@ -5387,7 +5387,7 @@ function SessionPage() {
           </div>
         )}
 
-        {error && (
+        {error && messages.length === 0 && (
           <div className="rounded-md bg-danger-subtle p-4 m-4 text-danger-subtle-fg">
             Error: {error}
           </div>
