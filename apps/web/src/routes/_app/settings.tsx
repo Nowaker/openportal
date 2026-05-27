@@ -460,7 +460,7 @@ function AgentSettings() {
   const setLastUsedAgentForInstance = useAgentStore((s) => s.setLastUsedAgentForInstance);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div>
         <h3 className="text-sm font-semibold">Default agent</h3>
         <p className="text-xs text-muted-fg">
@@ -469,7 +469,7 @@ function AgentSettings() {
         </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="space-y-2">
           <p className="text-sm font-medium">Default for this server</p>
           <Select
@@ -715,7 +715,7 @@ function VoiceInputSetting() {
   const setAutoSubmitOnEnd = useSttModeStore((s) => s.setAutoSubmitOnEnd);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div>
         <h3 className="text-sm font-semibold">Voice input</h3>
         <p className="text-xs text-muted-fg">
@@ -724,47 +724,20 @@ function VoiceInputSetting() {
         </p>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Mode</p>
-        <Select
-          aria-label="Voice input mode"
-          selectedKey={mode}
-          onSelectionChange={(key) => {
-            if (!key) return;
-            setMode(String(key) as SttMode);
-          }}
-        >
-          <SelectTrigger className="max-w-sm" />
-          <SelectContent>
-            {sttModeOptions.map((opt) => (
-              <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
-                <SelectLabel>{opt.title}</SelectLabel>
-                <div
-                  slot="description"
-                  className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
-                >
-                  {opt.description}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {mode !== "off" && (
+      <div className="space-y-4">
         <div className="space-y-2">
-          <p className="text-sm font-medium">Backend</p>
+          <p className="text-sm font-medium">Mode</p>
           <Select
-            aria-label="Voice input backend"
-            selectedKey={backend}
+            aria-label="Voice input mode"
+            selectedKey={mode}
             onSelectionChange={(key) => {
               if (!key) return;
-              setBackend(String(key) as SttBackend);
+              setMode(String(key) as SttMode);
             }}
           >
             <SelectTrigger className="max-w-sm" />
             <SelectContent>
-              {sttBackendOptions.map((opt) => (
+              {sttModeOptions.map((opt) => (
                 <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
                   <SelectLabel>{opt.title}</SelectLabel>
                   <div
@@ -778,71 +751,100 @@ function VoiceInputSetting() {
             </SelectContent>
           </Select>
         </div>
-      )}
 
-      {mode !== "off" && backend === "whisper-sidecar" && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Sidecar URL</p>
-          <Input
-            value={sidecarUrl}
-            onChange={(e) => setSidecarUrl(e.target.value)}
-            placeholder="http://127.0.0.1:4150"
-            className="max-w-sm"
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            autoComplete="off"
-          />
-          <p className="text-xs text-muted-fg">
-            Where the @openportal/voice-stt service is listening. POST audio is
-            sent to <code>{`${sidecarUrl.replace(/\/+$/, "")}/transcribe`}</code>.
-          </p>
-        </div>
-      )}
+        {mode !== "off" && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Backend</p>
+            <Select
+              aria-label="Voice input backend"
+              selectedKey={backend}
+              onSelectionChange={(key) => {
+                if (!key) return;
+                setBackend(String(key) as SttBackend);
+              }}
+            >
+              <SelectTrigger className="max-w-sm" />
+              <SelectContent>
+                {sttBackendOptions.map((opt) => (
+                  <SelectItem key={opt.id} id={opt.id} textValue={opt.title}>
+                    <SelectLabel>{opt.title}</SelectLabel>
+                    <div
+                      slot="description"
+                      className="col-start-2 row-start-2 text-muted-fg text-[10px] leading-tight sm:text-xs"
+                    >
+                      {opt.description}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
-      {mode === "push-to-talk" && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">End of stream timeout (ms)</p>
-          <Input
-            type="number"
-            value={endOfStreamTimeoutMs}
-            onChange={(e) => setEndOfStreamTimeoutMs(parseInt(e.target.value, 10) || 0)}
-            className="max-w-sm"
-            min={0}
-            step={100}
-          />
-          <p className="text-xs text-muted-fg">
-            Silence grace window after the recognition stops detecting speech.
-            With auto-submit on, the prompt is sent when this expires; with
-            auto-submit off, the transcript stays in the composer.
-          </p>
-        </div>
-      )}
-
-      {mode !== "off" && (
-        <div className="space-y-2">
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoSubmitOnEnd}
-              onChange={(e) => setAutoSubmitOnEnd(e.target.checked)}
-              className="mt-0.5 size-4 accent-accent"
-              aria-label="Auto-submit after voice ends"
+        {mode !== "off" && backend === "whisper-sidecar" && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Sidecar URL</p>
+            <Input
+              value={sidecarUrl}
+              onChange={(e) => setSidecarUrl(e.target.value)}
+              placeholder="http://127.0.0.1:4150"
+              className="max-w-sm"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
             />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">
-                Auto-submit after voice ends
-              </p>
-              <p className="text-xs text-muted-fg">
-                When ON: the prompt is automatically submitted once the
-                grace window expires (current behavior). When OFF (default):
-                the transcribed text stays in the composer so you can edit
-                or add to it before submitting manually.
-              </p>
-            </div>
-          </label>
-        </div>
-      )}
+            <p className="text-xs text-muted-fg">
+              Where the @openportal/voice-stt service is listening. POST audio is
+              sent to <code>{`${sidecarUrl.replace(/\/+$/, "")}/transcribe`}</code>.
+            </p>
+          </div>
+        )}
+
+        {mode === "push-to-talk" && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">End of stream timeout (ms)</p>
+            <Input
+              type="number"
+              value={endOfStreamTimeoutMs}
+              onChange={(e) => setEndOfStreamTimeoutMs(parseInt(e.target.value, 10) || 0)}
+              className="max-w-sm"
+              min={0}
+              step={100}
+            />
+            <p className="text-xs text-muted-fg">
+              Silence grace window after the recognition stops detecting speech.
+              With auto-submit on, the prompt is sent when this expires; with
+              auto-submit off, the transcript stays in the composer.
+            </p>
+          </div>
+        )}
+
+        {mode !== "off" && (
+          <div className="space-y-2">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoSubmitOnEnd}
+                onChange={(e) => setAutoSubmitOnEnd(e.target.checked)}
+                className="mt-0.5 size-4 accent-accent"
+                aria-label="Auto-submit after voice ends"
+              />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">
+                  Auto-submit after voice ends
+                </p>
+                <p className="text-xs text-muted-fg">
+                  When ON: the prompt is automatically submitted once the
+                  grace window expires (current behavior). When OFF (default):
+                  the transcribed text stays in the composer so you can edit
+                  or add to it before submitting manually.
+                </p>
+              </div>
+            </label>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -852,7 +854,7 @@ function NotificationSoundSetting() {
   const setVolume = useNotificationSoundStore((s) => s.setVolume);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div>
         <h3 className="text-sm font-semibold">Notification sounds</h3>
         <p className="text-xs text-muted-fg">
@@ -861,35 +863,37 @@ function NotificationSoundSetting() {
           least once.
         </p>
       </div>
-      <label className="block text-xs text-muted-fg">
-        Volume: {Math.round(volume * 100)}%
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={Math.round(volume * 100)}
-          onChange={(e) => setVolume(parseInt(e.target.value, 10) / 100)}
-          className="mt-1 block w-full"
-          data-test="portal-settings-notification-sound-volume"
-        />
-      </label>
-      <div className="divide-y divide-border rounded-md border border-border">
-        <SoundCategoryRow
-          category="agent"
-          title="Agent"
-          description="Play sound when the agent is complete or needs attention"
-        />
-        <SoundCategoryRow
-          category="permissions"
-          title="Permissions"
-          description="Play sound when a permission is required"
-        />
-        <SoundCategoryRow
-          category="errors"
-          title="Errors"
-          description="Play sound when an error occurs"
-        />
+      <div className="space-y-3">
+        <label className="block text-xs text-muted-fg">
+          Volume: {Math.round(volume * 100)}%
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(volume * 100)}
+            onChange={(e) => setVolume(parseInt(e.target.value, 10) / 100)}
+            className="mt-1 block w-full"
+            data-test="portal-settings-notification-sound-volume"
+          />
+        </label>
+        <div className="divide-y divide-border rounded-md border border-border">
+          <SoundCategoryRow
+            category="agent"
+            title="Agent"
+            description="Play sound when the agent is complete or needs attention"
+          />
+          <SoundCategoryRow
+            category="permissions"
+            title="Permissions"
+            description="Play sound when a permission is required"
+          />
+          <SoundCategoryRow
+            category="errors"
+            title="Errors"
+            description="Play sound when an error occurs"
+          />
+        </div>
       </div>
     </div>
   );
@@ -1046,7 +1050,7 @@ function TtsSetting() {
     typeof window !== "undefined" && "speechSynthesis" in window;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div>
         <h3 className="text-sm font-semibold">
           Text-to-speech (assistant replies)
@@ -1063,7 +1067,7 @@ function TtsSetting() {
           Your browser does not support the Web Speech Synthesis API.
         </p>
       ) : (
-        <>
+        <div className="space-y-3">
           <Checkbox
             isSelected={enabled}
             onChange={(v) => setEnabled(Boolean(v))}
@@ -1139,7 +1143,7 @@ function TtsSetting() {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -1841,7 +1845,7 @@ function SettingsPage() {
               <h2 className="text-lg font-semibold">Prompt</h2>
             </div>
 
-            <section className="space-y-6">
+            <section className="space-y-2">
               <div>
                 <h3 className="text-sm font-semibold">Default model</h3>
                 <p className="text-xs text-muted-fg">
@@ -1849,50 +1853,48 @@ function SettingsPage() {
                   default is marked, and your selection is remembered locally.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Select
-                  aria-label="Selected model"
-                  selectedKey={selectedKey}
-                  onSelectionChange={(key) => {
-                    if (!key) return;
-                    setInstanceDefaultModel(String(key), instanceId);
+              <Select
+                aria-label="Selected model"
+                selectedKey={selectedKey}
+                onSelectionChange={(key) => {
+                  if (!key) return;
+                  setInstanceDefaultModel(String(key), instanceId);
+                }}
+                placeholder={
+                  providersLoading ? "Loading models..." : "Select a model"
+                }
+                isDisabled={providersLoading || providers.length === 0}
+              >
+                <SelectTrigger className="max-w-sm" />
+                <SelectContent
+                  className="max-h-[min(70vh,28rem)]"
+                  popover={{
+                    className:
+                      "flex max-h-[min(80vh,32rem)] flex-col overflow-hidden",
                   }}
-                  placeholder={
-                    providersLoading ? "Loading models..." : "Select a model"
-                  }
-                  isDisabled={providersLoading || providers.length === 0}
                 >
-                  <SelectTrigger className="max-w-sm" />
-                  <SelectContent
-                    className="max-h-[min(70vh,28rem)]"
-                    popover={{
-                      className:
-                        "flex max-h-[min(80vh,32rem)] flex-col overflow-hidden",
-                    }}
-                  >
-                    {providers.map((provider) => (
-                      <SelectSection
-                        key={provider.id}
-                        title={provider.name}
-                        items={provider.models}
-                      >
-                        {(model) => (
-                          <SelectItem id={model.id} textValue={model.name}>
-                            <SelectLabel>
-                              {model.name}
-                              {model.id === defaultKey && (
-                                <span className="ml-1 text-muted-fg">
-                                  (default)
-                                </span>
-                              )}
-                            </SelectLabel>
-                          </SelectItem>
-                        )}
-                      </SelectSection>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  {providers.map((provider) => (
+                    <SelectSection
+                      key={provider.id}
+                      title={provider.name}
+                      items={provider.models}
+                    >
+                      {(model) => (
+                        <SelectItem id={model.id} textValue={model.name}>
+                          <SelectLabel>
+                            {model.name}
+                            {model.id === defaultKey && (
+                              <span className="ml-1 text-muted-fg">
+                                (default)
+                              </span>
+                            )}
+                          </SelectLabel>
+                        </SelectItem>
+                      )}
+                    </SelectSection>
+                  ))}
+                </SelectContent>
+              </Select>
             </section>
 
             <section className="space-y-2">
