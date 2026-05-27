@@ -1770,6 +1770,148 @@ Design notes:
 
 ---
 
+### 88. Settings: sticky tab strip pinned to top of scroll container (DONE - 789f79d)
+
+User prompt (verbatim):
+
+> Appearance
+> Prompt
+> Composer
+> Chat
+> Files
+> Tools
+> Content
+> Notifications
+> Performance
+> Diagnostics
+>
+> This is from settings. These tabs should always be visible, like the title line.
+>
+> Git Worktree. Merge to the main branch when done.
+
+Design notes:
+
+- Backfill: the original sticky-tabs work shipped in `789f79d`
+  (worktree `portal-sticky-settings-tabs`) but skipped its AI_TODO
+  entry because AI_TODO.md was in unmerged state from a parallel
+  agent's mid-flight merge at the moment. The user explicitly flagged
+  this miss two turns later and ordered the safe-diff rule (see #90)
+  so this kind of skip doesn't recur.
+- Implementation: `apps/web/src/routes/_app/settings.tsx:1719` TabList
+  becomes `position: sticky` against the route's existing scroll
+  container. `bg-bg` blocks tab-panel content from bleeding through
+  when scrolling underneath; `border-b border-border` restores the
+  visual separator the row had been suppressing with `!border-b-0`;
+  `z-20` keeps the strip above scrolling content. `-mx-4 px-4` widens
+  the bg-bg band so it covers the inner container's `px-4` gutters
+  too - without it the band stopped short of the scroll container
+  edges and tab-panel content scrolling past would show through those
+  16px strips.
+- Parent `<Tabs>` switched from `overflow-x-hidden` to
+  `overflow-x-clip`. Spec-wise `overflow-x: hidden` implicitly
+  promotes `overflow-y` from visible to auto, making `<Tabs>` a
+  vertical scrolling ancestor and binding the sticky element to it
+  instead of the intended outer scroll container - sticky would then
+  never trigger because TabList is already at top:0 of its parent.
+  `overflow-x-clip` preserves the original "no horizontal page
+  scroll" intent without creating a vertical scroll context.
+- Initial landing carried a `-top-px` sub-pixel offset that's been
+  superseded by `-mt-6` + `top-0` in #89.
+- Verified via headless browser eval on the deployed worktree: tab
+  list sits at top:0 of the scroll container at all scrollTop values
+  >= the strip's natural offset; mobile-narrow (412x915) viewport
+  same behaviour, no horizontal overflow.
+
+---
+
+### 89. Settings: drop redundant tab-name h2 + pin tab strip flush with title bar (DONE - ae52a95)
+
+User prompt (verbatim):
+
+> When I open settings tab X in section I don't need to see section X again as h1. Remove.
+>
+> Also, there's a slight scroll down of the tabs before they stay in place. They should stay in place where they are, it's okay. Also the start is too far from the title line (settings and back). Make it closer.
+
+Design notes:
+
+- Two related polish items for /settings, plus the matching AGENTS.md
+  doc update.
+- (1) `<h2>{TabName}</h2>` removed across nine tab panels - the
+  sticky tab strip from #88 already shows which section the user is
+  in, so the in-panel h2 duplicated the tab label one row below it.
+  Panels that previously carried an intro paragraph alongside the h2
+  (Composer / Files / Content / Notifications / Performance) keep
+  the paragraph as a stand-alone description; the redundant wrapper
+  `<div>` and the `pt-1` offset (which only existed to clear the h2
+  above) are dropped at the same time. Diagnostics never had an h2.
+- (2) The #88 landing left a visible 24px gap between the title bar
+  and the tab strip at scrollTop=0 (the inner container's `py-6`
+  pushed the strip down before sticky kicked in). Replaced `-top-px`
+  with `top-0` and added `-mt-6` to TabList; the negative margin
+  cancels the outer `py-6` so the strip's natural document-flow
+  position is already at top:0 of the scroll container, and
+  `position: sticky` just nails it in place from the moment the
+  page loads. No more "scroll-down 24px, then the tabs stick"
+  transition; the strip sits flush against the title bar.
+- AGENTS.md "Settings UI structure" updated: documents the
+  no-tab-name-heading rule, names which tabs keep an intro paragraph
+  (Composer / Files / Content / Notifications / Performance) and
+  which skip it (Appearance / Prompt / Chat / Tools / Diagnostics),
+  and explains the rationale ("the active tab in the sticky tab
+  strip already shows the section name").
+- Worktree: `~/projekty/webapps/portal-settings-polish` (branch
+  `settings-polish`, rebased onto current main-nowaker before
+  ff-merge to absorb the parallel-agent commits 3e0dd5b composer +
+  ef26452 messages-cache that landed mid-work).
+
+---
+
+### 90. AGENTS.md: codify safe-diff + temp-file fallback for AI_TODO under concurrent writers (DONE - 5f3c103)
+
+User prompt (verbatim):
+
+> AI todo must be updated, always. Make it a project rule in agents MD if not clear. Practise safe diffs. Add to Ai todo in a way that minimizes possible merge conflicts. If can't add right away, create Ai todo _ yyyymmdd_hhmmss_session_title_ses_abcs1234sessidhere.md temporarily and later reincorporate it back in this same session at the end at merge time. Or  post merge.
+
+Design notes:
+
+- Parallel agents writing to AI_TODO.md from sibling worktrees /
+  sessions is the steady-state load on this repo. The schema rule
+  "every user prompt that maps to a queueable task MUST land in
+  AI_TODO.md in the same turn" already existed in AGENTS.md; what
+  was missing was operational guidance for HOW to land it without
+  conflicting with the other agents' continuous edits.
+- Two new operational rules under the AI_TODO.md section in
+  AGENTS.md:
+  1. **Safe diffs**: append-only at the END of the file (after the
+     most recent numbered entry, before the trailing meta sections
+     like Q-DEFERRED, ARCHITECTURE REFERENCE), one entry per commit
+     when shipping AI_TODO-only changes (code+AI_TODO combo commits
+     may ship 1-3 entries together), never renumber, never touch
+     historical entries except to flip PENDING -> DONE - <commit>
+     in place. Same-shape appends by parallel agents land on
+     neighbouring lines and merge cleanly via git's three-way merge.
+  2. **Temp-file fallback**: when AI_TODO.md is in
+     `git ls-files --unmerged` state or visibly mid-edit by another
+     agent (raw `<<<<<<<` markers, partial reformatting), write the
+     intended entry to a per-session sidecar at
+     `AI_TODO_<yyyymmdd>_<hhmmss>_<short_title>_<ses_id>.md` at the
+     repo root. These files match the new `AI_TODO_*_ses_*.md`
+     gitignore pattern so they sit in the working tree without
+     polluting commits. Reincorporate into AI_TODO.md once the
+     conflict resolves - either in the same commit that ships the
+     work, or in a dedicated post-merge `AI_TODO.md: sync ...`
+     commit - and delete the temp file. If a session ends with the
+     sidecar still on disk, the next session must pick it up before
+     starting new work; the filename's timestamp + session id
+     makes ownership unambiguous.
+- `.gitignore`: added `AI_TODO_*_ses_*.md` pattern so the temp
+  sidecars sit safely in the working tree without polluting
+  commits.
+- This entry itself was shipped via the new safe-diff pattern:
+  appended at the END of the numbered entries, before the
+  `## Q-DEFERRED` meta section, with no edits to historical entries.
+
+
 ## Q-DEFERRED (open questions awaiting user input)
 
 - **Q1**: WebRTC for plugin internet access — propose an approach? (See PENDING #14)
