@@ -247,7 +247,7 @@ User prompt:
 
 Banner injections (build-mismatch, reconnecting, stuck-detector, etc.) shift document height. Sticky-bottom must re-pin on those height changes. Need a single observer hook that handles resize → re-pin.
 
-### 8. Voice-input "stops the stream sometimes" residual bug (DONE - to be filled by commit hash; visibility-change premature-flush guard added)
+### 8. Voice-input "stops the stream sometimes" residual bug (DONE - 44dba1e; visibility-change premature-flush guard added)
 
 User prompt:
 
@@ -255,7 +255,7 @@ User prompt:
 
 `030bc13` plugged one premature-flush leak. User suspects there's STILL a leak. Fresh debugging pass on VAD threshold + buffering logic.
 
-### 9. "Recently mentioned files" — implementation behind placeholder dropdown (DONE - to be filled by commit hash)
+### 9. "Recently mentioned files" — implementation behind placeholder dropdown (DONE - 2bda920 for user-side @ mentions; AI-side tool-call extraction is a deferred follow-up - see design notes)
 
 User prompt (synthesized):
 
@@ -371,7 +371,7 @@ Design notes:
 - Mobile: opens directly above too, occupies 90% viewport width (5% margin each side), top bound at 5% from viewport top, bottom anchored at the clicked strip (must NOT extend below the minified component).
 - Long lists: vertical scrollbar inside the popup. Never grow past the clicked element on the bottom side.
 
-### 22. File browser language detection bug (sh / rc / dotfile + txt false-positives) (DONE - to be filled by commit hash)
+### 22. File browser language detection bug (sh / rc / dotfile + txt false-positives) (DONE - 1a78d8b)
 
 User prompt:
 
@@ -468,7 +468,7 @@ Design notes:
 - Use CSS `word-break: break-word` / `overflow-wrap: anywhere` / `min-width: 0` on the popup body to force wrapping.
 - Cross-reference: same surface as #21 + #26 — likely one combined commit once visual validation (#26) confirms the new positioning.
 
-### 28. AGENTS.md: document the AI_TODO.md preservation policy
+### 28. AGENTS.md: document the AI_TODO.md preservation policy (DONE - 6aaba3e codified the AI_TODO discipline as a binding section in portal AGENTS.md: schema with 3 fields (verbatim prompt + title + design notes), append-only numbering, position-keyword handling, AI_TODO.md commit-subject convention, status discipline. The user-level ~/.config/opencode/AGENTS.md already had the sibling section; this enforces it project-side.)
 
 User prompt:
 
@@ -1163,7 +1163,7 @@ Design notes:
 - Investigation steps: find current open-the-modal call site (search for "Session info" / SessionInfoModal openers). Verify it routes through `useHashOpen("info")`. If it's calling a separate state hook (useState), swap to `useHashOpen`. Cross-check the close path too — Esc / backdrop / X-button should `history.back()` or remove the hash so back-navigation lands on the prior URL, not on a sibling `#` state.
 - Acceptance test: open the modal → URL gains `#info` → reload the URL → modal opens automatically → click X → URL drops `#info` → back button works as expected.
 
-### 67. Session info modal: expose owner/runner instance info (DONE - to be filled by commit hash)
+### 67. Session info modal: expose owner/runner instance info (DONE - 6b5e4c7)
 
 User prompt (verbatim):
 
@@ -1176,7 +1176,7 @@ Design notes:
 - Don't add a NEW API endpoint; reuse the existing `/api/cohort` (`d5d2eeb`) and the existing stuck-detector probe endpoint that frontend already calls. New owner-info field on `/api/instance/self` is also fine if needed.
 - Backend invariant: when the plugin is unreachable, fall back to the user-selected active-server URL with a "(plugin offline; showing active server)" label so the field is never blank.
 
-### 68. Prompt-submit transient disappear+reappear bug; distinct badges per phase (DONE - to be filled by commit hash)
+### 68. Prompt-submit transient disappear+reappear bug; distinct badges per phase (DONE - 9cd994d)
 
 User prompt (verbatim):
 
@@ -1193,7 +1193,7 @@ Design notes:
 - Backend change: track the highest "last seen" opencode messageID per session in memory; when a fresh `/messages` response is MISSING a virtual prompt's opencode messageID that was in an earlier response within N seconds (say 30s), keep the virtual visible with phase=RECONCILING instead of dropping it.
 - Frontend change: virtual-message renderer picks badge from `_pending.phase` map; styles + tooltips defined in one constant table so tooltip text never drifts.
 
-### 69. Ctrl+K palette: match by full or partial session ID (DONE - to be filled by commit hash)
+### 69. Ctrl+K palette: match by full or partial session ID (DONE - ab63e9c)
 
 User prompt (verbatim):
 
@@ -1203,7 +1203,7 @@ Design notes:
 - Existing prefix-match in `cmd.tsx rankSessions` was shipped at `2eba984` (entry #36 — "Quick search by partial session ID"). User reports it doesn't match for FULL pasted session IDs. Investigate: likely the matcher's prefix branch requires query.length < session.id.length, or the matcher only triggers on `ses_` prefix and not the full ID.
 - Acceptance: pasting `ses_229d7083fffem6lkaEj69adZ7H` matches THAT session (no other). Pasting `ses_229d7083f` matches the same session as a prefix. Pasting `ses_` lists all sessions sorted by activity.
 
-### 70. Fork-to-different-project: fork stayed in source dir (DONE - to be filled by commit hash)
+### 70. Fork-to-different-project: fork stayed in source dir (DONE - 3ad3c59)
 
 User prompt (verbatim):
 
@@ -1225,7 +1225,7 @@ Design notes:
 - Find the right-hamburger menu open/close handler. If it currently uses `useHashOpen("menu")` or otherwise pushes `#menu` to history, swap to a pure-React-state toggle (`useState` or a zustand store). Verify back-button on `/session/<id>?...` ← `/prompts` round trip ignores the menu state.
 - Update portal AGENTS.md `Everything is a permalink` section to call out this exception list explicitly so future agents don't try to re-add `#menu` permalink.
 
-### 72. Prompt history page: slow cold load; render openportal data immediately + spinner per opencode-dependent field (DONE - to be filled by commit hash)
+### 72. Prompt history page: slow cold load; render openportal data immediately + spinner per opencode-dependent field (DONE - 5589844)
 
 User prompt (verbatim):
 
@@ -1523,7 +1523,7 @@ Original analysis preserved at `ai-analysis-requests/SESSION_WEDGED_BANNER.md`.
 3. Raise the threshold (5min → 15min) to reduce false-positives on legitimately-slow operations.
 4. Add a streaming-delta probe: only fire the banner if NO streaming bytes received in the last N seconds.
 
-### 80. Todo strip: 9/9-all-done content + popup overflow off right edge (DONE - to be filled by commit hash)
+### 80. Todo strip: 9/9-all-done content + popup overflow off right edge (DONE - 08b05e7)
 
 User prompt (verbatim):
 
