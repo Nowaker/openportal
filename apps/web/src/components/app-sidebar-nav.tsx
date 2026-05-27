@@ -30,7 +30,9 @@ import {
   InformationCircleIcon,
   PencilSquareIcon,
   QuestionMarkCircleIcon,
+  SparklesIcon,
   StarIcon,
+  WrenchScrewdriverIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
@@ -47,6 +49,7 @@ import {
   ExportSessionModal,
   SessionInfoModal,
 } from "@/components/session-info-modal";
+import { LongOpDialog } from "@/components/long-op-dialog";
 import { SessionStatusBadge } from "@/components/session-status-badge";
 import { SessionContextDial } from "@/components/session-context-dial";
 import { McpInfoModal } from "@/components/mcp-info-modal";
@@ -204,6 +207,8 @@ export function AppSidebarNav() {
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
   const [showSessionInfo, setShowSessionInfo] = useHashOpen("info");
   const [showExportSession, setShowExportSession] = useHashOpen("export");
+  const [showCleanDialog, setShowCleanDialog] = useHashOpen("clean");
+  const [showStuckFixDialog, setShowStuckFixDialog] = useHashOpen("stuck-fix");
   const [mcpInfoName, setMcpInfoName] = useHashValue("mcp");
   const [pluginInfoSpec, setPluginInfoSpec] = useHashValue("plugin");
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
@@ -955,6 +960,23 @@ export function AppSidebarNav() {
                     Compact session
                   </MenuItem>
                   <MenuItem
+                    onAction={() => setShowCleanDialog(true)}
+                    data-test="portal-hamburger-clean-session"
+                  >
+                    <SparklesIcon className="size-4" data-slot="icon" />
+                    Clean session...
+                  </MenuItem>
+                  <MenuItem
+                    onAction={() => setShowStuckFixDialog(true)}
+                    data-test="portal-hamburger-stuck-fix"
+                  >
+                    <WrenchScrewdriverIcon
+                      className="size-4"
+                      data-slot="icon"
+                    />
+                    Fix stuck compaction...
+                  </MenuItem>
+                  <MenuItem
                     onAction={() => setShowArchiveConfirm(true)}
                     data-test={`portal-hamburger-${isArchived ? "unarchive" : "archive"}`}
                   >
@@ -1118,6 +1140,62 @@ export function AppSidebarNav() {
           isOpen={showExportSession}
           sessionId={sessionId}
           onOpenChange={setShowExportSession}
+        />
+      )}
+      {sessionId && port > 0 && (
+        <LongOpDialog
+          kind="clean"
+          isOpen={showCleanDialog}
+          onOpenChange={setShowCleanDialog}
+          sessionId={sessionId}
+          sessionTitle={sessionTitle}
+          port={port}
+          directory={currentSession?.directory ?? null}
+          onForkCreated={(forkId) => {
+            setShowCleanDialog(false);
+            logSystemMessage(
+              "session",
+              "success",
+              "Session cleaned",
+              `Forked + cleaned session ${sessionId}; new id ${forkId}`,
+              currentSession?.directory ?? null,
+            );
+            startTransition(() => {
+              void navigate({
+                to: "/session/$id",
+                params: { id: forkId },
+                search: (prev) => prev,
+              });
+            });
+          }}
+        />
+      )}
+      {sessionId && port > 0 && (
+        <LongOpDialog
+          kind="stuck-fix"
+          isOpen={showStuckFixDialog}
+          onOpenChange={setShowStuckFixDialog}
+          sessionId={sessionId}
+          sessionTitle={sessionTitle}
+          port={port}
+          directory={currentSession?.directory ?? null}
+          onForkCreated={(forkId) => {
+            setShowStuckFixDialog(false);
+            logSystemMessage(
+              "session",
+              "success",
+              "Stuck compaction recovered",
+              `Recovered session ${sessionId}; new id ${forkId}`,
+              currentSession?.directory ?? null,
+            );
+            startTransition(() => {
+              void navigate({
+                to: "/session/$id",
+                params: { id: forkId },
+                search: (prev) => prev,
+              });
+            });
+          }}
         />
       )}
       <McpInfoModal

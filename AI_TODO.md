@@ -1433,7 +1433,7 @@ Design notes:
   6. `git push origin main-nowaker && git push github main-nowaker`.
   7. `git worktree remove ~/projekty/webapps/portal-sidebar-padding && git branch -d sidebar-padding`.
 
-### 78. Clean session + stuck-compaction fixer in hamburger menu, with progress UI + auto-navigate to fork (PENDING - in progress)
+### 78. Clean session + stuck-compaction fixer in hamburger menu, with progress UI + auto-navigate to fork (DONE - to be filled by commit hash)
 
 User prompt (verbatim):
 
