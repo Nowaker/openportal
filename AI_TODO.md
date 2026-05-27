@@ -2089,7 +2089,7 @@ Design notes:
 - Initially shipped on branch `fix/prompt-id-f-prefix` per the analyze-mode hook's "don't merge / don't deploy" prelude. User redirect ("DEPLOY AND FIX ALL SHIT") clarified that was a misread — the prelude applied to the analysis turn only. Rebased onto main, fast-forwarded to `4537a0d`, pushed to both remotes, deployed via `scripts/deploy.sh`.
 - Separate bug NOT addressed by this commit: the 2 `stuck/stale-stream` sessions (`ses_1983fb909...`, `ses_19897fcbf...`) have an in-flight assistant message that opencode considers still running but with no live runner. Class of bug from the May 26 22:24:56 systemd-timeout-during-stop event that SIGKILL'd opencode mid-LLM-stream. Recovery requires `POST /session/<sid>/abort` + re-fire. Tracked separately. (Post-deploy follow-up: aborted both via `POST /session/<sid>/abort` then re-fired with f-prefix `prompt_async`. Both now in-progress with healthy LLM streams.)
 
-### 99. Stuck-detector verdict: don't visualize or poll for archived sessions
+### 99. Stuck-detector verdict: don't visualize or poll for archived sessions (DONE - 93fc003)
 
 User prompt (verbatim):
 
