@@ -1679,7 +1679,7 @@ Design notes:
 - Keep the `in-data-[collapsible=dock]:hidden` wrapper class — when the sidebar is in dock mode, the indicator stays hidden entirely (current behavior preserved).
 - Worktree: `~/projekty/webapps/portal-sidebar-resources` (branch `sidebar-resources-indicator`). Originally numbered #83 in the worktree but parallel session committed `a3da5a8` with their own #83 (new-session topbar) before this work landed, so renumbered to #84 during rebase.
 
-### 85. Mobile composer: submit button always visible + textarea height cap + correct touch scrolling + no overlap with other content (PENDING - in worktree)
+### 85. Mobile composer: submit button always visible + textarea height cap + correct touch scrolling + no overlap with other content (DONE - 3e0dd5b)
 
 User prompt (verbatim):
 
