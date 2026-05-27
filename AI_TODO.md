@@ -1381,7 +1381,7 @@ Design notes:
 - No new dependencies. Tab order in source IS visible order. Heading hierarchy: `<h2>Files</h2>` panel-level, no `<h3>` subsections since the toggles are a single conceptual group.
 - Deploy via `scripts/deploy.sh` (dev-first → prod) per repo convention.
 
-### 77. Left sidebar: consistent 0.75rem indent per level + reduce ambient padding + align pinned buttons (DONE - to be filled by commit hash)
+### 77. Left sidebar: consistent 0.75rem indent per level + reduce ambient padding + align pinned buttons (DONE - fa08027)
 
 User prompt (verbatim):
 
