@@ -1478,7 +1478,7 @@ B. `portal` side (worktree `clean-stuck-ui` -> merge -> deploy):
 
 ---
 
-### 79. Settings page Prompt tab: inconsistent vertical spacing across sub-sections (DONE - to be filled by commit hash)
+### 79. Settings page Prompt tab: inconsistent vertical spacing across sub-sections (DONE - 5809ad8)
 
 User prompt (verbatim):
 
