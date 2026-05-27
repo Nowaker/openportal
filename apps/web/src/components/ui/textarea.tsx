@@ -32,6 +32,18 @@ export function Textarea({ className, ref, ...props }: TextareaComponentProps) {
             "disabled:bg-muted forced-colors:in-disabled:text-[GrayText]",
             "in-disabled:bg-muted forced-colors:in-disabled:text-[GrayText]",
             "dark:scheme-dark",
+            // Mobile touch behavior:
+            // - `touch-pan-y`: a finger drag inside the textarea pans the
+            //   textarea's own content vertically (Tailwind => CSS
+            //   `touch-action: pan-y`). Without this, Android Chrome
+            //   sometimes bubbles the gesture to the nearest scrollable
+            //   ancestor (the chat container or the new-session page) and
+            //   the user sees the wrong surface scroll.
+            // - `overscroll-contain`: once the textarea's internal scroll
+            //   hits its top or bottom limit, additional drag does NOT fall
+            //   through to scroll the page. The textarea's scroll position
+            //   is the only thing the gesture controls.
+            "touch-pan-y overscroll-contain",
           ]),
           className,
         )}

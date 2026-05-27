@@ -14,6 +14,7 @@ import { useCreateSession } from "@/hooks/use-opencode";
 import { useComposerStore } from "@/stores/composer-store";
 import { useSttModeStore } from "@/stores/stt-mode-store";
 import { useSttEngine } from "@/hooks/use-stt-engine";
+import { useComposerMaxHeight } from "@/hooks/use-composer-max-height";
 import useMediaQuery from "@/hooks/use-media-query";
 import { toast } from "@/components/ui/toast";
 import { Loader } from "@/components/ui/loader";
@@ -103,6 +104,7 @@ function NewSessionPage() {
   const isOverridingDefault = useModelStore((s) => s.isOverridingDefault);
   const resolveThinking = useThinkingStore((s) => s.resolve);
   const { mutate: globalMutate } = useSWRConfig();
+  const composerMaxHeight = useComposerMaxHeight();
 
   const directory = directoryFromUrl || storeDir || null;
 
@@ -765,7 +767,10 @@ function NewSessionPage() {
         )}
       </div>
 
-      <div className="border-t border-border shrink-0 relative flex flex-col overflow-hidden">
+      <div
+        className="border-t border-border shrink-0 relative flex flex-col overflow-hidden"
+        style={{ maxHeight: `${composerMaxHeight}px` }}
+      >
         <div className="flex items-center gap-0.5 sm:gap-1 px-1 py-1 text-[10px] sm:text-sm [&_button[data-slot=control]]:py-0.5 sm:[&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:px-1.5 sm:[&_button[data-slot=control]]:px-2.5 [&_button[data-slot=control]]:text-[10px] sm:[&_button[data-slot=control]]:text-sm">
           <div className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
             <AgentSelect sessionId={null} />
@@ -796,7 +801,7 @@ function NewSessionPage() {
             <PaperClipIcon className="size-4" />
           </button>
         </div>
-        <div className="px-1 pt-0.5 pb-0.5 flex flex-col">
+        <div className="px-1 pt-0.5 pb-0.5 flex-1 min-h-0 flex flex-col">
           <input
             ref={fileAttachInputRef}
             type="file"
@@ -939,10 +944,17 @@ function NewSessionPage() {
               e.preventDefault();
               void handleSubmit();
             }}
-            className="w-full flex flex-col"
+            className="w-full flex-1 min-h-0 flex flex-col"
           >
-            <div className="flex items-stretch gap-2">
-              <div className="min-w-0 flex-1 flex flex-col">
+            {/* Floating-button composer layout. Submit button (and STT mic)
+              * float absolutely at bottom-right of the textarea wrapper, so
+              * the button stays visible no matter how tall the textarea
+              * content grows. The wrapper itself is bounded by the
+              * composer's `style={{ maxHeight: composerMaxHeight }}` cap +
+              * the flex-1 min-h-0 cascade through the inner padding and
+              * form. See the matching block in `session/$id.tsx` for the
+              * full rationale. */}
+            <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
                 <Textarea
                   ref={textareaRef}
                   value={text}
@@ -1002,13 +1014,12 @@ function NewSessionPage() {
                     onKeyDown(e);
                   }}
                   placeholder="What do you want to do?"
-                  className="resize-none overflow-y-auto text-sm min-h-[120px]"
+                  className="resize-none overflow-y-auto text-sm min-h-[120px] pr-14"
                   disabled={sending}
                 />
-              </div>
-              <div className="flex flex-col justify-end gap-1.5 shrink-0">
+              <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
                 {sttMode !== "off" && speechRecognition.isSupported && (
-                  <div className="flex w-12 gap-0 justify-end">
+                  <div className="pointer-events-auto flex w-12 gap-0 justify-end">
                     <button
                       type="button"
                       onPointerDown={(e) => {
@@ -1060,7 +1071,7 @@ function NewSessionPage() {
                     sending ||
                     (!hasContent && pendingAttachments.length === 0)
                   }
-                  className={`size-12 !p-0 ${
+                  className={`pointer-events-auto size-12 !p-0 ${
                     sttCountdownDigit !== null ? "animate-pulse" : ""
                   }`}
                   aria-label={

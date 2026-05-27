@@ -102,6 +102,7 @@ import { useSttModeStore } from "@/stores/stt-mode-store";
 import { useSttEngine } from "@/hooks/use-stt-engine";
 import { toast } from "@/components/ui/toast";
 import { useMarkViewed } from "@/hooks/use-last-viewed";
+import { useComposerMaxHeight } from "@/hooks/use-composer-max-height";
 import { usePullState } from "@/hooks/use-pull-to-refresh";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
@@ -3436,48 +3437,6 @@ function writePendingPrompt(sessionId: string, value: string) {
   }
 }
 
-// Composer max-height in pixels.
-//
-// dvh is supposed to track the visible viewport across keyboard show/hide,
-// but on Android Chrome and iOS Safari it's flaky: the value either lags or
-// stays at the full viewport while the soft keyboard is up, leaving the
-// composer overlapping the keyboard. visualViewport.height is the
-// browser-blessed source of truth for "how much of the page can the user
-// actually see right now", so we read that and cap the composer at 60% of
-// it. SSR / no-visualViewport fallback stays at 50% of innerHeight, which
-// matches the original 50dvh behaviour.
-function useComposerMaxHeight(): number {
-  const [maxPx, setMaxPx] = useState<number>(() => {
-    if (typeof window === "undefined") return 600;
-    const vv = window.visualViewport;
-    return Math.round((vv?.height ?? window.innerHeight) * 0.6);
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const vv = window.visualViewport;
-    const update = () => {
-      const h = vv?.height ?? window.innerHeight;
-      setMaxPx(Math.round(h * 0.6));
-    };
-    update();
-    if (vv) {
-      vv.addEventListener("resize", update);
-      vv.addEventListener("scroll", update);
-    }
-    window.addEventListener("resize", update);
-    return () => {
-      if (vv) {
-        vv.removeEventListener("resize", update);
-        vv.removeEventListener("scroll", update);
-      }
-      window.removeEventListener("resize", update);
-    };
-  }, []);
-
-  return maxPx;
-}
-
 function SessionPage() {
   const { id: sessionId } = Route.useParams();
   const navigate = useNavigate();
@@ -6002,8 +5961,21 @@ function SessionPage() {
                   })}
                 </div>
               )}
-              <div className="flex items-stretch gap-2 flex-1 min-h-0">
-                <div className="min-w-0 flex-1 flex flex-col">
+              {/* Floating-button composer layout. The submit button (and any
+                * STT mic / abort stop buttons) sit in an absolute-positioned
+                * overlay at the bottom-right corner of this relative wrapper.
+                *
+                * Why: the previous flex-row + items-stretch layout let
+                * `field-sizing: content` push the textarea (and thus the
+                * submit button in the right column) past the composer's
+                * maxHeight cap on some Android Chrome layouts, clipping the
+                * submit button. Anchoring the buttons to the wrapper (which
+                * IS properly capped by `flex-1 min-h-0` + the composer
+                * wrapper's `style={{ maxHeight }}`) means the buttons are
+                * always at the bottom-right of the visible composer area.
+                * The textarea's `pr-14` keeps the cursor from running under
+                * the floating button column. */}
+              <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
                   <Textarea
                     ref={textareaRef}
                     data-test="portal-composer-textarea"
@@ -6147,13 +6119,12 @@ function SessionPage() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="resize-none overflow-y-auto text-sm min-h-[max(4.5rem,100%)]"
+                    className="resize-none overflow-y-auto text-sm min-h-[max(4.5rem,100%)] pr-14"
                   />
-                </div>
-                <div className="flex flex-col justify-end gap-1.5 shrink-0">
+                <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
                   {(sttMode !== "off" && speechRecognition.isSupported) ||
                   isAssistantBusy ? (
-                    <div className="flex w-12 gap-0 justify-end">
+                    <div className="pointer-events-auto flex w-12 gap-0 justify-end">
                       {sttMode !== "off" && speechRecognition.isSupported && (
                         <button
                           type="button"
@@ -6217,7 +6188,7 @@ function SessionPage() {
                     isDisabled={
                       !hasContent && pendingAttachments.length === 0
                     }
-                    className={`size-12 !p-0 ${
+                    className={`pointer-events-auto size-12 !p-0 ${
                       sttCountdownDigit !== null ? "animate-pulse" : ""
                     }`}
                     aria-label={

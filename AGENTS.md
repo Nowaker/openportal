@@ -557,6 +557,87 @@ state is wrong and must be moved into the URL.
   `localStorage["opencode-pending-prompt:<sid>"]` is the safety net
   if dispatch is silently dropped.
 
+### Composer layout (mobile-safe — DO NOT regress)
+
+The chat composer in `apps/web/src/routes/_app/session/$id.tsx` and
+the new-session composer in `apps/web/src/routes/_app/session/new.tsx`
+share a layout contract that exists ONLY because of mobile failure
+modes. Every part of the contract has a real bug behind it; do not
+revert any of these without re-reproducing the bug.
+
+- **60% visualViewport cap on the composer wrapper.** Both composers
+  use `useComposerMaxHeight()` from
+  `apps/web/src/hooks/use-composer-max-height.ts` to compute
+  `Math.round(visualViewport.height * 0.6)` with visualViewport
+  resize/scroll listeners. The composer's outer wrapper carries
+  `style={{ maxHeight: ${composerMaxHeight}px }}` + `overflow-hidden`.
+  Why visualViewport and not `dvh`: on Android Chrome / iOS Safari
+  `dvh` lags or stays at the full viewport while the soft keyboard
+  is up, leaving the composer overlapping the keyboard.
+  `visualViewport.height` is the browser-blessed source of truth for
+  "how much of the page can the user actually see right now".
+
+- **Full `flex-1 min-h-0` cascade from composer wrapper down to the
+  textarea wrapper.** The maxHeight cap is only effective if every
+  intermediate container propagates the bounded height. In
+  `session/new.tsx` specifically: the inner padding container
+  (`px-1 pt-0.5 pb-0.5 ...`) AND the form AND the textarea wrapper
+  ALL need `flex-1 min-h-0 flex flex-col`. Skipping any one of them
+  lets the textarea grow with content past the cap, push the wrapper
+  past the cap, and (because of `shrink-0` on the composer in the
+  page's outer flex column) push the templates / chat content above
+  the composer off-screen. The session/$id.tsx layout already had
+  the cascade; new.tsx needed `flex-1 min-h-0` added to two
+  intermediate containers.
+
+- **Submit button + STT mic + abort stop button float absolutely at
+  the bottom-right of a relative textarea wrapper.** Layout:
+  ```tsx
+  <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
+    <Textarea ... className="... pr-14" />
+    <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+      {/* mic + stop in a pointer-events-auto row when active */}
+      <Button type="submit" className="pointer-events-auto size-12 !p-0 ..." />
+    </div>
+  </div>
+  ```
+  Why not the old flex-row + `items-stretch` + `shrink-0` button
+  column: the combination of `field-sizing: content` on the
+  textarea + `items-stretch` on the row + `shrink-0` on the button
+  column let some Android Chrome layout paths push the textarea
+  past the composer's `maxHeight` cap, and the wrapper's
+  `overflow-hidden` clipped the BOTTOM of the row — which is where
+  the submit button lived. With absolute positioning, the buttons
+  are anchored to the relative wrapper (which IS properly bounded
+  by the flex-1 cascade), so they stay at the bottom-right of the
+  visible composer area regardless of textarea content height.
+  - The textarea must have `pr-14` (or wider when more buttons
+    stack) so the cursor / text content does not slide under the
+    floating button column.
+  - The overlay wrapper is `pointer-events-none` so clicks in the
+    "empty" area pass through to the textarea (focus, selection).
+    Each button is `pointer-events-auto` so clicks register on the
+    button itself.
+
+- **`touch-pan-y` + `overscroll-contain` on the Textarea component.**
+  Set in the base class list at
+  `apps/web/src/components/ui/textarea.tsx`. Without them, Android
+  Chrome bubbles finger-drag inside the textarea up to the nearest
+  scrollable ancestor (the chat container, the new-session page),
+  and the user sees the wrong surface scroll. `touch-pan-y` locks
+  the gesture to vertical inside the textarea; `overscroll-contain`
+  prevents fall-through to the page once the textarea hits its
+  scroll limit.
+
+- **NEVER restore the old `flex items-stretch gap-2` row layout.**
+  The flex row felt cleaner in code but had three coupled failure
+  modes on mobile (textarea unbounded growth, submit button clip,
+  touch-scroll bubbling) plus the new-session covering the
+  templates. The floating-button refactor (commit landing this
+  rule) closes all four. Reviewers reverting any part of this
+  layout MUST first reproduce the mobile bugs on a real phone or a
+  Chrome DevTools mobile-emulation viewport.
+
 ### Sidebar
 
 - Project tree honors `level` + `level1` config per base directory.
