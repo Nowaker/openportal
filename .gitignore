@@ -41,6 +41,10 @@ yarn-error.log*
 # AI scratch
 tmp/
 
+# Agent runtime metadata (OhMyOpenCode + Sisyphus per-session state)
+.omo/
+.sisyphus/
+
 # Whisper STT model binaries (downloaded on demand, multi-GB)
 apps/voice-stt/models/
 .output-released
