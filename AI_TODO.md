@@ -2087,7 +2087,22 @@ Design notes:
 - Full forensic analysis committed at [ai-analysis-requests/STUCK_NO_DISPATCH_LEXICOGRAPHIC_ID_BUG.md](file:///home/nowaker/projekty/webapps/portal/ai-analysis-requests/STUCK_NO_DISPATCH_LEXICOGRAPHIC_ID_BUG.md): the stuck-detector full output, why-first-prompt-worked-but-second-didn't analysis, proof across 5 stuck sessions, ruled-out alternatives, recovery procedure, when to remove the workaround.
 - Test verification before merge: fired `msg_f...`-prefixed `prompt_async` to all 5 stuck `no-dispatch` sessions in this project (`ses_1961e22d6...`, `ses_1983566f5...`, `ses_1982abce8...`, `ses_198788003...`, `ses_199f94180...`). Every one transitioned from `stuck/no-dispatch` to `in-progress` on the first try. Confirmed the workaround unblocks the existing stuck queue as well as preventing future stuckness.
 - Initially shipped on branch `fix/prompt-id-f-prefix` per the analyze-mode hook's "don't merge / don't deploy" prelude. User redirect ("DEPLOY AND FIX ALL SHIT") clarified that was a misread — the prelude applied to the analysis turn only. Rebased onto main, fast-forwarded to `4537a0d`, pushed to both remotes, deployed via `scripts/deploy.sh`.
-- Separate bug NOT addressed by this commit: the 2 `stuck/stale-stream` sessions (`ses_1983fb909...`, `ses_19897fcbf...`) have an in-flight assistant message that opencode considers still running but with no live runner. Class of bug from the May 26 22:24:56 systemd-timeout-during-stop event that SIGKILL'd opencode mid-LLM-stream. Recovery requires `POST /session/<sid>/abort` + re-fire. Tracked separately.
+- Separate bug NOT addressed by this commit: the 2 `stuck/stale-stream` sessions (`ses_1983fb909...`, `ses_19897fcbf...`) have an in-flight assistant message that opencode considers still running but with no live runner. Class of bug from the May 26 22:24:56 systemd-timeout-during-stop event that SIGKILL'd opencode mid-LLM-stream. Recovery requires `POST /session/<sid>/abort` + re-fire. Tracked separately. (Post-deploy follow-up: aborted both via `POST /session/<sid>/abort` then re-fired with f-prefix `prompt_async`. Both now in-progress with healthy LLM streams.)
+
+### 99. Stuck-detector verdict: don't visualize or poll for archived sessions
+
+User prompt (verbatim):
+
+> after done:
+> also make openportal not visualize/ask stuck detector verdicts when session is archived.
+
+Design notes:
+
+- Stuck-detector verdicts are meaningless for archived sessions: no runner can be wedged, no unstuck action makes sense, and polling the plugin's `/verdicts/<sid>` endpoint every 15s per modal mount is pure waste.
+- "Visualize" sites gated on archived state: [SessionStatusBadge](file:///home/nowaker/projekty/webapps/portal/apps/web/src/components/session-status-badge.tsx) (title-bar badge with click-to-unstuck affordance) returns null when archived. [Session-info modal](file:///home/nowaker/projekty/webapps/portal/apps/web/src/components/session-info-modal.tsx) renders `n/a (archived)` for both Owner instance and Verdict fields.
+- "Ask" site gated on archived state: [useSessionVerdict](file:///home/nowaker/projekty/webapps/portal/apps/web/src/hooks/use-session-verdict.ts) accepts a new `options.enabled` flag. When false, the SWR key is `null` so no fetch happens; the hook returns nulled-out state. session-info modal computes `isArchived` from `session.time.archived` and passes `enabled: !isArchived`.
+- SSE indicator stream (which feeds `useIndicator` / the badge's in-memory state) is left unchanged — it's a single global subscription, not per-session, so filtering per archived state would be a backend change. Indicator state still flows in; the badge just hides itself. Acceptable for now since the badge render is the visible surface.
+- [app-sidebar-nav.tsx](file:///home/nowaker/projekty/webapps/portal/apps/web/src/components/app-sidebar-nav.tsx) already has `isArchived` computed at line 372 from `currentSession.time.archived`; passes through to the badge component.
 
 ## Q-DEFERRED (open questions awaiting user input)
 

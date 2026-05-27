@@ -786,6 +786,7 @@ export function AppSidebarNav() {
             {sessionId && (
               <SessionStatusBadge
                 sessionId={sessionId}
+                archived={isArchived}
                 className="shrink-0"
               />
             )}

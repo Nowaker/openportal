@@ -267,8 +267,19 @@ function Body({
   const messagesPending = messagesLoading && (!messages || messages.length === 0);
   const modelPending =
     messagesPending || (providersLoading && !providersData);
+  const session = useMemo(
+    () =>
+      ((sessions ?? []) as Array<{
+        id: string;
+        title?: string;
+        time?: { created?: number; updated?: number; archived?: number };
+      }>).find((s) => s.id === sessionId),
+    [sessions, sessionId],
+  );
+  const isArchived =
+    typeof session?.time?.archived === "number" && session.time.archived > 0;
   const { verdict, isLoading: verdictLoading, notFound: verdictNotFound } =
-    useSessionVerdict(sessionId);
+    useSessionVerdict(sessionId, undefined, { enabled: !isArchived });
   const { cohort, isLoading: cohortLoading } = useCohort();
   const ownerInfo = useMemo(
     () => deriveOwnerInfo(verdict, cohort.workers, verdictNotFound),
@@ -282,6 +293,7 @@ function Body({
     return `${n} instance${n === 1 ? "" : "s"}`;
   }, [cohort.workers, cohort.pluginReachable]);
   const verdictLabel = useMemo(() => {
+    if (isArchived) return "n/a (archived)";
     if (verdictNotFound) return "idle (no verdict cached)";
     if (!verdict) return "—";
     const v = typeof verdict.verdict === "string" ? verdict.verdict : null;
@@ -290,17 +302,7 @@ function Body({
       return `${v} (${verdict.cause})`;
     }
     return v;
-  }, [verdict, verdictNotFound]);
-
-  const session = useMemo(
-    () =>
-      ((sessions ?? []) as Array<{
-        id: string;
-        title?: string;
-        time?: { created?: number; updated?: number };
-      }>).find((s) => s.id === sessionId),
-    [sessions, sessionId],
-  );
+  }, [verdict, verdictNotFound, isArchived]);
 
   const stats = useMemo(() => {
     let userCount = 0;
@@ -570,14 +572,18 @@ function Body({
           <Field
             label="Owner instance"
             value={
-              <span title={ownerInfo.detail ?? undefined}>
-                {ownerInfo.display}
-                {ownerInfo.workerID && (
-                  <span className="ml-2 text-[10px] text-muted-fg">
-                    {ownerInfo.workerID}
-                  </span>
-                )}
-              </span>
+              isArchived ? (
+                "n/a (archived)"
+              ) : (
+                <span title={ownerInfo.detail ?? undefined}>
+                  {ownerInfo.display}
+                  {ownerInfo.workerID && (
+                    <span className="ml-2 text-[10px] text-muted-fg">
+                      {ownerInfo.workerID}
+                    </span>
+                  )}
+                </span>
+              )
             }
             loading={verdictLoading}
           />

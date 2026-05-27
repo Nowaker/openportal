@@ -24,9 +24,11 @@ export type { StatusKind, StatusInfo } from "@/lib/session-status";
 
 export function SessionStatusBadge({
   sessionId,
+  archived = false,
   className: extraClassName = "",
 }: {
   sessionId: string;
+  archived?: boolean;
   className?: string;
 }) {
   const instance = useInstanceStore((s) => s.instance);
@@ -89,6 +91,7 @@ export function SessionStatusBadge({
   }, [indicator?.stuck_cause, sessionId, unsticking]);
 
   if (!status) return null;
+  if (archived) return null;
 
   if (status.kind === "stuck") {
     const v = STATUS_VISUALS.stuck;

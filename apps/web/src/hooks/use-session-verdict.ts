@@ -40,13 +40,18 @@ async function fetcher(url: string): Promise<FetchResult> {
 export function useSessionVerdict(
   sessionId: string | null | undefined,
   refreshMs = 15_000,
+  options: { enabled?: boolean } = {},
 ): {
   verdict: SessionVerdict | null;
   isLoading: boolean;
   notFound: boolean;
   error: Error | null;
 } {
-  const key = sessionId
+  // enabled defaults true; callers pass false to suppress the SWR fetch
+  // (e.g. archived sessions, where stuck-detector verdict is meaningless
+  // and shouldn't burn a 15s-interval poll per modal mount).
+  const enabled = options.enabled ?? true;
+  const key = enabled && sessionId
     ? `/api/stuck-detector/verdict/${encodeURIComponent(sessionId)}`
     : null;
   const { data, isLoading, error } = useSWR<FetchResult, Error>(key, fetcher, {
