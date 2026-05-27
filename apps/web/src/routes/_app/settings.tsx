@@ -1712,11 +1712,25 @@ function SettingsPage() {
       <div className="container mx-auto space-y-8 px-4 py-6">
       <Tabs
         aria-label="Settings"
-        className="overflow-x-hidden"
+        className="overflow-x-clip"
         selectedKey={settingsTab}
         onSelectionChange={(key) => setSettingsTab(String(key))}
       >
-        <TabList className="flex overflow-x-auto scrollbar-none !border-b-0 [&_*[data-slot=selected-indicator]]:hidden">
+        {/* Sticky tab strip - the strip stays pinned to the top of the
+            scroll container as the user scrolls through a long tab
+            panel, mirroring the always-visible app title bar above. The
+            negative horizontal margin + positive padding pair lets the
+            bg-bg band span the inner container's full width (incl. the
+            container's px-4 padding) so panel content scrolling
+            underneath cannot bleed through the sticky band. `-top-px`
+            offsets a sub-pixel fractional-scroll gap that browsers
+            occasionally leave above sticky elements on retina /
+            zoom-not-100% displays. overflow-x-clip on the parent
+            preserves the original "no horizontal page scroll" intent
+            without creating a vertical scroll context (which
+            overflow-x-hidden does as a side effect and would break the
+            sticky binding to the outer scroll container). */}
+        <TabList className="sticky -top-px z-20 -mx-4 flex overflow-x-auto bg-bg px-4 scrollbar-none border-b border-border [&_*[data-slot=selected-indicator]]:hidden">
           <Tab id="appearance" data-test="portal-settings-tab-appearance">
             <SwatchIcon className="size-4" data-slot="icon" />
             Appearance
