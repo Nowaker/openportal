@@ -347,13 +347,23 @@ export function listPrompts(filters: ListFilters = {}): ListResult {
   // returns < 100ms for ~10k rows on this DB. Escape LIKE wildcards
   // in the user input ('%', '_', '\') so a literal '%' query doesn't
   // unexpectedly match everything.
+  //
+  // Multi-word AND: split the query on whitespace and require ALL
+  // words to appear (in any order) in raw_text. So 'Third alpha'
+  // matches 'Third prompt in alpha session' even though the words
+  // aren't adjacent. This preserves the user's expected FTS-like
+  // intent ("find rows containing all my words") on top of the
+  // substring-within-word semantics LIKE gives.
   const escapeLike = (s: string): string =>
     s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 
   let sql = `SELECT * FROM prompts WHERE 1=1`;
   if (filters.q && filters.q.trim().length > 0) {
-    where.push(`raw_text LIKE ? ESCAPE '\\'`);
-    params.push(`%${escapeLike(filters.q.trim())}%`);
+    const words = filters.q.trim().split(/\s+/).filter((w) => w.length > 0);
+    for (const word of words) {
+      where.push(`raw_text LIKE ? ESCAPE '\\'`);
+      params.push(`%${escapeLike(word)}%`);
+    }
   }
   addEq("project_path", filters.project);
   addEq("session_id", filters.session);
