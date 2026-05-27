@@ -109,6 +109,50 @@ Operational rules:
   whatever the in-memory todo list says. Re-ordering across
   entries is fine; renumbering is not.
 
+- **Safe diffs (binding when AI_TODO has concurrent writers).**
+  Multiple agents writing to `AI_TODO.md` from sibling worktrees /
+  sessions is the norm here. To keep the file mergeable:
+  - **Append-only**: never touch existing numbered entries except
+    to flip `PENDING` → `DONE - <commit>` in place. No edits to
+    historical entries, no reformatting, no reordering.
+  - **Anchor every diff at the END of the file**, after the most
+    recent numbered entry but before the trailing meta sections
+    (Q-DEFERRED, ARCHITECTURE REFERENCE, etc.). Parallel agents
+    appending the same way land on neighbouring lines and git's
+    three-way merge resolves cleanly.
+  - **No renumbering, ever.** Pick the next unused integer at
+    insert time. If a race produced a duplicate number, the loser
+    bumps to N+1 in the next sync turn, never by rewriting
+    history.
+  - **One numbered entry per commit** for AI_TODO-only changes -
+    the smaller the patch, the less surface for conflict. Code
+    commits that already update AI_TODO inline are allowed to
+    ship 1-3 entries together.
+
+- **Temp-file fallback when AI_TODO.md is unmergeable.** If
+  `AI_TODO.md` shows up in `git ls-files --unmerged`, or another
+  agent's mid-flight edit is visible (raw `<<<<<<<` markers,
+  partial reformatting, etc.), do NOT add your entry directly -
+  editing now will mangle their merge. Instead:
+  1. Write the intended entry into
+     `AI_TODO_<yyyymmdd>_<hhmmss>_<short_title>_<ses_id>.md` at
+     the repo root, using the same numbered-entry format as a
+     real entry. Example filename:
+     `AI_TODO_20260527_2030_settings_polish_ses_b7c2fa.md`.
+  2. These temp files are `.gitignore`d under the
+     `AI_TODO_*_ses_*.md` pattern, so they sit safely in the
+     working tree without polluting commits.
+  3. Re-check `AI_TODO.md` periodically. As soon as it returns to
+     a clean mergeable state, append the entry from your temp
+     file to the END of `AI_TODO.md` (still respecting the
+     safe-diff rules above), then delete the temp file - either
+     in the same commit that ships your work, or in a dedicated
+     post-merge `AI_TODO.md: sync ...` commit.
+  4. If a session ends with the temp file still on disk, the
+     next session reading the repo root MUST scoop it up before
+     starting new work. The filename's timestamp + session id
+     makes ownership unambiguous.
+
 If the user reminds you to sync (as in 2026-05-26
 msg_e6580ef5b...), you're already late. Stop, sync, then resume.
 
