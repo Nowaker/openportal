@@ -1329,7 +1329,7 @@ Design notes:
 
 ---
 
-### 75. New-session composer drafts persist per directory + sidebar indicator (DONE - to be filled by commit hash)
+### 75. New-session composer drafts persist per directory + sidebar indicator (DONE - 93c176e)
 
 User prompt (verbatim):
 
