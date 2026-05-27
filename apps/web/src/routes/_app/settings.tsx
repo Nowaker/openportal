@@ -1716,21 +1716,22 @@ function SettingsPage() {
         selectedKey={settingsTab}
         onSelectionChange={(key) => setSettingsTab(String(key))}
       >
-        {/* Sticky tab strip - the strip stays pinned to the top of the
-            scroll container as the user scrolls through a long tab
-            panel, mirroring the always-visible app title bar above. The
-            negative horizontal margin + positive padding pair lets the
-            bg-bg band span the inner container's full width (incl. the
-            container's px-4 padding) so panel content scrolling
-            underneath cannot bleed through the sticky band. `-top-px`
-            offsets a sub-pixel fractional-scroll gap that browsers
-            occasionally leave above sticky elements on retina /
-            zoom-not-100% displays. overflow-x-clip on the parent
-            preserves the original "no horizontal page scroll" intent
-            without creating a vertical scroll context (which
-            overflow-x-hidden does as a side effect and would break the
-            sticky binding to the outer scroll container). */}
-        <TabList className="sticky -top-px z-20 -mx-4 flex overflow-x-auto bg-bg px-4 scrollbar-none border-b border-border [&_*[data-slot=selected-indicator]]:hidden">
+        {/* Sticky tab strip - sits flush against the app title bar with
+            no scroll-down-before-stick transition. `-mt-6` cancels the
+            outer container's py-6 top padding for this row so the strip's
+            natural document-flow position is already at top: 0 of the
+            scroll container; `sticky top-0` then just nails it in place
+            as the user scrolls instead of having to first scroll past
+            24px of empty padding. `-mx-4 px-4` widens the bg-bg band to
+            cover the outer container's px-4 gutters so tab-panel content
+            scrolling underneath cannot bleed through the sticky band on
+            either side. overflow-x-clip on the parent <Tabs> preserves
+            the "no horizontal page scroll" intent without creating a
+            vertical scroll context - overflow-x-hidden implicitly
+            promotes overflow-y from visible to auto and would re-bind
+            sticky to the Tabs container (where the element is already at
+            top:0, defeating the sticky). */}
+        <TabList className="sticky top-0 z-20 -mx-4 -mt-6 flex overflow-x-auto bg-bg px-4 scrollbar-none border-b border-border [&_*[data-slot=selected-indicator]]:hidden">
           <Tab id="appearance" data-test="portal-settings-tab-appearance">
             <SwatchIcon className="size-4" data-slot="icon" />
             Appearance
@@ -1775,10 +1776,6 @@ function SettingsPage() {
 
         <TabPanel id="appearance" className="pt-6">
           <div className="space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold">Appearance</h2>
-            </div>
-
             <div className="space-y-6">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Theme Preference</p>
@@ -1855,10 +1852,6 @@ function SettingsPage() {
 
         <TabPanel id="prompt" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Prompt</h2>
-            </div>
-
             <section className="space-y-2">
               <div>
                 <h3 className="text-sm font-semibold">Default model</h3>
@@ -1943,13 +1936,10 @@ function SettingsPage() {
 
         <TabPanel id="composer" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Composer</h2>
-              <p className="text-xs text-muted-fg">
-                How the prompt input behaves: Enter key, auto-approve
-                permissions.
-              </p>
-            </div>
+            <p className="text-xs text-muted-fg">
+              How the prompt input behaves: Enter key, auto-approve
+              permissions.
+            </p>
 
             <section>
               <ComposerSettings />
@@ -1963,10 +1953,6 @@ function SettingsPage() {
 
         <TabPanel id="chat" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Chat</h2>
-            </div>
-
             <section className="space-y-2">
               <div>
                 <h3 className="text-sm font-semibold">Date and time format</h3>
@@ -2039,35 +2025,26 @@ function SettingsPage() {
 
         <TabPanel id="files" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Files</h2>
-              <p className="text-xs text-muted-fg pt-1">
-                Defaults for the file browser. Hidden-file visibility,
-                metadata columns, optional directory-size scan.
-              </p>
-            </div>
+            <p className="text-xs text-muted-fg">
+              Defaults for the file browser. Hidden-file visibility,
+              metadata columns, optional directory-size scan.
+            </p>
             <FilesSettings />
           </div>
         </TabPanel>
 
         <TabPanel id="tools" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Tools</h2>
-            </div>
             <ToolsSettings />
           </div>
         </TabPanel>
 
         <TabPanel id="content" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Content</h2>
-              <p className="text-xs text-muted-fg pt-1">
-                What shows in the chat log and how. Per-content-type visibility,
-                byte caps, on-demand loading.
-              </p>
-            </div>
+            <p className="text-xs text-muted-fg">
+              What shows in the chat log and how. Per-content-type visibility,
+              byte caps, on-demand loading.
+            </p>
             <ContentVisibilityTable />
             <ToolOutputCapSetting />
           </div>
@@ -2075,27 +2052,21 @@ function SettingsPage() {
 
         <TabPanel id="notifications" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Notifications</h2>
-              <p className="text-xs text-muted-fg pt-1">
-                Per-status browser notification policy. Permission must be
-                granted at the OS / browser level for notifications to fire
-                regardless of these settings.
-              </p>
-            </div>
+            <p className="text-xs text-muted-fg">
+              Per-status browser notification policy. Permission must be
+              granted at the OS / browser level for notifications to fire
+              regardless of these settings.
+            </p>
             <NotificationsSettings />
           </div>
         </TabPanel>
 
         <TabPanel id="performance" className="pt-6">
           <div className="space-y-10">
-            <div>
-              <h2 className="text-lg font-semibold">Performance</h2>
-              <p className="text-xs text-muted-fg pt-1">
-                Knobs that trade off responsiveness vs. resource usage. Affect how
-                the UI behaves, not what content it shows.
-              </p>
-            </div>
+            <p className="text-xs text-muted-fg">
+              Knobs that trade off responsiveness vs. resource usage. Affect how
+              the UI behaves, not what content it shows.
+            </p>
             <LiveUpdatesSetting />
           </div>
         </TabPanel>

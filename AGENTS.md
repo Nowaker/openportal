@@ -873,12 +873,17 @@ hash array, and TabPanel ids all live in
 | `performance` | Live updates strategy (per-platform) and other UI responsiveness knobs. |
 | `diagnostics` | Health + presence + companion plugin state. |
 
-Heading hierarchy: each `<TabPanel>` has its own `<h2>` for the tab
-title and intro paragraph; every sub-section inside a panel uses
-`<h3>` with an `<p class="text-xs text-muted-fg">` description.
-Mixing `<h2>` for both tab and subsection produces two competing
-top-level headings per panel — the `ac069c5` cleanup normalized
-everything so this is now a hard rule.
+Heading hierarchy: tab panels do NOT render their own tab-name
+heading - the active tab in the sticky tab strip already shows the
+section name, so an `<h2>Appearance</h2>` at the top of the
+appearance panel just duplicates it. Sub-sections inside a panel use
+`<h3 class="text-sm font-semibold">` with a `<p class="text-xs
+text-muted-fg">` description. A short `<p class="text-xs
+text-muted-fg">` intro paragraph at the top of a panel is fine for
+tabs where the tab name alone is ambiguous (Composer, Files, Content,
+Notifications, Performance currently keep one); skip it when the tab
+name plus the sub-section headings carry their own meaning
+(Appearance, Prompt, Chat, Tools, Diagnostics).
 
 When adding a new sub-section to an existing tab, follow the
 existing pattern:
