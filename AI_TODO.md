@@ -396,7 +396,7 @@ Design notes (65f2e85):
 - The success path keeps its 2500ms auto-close timer (correct behavior — success is informational), but the success is also logged so the user can see "restarted X at HH:MM" later if they want to audit.
 - AGENTS.md restart-hygiene rule honored: AI is forbidden from restarting `opencode-serve-tailscale` (this session's runtime) — that's only ever a user-initiated action through this popover.
 
-### 24. OpenPortal system-messages drawer (always-accessible from bottom-left)
+### 24. OpenPortal system-messages drawer (always-accessible from bottom-left) (DONE - a1c65c1 initial drawer + e08807b dual entry points + e73c186 localStorage persistence + e2d080a audit log wiring + 9bc5fc2 selectable details + 17d0792 3-mode scoping switcher; README + AGENTS.md documented)
 
 User prompt:
 
