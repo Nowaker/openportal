@@ -99,6 +99,7 @@ import { useMcpStatus, useToggleMcp } from "@/hooks/use-mcp";
 import { useLspStatus } from "@/hooks/use-lsp";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
+import { useVirtualSessionStore } from "@/stores/virtual-session-store";
 import useMediaQuery from "@/hooks/use-media-query";
 import {
   sessionHasDraft,
@@ -246,12 +247,35 @@ export function AppSidebarNav() {
     from: "/_app/session/$id",
     shouldThrow: false,
   });
+  const newSessionMatch = useMatch({
+    from: "/_app/session/new",
+    shouldThrow: false,
+  });
   const sessionId = sessionMatch?.params?.id;
   const sessions: Session[] = sessionsData ?? [];
   const currentSession = sessions.find((s) => s.id === sessionId);
-  const sessionTitle = currentSession?.title ?? null;
+  // New-session route: the topbar should mirror the actual-session layout
+  // ('{projectLabel}: New session') instead of falling through to the
+  // instance name ('opencode'), which gives the user no signal about
+  // which project they're about to start a session in. We reuse the
+  // exact same JSX rendering by reading the directory off either the
+  // URL search params or the virtual-session-store (which captures the
+  // last 'Open directory' click) and synthesizing the labels the same
+  // way an active session would surface them.
+  const newSessionDirFromUrl =
+    typeof newSessionMatch?.search?.directory === "string"
+      ? newSessionMatch.search.directory
+      : null;
+  const storeDirForNewSession = useVirtualSessionStore((s) => s.directory);
+  const newSessionDirectory = newSessionMatch
+    ? newSessionDirFromUrl || storeDirForNewSession || null
+    : null;
+  const sessionTitle =
+    currentSession?.title ?? (newSessionDirectory ? "New session" : null);
   const systemMessagesUnread = useSystemMessagesStore((s) => s.unreadCount);
-  const projectLabel = projectLabelFromDirectory(currentSession?.directory);
+  const directoryForLabel =
+    currentSession?.directory ?? newSessionDirectory ?? undefined;
+  const projectLabel = projectLabelFromDirectory(directoryForLabel);
   // Subagent sessions: opencode sets parentID on child sessions and appends
   // a `(@<agent> subagent)` marker to the title. The marker carries the
   // AGENT TYPE (e.g. "general"); the meaningful per-session label is the
@@ -694,11 +718,11 @@ export function AppSidebarNav() {
             <span className="min-w-0 overflow-x-auto whitespace-nowrap text-sm font-medium text-fg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sessionTitle ? (
                 <>
-                  {projectLabel && currentSession?.directory && (
+                  {projectLabel && directoryForLabel && (
                     <button
                       type="button"
                       onClick={() => {
-                        const dir = currentSession.directory;
+                        const dir = directoryForLabel;
                         if (!dir) return;
                         expandKey(dir);
                         setIsOpenOnMobile(true);
@@ -718,7 +742,7 @@ export function AppSidebarNav() {
                       {projectLabel}
                     </button>
                   )}
-                  {projectLabel && currentSession?.directory && (
+                  {projectLabel && directoryForLabel && (
                     <span className="text-muted-fg">: </span>
                   )}
                   {isSubagent ? (
