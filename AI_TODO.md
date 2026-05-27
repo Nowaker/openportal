@@ -1633,7 +1633,7 @@ Design notes:
 
 ---
 
-### 84. Sidebar resources/CPU indicator: collapsible by default, better labels, two-view layout (PENDING)
+### 84. Sidebar resources/CPU indicator: collapsible by default, better labels, two-view layout (DONE - e03e836)
 
 User prompt (verbatim):
 
