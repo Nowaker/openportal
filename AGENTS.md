@@ -920,6 +920,106 @@ When in doubt: ship the feature first, then look for the win. If
 both can land, both land. If only the optimization can land, it
 doesn't land.
 
+## Caching proxy + authoritative-only invariants (binding)
+
+OpenPortal is **the source of truth** for everything the user has
+ever observed. Quote, verbatim from the user:
+
+> openportal must be a caching proxy for opencode. If you see msgid
+> 1 in sesid 1, you cache it! You know it's there. Only when you
+> hear from opencode AUTHORITATIVELY (not a fucking timeout or
+> empty array due to a bug or something) that it's not there,
+> should you update your cache and no longer display.
+
+> REMEMBER OPENPORTAL IS THE SOURCE OF TRUTH.
+
+This is a hard architectural invariant for everything the UI
+reads from opencode. Hard rules:
+
+- **SQLite persistence for everything cacheable.** `messages_cache`
+  + `sessions_cache` (migration 0004 in
+  `apps/web/src/server/lib/migrations/0004_message_session_cache.sql`)
+  back the in-memory LRUs. After openportal restart, the LRU
+  hydrates from SQLite on the first request per session/port. Cold
+  reload while opencode is slow/down still renders the
+  last-known-good chat instead of "OpenCode is unreachable".
+  Future cacheable surfaces (agents/config/providers, bookmarks,
+  pinned tabs, etc.) must follow the same pattern.
+
+- **Append-only merge on cache writes.** `setCachedMessages` in
+  `apps/web/src/server/lib/messages-cache.ts` merges new opencode
+  responses with the existing cache entry by `info.id`. New
+  messages REPLACE existing entries with the same id (parts may
+  have grown as streaming continues); existing entries NOT in the
+  new response are KEPT with `info._reconciling: true`. A stale-but-
+  same-length opencode snapshot CANNOT drop a message we already
+  saw. Sort order: ascending by `time.created`.
+
+- **Authoritative-only invalidation.** Only these signals delete or
+  trim cache entries:
+    - SSE event `message.removed` / `message.part.removed`
+      (handler in `apps/web/src/server/plugins/indicator-broadcaster.ts`
+      calls `invalidateMessagesCache(sessionId)`)
+    - SSE event `session.deleted` (same handler)
+    - Explicit user action: revert, archive, delete, move
+      (handlers in `apps/web/src/server/opencode/...` post-mutation)
+  Timeouts, empty arrays from broken SDK calls, 5xx responses, and
+  network blips MUST NOT touch the cache.
+
+- **Reconciling badge for transient gaps.** When a cached entry is
+  flagged `_reconciling=true`, the frontend renders it with an
+  amber "Reconciling" pill + tooltip explaining the message is
+  durably saved and the snapshot will catch up. Phase taxonomy:
+  Submitting → Sent to OpenCode → Queued → Reconciling →
+  (real message). NO phase reuses "Queued" semantics. Tooltips
+  on each badge spell out what the phase means.
+
+- **Per-write throttle on SQLite persistence.** Bun SQLite writes
+  are synchronous. A 35MB messages_json blob written every SWR
+  poll blocks the event loop and exhausts the browser's per-host
+  connection pool (ERR_INSUFFICIENT_RESOURCES). The throttle
+  (`PERSIST_THROTTLE_MS = 30000` per key in messages-cache.ts +
+  sessions-cache.ts) coalesces writes to once per 30s per session/
+  port. In-memory LRU updates on every set; SQLite is the
+  restart-survival floor, not the live freshness tier.
+
+- **Shrink-guard removed when merge landed.** Pre-merge, a
+  defensive shrink-guard refused to overwrite a cached list with a
+  shorter one. The merge subsumes that protection: output length
+  is always >= max(old, new). Don't reintroduce the guard - merge
+  is the canonical answer.
+
+- **NEVER 503 when stale cache exists.** The messages handler
+  returns 503 + `X-OpenPortal-OpenCode-Down: true` ONLY when the
+  cache is genuinely empty AND opencode is unreachable. Frontend
+  treats 503 as "opencode is down" and falls back to the
+  StaleDataBanner. Returning 503 with a populated cache would
+  flash the user out of the chat they're reading - explicit
+  contract violation per the user's verbatim "you must not clear
+  any loaded content when opencode connection sucks."
+
+- **Routing decisions also go through cache.** The session-info
+  modal, cohort/owner lookups, and prompt-routing all consult the
+  cache before hitting opencode. Source-of-truth precedence is:
+  authoritative opencode SSE event > local cache > opencode HTTP
+  fetch > error. The fetch never updates the cache on the way
+  back unless the response is authoritative (non-timeout, non-
+  empty-from-bug).
+
+When extending the caching layer for a new surface, the
+implementation MUST:
+
+  1. Read from in-memory LRU first
+  2. Hydrate LRU from SQLite on miss
+  3. Block + fetch from opencode only when both layers empty
+  4. Merge fetched results with cached state by stable id (NEVER
+     wholesale replace)
+  5. Invalidate cache ONLY on authoritative removal signals
+  6. Throttle SQLite writes proportional to payload size
+
+If any of these aren't possible for a new surface, it doesn't
+belong in this cache - figure out a different storage shape.
+
 ## Codebase environment
 
 - OS: Arch Linux. Bun runtime. Tailscale networking.
