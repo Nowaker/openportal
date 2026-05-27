@@ -1506,7 +1506,7 @@ Design notes:
 
 ---
 
-### 81. Unify session-status badge (title bar) + sidebar dot into one visual system; redo colors so every state is distinguishable; "done / review needed" becomes GREEN (PENDING - in-flight)
+### 81. Unify session-status badge (title bar) + sidebar dot into one visual system; redo colors so every state is distinguishable; "done / review needed" becomes GREEN (DONE - 8f1cfa2)
 
 User prompt (verbatim):
 
