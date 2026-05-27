@@ -9,12 +9,16 @@ type Tone = "neutral" | "warning" | "danger";
 
 // Metric is the unified shape rendered by both the collapsed row and the
 // expanded grid. Collapsed mode uses `short` + `value` (two lines per cell);
-// expanded mode uses `label` + `value` + optional bar + optional sub/detail.
+// expanded mode uses `label` + `expandedValue ?? value` + optional bar +
+// optional sub/detail. `expandedValue` lets a cell carry extra context in
+// the wider expanded layout (e.g. CPU: "24% (of 20 cores)") while keeping
+// the compact form short ("24%") in the flex row.
 interface Metric {
   key: string;
   short: string;
   label: string;
   value: string;
+  expandedValue?: string;
   percent: number | null;
   tone: Tone;
   sub?: string;
@@ -93,12 +97,6 @@ export function SidebarSystemStats() {
   const cpuPercent =
     stats.cpu?.totalPercent ??
     (stats.load ? Math.min(100, (stats.load.one / cores) * 100) : 0);
-  // "Expected" CPU = load1/cores * 100. Always derived from load1 so it
-  // surfaces the 1-minute trend even when totalPercent is also available
-  // (otherwise the two values would never disagree).
-  const expectedCpuPercent = stats.load
-    ? Math.min(100, (stats.load.one / cores) * 100)
-    : null;
   const cpuTone: Tone =
     cpuPercent >= 90 ? "danger" : cpuPercent >= 70 ? "warning" : "neutral";
 
@@ -178,12 +176,9 @@ export function SidebarSystemStats() {
     short: "CPU",
     label: "CPU",
     value: pct(cpuPercent),
+    expandedValue: `${pct(cpuPercent)} (of ${cores} core${cores === 1 ? "" : "s"})`,
     percent: cpuPercent,
     tone: cpuTone,
-    sub:
-      expectedCpuPercent !== null
-        ? `expected ${pct(expectedCpuPercent)} (of ${cores} core${cores === 1 ? "" : "s"})`
-        : undefined,
   });
 
   if (stats.memory) {
@@ -429,7 +424,7 @@ function ExpandedCell({ metric }: { metric: Metric }) {
         <span
           className={`shrink-0 text-[10px] tabular-nums ${toneText(metric.tone)}`}
         >
-          {metric.value}
+          {metric.expandedValue ?? metric.value}
         </span>
       </div>
       {hasBar && (
