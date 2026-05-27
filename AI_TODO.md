@@ -1506,19 +1506,40 @@ Design notes:
 
 ---
 
-## [Q4] SESSION_WEDGED_BANNER decision (Q-DEFERRED)
+## [Q4] SESSION_WEDGED_BANNER decision (DONE - option 2 chosen by user; shipped 2026-05-26)
 
-User prompt:
+User pick (verbatim, msg this turn):
 
-> Session may be wedged - OpenCode reports busy but no streaming progress. Abort + retry / Where is this coming from? Stuck detector or some less reliable openportal heuristic? If op, then it's probably not accurate? Provide analysis in Ai requests docs thing. Add todo for me to decide later.
+> Invert priority: plugin verdicts override the local heuristic when both fire
+> this is good idea.
 
-Status: ANALYZED, awaiting user decision. Full analysis at `ai-analysis-requests/SESSION_WEDGED_BANNER.md`. Source: portal local heuristic in `routes/_app/session/$id.tsx:3706-3717` (5min wall-clock + isAssistantBusy + isServerBusy). NOT the stuck-detector plugin — pre-dates plugin integration.
+Implementation in `routes/_app/session/$id.tsx:5610-5644`: the conditional swapped to render `StuckBanner` (plugin verdict) FIRST when `sessionIndicator?.stuck_verdict === "stuck"` is true; the local "Session may be wedged" banner only renders when no plugin verdict says stuck AND the local `stallVerdict === "stuck-busy"`. Ternary chain: `plugin-stuck ? <StuckBanner/> : local-stuck-busy ? <local-banner/> : null`. The dead `stallVerdict === null` guard on the old StuckBanner branch was removed in the same commit.
 
-4 options for user to pick from:
+Original analysis preserved at `ai-analysis-requests/SESSION_WEDGED_BANNER.md`.
+
+4 options that were on the table:
 1. Drop the local heuristic entirely; rely solely on stuck-detector plugin verdicts.
-2. Invert priority: plugin verdicts override the local heuristic when both fire.
+2. **Invert priority: plugin verdicts override the local heuristic when both fire. ← USER PICKED**
 3. Raise the threshold (5min → 15min) to reduce false-positives on legitimately-slow operations.
 4. Add a streaming-delta probe: only fire the banner if NO streaming bytes received in the last N seconds.
+
+### 80. Todo strip: 9/9-all-done content + popup overflow off right edge (DONE - to be filled by commit hash)
+
+User prompt (verbatim):
+
+> re: todo: this one has: https://portal.desktop.ts.nowaker.net:8443/session/ses_1c35fc059ffemptmpnHZfOGCWX?server=srv-2dy1srwz
+> and todoas are misaligned. they overextend beyond the right end of the screen and create a horizonstal scrollbar when todo state is 9/9, all done, and the control.
+> even if all is done, 9/9, small todo strip should show the last element on the todo list still.
+
+Two distinct bugs in `apps/web/src/components/todo-strip.tsx`:
+
+1. **9/9-all-done shows no headline**. The strip text was `firstActiveContent = snapshot.todos.find((t) => t.status === "in_progress")?.content` — when no in_progress remains, the headline span doesn't render. Per user spec, the LAST todo's content should fill in instead so the strip stays informative ("9/9 done : Final step description").
+   Fix: introduced `headlineContent = firstActiveContent ?? snapshot.todos[snapshot.todos.length - 1]?.content` and swapped the conditional + JSX to read `headlineContent`.
+
+2. **Popup overflows right viewport edge**. The popup's positionStyle (desktop branch) used `left: anchor.left + width: max(anchor.width, 360)`. The header comment at line 167 says "Right-aligned to the strip's right edge so the popup grows leftward from the strip" - but the code did the opposite. With the strip near the viewport's right edge and a 360px min width, the popup extended to the RIGHT past the edge, creating a horizontal scrollbar.
+   Fix: switched to `right: max(0, innerWidth - (anchor.left + anchor.width))` so the popup ALIGNS to the strip's right edge, plus `maxWidth: max(280, anchor.left + anchor.width - 16)` so the popup never extends past the viewport's left side either (clamps to available real estate while preserving a sensible minimum).
+
+Affects both desktop (default branch) and mobile branch (mobile branch was already correct - left:5vw right:5vw - the bug was desktop-only).
 
 ---
 

@@ -84,6 +84,8 @@ export function TodoStrip({ snapshot }: Props) {
   const firstActiveContent = snapshot.todos.find(
     (t) => t.status === "in_progress",
   )?.content;
+  const lastTodoContent = snapshot.todos[snapshot.todos.length - 1]?.content;
+  const headlineContent = firstActiveContent ?? lastTodoContent;
 
   return (
     <>
@@ -107,11 +109,11 @@ export function TodoStrip({ snapshot }: Props) {
             {done}
             {active > 0 ? `+${active}` : ""}/{total}
           </span>
-          {firstActiveContent && (
+          {headlineContent && (
             <span className="hidden md:inline-flex items-baseline min-w-0 ml-0">
               <span className="whitespace-nowrap">:&nbsp;</span>
               <span className="truncate max-w-[20ch] lg:max-w-[36ch] xl:max-w-[56ch] font-normal text-fg/80">
-                {firstActiveContent}
+                {headlineContent}
               </span>
             </span>
           )}
@@ -174,12 +176,13 @@ function TodoPopup({ snapshot, anchor, onClose }: TodoPopupProps) {
         top: "5vh",
         maxHeight: `calc(95vh - ${typeof window !== "undefined" ? window.innerHeight - anchor.top + 4 : 0}px)`,
       }
-    : {
+      : {
         position: "fixed",
-        left: `${anchor.left}px`,
+        right: `${typeof window !== "undefined" ? Math.max(0, window.innerWidth - (anchor.left + anchor.width)) : 0}px`,
         top: "auto",
         bottom: `${typeof window !== "undefined" ? window.innerHeight - anchor.top + 4 : 0}px`,
         width: `${Math.max(anchor.width, 360)}px`,
+        maxWidth: `${typeof window !== "undefined" ? Math.max(280, anchor.left + anchor.width - 16) : 360}px`,
         maxHeight: "min(60vh, 480px)",
       };
 

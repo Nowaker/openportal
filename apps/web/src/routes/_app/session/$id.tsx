@@ -5607,26 +5607,8 @@ function SessionPage() {
             </div>
           </div>
         )}
-        {stallVerdict === "stuck-busy" && (
-          <div className="py-3 px-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-warning-subtle-fg">
-                Session may be wedged - OpenCode reports busy but no streaming progress.
-              </span>
-              <button
-                type="button"
-                onClick={() => handleAbortAndRetry()}
-                className="text-xs underline underline-offset-2 text-fg hover:text-primary"
-                title="Cancel the in-flight turn on OpenCode, then re-submit the last user prompt"
-              >
-                Abort + retry
-              </button>
-            </div>
-          </div>
-        )}
         {sessionIndicator?.stuck_verdict === "stuck" &&
-          sessionIndicator.stuck_cause &&
-          stallVerdict === null && (
+          sessionIndicator.stuck_cause ? (
             <StuckBanner
               cause={sessionIndicator.stuck_cause}
               retry={sessionIndicator.retry}
@@ -5643,7 +5625,23 @@ function SessionPage() {
                   : null
               }
             />
-          )}
+          ) : stallVerdict === "stuck-busy" ? (
+            <div className="py-3 px-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-warning-subtle-fg">
+                  Session may be wedged - OpenCode reports busy but no streaming progress.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleAbortAndRetry()}
+                  className="text-xs underline underline-offset-2 text-fg hover:text-primary"
+                  title="Cancel the in-flight turn on OpenCode, then re-submit the last user prompt"
+                >
+                  Abort + retry
+                </button>
+              </div>
+            </div>
+          ) : null}
       </div>
         {/* Vertical stack of nav buttons in the bottom-right of the chat
             scroll area:
