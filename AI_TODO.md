@@ -1712,7 +1712,7 @@ Design notes:
 
 ---
 
-### 86. Cache warmth: stop wiping messages cache on every delta + don't clear stale content on transient fetch errors (PENDING)
+### 86. Cache warmth: stop wiping messages cache on every delta + don't clear stale content on transient fetch errors (DONE - ef26452)
 
 User prompt (verbatim):
 
