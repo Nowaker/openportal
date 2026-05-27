@@ -2000,6 +2000,41 @@ Design notes:
 - Deploy NOT run on landing turn: `scripts/deploy.sh` builds from the main checkout's working tree, which at the time carried another agent's uncommitted WIP (`text-selection-menu.tsx`). Next deploy will pick up `6bf0205` automatically.
 - AI_TODO sync followed temp-file fallback at the time of the code commit (`AI_TODO_20260527_121357_chat_user_msg_tint_ses_chattint.md`) because the main checkout had unstaged AI_TODO.md edits visible. AI_TODO.md returned to a clean committed state right after, and this entry was reincorporated into `AI_TODO.md` in a dedicated post-merge sync commit, deleting the temp file in the same turn.
 
+### 96. CPU expanded display: drop the "current vs expected" two-line form, just show "X% (of N cores)" as the value (PENDING)
+
+User prompt (verbatim):
+
+> CPU
+> 24% (of $nproc cores)
+
+Design notes:
+
+- Follow-up tweak to #84 (sidebar resources indicator redesign). The expanded CPU cell shipped with `value = "24%"` on the right and a separate sub line `"expected 24% (of 20 cores)"` underneath the bar. In practice `current` (`/proc/stat` delta sample) and `expected` (load1/cores) are nearly always equal — two redundant numbers cluttering the cell. User asked to collapse this into a single line where the value column itself reads `"24% (of N cores)"`.
+- Implementation in `apps/web/src/components/sidebar-system-stats.tsx`:
+  - Removed `expectedCpuPercent` const + the "Expected" / load1-derivation comment block.
+  - Removed the CPU metric's `sub` field.
+  - Added `expandedValue: \`${pct(cpuPercent)} (of ${cores} core${cores === 1 ? "" : "s"})\`` to the CPU metric. The literal `(of N cores)` annotation now lives in the value column rather than as a separate caption.
+  - `cores` keeps reading from `navigator.hardwareConcurrency` (with `Math.max(1, ...)` clamp). Singular/plural handled inline ("1 core" vs "N cores").
+- New optional field on `Metric` interface: `expandedValue?: string`. `ExpandedCell` renders `metric.expandedValue ?? metric.value`; `CollapsedCell` still renders `metric.value`. Lets a cell carry richer context in the wider expanded layout without inflating the compact-row cell width. CPU is the only metric that sets it.
+- Collapsed view unchanged: CPU cell still shows just "24%" so the horizontal row's fit math (~52px per cell) is preserved.
+- Worktree: `~/projekty/webapps/portal-cpu-display` (branch `cpu-display-tweak`). Originally numbered #95 but lost the race to a parallel agent who pushed `0e03d4d` (#95 "chat user prompt bubble tint") to origin first; renumbered to #96 per AGENTS.md "loser bumps to N+1" rule.
+
+### 94. Mobile composer follow-up: textarea min-height must accommodate floating mic+submit column (DONE - ce8f404, regression from #85 / 3e0dd5b)
+
+User prompt (verbatim):
+
+> One bug here: input field minimum height (inside) must be submit button h + space between H + mic button h. Currently, when prompt field empty, the mic button is colliding into top prompt border, and poked in half.
+
+Design notes:
+
+- Direct regression from #85 (`3e0dd5b`). The floating-button overlay in `apps/web/src/routes/_app/session/$id.tsx` is positioned at `absolute bottom-1.5 right-1.5` of the textarea wrapper. With the mic+stop row above the submit button, the column is 78px tall: `mic-row h-6 (24px) + gap-1.5 (6px) + submit size-12 (48px)`. Add the `bottom-1.5` offset (6px) and the column's TOP edge sits at `wrapper_height - 84`.
+- Existing textarea floor was `min-h-[max(4.5rem,100%)]` = 72px. `72 - 84 = -12px` → the mic button at the column's top extends 12px ABOVE the textarea's top border, getting clipped by the wrapper's `overflow-hidden`. That's the "poked in half" the user described.
+- Fix: bump the textarea's `min-h` to `min-h-[max(6rem,100%)]` = 96px floor. New math: `96 - 84 = 12px` → 12px symmetric breathing room above the column (matching the 6px from `bottom-1.5` plus 6px top inset). The user's stated formula `submit_h + space_between + mic_h = 78px` is the column height; the actual min-h needs to also account for the bottom-1.5 offset plus a matching top margin for visual symmetry.
+- `apps/web/src/routes/_app/session/new.tsx` was already `min-h-[120px]` (120px > 96px) so its column has plenty of breathing room. No change there.
+- Updated AGENTS.md "Composer layout (mobile-safe)" sub-section with a new bullet documenting the min-h constraint so this regression does not recur if someone shrinks the textarea floor in the future.
+- Verified live at `https://portal.desktop.ts.nowaker.net:8443/` at a 390x844 mobile viewport after the deploy: empty composer renders the floating column (stop button + submit) cleanly inside the textarea with no top-border clipping.
+- Entry parked in gitignored temp file at the time the fix landed (`ce8f404`) because AI_TODO.md had a parallel session's uncommitted #93 edits visible — per the AGENTS.md safe-diff fallback rule, editing then would have mangled their work. Folded into AI_TODO.md after a parallel session pushed `0e03d4d` (#95) explicitly leaving `#93` / `#94` as reserved gaps for the parallel agents whose unstaged additions reserved those numbers (that's me for #94; #93 went unused).
+
 ## Q-DEFERRED (open questions awaiting user input)
 
 - **Q1**: WebRTC for plugin internet access — propose an approach? (See PENDING #14)
