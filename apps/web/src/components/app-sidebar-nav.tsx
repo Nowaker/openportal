@@ -691,7 +691,7 @@ export function AppSidebarNav() {
           </span>
         ) : (
           <>
-            <span className="min-w-0 truncate text-sm font-medium text-fg">
+            <span className="min-w-0 overflow-x-auto whitespace-nowrap text-sm font-medium text-fg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sessionTitle ? (
                 <>
                   {projectLabel && currentSession?.directory && (
