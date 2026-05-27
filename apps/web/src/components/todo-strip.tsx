@@ -176,15 +176,22 @@ function TodoPopup({ snapshot, anchor, onClose }: TodoPopupProps) {
         top: "5vh",
         maxHeight: `calc(95vh - ${typeof window !== "undefined" ? window.innerHeight - anchor.top + 4 : 0}px)`,
       }
-      : {
-        position: "fixed",
-        right: `${typeof window !== "undefined" ? Math.max(0, window.innerWidth - (anchor.left + anchor.width)) : 0}px`,
-        top: "auto",
-        bottom: `${typeof window !== "undefined" ? window.innerHeight - anchor.top + 4 : 0}px`,
-        width: `${Math.max(anchor.width, 360)}px`,
-        maxWidth: `${typeof window !== "undefined" ? Math.max(280, anchor.left + anchor.width - 16) : 360}px`,
-        maxHeight: "min(60vh, 480px)",
-      };
+      : (() => {
+          const desired = Math.max(anchor.width, 360);
+          const availableLeftward =
+            typeof window !== "undefined"
+              ? Math.max(160, anchor.left + anchor.width - 16)
+              : 360;
+          const actualWidth = Math.min(desired, availableLeftward);
+          return {
+            position: "fixed" as const,
+            right: `${typeof window !== "undefined" ? Math.max(0, window.innerWidth - (anchor.left + anchor.width)) : 0}px`,
+            top: "auto" as const,
+            bottom: `${typeof window !== "undefined" ? window.innerHeight - anchor.top + 4 : 0}px`,
+            width: `${actualWidth}px`,
+            maxHeight: "min(60vh, 480px)",
+          };
+        })();
 
   return (
     <>
