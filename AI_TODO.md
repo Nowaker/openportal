@@ -2000,7 +2000,7 @@ Design notes:
 - Deploy NOT run on landing turn: `scripts/deploy.sh` builds from the main checkout's working tree, which at the time carried another agent's uncommitted WIP (`text-selection-menu.tsx`). Next deploy will pick up `6bf0205` automatically.
 - AI_TODO sync followed temp-file fallback at the time of the code commit (`AI_TODO_20260527_121357_chat_user_msg_tint_ses_chattint.md`) because the main checkout had unstaged AI_TODO.md edits visible. AI_TODO.md returned to a clean committed state right after, and this entry was reincorporated into `AI_TODO.md` in a dedicated post-merge sync commit, deleting the temp file in the same turn.
 
-### 96. CPU expanded display: drop the "current vs expected" two-line form, just show "X% (of N cores)" as the value (PENDING)
+### 96. CPU expanded display: drop the "current vs expected" two-line form, just show "X% (of N cores)" as the value (DONE - d214ef5)
 
 User prompt (verbatim):
 
