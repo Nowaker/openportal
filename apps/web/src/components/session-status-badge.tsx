@@ -1,121 +1,26 @@
+// Title-bar badge for the actively-viewed session. Thin wrapper around
+// the shared status module in lib/session-status.tsx: this file picks
+// the priority-winning status from the live indicator state, then renders
+// the long-form badge via <StatusBadge>. The STUCK kind gets a click-to-
+// unstuck button affordance; all other kinds render as a passive <span>.
+
 import { useCallback, useMemo, useState } from "react";
 
-import { useIndicator, type SessionIndicatorState } from "@/hooks/use-indicators";
+import { useIndicator } from "@/hooks/use-indicators";
 import { useInstanceStore } from "@/stores/instance-store";
 import { logSystemMessage } from "@/stores/system-messages-store";
 import { toast } from "@/components/ui/toast";
+import {
+  pickBadgeStatus,
+  STATUS_VISUALS,
+  STATUS_DEFAULTS,
+} from "@/lib/session-status";
+import { StatusBadge } from "@/lib/session-status-render";
 
-type BadgeKind =
-  | "error"
-  | "stuck"
-  | "question"
-  | "permission"
-  | "compacting"
-  | "tool"
-  | "thinking"
-  | "queued"
-  | null;
-
-interface BadgeRender {
-  kind: BadgeKind;
-  label: string;
-  className: string;
-  title: string;
-}
-
-// Priority chain (top first):
-//   ERROR > STUCK > QUESTION > PERMISSION > COMPACTING > TOOL > THINKING
-//   > QUEUED > none
-//
-// STUCK comes from the stuck-detector verdict. Its event-stream-based
-// `.busy` signal can't detect 'wedged' (by definition no events arrive
-// when the runner is stuck). THINKING uses .busy OR
-// stuck_verdict === "in-progress" so the badge fires even when opencode
-// misses firing message.created.
-export function pickBadge(state: SessionIndicatorState | null): BadgeRender | null {
-  if (!state) return null;
-
-  if (state.lastError) {
-    return {
-      kind: "error",
-      label: "ERROR",
-      className: "bg-danger text-danger-fg",
-      title: `Session error: ${state.lastError.slice(0, 200)}`,
-    };
-  }
-
-  if (state.stuck_verdict === "stuck") {
-    return {
-      kind: "stuck",
-      label: "STUCK",
-      className: "bg-danger text-danger-fg animate-pulse",
-      title: state.stuck_cause
-        ? `Runner appears stuck: ${state.stuck_cause}`
-        : "Runner appears stuck (no-runner / stale-stream)",
-    };
-  }
-
-  if (state.pendingQuestionIds.length > 0) {
-    return {
-      kind: "question",
-      label: "QUESTION",
-      className: "bg-sky-500 text-white animate-pulse",
-      title: "Assistant is asking a question",
-    };
-  }
-
-  if (state.pendingPermissionIds.length > 0) {
-    return {
-      kind: "permission",
-      label: "PERMISSION",
-      className: "bg-sky-500 text-white animate-pulse",
-      title: "Awaiting your permission to run a tool",
-    };
-  }
-
-  if (state.mode === "compaction") {
-    return {
-      kind: "compacting",
-      label: "COMPACTING",
-      className: "bg-violet-500 text-white animate-pulse",
-      title: "OpenCode is summarising older history",
-    };
-  }
-
-  const runtimeBusy = state.busy || state.stuck_verdict === "in-progress";
-
-  if (state.currentToolName && runtimeBusy) {
-    return {
-      kind: "tool",
-      label: `TOOL: ${state.currentToolName}`,
-      className: "bg-warning text-warning-fg animate-pulse",
-      title: `Running tool: ${state.currentToolName}`,
-    };
-  }
-
-  if (runtimeBusy) {
-    return {
-      kind: "thinking",
-      label: "THINKING",
-      className: "bg-warning text-warning-fg animate-pulse",
-      title:
-        state.busy
-          ? "Assistant is generating"
-          : "Runtime is busy (per stuck-detector probe)",
-    };
-  }
-
-  if (state.pendingPromptIds.length > 0) {
-    return {
-      kind: "queued",
-      label: "QUEUED",
-      className: "bg-muted text-muted-fg",
-      title: `${state.pendingPromptIds.length} prompt${state.pendingPromptIds.length === 1 ? "" : "s"} waiting for opencode`,
-    };
-  }
-
-  return null;
-}
+// Re-export the picker for the test file (which used to import `pickBadge`
+// from this module). Keeps the test entrypoint stable.
+export { pickBadgeStatus as pickBadge } from "@/lib/session-status";
+export type { StatusKind, StatusInfo } from "@/lib/session-status";
 
 export function SessionStatusBadge({
   sessionId,
@@ -127,14 +32,13 @@ export function SessionStatusBadge({
   const instance = useInstanceStore((s) => s.instance);
   const serverId = instance?.id;
   const indicator = useIndicator(serverId, sessionId);
-  const badge = useMemo(() => pickBadge(indicator), [indicator]);
+  const status = useMemo(() => pickBadgeStatus(indicator), [indicator]);
   const [unsticking, setUnsticking] = useState(false);
 
-  // STUCK gets a click-to-unstuck affordance; other badges stay passive
-  // (span). Posts to /api/stuck-detector/unstuck which forwards to the
-  // plugin's /unstuck/<sid>. User invariant: 'STUCK badge present but
-  // nothing actionable about it. stuck badge should be clickable, and
-  // offer action to unstuck it.'
+  // STUCK gets a click-to-unstuck affordance; every other kind stays
+  // passive (span). User invariant: "STUCK badge present but nothing
+  // actionable about it. stuck badge should be clickable, and offer
+  // action to unstuck it."
   const onUnstuck = useCallback(async () => {
     if (unsticking) return;
     const cause = indicator?.stuck_cause ?? "manual-from-badge";
@@ -184,33 +88,42 @@ export function SessionStatusBadge({
     }
   }, [indicator?.stuck_cause, sessionId, unsticking]);
 
-  if (!badge) return null;
+  if (!status) return null;
 
-  const sharedClass = `inline-flex items-center rounded px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide leading-4 whitespace-nowrap ${badge.className} ${extraClassName}`;
-
-  if (badge.kind === "stuck") {
+  if (status.kind === "stuck") {
+    const v = STATUS_VISUALS.stuck;
+    // Manually compose the button so we keep the clickable affordances
+    // (focus ring, disabled cursor, hover brightness) that <StatusBadge>
+    // doesn't apply. The base classes mirror <StatusBadge>'s pill shape
+    // for visual consistency.
+    const baseCls = `inline-flex items-center rounded px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide leading-4 whitespace-nowrap ${v.bg} ${v.badgeFg} animate-pulse cursor-pointer hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-60 disabled:cursor-wait ${extraClassName}`;
     return (
       <button
         type="button"
         onClick={onUnstuck}
         disabled={unsticking}
-        title={`${badge.title}\nClick to dispatch unstuck.`}
-        aria-label={`${badge.title} - click to unstuck`}
-        className={`${sharedClass} cursor-pointer hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-60 disabled:cursor-wait`}
+        title={`${status.title}\nClick to dispatch unstuck.`}
+        aria-label={`${status.title} - click to unstuck`}
+        className={baseCls}
         data-test="portal-session-status-badge-stuck"
+        data-status-kind="stuck"
       >
-        {unsticking ? "UNSTICKING..." : badge.label}
+        {unsticking ? "UNSTICKING..." : status.label}
       </button>
     );
   }
 
   return (
-    <span
-      title={badge.title}
-      aria-label={badge.title}
-      className={sharedClass}
-    >
-      {badge.label}
-    </span>
+    <StatusBadge
+      kind={status.kind}
+      label={status.label}
+      title={status.title}
+      className={extraClassName}
+    />
   );
 }
+
+// Suppress unused-import warning for STATUS_DEFAULTS - it's exported via
+// the re-export above for backward compat (was implicitly part of the
+// public surface via badge.label and badge.title fields).
+void STATUS_DEFAULTS;
