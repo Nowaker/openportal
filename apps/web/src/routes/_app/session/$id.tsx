@@ -43,6 +43,7 @@ import { TodoStrip, TodoFloat } from "@/components/todo-strip";
 import {
   formatMessageTime,
   formatAbsoluteAndRelative,
+  formatDuration,
 } from "@/lib/format-time";
 import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import IconBadgeSparkle from "@/components/icons/badge-sparkle-icon";
@@ -2720,6 +2721,71 @@ function ErrorBox({
   );
 }
 
+interface ProvidersData {
+  providers?: Array<{
+    id: string;
+    name?: string;
+    models?: Record<string, { id?: string; name?: string }>;
+  }>;
+}
+
+interface MessageMeta {
+  parts: string[];
+  title: string;
+}
+
+function computeMessageMeta(
+  info: MessageWithParts["info"],
+  isFinalAssistant: boolean,
+  providersData: ProvidersData | undefined,
+): MessageMeta | null {
+  if (!isFinalAssistant) return null;
+  if (info.role !== "assistant") return null;
+  const a = info as unknown as {
+    agent?: string;
+    modelID?: string;
+    providerID?: string;
+    variant?: string;
+    time?: { created?: number; completed?: number };
+  };
+  const agent = typeof a.agent === "string" && a.agent ? a.agent : null;
+  const modelID = a.modelID;
+  const providerID = a.providerID;
+  const variant = typeof a.variant === "string" && a.variant ? a.variant : null;
+  const created = a.time?.created;
+  const completed = a.time?.completed;
+
+  const provider = providersData?.providers?.find((p) => p.id === providerID);
+  const modelEntry = provider?.models?.[modelID ?? ""];
+  const modelName = modelEntry?.name || modelID || null;
+  const providerName = provider?.name || providerID || null;
+
+  let duration: string | null = null;
+  if (
+    typeof created === "number" &&
+    typeof completed === "number" &&
+    completed > created
+  ) {
+    duration = formatDuration(completed - created);
+  }
+
+  const parts: string[] = [];
+  if (agent) parts.push(agent);
+  if (modelName) parts.push(modelName);
+  if (variant) parts.push(variant);
+  if (duration) parts.push(duration);
+
+  const titleSegments: string[] = [];
+  if (agent) titleSegments.push(`Agent: ${agent}`);
+  if (providerName && modelName)
+    titleSegments.push(`Model: ${providerName} / ${modelName}`);
+  else if (modelName) titleSegments.push(`Model: ${modelName}`);
+  if (variant) titleSegments.push(`Thinking effort: ${variant}`);
+  if (duration) titleSegments.push(`Turn duration: ${duration}`);
+
+  return { parts, title: titleSegments.join("\n") };
+}
+
 const MessageItem = memo(function MessageItem({
   message,
   port,
@@ -2734,6 +2800,8 @@ const MessageItem = memo(function MessageItem({
   onRevertRequest,
   onForkRequest,
   isLastError,
+  isFinalAssistant,
+  providersData,
 }: {
   message: MessageWithParts;
   port: number;
@@ -2748,6 +2816,8 @@ const MessageItem = memo(function MessageItem({
   onRevertRequest: (message: MessageWithParts, text: string) => void;
   onForkRequest: (message: MessageWithParts) => void;
   isLastError: boolean;
+  isFinalAssistant: boolean;
+  providersData: ProvidersData | undefined;
 }) {
   const textContent = getMessageContent(message.parts);
   const isAssistant = message.info.role === "assistant";
@@ -2799,6 +2869,11 @@ const MessageItem = memo(function MessageItem({
     ? formatMessageTime(message.info.time.created, dateFormat)
     : "";
   const messageTitleAt = formatAbsoluteAndRelative(message.info.time?.created);
+  const messageMeta = computeMessageMeta(
+    message.info,
+    isFinalAssistant,
+    providersData,
+  );
 
   const hasHeaderRow = textContent || fileParts.length > 0;
   // Detect synthetic audit messages (stuck-detector + compaction-fixer
@@ -2981,78 +3056,92 @@ const MessageItem = memo(function MessageItem({
               ))}
             </div>
           )}
-          <div className="absolute bottom-1 right-2 flex items-center gap-1.5 text-[10px] text-muted-fg/70">
-            {!isPending && (
-              <>
-                {showStar && (
-                  <StarMessageButton
-                    sessionId={sessionId}
-                    messageId={message.info.id}
-                    role={isAssistant ? "assistant" : "user"}
-                    snippet={textContent}
-                  />
-                )}
-                {showFork && (
-                  <button
-                    type="button"
-                    onClick={() => onForkRequest(message)}
-                    data-test="portal-msg-fork"
-                    className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                    aria-label="Fork to a new session from this message"
-                    title="Fork to a new session from this message"
-                  >
-                    <ForkIcon className="size-3.5" />
-                  </button>
-                )}
-                {showRevert && (
-                  <button
-                    type="button"
-                    onClick={() => onRevertRequest(message, textContent)}
-                    data-test="portal-msg-revert"
-                    className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                    aria-label={
-                      isAssistant
-                        ? "Revert to right after this message"
-                        : "Revert to before this message"
-                    }
-                    title={
-                      isAssistant
-                        ? "Revert to right after this message"
-                        : "Revert to before this message"
-                    }
-                  >
-                    <RevertIcon className="size-3.5" />
-                  </button>
-                )}
-              </>
-            )}
-            {showCopy && textContent && <CopyMarkdownButton text={textContent} />}
-            {showInfoIconRow && !isPending && (
-              <button
-                type="button"
-                onClick={() => setShowInfoModal(true)}
-                data-test="portal-msg-info"
-                className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                aria-label="Open message metadata modal"
-                title={`Open message metadata modal (id, parts, raw payload). Message id: ${message.info.id}`}
-              >
-                <InformationCircleIcon className="size-3.5" />
-              </button>
-            )}
-            {showTimestamp && messageTimestamp && !isPending && (
-              <MessagePermalinkTimestamp
-                messageId={message.info.id}
-                display={messageTimestamp}
-                titleAt={messageTitleAt}
-                className="font-mono tabular-nums whitespace-nowrap"
-              />
-            )}
-            {messageTimestamp && isPending && (
+          <div
+            className="absolute bottom-1 right-2 flex flex-col items-end gap-0.5 text-[10px] text-muted-fg/70"
+            data-test={messageMeta ? "portal-msg-meta-stack" : undefined}
+          >
+            <div className="flex items-center gap-1.5">
+              {!isPending && (
+                <>
+                  {showStar && (
+                    <StarMessageButton
+                      sessionId={sessionId}
+                      messageId={message.info.id}
+                      role={isAssistant ? "assistant" : "user"}
+                      snippet={textContent}
+                    />
+                  )}
+                  {showFork && (
+                    <button
+                      type="button"
+                      onClick={() => onForkRequest(message)}
+                      data-test="portal-msg-fork"
+                      className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                      aria-label="Fork to a new session from this message"
+                      title="Fork to a new session from this message"
+                    >
+                      <ForkIcon className="size-3.5" />
+                    </button>
+                  )}
+                  {showRevert && (
+                    <button
+                      type="button"
+                      onClick={() => onRevertRequest(message, textContent)}
+                      data-test="portal-msg-revert"
+                      className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                      aria-label={
+                        isAssistant
+                          ? "Revert to right after this message"
+                          : "Revert to before this message"
+                      }
+                      title={
+                        isAssistant
+                          ? "Revert to right after this message"
+                          : "Revert to before this message"
+                      }
+                    >
+                      <RevertIcon className="size-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
+              {showCopy && textContent && <CopyMarkdownButton text={textContent} />}
+              {showInfoIconRow && !isPending && (
+                <button
+                  type="button"
+                  onClick={() => setShowInfoModal(true)}
+                  data-test="portal-msg-info"
+                  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                  aria-label="Open message metadata modal"
+                  title={`Open message metadata modal (id, parts, raw payload). Message id: ${message.info.id}`}
+                >
+                  <InformationCircleIcon className="size-3.5" />
+                </button>
+              )}
+              {showTimestamp && messageTimestamp && !isPending && (
+                <MessagePermalinkTimestamp
+                  messageId={message.info.id}
+                  display={messageTimestamp}
+                  titleAt={messageTitleAt}
+                  className="font-mono tabular-nums whitespace-nowrap"
+                />
+              )}
+              {messageTimestamp && isPending && (
+                <span
+                  className="font-mono tabular-nums whitespace-nowrap"
+                  title={messageTitleAt}
+                >
+                  {messageTimestamp}
+                </span>
+              )}
+            </div>
+            {messageMeta && messageMeta.parts.length > 0 && (
               <span
                 className="font-mono tabular-nums whitespace-nowrap"
-                title={messageTitleAt}
+                data-test="portal-msg-meta-line"
+                title={messageMeta.title}
               >
-                {messageTimestamp}
+                {messageMeta.parts.join(" · ")}
               </span>
             )}
           </div>
@@ -3866,10 +3955,26 @@ function SessionPage() {
     if (!busyIdleSince) return null;
     const age = Date.now() - busyIdleSince;
     if (age < DISPATCH_GRACE_MS) return "silent";
-    if (!isServerBusy) return "no-dispatch";
+    if (!isServerBusy) {
+      // If the last message is already an assistant turn, generation
+      // DID dispatch and produced output - we just don't have
+      // time.completed propagated yet (cache lag from the in-memory
+      // LRU + SQLite throttle, or the streamed-but-not-finalized
+      // window). Showing "Server is idle - generation never started"
+      // when a real response is visible above is nonsense and led to
+      // confused double-resubmits. The 'no-dispatch' verdict is for
+      // the case where the user submitted a prompt and got back zero
+      // assistant content; an existing assistant message disqualifies
+      // that read. The Reconciling pill on the message itself already
+      // surfaces the time.completed-lag state for the rare cases when
+      // operators care.
+      const last = messages[messages.length - 1];
+      if (last?.info.role === "assistant") return null;
+      return "no-dispatch";
+    }
     if (age >= STUCK_BUSY_THRESHOLD_MS) return "stuck-busy";
     return null;
-  }, [isAssistantBusy, busyIdleSince, isServerBusy, stallElapsedTick]);
+  }, [isAssistantBusy, busyIdleSince, isServerBusy, stallElapsedTick, messages]);
 
   // Pending-prompt safety net: holds the text the user last submitted that
   // hasn't yet received an assistant reply. Hydrated from localStorage on
@@ -5211,6 +5316,10 @@ function SessionPage() {
       const messageWithQueueFlag = isQueued
         ? { ...message, isQueued: true }
         : message;
+      const isFinalAssistant =
+        message.info.role === "assistant" &&
+        ((message.info as { time?: { completed?: number } }).time?.completed ??
+          0) > 0;
       return (
         <MessageItem
           key={message.info.id}
@@ -5227,6 +5336,8 @@ function SessionPage() {
           onRevertRequest={handleRevertRequest}
           onForkRequest={handleForkRequest}
           isLastError={message.info.id === ctx.lastErrorMessageId}
+          isFinalAssistant={isFinalAssistant}
+          providersData={providersData as ProvidersData | undefined}
         />
       );
     },
@@ -5243,6 +5354,7 @@ function SessionPage() {
       revertTarget,
       handleRevertRequest,
       handleForkRequest,
+      providersData,
     ],
   );
 

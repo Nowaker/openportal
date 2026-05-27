@@ -83,3 +83,34 @@ export function formatAbsoluteAndRelative(ms: number | undefined): string | unde
   if (!ms || !Number.isFinite(ms)) return undefined;
   return `${new Date(ms).toLocaleString()} - ${formatRelativeTime(ms)}`;
 }
+
+// Compact duration formatter, max two units of granularity from the
+// largest non-zero unit downward. Examples:
+//   45_000           -> "45s"
+//   65_000           -> "1m 5s"
+//   300_000          -> "5m"
+//   3_900_000        -> "1h 5m"   (NO seconds once an hour is present)
+//   90_000_000       -> "1d 1h"   (NO minutes once a day is present)
+//   500              -> "<1s"     (sub-second processing)
+//   0 / negative     -> "0s"
+// Used by the message-meta line under final assistant responses to show
+// the wall-clock time the AI spent on the turn.
+export function formatDuration(ms: number | undefined): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "0s";
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec === 0) return "<1s";
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  if (days > 0) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  if (minutes > 0) {
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  }
+  return `${seconds}s`;
+}
