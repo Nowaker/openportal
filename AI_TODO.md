@@ -2369,3 +2369,65 @@ Library extraction into `_lib/opencode-session-transfer/` is queued separately o
 ---
 
 End of comprehensive AI_TODO.md refresh.
+
+### 108. MCP status label: "needs_auth" should render as human-readable "Needs auth" (DONE - 3ae1c13) [loser-bump: originally #100 in mcp-polish branch; #100-103 were claimed by parallel-agent work and a first renumber attempt collided with #104-105 (opencode 500 analysis + bisect) - landed at #108]
+
+User prompt (verbatim):
+
+> Status needs_auth
+> UI should say it more nicely
+
+Design notes:
+- The MCP info modal currently shows the raw enum value `needs_auth` in the Status row. Should render a friendly label like "Needs auth".
+- statusLabel() in mcp-info-modal.tsx already has a case for `needsAuth` returning "Needs auth"; the snake_case variant fails to match and falls through to the default which prints the raw string.
+- Fix lands together with #110 (enum normalization) - one canonical case handles both.
+
+### 109. EditForm: align labels and inputs in a horizontal grid (DONE - 3ae1c13) [loser-bump: originally #101 in mcp-polish branch]
+
+User prompt (verbatim):
+
+> also the editor shouldn't be:
+>
+> field name
+> form2
+>
+> field name
+> form2
+>
+> should be a nice aligned form more like
+>
+> filed name                form
+> field nam2                form2
+>
+> nicely aligned and everything.
+
+Design notes:
+- Current EditForm in mcp-info-modal.tsx stacks each label above its input (Field wrapper renders label as a block + input on next line).
+- Switch to a two-column grid: label on the LEFT (right-aligned, fixed width or content-sized), input on the RIGHT (flex-1).
+- Use `grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2` same as the PrettyView dl already uses, so the form mode visually mirrors the view mode.
+- Multi-row controls (command argv editor, env KV editor) need to still occupy the full input column.
+
+### 110. Hamburger MCP knob: needs_auth (snake_case) not detected, shows gray instead of orange (DONE - 3ae1c13) [loser-bump: originally #102 in mcp-polish branch]
+
+User prompt (verbatim):
+
+> when i open the hamrburger i see calendar mcp as off, in gray, and toggle isn't operable (can't click it to start auth; it's not orange/yellow)
+
+Design notes:
+- opencode 1.15.6 returns `"status":"needs_auth"` (snake_case) via /mcp endpoint. Confirmed via `curl http://100.105.229.19:4096/mcp` showing `"google-calendar-mcp":{"status":"needs_auth"}`.
+- openportal's McpStatusKind type + McpRow's matching expect `"needsAuth"` (camelCase). When kind doesn't match any known enum value, McpRow falls through to default styling (gray slider, no needsAuth recognition).
+- Fix: normalize on the SERVER proxy in apps/web/src/server/opencode/[port]/mcp.ts - map snake_case statuses (needs_auth, needs_client_registration) to camelCase before returning to clients. Single point of fix; all consumers benefit.
+- Also affects #108 (status label) since statusLabel() also keys off the camelCase enum.
+
+### 111. Hamburger MCP knob: clicking ON slider doesn't turn the MCP off (DONE - 3ae1c13) [loser-bump: originally #103 in mcp-polish branch]
+
+User prompt (verbatim):
+
+> other mcps, e.g. the ones that are on (green), clicking on the on/off slider in hamburger doesn't turn them off.
+
+Design notes:
+- McpRow's onClick fires `void onToggle(name, isOn ? "disconnect" : "connect")`. The toggle hook calls POST /api/opencode/<port>/mcp with `{name, action:"disconnect"}` which proxies to `client.mcp.disconnect({ name })`.
+- Smoke test: POST `{name:"chrome-devtools-mcp",action:"disconnect"}` returned the post-disconnect status snapshot still showing the MCP as "connected". So opencode's runtime disconnect is failing silently or immediately reconnecting.
+- Likely root cause: opencode's runtime mcp.disconnect toggles in-memory state, but the MCP is configured with `"enabled":true` in opencode.json so it immediately re-attaches on next event-loop tick.
+- Fix path: route the slider OFF action through the openportal MCP-config PUT endpoint (set enabled:false) instead of opencode's runtime toggle. Slider ON sets enabled:true. Persistent through restart. Triggers PENDING RESTART badge so the user knows to restart opencode for the disable to take effect at the connection layer.
+- Alternative: file a bug with opencode for the silent-fail disconnect. Out of scope for this iteration.
