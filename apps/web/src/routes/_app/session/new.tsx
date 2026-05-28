@@ -149,8 +149,18 @@ function NewSessionPage() {
   // them without a TDZ violation. The directory-scoped vibekick hook
   // is dormant until `directory` resolves (URL or store), at which
   // point it fetches the upward-walk effective stack from the API.
+  //
+  // The empty-array fallback MUST go through useMemo - returning a
+  // fresh `[]` on every render would invalidate every downstream
+  // useMemo that lists fsTemplates in its deps, which re-runs the
+  // useState initializers below, which trips React error #185
+  // (max update depth). Same trap the tools-store / resolveTools
+  // wrapper has a comment about.
   const { data: fsTemplatesResp } = useFsTemplatesForDirectory(directory);
-  const fsTemplates = fsTemplatesResp?.templates ?? [];
+  const fsTemplates = useMemo(
+    () => fsTemplatesResp?.templates ?? [],
+    [fsTemplatesResp],
+  );
 
   // The picker shows ONLY templates the user has both (a) marked as
   // init AND (b) left enabled. Three sources merge into one list:
