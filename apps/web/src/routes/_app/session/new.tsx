@@ -145,6 +145,13 @@ function NewSessionPage() {
     [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
   );
 
+  // FS templates load early so the `initialOrder` memo below can read
+  // them without a TDZ violation. The directory-scoped vibekick hook
+  // is dormant until `directory` resolves (URL or store), at which
+  // point it fetches the upward-walk effective stack from the API.
+  const { data: fsTemplatesResp } = useFsTemplatesForDirectory(directory);
+  const fsTemplates = fsTemplatesResp?.templates ?? [];
+
   // The picker shows ONLY templates the user has both (a) marked as
   // init AND (b) left enabled. Three sources merge into one list:
   //   - stock + custom tools from the local tools-store
@@ -237,8 +244,6 @@ function NewSessionPage() {
   const fileMention = useFileMention();
   const slashCommand = useSlashCommand();
   const { data: commandsData } = useCommands();
-  const { data: fsTemplatesResp } = useFsTemplatesForDirectory(directory);
-  const fsTemplates = fsTemplatesResp?.templates ?? [];
   const [, setFileResults] = useState<{ path: string; name: string }[]>([]);
   // Template-slash entries injected alongside opencode commands. Each
   // carries its body so the onSelect handler can expand /<name> into
