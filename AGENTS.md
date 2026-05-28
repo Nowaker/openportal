@@ -725,7 +725,10 @@ revert any of these without re-reproducing the bug.
 ### Connection resilience
 
 - `useConnectionMonitor` pings `/api/instance/self` every 10s with
-  5s timeout.
+  15s timeout (see `use-connection-monitor.ts:7`,
+  `PROBE_TIMEOUT_MS = 15_000`), 2 consecutive failed probes before
+  flipping the banner to `openportal-down`. Probe interval drops to
+  2s while in a non-connected state.
 - On disconnect: shows "Reconnecting" banner.
 - On reconnect: globally invalidates SWR via `mutate(() => true)`.
 - Also fires on focus / visibilitychange / online events.
