@@ -195,14 +195,18 @@ export function AppSidebarNav() {
   const disabledIds = useToolsStore((s) => s.disabledIds);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
   const enabledTools = useMemo(
     () =>
       resolveToolsFromState({
         disabledIds,
         systemOverrides,
         customTools,
+        projectInitOrder,
+        slashCommandIds,
       }).filter((tool) => tool.enabled),
-    [disabledIds, systemOverrides, customTools],
+    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
   );
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);

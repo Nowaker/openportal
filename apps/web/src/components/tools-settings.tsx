@@ -41,10 +41,18 @@ function useResolvedTools(): ResolvedTool[] {
   const disabledIds = useToolsStore((s) => s.disabledIds);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
   return useMemo(
     () =>
-      resolveToolsFromState({ disabledIds, systemOverrides, customTools }),
-    [disabledIds, systemOverrides, customTools],
+      resolveToolsFromState({
+        disabledIds,
+        systemOverrides,
+        customTools,
+        projectInitOrder,
+        slashCommandIds,
+      }),
+    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
   );
 }
 
