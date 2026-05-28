@@ -62,6 +62,57 @@ DONE. Items 2 and 3 (sequence-number replay, persistent event log)
 remain open and are still appropriate to defer - state convergence
 plus per-stream watchdog is sufficient for current UX needs.
 
+## Follow-up enhancements shipped same session
+
+Three small post-watchdog landings closed the residual loops:
+
+- **AGENTS.md probe-timeout drift fix (`3a049de`)**: the "Connection
+  resilience" section had said `useConnectionMonitor` uses a 5s
+  probe timeout, but the actual code at [`use-connection-monitor.ts:7`](../apps/web/src/hooks/use-connection-monitor.ts#L7)
+  is `PROBE_TIMEOUT_MS = 15_000`. Doc now matches code, plus the
+  failure-threshold detail (2 consecutive fails) and the
+  fast-probe-while-down cadence (2s interval) — both verbatim from
+  the code.
+- **SSR-safety + idempotent-close unit tests for the watchdog
+  (`a52e777`)**: file at [`apps/web/src/lib/sse-watchdog.test.ts`](../apps/web/src/lib/sse-watchdog.test.ts).
+  Two tests using the codebase's existing `bun:test` framework:
+  (1) `createWatchedEventSource` returns a no-op handle when
+  `typeof window === "undefined"` (no real EventSource ever
+  opens); (2) repeated `handle.close()` calls never throw. Full
+  timer-mock testing of the reconnect path was deferred — mock
+  infrastructure cost outweighed the value given that the wire-
+  level (curl) + Chrome DevTools browser verification already cover
+  the live path.
+- **Drawer logging for watchdog reconnects (`a10273b`)**: all three
+  long-lived consumers
+  ([`use-event-stream.ts`](../apps/web/src/hooks/use-event-stream.ts),
+  [`use-indicators.ts`](../apps/web/src/hooks/use-indicators.ts),
+  [`use-stuck-detector-events.ts`](../apps/web/src/hooks/use-stuck-detector-events.ts))
+  now pass an `onReconnect` callback that fires
+  `logSystemMessage("connection", "warning", ...)` so silently-
+  dead-socket recoveries land in the system-messages drawer. The
+  original F5-symptom trigger ("updates very flakey at times, I
+  sometimes F5") is now self-diagnosing: the user sees a drawer
+  entry the moment the watchdog reopens a stuck stream.
+
+## Testing limitation found while verifying
+
+Chrome DevTools' `emulate({networkConditions: "Offline"})` does
+**not** sever existing TCP sockets — it only blocks NEW outbound
+connections. The existing SSE TCP streams stayed alive during the
+test, kept receiving heartbeat frames from the server, and `lastEventAt`
+kept advancing. Result: the watchdog correctly stayed quiet (no
+silently-dead socket to detect), but the test setup couldn't
+reproduce the failure mode the watchdog is designed for. Real-world
+triggers (wifi handoff, deep-sleep wake, transparent proxy
+half-close) DO sever the socket from the kernel's perspective in a
+way that leaves `readyState === OPEN` while bytes stop arriving;
+those are the silent-failure scenarios the watchdog catches.
+Verification of the live path will happen organically the next
+time the user encounters that pattern — a `[sse-watchdog] …:
+silence > 60000ms; closing and reopening` console line plus a
+"Indicator stream reconnected" drawer entry will confirm.
+
 ---
 
 ## Original investigation (pre-implementation)
