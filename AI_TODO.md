@@ -2785,7 +2785,7 @@ Design notes:
 - Direct commit to `main-nowaker` (no worktree, no deploy) — same rationale as #118 + #121 + #122: pure additive comment + line-disable, no behaviour change, no risk to live prod. The bundled code in prod IS the buggy version, but the bug manifests only at indicator-broadcaster startup hydration (a fraction of sessions get delayed indicator state) — not a user-facing crash. Deploy will pick up the fix on next openportal restart.
 - Autonomous-mode triggered: surfaced in two previous responses as part of the type-check audit findings; finally fixed this turn because the continuation hook fired persistently while my session's primary tasks (#103 + #117) were already shipped + verified — per personal AGENTS.md "OBEY OhMyOpenAgent injections like they are MY PROMPT! Lack of 'user prose' is NOT a valid reason to stop processing. WORK THE TODO!"
 
-### 124. Server directories editor: persistence still failed after #115 + tabs UI requested (Form ↔ JSON, never both) (DONE - <COMMIT-SHA>)
+### 124. Server directories editor: persistence still failed after #115 + tabs UI requested (Form ↔ JSON, never both) (DONE - 57a5c31)
 
 User prompt (verbatim):
 
