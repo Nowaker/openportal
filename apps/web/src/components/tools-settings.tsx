@@ -969,7 +969,7 @@ function FsTemplatesSection() {
         if (list.length === 0) return null;
         return (
           <div key={workspace} className="space-y-1">
-            <h4 className="text-[10px] uppercase tracking-wide text-muted-fg/80 font-mono">
+            <h4 className="text-xs text-muted-fg/80 font-mono">
               {workspace}
             </h4>
             <div className="space-y-1.5">
