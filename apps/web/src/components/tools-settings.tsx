@@ -688,6 +688,7 @@ function FsTemplateRow({
   template,
   onToggle,
   onDelete,
+  onSave,
 }: {
   template: FsTemplate;
   onToggle: (
@@ -695,17 +696,39 @@ function FsTemplateRow({
     next: boolean,
   ) => Promise<void>;
   onDelete: () => Promise<void>;
+  onSave: (next: {
+    name: string;
+    description?: string;
+    prompt: string;
+  }) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
-  const wrapToggle = (field: "enabled" | "init" | "slash") => async (next: boolean) => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await onToggle(field, next);
-    } finally {
-      setBusy(false);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(template.name);
+  const [draftDescription, setDraftDescription] = useState(
+    template.description ?? "",
+  );
+  const [draftPrompt, setDraftPrompt] = useState(template.prompt);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftName(template.name);
+      setDraftDescription(template.description ?? "");
+      setDraftPrompt(template.prompt);
     }
-  };
+  }, [editing, template.name, template.description, template.prompt]);
+
+  const wrapToggle =
+    (field: "enabled" | "init" | "slash") => async (next: boolean) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await onToggle(field, next);
+      } finally {
+        setBusy(false);
+      }
+    };
+
   return (
     <div className="rounded-lg border border-border bg-bg p-2 space-y-1.5">
       <div className="flex items-center gap-2">
@@ -715,31 +738,19 @@ function FsTemplateRow({
         />
         <FlagCheckbox
           label="Burger"
-          title="Burger flag in this template's YAML frontmatter (controls topbar menu visibility)"
-          checked={template.enabled}
-          onChange={wrapToggle("enabled")}
-        />
-        <FlagCheckbox
-          label="Burger"
-          title="Burger flag in this template's YAML frontmatter - shows in the topbar Tools (burger) menu"
+          title="Burger flag in this template's YAML frontmatter (topbar menu visibility)"
           checked={template.enabled}
           onChange={wrapToggle("enabled")}
         />
         <FlagCheckbox
           label="Init"
-          title="Init flag in this template's YAML frontmatter - pre-checked in the new-session picker"
+          title="Init flag in YAML - pre-checked in the new-session picker"
           checked={template.init}
           onChange={wrapToggle("init")}
         />
         <FlagCheckbox
           label="Slash"
-          title="Slash flag in this template's YAML frontmatter - available as /template <name> in composers"
-          checked={template.slash}
-          onChange={wrapToggle("slash")}
-        />
-        <FlagCheckbox
-          label="Slash"
-          title="Slash flag in this template's YAML frontmatter"
+          title="Slash flag in YAML - /template <name> autocomplete in composers"
           checked={template.slash}
           onChange={wrapToggle("slash")}
         />
@@ -750,7 +761,7 @@ function FsTemplateRow({
           <p className="text-[10px] text-muted-fg/80 mt-0.5 font-mono truncate">
             {template.scope}
           </p>
-          {template.description && (
+          {template.description && !editing && (
             <p className="text-xs text-muted-fg mt-0.5">
               {template.description}
             </p>
@@ -758,6 +769,13 @@ function FsTemplateRow({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {busy && <Loader className="size-3 text-muted-fg" />}
+          <Button
+            size="xs"
+            intent="outline"
+            onPress={() => setEditing((v) => !v)}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </Button>
           <Button
             size="xs"
             intent="danger"
@@ -782,6 +800,215 @@ function FsTemplateRow({
           </Button>
         </div>
       </div>
+      {editing && (
+        <div className="space-y-2 pt-2 border-t border-border/50">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">Name</label>
+            <Input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">
+              Description (optional)
+            </label>
+            <Input
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">
+              Prompt sent to the agent
+            </label>
+            <Textarea
+              value={draftPrompt}
+              onChange={(e) => setDraftPrompt(e.target.value)}
+              rows={8}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="xs"
+              intent="outline"
+              isDisabled={busy}
+              onPress={() => setEditing(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="xs"
+              isDisabled={busy || !draftName.trim() || !draftPrompt.trim()}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await onSave({
+                    name: draftName.trim(),
+                    description: draftDescription.trim() || undefined,
+                    prompt: draftPrompt,
+                  });
+                  setEditing(false);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+  }, [editing, template.name, template.description, template.prompt]);
+
+  const wrapToggle =
+    (field: "enabled" | "init" | "slash") => async (next: boolean) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await onToggle(field, next);
+      } finally {
+        setBusy(false);
+      }
+    };
+
+  return (
+    <div className="rounded-lg border border-border bg-bg p-2 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Bars3Icon
+          className="size-4 shrink-0 text-muted-fg/30"
+          title="Filesystem templates carry their `order` in YAML; drag-reorder lives on the row's MD file."
+        />
+        <FlagCheckbox
+          label="Burger"
+          title="Burger flag in this template's YAML frontmatter - shows in the topbar Tools (burger) menu"
+          checked={template.enabled}
+          onChange={wrapToggle("enabled")}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Init flag in this template's YAML frontmatter - pre-checked in the new-session picker"
+          checked={template.init}
+          onChange={wrapToggle("init")}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Slash flag in this template's YAML frontmatter - available as /template <name> in composers"
+          checked={template.slash}
+          onChange={wrapToggle("slash")}
+        />
+        <div className="min-w-0 flex-1 px-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{template.name}</span>
+          </div>
+          <p className="text-[10px] text-muted-fg/80 mt-0.5 font-mono truncate">
+            {template.scope}
+          </p>
+          {template.description && (
+            <p className="text-xs text-muted-fg mt-0.5">
+              {template.description}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {busy && <Loader className="size-3 text-muted-fg" />}
+          <Button
+            size="xs"
+            intent="outline"
+            onPress={() => setEditing((v) => !v)}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+          <Button
+            size="xs"
+            intent="danger"
+            onPress={async () => {
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `Delete filesystem template "${template.name}" from ${template.scope}?`,
+                )
+              ) {
+                return;
+              }
+              setBusy(true);
+              try {
+                await onDelete();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+      {editing && (
+        <div className="space-y-2 pt-2 border-t border-border/50">
+          <div className="flex items-start gap-3">
+            <label className="text-xs font-medium text-muted-fg w-32 shrink-0 pt-2">
+              Name
+            </label>
+            <Input
+              className="flex-1"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+            />
+          </div>
+          <div className="flex items-start gap-3">
+            <label className="text-xs font-medium text-muted-fg w-32 shrink-0 pt-2">
+              Description
+            </label>
+            <Input
+              className="flex-1"
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">
+              Prompt sent to the agent
+            </label>
+            <Textarea
+              value={draftPrompt}
+              onChange={(e) => setDraftPrompt(e.target.value)}
+              rows={6}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="xs"
+              intent="outline"
+              isDisabled={busy}
+              onPress={() => setEditing(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="xs"
+              isDisabled={busy || !draftName.trim() || !draftPrompt.trim()}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await onSaveEdit({
+                    name: draftName.trim(),
+                    description: draftDescription.trim(),
+                    prompt: draftPrompt,
+                  });
+                  setEditing(false);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
