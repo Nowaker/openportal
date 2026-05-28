@@ -510,22 +510,35 @@ function AddCustomTool() {
   );
 }
 
-// One unified list of tools (system + custom). Drag-reorder is active
-// ONLY for tools the user has marked as Init - that's the order that
-// flows into the new-project init prompt. Non-init rows render the
-// drag handle as a passive affordance so the user knows what's missing.
-function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
-  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
-  const reorderProjectInit = useToolsStore((s) => s.reorderProjectInit);
-  const dragSourceIdRef = useRef<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
-
-  // Init tools first (in their explicit projectInitOrder), then everyone
-  // else alphabetically. Stock and custom tools coexist in this single
-  // list - the section header for custom tools is gone.
+// Two-section tool list (system + "Your custom tools" with its own
+// header). Drag-reorder happens INLINE in each section - one list per
+// section, no separate ordering panel - and only for Init-marked rows
+// (projectInitOrder is the durable concatenation order). Cross-section
+// drag is allowed because projectInitOrder is one flat array;
+// dragging a custom init row above a system init row reorders them
+// in the eventual new-session prompt, even though the visual section
+// they live in stays put.
+function ToolSectionList({
+  tools,
+  projectInitOrder,
+  onReorder,
+  dragSourceIdRef,
+  dragOverId,
+  setDragOverId,
+}: {
+  tools: ResolvedTool[];
+  projectInitOrder: string[];
+  onReorder: (next: string[]) => void;
+  dragSourceIdRef: React.RefObject<string | null>;
+  dragOverId: string | null;
+  setDragOverId: (id: string | null) => void;
+}) {
+  const initSet = useMemo(
+    () => new Set(projectInitOrder),
+    [projectInitOrder],
+  );
   const ordered = useMemo(() => {
     const byId = new Map(tools.map((t) => [t.id, t]));
-    const initSet = new Set(projectInitOrder);
     const initFirst = projectInitOrder
       .map((id) => byId.get(id))
       .filter((t): t is ResolvedTool => Boolean(t));
@@ -533,17 +546,12 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
       .filter((t) => !initSet.has(t.id))
       .sort((a, b) => a.name.localeCompare(b.name));
     return [...initFirst, ...others];
-  }, [tools, projectInitOrder]);
-
-  const handleDragStart = (id: string) => {
-    dragSourceIdRef.current = id;
-  };
+  }, [tools, projectInitOrder, initSet]);
 
   const handleDragOver = (id: string) => (e: React.DragEvent) => {
     const src = dragSourceIdRef.current;
     if (!src) return;
-    if (!projectInitOrder.includes(src)) return;
-    if (!projectInitOrder.includes(id)) return;
+    if (!initSet.has(src) || !initSet.has(id)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     if (dragOverId !== id) setDragOverId(id);
@@ -554,15 +562,14 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
     dragSourceIdRef.current = null;
     setDragOverId(null);
     if (!sourceId || sourceId === targetId) return;
-    if (!projectInitOrder.includes(sourceId)) return;
-    if (!projectInitOrder.includes(targetId)) return;
+    if (!initSet.has(sourceId) || !initSet.has(targetId)) return;
     const order = projectInitOrder.slice();
     const from = order.indexOf(sourceId);
     const to = order.indexOf(targetId);
     if (from === -1 || to === -1) return;
     order.splice(from, 1);
     order.splice(to, 0, sourceId);
-    reorderProjectInit(order);
+    onReorder(order);
   };
 
   const handleDragEnd = () => {
@@ -573,12 +580,14 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
   return (
     <div className="space-y-2">
       {ordered.map((tool) => {
-        const isInit = projectInitOrder.includes(tool.id);
+        const isInit = initSet.has(tool.id);
         const props: ToolRowProps = {
           tool,
           draggable: isInit,
           isDragOver: dragOverId === tool.id,
-          onDragStart: () => handleDragStart(tool.id),
+          onDragStart: () => {
+            dragSourceIdRef.current = tool.id;
+          },
           onDragOver: handleDragOver(tool.id),
           onDragLeave: () => {
             if (dragOverId === tool.id) setDragOverId(null);
@@ -591,6 +600,50 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
         }
         return <CustomToolRow key={tool.id} {...props} />;
       })}
+    </div>
+  );
+}
+
+function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const reorderProjectInit = useToolsStore((s) => s.reorderProjectInit);
+  const dragSourceIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const systemTools = useMemo(
+    () => tools.filter((t) => t.kind === "system"),
+    [tools],
+  );
+  const customTools = useMemo(
+    () => tools.filter((t) => t.kind === "custom"),
+    [tools],
+  );
+
+  return (
+    <div className="space-y-4">
+      <ToolSectionList
+        tools={systemTools}
+        projectInitOrder={projectInitOrder}
+        onReorder={reorderProjectInit}
+        dragSourceIdRef={dragSourceIdRef}
+        dragOverId={dragOverId}
+        setDragOverId={setDragOverId}
+      />
+      {customTools.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-fg">
+            Your custom tools
+          </h4>
+          <ToolSectionList
+            tools={customTools}
+            projectInitOrder={projectInitOrder}
+            onReorder={reorderProjectInit}
+            dragSourceIdRef={dragSourceIdRef}
+            dragOverId={dragOverId}
+            setDragOverId={setDragOverId}
+          />
+        </div>
+      )}
     </div>
   );
 }
