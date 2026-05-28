@@ -3,21 +3,32 @@ import { resolveLiveTarget } from "../../lib/opencode-client";
 import { basicAuthHeader } from "../../lib/server-discovery";
 import { parsePort } from "../../lib/validation";
 import { invalidateMessagesCache } from "../../lib/messages-cache";
+import {
+  heartbeatFrame,
+  HEARTBEAT_INTERVAL_MS,
+} from "../../lib/sse-heartbeat";
 
-// SSE pass-through proxy with cache-invalidation tap. opencode emits
-// text/event-stream at /event; we open ONE upstream fetch per browser
-// EventSource. As bytes flow, we (a) buffer-and-scan for SSE event
-// boundaries, (b) invalidate the per-session messages cache on
-// message.part.* events so the next /messages fetch (triggered by the
-// client's SWR mutate on the same event) reads fresh data instead of
-// the 2s-stale cache, and (c) pipe bytes through verbatim downstream
-// so opencode's event JSON shapes reach the browser unmodified.
+// SSE pass-through proxy with cache-invalidation tap and
+// Portal-injected heartbeats. Opens ONE upstream fetch per
+// browser EventSource. The original implementation was a
+// TransformStream that piped upstream bytes verbatim downstream
+// and tapped them for cache invalidation; this revision swaps to
+// a custom ReadableStream so we can ALSO push Portal-level
+// heartbeat data frames on a setInterval. Upstream opencode
+// emits no heartbeat of its own, so without injection the
+// downstream socket can sit silent for minutes during idle
+// sessions and the client-side sse-watchdog (which trips on
+// onmessage silence) cannot tell a healthy idle stream apart
+// from a half-closed dead one. See lib/sse-heartbeat.ts for why
+// we use data frames, not SSE comments.
 //
-// Without this tap, the 2s messages-cache TTL was masking SSE-driven
-// updates: client got the SSE event, mutate fired, /messages refetch
-// hit the still-warm cache and returned stale data. User saw the
-// 'Thinking...' indicator advance but no token-by-token streaming
-// because the cache held the pre-delta snapshot.
+// Cache-invalidation tap (unchanged from the TransformStream
+// version): buffer-and-scan for SSE event boundaries; on
+// message.part.* / message.* / message.removed events invalidate
+// the per-session messages cache so the next /messages fetch
+// triggered by the client's SWR mutate reads fresh data. Without
+// this tap the 2s messages-cache TTL would mask streaming
+// updates.
 
 const DELTA_EVENT_TYPES = new Set([
   "message.part.delta",
@@ -43,47 +54,89 @@ export default defineHandler(async (event) => {
     });
   }
 
+  const upstreamBody = upstream.body;
   const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let buffer = "";
-  const tap = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-      buffer += decoder.decode(chunk, { stream: true });
-      let nl;
-      while ((nl = buffer.indexOf("\n\n")) !== -1) {
-        const frame = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 2);
-        const dataLine = frame
-          .split("\n")
-          .find((l) => l.startsWith("data:"));
-        if (!dataLine) continue;
-        const json = dataLine.slice(5).trim();
-        if (!json) continue;
+
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = "";
+      let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
         try {
-          const ev = JSON.parse(json) as {
-            type?: string;
-            properties?: { sessionID?: unknown };
-          };
-          if (
-            ev?.type &&
-            DELTA_EVENT_TYPES.has(ev.type) &&
-            typeof ev.properties?.sessionID === "string"
-          ) {
-            invalidateMessagesCache(ev.properties.sessionID);
-          }
+          controller.enqueue(heartbeatFrame());
         } catch {
-          // malformed frame; ignore and keep streaming
+          if (heartbeat) {
+            clearInterval(heartbeat);
+            heartbeat = null;
+          }
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+
+      const reader = upstreamBody.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          try {
+            controller.enqueue(value);
+          } catch {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buffer.indexOf("\n\n")) !== -1) {
+            const frame = buffer.slice(0, nl);
+            buffer = buffer.slice(nl + 2);
+            const dataLine = frame
+              .split("\n")
+              .find((l) => l.startsWith("data:"));
+            if (!dataLine) continue;
+            const json = dataLine.slice(5).trim();
+            if (!json) continue;
+            try {
+              const ev = JSON.parse(json) as {
+                type?: string;
+                properties?: { sessionID?: unknown };
+              };
+              if (
+                ev?.type &&
+                DELTA_EVENT_TYPES.has(ev.type) &&
+                typeof ev.properties?.sessionID === "string"
+              ) {
+                invalidateMessagesCache(ev.properties.sessionID);
+              }
+            } catch {
+              /* malformed frame from opencode; ignore */
+            }
+          }
+        }
+      } catch {
+        /* upstream error - reader read() rejected. Fall through
+           to cleanup; downstream will see the controller close. */
+      } finally {
+        if (heartbeat) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+        try {
+          reader.releaseLock();
+        } catch {
+          /* already released */
+        }
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
         }
       }
     },
-    flush() {
-      // buffer drains naturally; encoder/decoder are cheap stateless
-      void encoder;
+    cancel() {
+      /* Browser disconnected. The reader.read() loop will
+         reject on the next iteration and run the cleanup in
+         the finally block. */
     },
   });
 
-  return new Response(upstream.body.pipeThrough(tap), {
+  return new Response(body, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",

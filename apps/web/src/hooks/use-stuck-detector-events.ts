@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { logSystemMessage } from "@/stores/system-messages-store";
+import { createWatchedEventSource } from "@/lib/sse-watchdog";
 
 const URL = "/api/stuck-detector/events/stream";
+const SILENCE_TIMEOUT_MS = 60_000;
 
 interface VerdictTransitionEvent {
   type: "verdict-transition";
@@ -62,36 +64,37 @@ function handleEvent(e: StuckDetectorEvent): void {
   }
 }
 
-// EventSource wrapper that opens a single SSE connection per browser
-// tab and routes events to logSystemMessage. Auto-reconnects on
-// close via the standard EventSource semantics; the server-side
-// heartbeat (every 30s) keeps the connection from getting dropped by
-// intermediate proxies. We intentionally do NOT log connection
-// open/close to the drawer - useConnectionMonitor already covers
-// portal connectivity; this stream is downstream of that and would
-// flap on every portal restart.
+// Opens a single watched SSE connection per browser tab and
+// routes verdict-transition / journal-action events to
+// logSystemMessage. Heartbeat frames (every 25s from the server)
+// fall through handleEvent's type checks without firing log
+// entries. The watchdog reopens the connection on >60s silence.
+// We intentionally do NOT log connection open/close to the
+// drawer - useConnectionMonitor already covers portal
+// connectivity; this stream would flap on every portal restart.
 export function useStuckDetectorEvents(): void {
   useEffect(() => {
     if (typeof window === "undefined" || !("EventSource" in window)) {
       return;
     }
-    const source = new EventSource(URL);
-    source.onmessage = (evt) => {
-      if (!evt.data) return;
-      try {
-        const parsed = JSON.parse(evt.data) as StuckDetectorEvent;
-        if (parsed && typeof parsed === "object" && "type" in parsed) {
-          handleEvent(parsed);
+    const watched = createWatchedEventSource({
+      url: URL,
+      silenceTimeoutMs: SILENCE_TIMEOUT_MS,
+      label: "stuck-detector-events",
+      onMessage: (evt) => {
+        if (!evt.data) return;
+        try {
+          const parsed = JSON.parse(evt.data) as StuckDetectorEvent;
+          if (parsed && typeof parsed === "object" && "type" in parsed) {
+            handleEvent(parsed);
+          }
+        } catch {
+          /* malformed frame */
         }
-      } catch {
-        // malformed frame
-      }
-    };
-    source.onerror = () => {
-      // EventSource auto-reconnects; nothing to do
-    };
+      },
+    });
     return () => {
-      source.close();
+      watched.close();
     };
   }, []);
 }

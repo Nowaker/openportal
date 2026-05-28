@@ -4,6 +4,7 @@ import { useSWRConfig } from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import type { UpdateStrategy } from "@/stores/update-strategy-store";
+import { createWatchedEventSource } from "@/lib/sse-watchdog";
 
 interface OpencodeEvent {
   type: string;
@@ -12,6 +13,7 @@ interface OpencodeEvent {
 }
 
 const CHUNKED_FLUSH_MS = 250;
+const SILENCE_TIMEOUT_MS = 60_000;
 
 // Subscribes to /api/opencode/<port>/event (Portal's SSE proxy of opencode's
 // /event endpoint) and dispatches each event to SWR cache mutations. The
@@ -53,21 +55,30 @@ export function useEventStream(): void {
     if (!port) return;
 
     const url = `/api/opencode/${port}/event`;
-    const es = new EventSource(url);
-    es.onmessage = (ev) => {
-      let parsed: OpencodeEvent;
-      try {
-        parsed = JSON.parse(ev.data) as OpencodeEvent;
-      } catch {
-        return;
-      }
-      dispatchEvent(port, parsed, strategy, mutate, flushTimers.current);
-    };
-    es.onerror = () => {
-      // EventSource auto-reconnects; nothing to do here.
-    };
+    const portPrefix = `/api/opencode/${port}/`;
+    const watched = createWatchedEventSource({
+      url,
+      silenceTimeoutMs: SILENCE_TIMEOUT_MS,
+      label: `opencode-events:${port}`,
+      onMessage: (ev) => {
+        let parsed: OpencodeEvent;
+        try {
+          parsed = JSON.parse(ev.data) as OpencodeEvent;
+        } catch {
+          return;
+        }
+        dispatchEvent(port, parsed, strategy, mutate, flushTimers.current);
+      },
+      onReconnect: () => {
+        for (const t of flushTimers.current.values()) clearTimeout(t);
+        flushTimers.current.clear();
+        void mutate(
+          (key) => typeof key === "string" && key.startsWith(portPrefix),
+        );
+      },
+    });
     return () => {
-      es.close();
+      watched.close();
       for (const t of flushTimers.current.values()) clearTimeout(t);
       flushTimers.current.clear();
     };

@@ -1,18 +1,7 @@
-// SSE delta feed for indicator state.
-//
-// Browser opens this endpoint once and receives:
-//   - One `data: {"type":"snapshot",...}` frame on connect with the
-//     current full state (filtered by optional ?server= / ?session=).
-//   - Subsequent `data: {"type":"update"|"remove"|"server-connected"|
-//     "server-disconnected",...}` frames as indicator-state mutates.
-//
-// Heartbeat: a `: keepalive` SSE comment every 25s prevents proxies
-// (Caddy idle-close default 60s) from severing the connection.
-//
-// Cleanup uses the ReadableStream cancel callback - fires when the
-// downstream consumer (EventSource) closes the connection. h3 v2's
-// event has no node-style req object so we cannot attach 'close'
-// listeners the way the legacy event.ts proxy does.
+// SSE delta feed for indicator state. Frames sent on connect and
+// on every state mutation: snapshot, update, remove,
+// server-connected, server-disconnected, plus periodic heartbeat
+// (see lib/sse-heartbeat.ts for why heartbeats are data frames).
 
 import { defineHandler, getQuery } from "nitro/h3";
 
@@ -21,8 +10,8 @@ import {
   subscribe,
   type SubscriberPayload,
 } from "../lib/indicator-state";
+import { heartbeatFrame, HEARTBEAT_INTERVAL_MS } from "../lib/sse-heartbeat";
 
-const HEARTBEAT_MS = 25_000;
 const encoder = new TextEncoder();
 
 export default defineHandler((event) => {
@@ -58,11 +47,11 @@ export default defineHandler((event) => {
 
       heartbeat = setInterval(() => {
         try {
-          controller.enqueue(encoder.encode(`: keepalive\n\n`));
+          controller.enqueue(heartbeatFrame());
         } catch {
           /* controller closed */
         }
-      }, HEARTBEAT_MS);
+      }, HEARTBEAT_INTERVAL_MS);
     },
     cancel() {
       if (heartbeat) clearInterval(heartbeat);

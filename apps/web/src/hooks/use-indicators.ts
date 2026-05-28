@@ -27,6 +27,13 @@
 
 import { useSyncExternalStore, useMemo } from "react";
 
+import {
+  createWatchedEventSource,
+  type WatchedEventSource,
+} from "@/lib/sse-watchdog";
+
+const SILENCE_TIMEOUT_MS = 60_000;
+
 export interface IndicatorTodoItem {
   content: string;
   status: "pending" | "in_progress" | "completed" | "cancelled";
@@ -66,11 +73,12 @@ type StreamPayload =
   | { type: "update"; state: SessionIndicatorState }
   | { type: "remove"; serverId: string; sessionId: string }
   | { type: "server-connected"; serverId: string }
-  | { type: "server-disconnected"; serverId: string };
+  | { type: "server-disconnected"; serverId: string }
+  | { type: "heartbeat"; t: number };
 
 const sessionMap = new Map<string, SessionIndicatorState>();
 const listeners = new Set<() => void>();
-let connection: EventSource | null = null;
+let connection: WatchedEventSource | null = null;
 let snapshotVersion = 0;
 
 function key(serverId: string, sessionId: string): string {
@@ -84,6 +92,8 @@ function notify(): void {
 
 function apply(payload: StreamPayload): void {
   switch (payload.type) {
+    case "heartbeat":
+      return;
     case "snapshot":
       sessionMap.clear();
       for (const s of payload.sessions) {
@@ -116,18 +126,18 @@ function apply(payload: StreamPayload): void {
 function ensureConnection(): void {
   if (typeof window === "undefined") return;
   if (connection) return;
-  const es = new EventSource("/api/indicators/stream");
-  es.onmessage = (ev) => {
-    try {
-      apply(JSON.parse(ev.data) as StreamPayload);
-    } catch {
-      /* malformed frame; ignore */
-    }
-  };
-  es.onerror = () => {
-    // EventSource auto-reconnects with backoff. No-op here.
-  };
-  connection = es;
+  connection = createWatchedEventSource({
+    url: "/api/indicators/stream",
+    silenceTimeoutMs: SILENCE_TIMEOUT_MS,
+    label: "indicators",
+    onMessage: (ev) => {
+      try {
+        apply(JSON.parse(ev.data) as StreamPayload);
+      } catch {
+        /* malformed frame; ignore */
+      }
+    },
+  });
 }
 
 export interface IndicatorFilter {

@@ -3,42 +3,40 @@ import {
   subscribeStuckEvents,
   type StuckDetectorEvent,
 } from "../../lib/stuck-detector-events";
+import {
+  heartbeatFrame,
+  HEARTBEAT_INTERVAL_MS,
+} from "../../lib/sse-heartbeat";
 
 export default defineHandler((event) => {
+  let unsubscribe: (() => void) | null = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder();
-      controller.enqueue(encoder.encode(": ok\n\n"));
+      controller.enqueue(heartbeatFrame());
       const send = (e: StuckDetectorEvent) => {
         try {
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify(e)}\n\n`),
           );
         } catch {
-          // controller closed by client disconnect
+          /* controller closed by client disconnect */
         }
       };
-      const unsubscribe = subscribeStuckEvents(send);
-      const heartbeat = setInterval(() => {
+      unsubscribe = subscribeStuckEvents(send);
+      heartbeat = setInterval(() => {
         try {
-          controller.enqueue(encoder.encode(": ping\n\n"));
+          controller.enqueue(heartbeatFrame());
         } catch {
-          // ignore
+          /* controller closed */
         }
-      }, 30_000);
-      const cleanup = () => {
-        clearInterval(heartbeat);
-        unsubscribe();
-        try {
-          controller.close();
-        } catch {
-          // already closed
-        }
-      };
-      const req = event.node?.req;
-      if (req) {
-        req.once("close", cleanup);
-      }
+      }, HEARTBEAT_INTERVAL_MS);
+    },
+    cancel() {
+      if (heartbeat) clearInterval(heartbeat);
+      if (unsubscribe) unsubscribe();
     },
   });
   return new Response(stream, {

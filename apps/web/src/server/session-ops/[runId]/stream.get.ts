@@ -1,7 +1,10 @@
 import { defineHandler, getRouterParam, setResponseStatus } from "nitro/h3";
 import { subscribeRun, type ProgressEvent } from "../../lib/long-op-runner";
+import {
+  heartbeatFrame,
+  HEARTBEAT_INTERVAL_MS,
+} from "../../lib/sse-heartbeat";
 
-const HEARTBEAT_MS = 25_000;
 const encoder = new TextEncoder();
 
 export default defineHandler((event) => {
@@ -63,11 +66,11 @@ export default defineHandler((event) => {
       heartbeat = setInterval(() => {
         if (closed) return;
         try {
-          controller.enqueue(encoder.encode(`: keepalive\n\n`));
+          controller.enqueue(heartbeatFrame());
         } catch {
           /* controller closed */
         }
-      }, HEARTBEAT_MS);
+      }, HEARTBEAT_INTERVAL_MS);
     },
     cancel() {
       closed = true;
