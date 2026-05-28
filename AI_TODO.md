@@ -495,7 +495,7 @@ Design notes:
 - After successful unarchive: SWR mutate sessions list so the composer returns to its enabled state on next render.
 - Apply the visible-but-disabled pattern uniformly: any composer control that would mutate session state must respect the archived flag; controls that are pure UI (mode/agent picker readouts) can stay interactive if they don't trigger session writes.
 
-### 29. Archived sessions: composer disabled-but-visible + centered placeholder + Unarchive button
+### 29. Archived sessions: composer disabled-but-visible + centered placeholder + Unarchive button (DONE - 24a22c5)
 
 User prompt:
 
