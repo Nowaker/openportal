@@ -520,30 +520,625 @@ function AddCustomTool() {
           placeholder="What should the agent do when this template is invoked?"
         />
       </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs font-medium text-muted-fg w-32 shrink-0">
-          Flags
-        </span>
-        <div className="flex items-center gap-2">
-          <FlagCheckbox
-            label="Burger"
-            title="Show in the topbar Tools (burger) menu (YAML enabled)"
-            checked={burger}
-            onChange={setBurger}
-          />
-          <FlagCheckbox
-            label="Init"
-            title="Pre-checked in the new-session picker"
-            checked={init}
-            onChange={setInit}
-          />
-          <FlagCheckbox
-            label="Slash"
-            title="Available as /template <name> in composers"
-            checked={slash}
-            onChange={setSlash}
+      <div className="flex justify-end gap-2">
+        <Button intent="outline" size="xs" onPress={reset}>
+          Cancel
+        </Button>
+        <Button
+          size="xs"
+          isDisabled={!name.trim() || !prompt.trim()}
+          onPress={() => {
+            const taken = new Set(tools.map((t) => t.id));
+            const id = makeCustomId(name, taken);
+            upsertCustomTool({
+              id,
+              name: name.trim(),
+              description: description.trim() || undefined,
+              prompt,
+            });
+            reset();
+          }}
+        >
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Two-section tool list (system + "Your custom tools" with its own
+// header). Drag-reorder happens INLINE in each section - one list per
+// section, no separate ordering panel - and only for Init-marked rows
+// (projectInitOrder is the durable concatenation order). Cross-section
+// drag is allowed because projectInitOrder is one flat array;
+// dragging a custom init row above a system init row reorders them
+// in the eventual new-session prompt, even though the visual section
+// they live in stays put.
+function ToolSectionList({
+  tools,
+  projectInitOrder,
+  onReorder,
+  dragSourceIdRef,
+  dragOverId,
+  setDragOverId,
+}: {
+  tools: ResolvedTool[];
+  projectInitOrder: string[];
+  onReorder: (next: string[]) => void;
+  dragSourceIdRef: React.RefObject<string | null>;
+  dragOverId: string | null;
+  setDragOverId: (id: string | null) => void;
+}) {
+  const initSet = useMemo(
+    () => new Set(projectInitOrder),
+    [projectInitOrder],
+  );
+  const ordered = useMemo(() => {
+    const byId = new Map(tools.map((t) => [t.id, t]));
+    const initFirst = projectInitOrder
+      .map((id) => byId.get(id))
+      .filter((t): t is ResolvedTool => Boolean(t));
+    const others = tools
+      .filter((t) => !initSet.has(t.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...initFirst, ...others];
+  }, [tools, projectInitOrder, initSet]);
+
+  const handleDragOver = (id: string) => (e: React.DragEvent) => {
+    const src = dragSourceIdRef.current;
+    if (!src) return;
+    if (!initSet.has(src) || !initSet.has(id)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverId !== id) setDragOverId(id);
+  };
+
+  const handleDrop = (targetId: string) => {
+    const sourceId = dragSourceIdRef.current;
+    dragSourceIdRef.current = null;
+    setDragOverId(null);
+    if (!sourceId || sourceId === targetId) return;
+    if (!initSet.has(sourceId) || !initSet.has(targetId)) return;
+    const order = projectInitOrder.slice();
+    const from = order.indexOf(sourceId);
+    const to = order.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+    order.splice(from, 1);
+    order.splice(to, 0, sourceId);
+    onReorder(order);
+  };
+
+  const handleDragEnd = () => {
+    dragSourceIdRef.current = null;
+    setDragOverId(null);
+  };
+
+  return (
+    <div className="space-y-2">
+      {ordered.map((tool) => {
+        const isInit = initSet.has(tool.id);
+        const props: ToolRowProps = {
+          tool,
+          draggable: isInit,
+          isDragOver: dragOverId === tool.id,
+          onDragStart: () => {
+            dragSourceIdRef.current = tool.id;
+          },
+          onDragOver: handleDragOver(tool.id),
+          onDragLeave: () => {
+            if (dragOverId === tool.id) setDragOverId(null);
+          },
+          onDrop: () => handleDrop(tool.id),
+          onDragEnd: handleDragEnd,
+        };
+        if (tool.kind === "system") {
+          return <SystemToolRow key={tool.id} {...props} />;
+        }
+        return <CustomToolRow key={tool.id} {...props} />;
+      })}
+    </div>
+  );
+}
+
+function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const reorderProjectInit = useToolsStore((s) => s.reorderProjectInit);
+  const dragSourceIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const systemTools = useMemo(
+    () => tools.filter((t) => t.kind === "system"),
+    [tools],
+  );
+  const customTools = useMemo(
+    () => tools.filter((t) => t.kind === "custom"),
+    [tools],
+  );
+
+  return (
+    <div className="space-y-4">
+      <ToolSectionList
+        tools={systemTools}
+        projectInitOrder={projectInitOrder}
+        onReorder={reorderProjectInit}
+        dragSourceIdRef={dragSourceIdRef}
+        dragOverId={dragOverId}
+        setDragOverId={setDragOverId}
+      />
+      {customTools.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-fg">
+            Your custom tools
+          </h4>
+          <ToolSectionList
+            tools={customTools}
+            projectInitOrder={projectInitOrder}
+            onReorder={reorderProjectInit}
+            dragSourceIdRef={dragSourceIdRef}
+            dragOverId={dragOverId}
+            setDragOverId={setDragOverId}
           />
         </div>
+      )}
+    </div>
+  );
+}
+
+function FsTemplateRow({
+  template,
+  onToggle,
+  onDelete,
+  onSave,
+}: {
+  template: FsTemplate;
+  onToggle: (
+    field: "enabled" | "init" | "slash",
+    next: boolean,
+  ) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onSave: (next: {
+    name: string;
+    description?: string;
+    prompt: string;
+  }) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(template.name);
+  const [draftDescription, setDraftDescription] = useState(
+    template.description ?? "",
+  );
+  const [draftPrompt, setDraftPrompt] = useState(template.prompt);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftName(template.name);
+      setDraftDescription(template.description ?? "");
+      setDraftPrompt(template.prompt);
+    }
+  }, [editing, template.name, template.description, template.prompt]);
+
+  const wrapToggle =
+    (field: "enabled" | "init" | "slash") => async (next: boolean) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await onToggle(field, next);
+      } finally {
+        setBusy(false);
+      }
+    };
+
+  return (
+    <div className="rounded-lg border border-border bg-bg p-2 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Bars3Icon
+          className="size-4 shrink-0 text-muted-fg/30"
+          title="Filesystem templates carry their `order` in YAML; drag-reorder lives on the row's MD file."
+        />
+        <FlagCheckbox
+          label="Burger"
+          title="Burger flag in this template's YAML frontmatter (topbar menu visibility)"
+          checked={template.enabled}
+          onChange={wrapToggle("enabled")}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Init flag in YAML - pre-checked in the new-session picker"
+          checked={template.init}
+          onChange={wrapToggle("init")}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Slash flag in YAML - /template <name> autocomplete in composers"
+          checked={template.slash}
+          onChange={wrapToggle("slash")}
+        />
+        <div className="min-w-0 flex-1 px-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{template.name}</span>
+          </div>
+          <p className="text-[10px] text-muted-fg/80 mt-0.5 font-mono truncate">
+            {template.scope}
+          </p>
+          {template.description && !editing && (
+            <p className="text-xs text-muted-fg mt-0.5">
+              {template.description}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {busy && <Loader className="size-3 text-muted-fg" />}
+          <Button
+            size="xs"
+            intent="outline"
+            onPress={() => setEditing((v) => !v)}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+          <Button
+            size="xs"
+            intent="danger"
+            onPress={async () => {
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `Delete filesystem template "${template.name}" from ${template.scope}?`,
+                )
+              ) {
+                return;
+              }
+              setBusy(true);
+              try {
+                await onDelete();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+      {editing && (
+        <div className="space-y-2 pt-2 border-t border-border/50">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">Name</label>
+            <Input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">
+              Description (optional)
+            </label>
+            <Input
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">
+              Prompt sent to the agent
+            </label>
+            <Textarea
+              value={draftPrompt}
+              onChange={(e) => setDraftPrompt(e.target.value)}
+              rows={8}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="xs"
+              intent="outline"
+              isDisabled={busy}
+              onPress={() => setEditing(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="xs"
+              isDisabled={busy || !draftName.trim() || !draftPrompt.trim()}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await onSave({
+                    name: draftName.trim(),
+                    description: draftDescription.trim() || undefined,
+                    prompt: draftPrompt,
+                  });
+                  setEditing(false);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+  }, [editing, template.name, template.description, template.prompt]);
+
+  const wrapToggle =
+    (field: "enabled" | "init" | "slash") => async (next: boolean) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await onToggle(field, next);
+      } finally {
+        setBusy(false);
+      }
+    };
+
+  return (
+    <div className="rounded-lg border border-border bg-bg p-2 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Bars3Icon
+          className="size-4 shrink-0 text-muted-fg/30"
+          title="Filesystem templates carry their `order` in YAML; drag-reorder lives on the row's MD file."
+        />
+        <FlagCheckbox
+          label="Burger"
+          title="Burger flag in this template's YAML frontmatter - shows in the topbar Tools (burger) menu"
+          checked={template.enabled}
+          onChange={wrapToggle("enabled")}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Init flag in this template's YAML frontmatter - pre-checked in the new-session picker"
+          checked={template.init}
+          onChange={wrapToggle("init")}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Slash flag in this template's YAML frontmatter - available as /template <name> in composers"
+          checked={template.slash}
+          onChange={wrapToggle("slash")}
+        />
+        <div className="min-w-0 flex-1 px-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{template.name}</span>
+          </div>
+          <p className="text-[10px] text-muted-fg/80 mt-0.5 font-mono truncate">
+            {template.scope}
+          </p>
+          {template.description && (
+            <p className="text-xs text-muted-fg mt-0.5">
+              {template.description}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {busy && <Loader className="size-3 text-muted-fg" />}
+          <Button
+            size="xs"
+            intent="outline"
+            onPress={() => setEditing((v) => !v)}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+          <Button
+            size="xs"
+            intent="danger"
+            onPress={async () => {
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `Delete filesystem template "${template.name}" from ${template.scope}?`,
+                )
+              ) {
+                return;
+              }
+              setBusy(true);
+              try {
+                await onDelete();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+      {editing && (
+        <div className="space-y-2 pt-2 border-t border-border/50">
+          <div className="flex items-start gap-3">
+            <label className="text-xs font-medium text-muted-fg w-32 shrink-0 pt-2">
+              Name
+            </label>
+            <Input
+              className="flex-1"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+            />
+          </div>
+          <div className="flex items-start gap-3">
+            <label className="text-xs font-medium text-muted-fg w-32 shrink-0 pt-2">
+              Description
+            </label>
+            <Input
+              className="flex-1"
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">
+              Prompt sent to the agent
+            </label>
+            <Textarea
+              value={draftPrompt}
+              onChange={(e) => setDraftPrompt(e.target.value)}
+              rows={6}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="xs"
+              intent="outline"
+              isDisabled={busy}
+              onPress={() => setEditing(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="xs"
+              isDisabled={busy || !draftName.trim() || !draftPrompt.trim()}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await onSaveEdit({
+                    name: draftName.trim(),
+                    description: draftDescription.trim(),
+                    prompt: draftPrompt,
+                  });
+                  setEditing(false);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewFsTemplateForm({
+  workspaces,
+  onClose,
+}: {
+  workspaces: string[];
+  onClose: () => void;
+}) {
+  const [workspace, setWorkspace] = useState(workspaces[0] ?? "");
+  const [subpath, setSubpath] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (workspaces.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-fg">
+        No workspace roots configured. Add a workspace path to
+        <code className="mx-1">~/.openportal/openportal.json</code>
+        under <code>directories</code> first.
+        <div className="flex justify-end mt-2">
+          <Button intent="outline" size="xs" onPress={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    if (!name.trim() || !prompt.trim()) {
+      setError("Name and prompt are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const basename = templateBasenameForName(name);
+      const trimmedSubpath = subpath
+        .replace(/^\/+/, "")
+        .replace(/\/+$/, "");
+      const dirPart = trimmedSubpath
+        ? `${workspace}/${trimmedSubpath}`
+        : workspace;
+      const location = `${dirPart}/.vibekick/templates/${basename}`;
+      await writeFsTemplate({
+        location,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        enabled: true,
+        init: false,
+        slash: false,
+        order: 0,
+        prompt,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 space-y-2">
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Workspace root
+        </label>
+        <select
+          className="w-full rounded-md border border-border bg-bg px-2 py-1 text-sm"
+          value={workspace}
+          onChange={(e) => setWorkspace(e.target.value)}
+        >
+          {workspaces.map((w) => (
+            <option key={w} value={w}>
+              {w}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Sub-path under workspace (optional)
+        </label>
+        <Input
+          value={subpath}
+          onChange={(e) => setSubpath(e.target.value)}
+          placeholder="webapps/portal  (leave empty for workspace root)"
+        />
+        <p className="text-[10px] text-muted-fg/80">
+          Template lands in <code>&lt;workspace&gt;/&lt;subpath&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
+          A template visible everywhere under the workspace sits at
+          the workspace root with sub-path empty; one scoped to a
+          specific project nests deeper.
+        </p>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">Name</label>
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="git worktree -> main -> deploy -> push"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Description (optional)
+        </label>
+        <Input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Cycle a feature branch into main with deploy + push"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">Prompt</label>
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={6}
+          placeholder="What should the agent do when this template is invoked?"
+          className="text-xs"
+        />
       </div>
       {error && <p className="text-xs text-danger-fg">{error}</p>}
       <div className="flex justify-end gap-2">
@@ -568,7 +1163,7 @@ function AddCustomTool() {
 }
 
 function FsTemplatesSection() {
-  const { data, isLoading, isValidating, error } = useAllFsTemplates();
+  const { data, isLoading, error } = useAllFsTemplates();
   const [creating, setCreating] = useState(false);
 
   const workspaces = data?.workspaces ?? [];
@@ -609,42 +1204,18 @@ function FsTemplatesSection() {
     });
   };
 
-  const handleSaveEdit = async (
-    template: FsTemplate,
-    next: { name: string; description: string; prompt: string },
-  ) => {
-    await writeFsTemplate({
-      location: template.location,
-      name: next.name,
-      description: next.description || undefined,
-      enabled: template.enabled,
-      init: template.init,
-      slash: template.slash,
-      order: template.order,
-      prompt: next.prompt,
-    });
-  };
-
   return (
     <section className="space-y-3">
       <div>
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Your templates - filesystem</h3>
-          {isValidating && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted-fg/80">
-              <Loader className="size-3" />
-              Rescanning files…
-            </span>
-          )}
-        </div>
+        <h3 className="text-sm font-semibold">Filesystem templates</h3>
         <p className="text-xs text-muted-fg">
           Templates stored next to your code at{" "}
           <code>&lt;workspace&gt;/&lt;…&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
-          Each file&apos;s YAML frontmatter carries its flags (burger /
-          init / slash) and ordering. Toggle a checkbox to rewrite the
-          YAML. New-session pickers and the slash autocomplete show
-          templates whose directory is current or a parent of the
-          active project, up to the workspace root.
+          Each file&apos;s YAML frontmatter carries its flags
+          (enabled / init / slash) and ordering. Toggle a checkbox to
+          rewrite the YAML. New-session pickers and the slash
+          autocomplete show templates whose directory is current or
+          a parent of the active project, up to the workspace root.
         </p>
       </div>
 
@@ -684,7 +1255,6 @@ function FsTemplatesSection() {
                   onToggle={(field, next) =>
                     handleToggle(tpl, field, next)
                   }
-                  onSaveEdit={(next) => handleSaveEdit(tpl, next)}
                   onDelete={() => deleteFsTemplate(tpl.location)}
                 />
               ))}
