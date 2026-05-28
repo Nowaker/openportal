@@ -256,8 +256,11 @@ function NewSessionPage() {
   const { data: commandsData } = useCommands();
   const [, setFileResults] = useState<{ path: string; name: string }[]>([]);
   // Template-slash entries injected alongside opencode commands. Each
-  // carries its body so the onSelect handler can expand /<name> into
-  // the template body with \n\n padding per the slash-checkbox spec.
+  // carries its body so the onSelect handler can expand the matching
+  // /template <name> token into the template body with \n\n padding,
+  // per the slash-checkbox spec. The entry's `name` field is shaped
+  // "template <full-name>" so the popover renders it as
+  // "/template Full name here" verbatim from the user's spec.
   // Stock + custom tools come from the local tools-store; filesystem
   // templates come from the directory-scoped vibekick-templates API
   // and carry their slash flag in YAML frontmatter.
@@ -265,15 +268,13 @@ function NewSessionPage() {
     const local = tools
       .filter((t) => t.enabled && t.isSlash)
       .map((t) => ({
-        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
-        description: t.name,
+        name: `template ${t.name}`,
         body: t.prompt,
       }));
     const fs = fsTemplates
       .filter((t) => t.enabled && t.slash)
       .map((t) => ({
-        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
-        description: t.name,
+        name: `template ${t.name}`,
         body: t.prompt,
       }));
     return [...local, ...fs];
@@ -291,7 +292,6 @@ function NewSessionPage() {
       },
       ...templateSlashEntries.map((t) => ({
         name: t.name,
-        description: t.description,
         source: "template" as const,
       })),
     ];
@@ -1041,10 +1041,14 @@ function NewSessionPage() {
                 (t) => t.name === commandName,
               );
               if (template && slashCommand.slashStart !== null) {
-                const tokenLen = 1 + commandName.length;
+                const slashStart = slashCommand.slashStart;
+                const firstNewline = current.indexOf("\n", slashStart);
+                const endOfCommand =
+                  firstNewline === -1 ? current.length : firstNewline;
+                const tokenLen = endOfCommand - slashStart;
                 const { newValue, cursorPos } = expandTemplateAtSlash(
                   current,
-                  slashCommand.slashStart,
+                  slashStart,
                   tokenLen,
                   template.body,
                 );

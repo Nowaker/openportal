@@ -4242,23 +4242,20 @@ function SessionPage() {
       ),
     [fsTemplatesResp],
   );
-  // Template-slash entries injected alongside opencode's commandsData
-  // in the popover. Each carries its body (prompt) so the onSelect
-  // handler can expand the /<name> token into the full template body
-  // with \n\n padding, per the slash-checkbox spec.
+  // Template-slash entries injected alongside opencode's commandsData.
+  // Names are shaped "template <full-name>" so the popover renders
+  // them as "/template Full name here" verbatim from the user spec.
   // Stock + custom tools come from the local tools-store; filesystem
   // templates come from the directory-scoped vibekick-templates API.
   const templateSlashEntries = useMemo(() => {
     const local = slashResolvedTools
       .filter((t) => t.enabled && t.isSlash)
       .map((t) => ({
-        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
-        description: t.name,
+        name: `template ${t.name}`,
         body: t.prompt,
       }));
     const fs = fsSlashTemplates.map((t) => ({
-      name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
-      description: t.name,
+      name: `template ${t.name}`,
       body: t.prompt,
     }));
     return [...local, ...fs];
@@ -4279,7 +4276,6 @@ function SessionPage() {
       },
       ...templateSlashEntries.map((t) => ({
         name: t.name,
-        description: t.description,
         source: "template" as const,
       })),
     ];
@@ -6066,17 +6062,22 @@ function SessionPage() {
               onClose={slashCommand.close}
               onSelect={(commandName) => {
                 const current = textareaRef.current?.value ?? "";
-                // Template-slash selection: expand the /<name> token
-                // into the template body with \n\n padding instead of
-                // routing through the opencode-command pipeline.
+                // Template-slash selection: expand the /template <name>
+                // token into the template body with \n\n padding
+                // instead of routing through the opencode-command
+                // pipeline.
                 const template = templateSlashEntries.find(
                   (t) => t.name === commandName,
                 );
                 if (template && slashCommand.slashStart !== null) {
-                  const tokenLen = 1 + commandName.length;
+                  const slashStart = slashCommand.slashStart;
+                  const firstNewline = current.indexOf("\n", slashStart);
+                  const endOfCommand =
+                    firstNewline === -1 ? current.length : firstNewline;
+                  const tokenLen = endOfCommand - slashStart;
                   const { newValue, cursorPos } = expandTemplateAtSlash(
                     current,
-                    slashCommand.slashStart,
+                    slashStart,
                     tokenLen,
                     template.body,
                   );
