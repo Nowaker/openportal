@@ -2767,7 +2767,7 @@ Design notes:
 - Run: `bun test apps/web/src/lib/sse-watchdog.test.ts` → 5 pass, 0 fail, 30 expect() calls (~90ms).
 - Direct commit to `main-nowaker` (no worktree, no deploy) — same rationale as #118 + #121: pure additive tests, no behaviour changes, no risk to live prod.
 
-### 123. indicator-broadcaster: disable broken callsite to undefined rehydratePendingPromptsForSession (DONE - <COMMIT-SHA>)
+### 123. indicator-broadcaster: disable broken callsite to undefined rehydratePendingPromptsForSession (DONE - b494e9b)
 
 User prompt (verbatim):
 
