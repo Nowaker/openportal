@@ -2731,4 +2731,18 @@ Design notes:
 - Category: `"connection"` (matches `useConnectionMonitor`). Level: `"warning"`. Message explicitly mentions the >60s silence threshold so the user can correlate with their own perception of "feels stale." Details explain the silently-dead-socket failure mode in plain English.
 - Wire format, watchdog timing, and reconnect mechanics all unchanged — purely additive observability.
 - Deploy: `bash scripts/deploy.sh` shipped bundle `index-w8bjjzj4.js` on dev:5001 and prod:5000. Build clean; lsp diagnostics clean on all 3 changed files; existing `sse-watchdog.test.ts` still passes (the new logSystemMessage call is inside `onReconnect`, which the SSR-safety + idempotent-close tests don't exercise).
-- Loser-bumped from #119 to #120: the latter was free, the former had been claimed by a parallel agent between my code-commit push (a10273b) and the AI_TODO sync turn.
+  - Loser-bumped from #119 to #120: the latter was free, the former had been claimed by a parallel agent between my code-commit push (a10273b) and the AI_TODO sync turn.
+
+### 121. ai-analysis-requests/SSE_RECONNECTION_BEHAVIOR.md: log follow-up enhancements + Chrome DevTools test limitation (DONE - dfbfb29)
+
+User prompt (verbatim):
+
+> Self-initiated doc-update closing the analysis-doc loop on the SSE watchdog work. The doc was last updated when the watchdog first shipped (#113); since then the AGENTS.md drift fix (#116/3a049de), the SSR-safety tests (#118/a52e777), and the drawer logging (#120/a10273b) have all landed, and the Chrome DevTools functional-test limitation needed to be documented so future agents/sessions don't waste a cycle reproducing it.
+
+Design notes:
+
+- Two additions beneath the existing "Implementation update" section in [`ai-analysis-requests/SSE_RECONNECTION_BEHAVIOR.md`](file:///home/nowaker/projekty/webapps/portal/ai-analysis-requests/SSE_RECONNECTION_BEHAVIOR.md):
+  1. **"Follow-up enhancements shipped same session"** — three bullets, one each for `3a049de` (AGENTS.md drift), `a52e777` (SSR-safety tests), `a10273b` (drawer logging). Each names the commit, links to the file(s) touched, and explains in 1-2 sentences what changed.
+  2. **"Testing limitation found while verifying"** — documents the Chrome DevTools `emulate({networkConditions: "Offline"})` finding: offline emulation does NOT sever existing TCP sockets, only blocks NEW outbound. The watchdog test came back "watchdog never fired" — but that was correct behaviour given the test setup couldn't actually trigger a silently-dead-socket scenario.
+- Pure doc update. No deploy needed (the doc is read by AI agents + humans, not by the Nitro bundle).
+- Direct commit to `main-nowaker` (no worktree) — same rationale as #118's tests: 51 added lines, no behaviour changes, no risk to live prod.
