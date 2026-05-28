@@ -10,6 +10,7 @@ interface TextSelectionMenuProps {
 interface MenuPos {
   top: number;
   left: number;
+  flipUp: boolean;
   text: string;
 }
 
@@ -78,16 +79,27 @@ export function TextSelectionMenu({
         return;
       }
       const rects = range.getClientRects();
-      const lastRect = rects.length > 0 ? rects[rects.length - 1] : null;
-      if (!lastRect) {
+      if (rects.length === 0) {
         setPos(null);
         return;
       }
-      setPos({
-        top: lastRect.bottom + 6,
-        left: Math.max(8, lastRect.right - 120),
-        text,
-      });
+      const firstRect = rects[0];
+      const lastRect = rects[rects.length - 1];
+
+      // Flip menu opposite to drag direction so it never covers the cells
+      // the cursor is dragging toward. Forward drag (down/right): menu above
+      // the bottom-most rect. Backward drag (up/left): menu below the
+      // top-most rect.
+      const isForward =
+        sel.anchorNode === range.startContainer &&
+        sel.anchorOffset === range.startOffset;
+
+      const GAP = 6;
+      const top = isForward ? lastRect.top - GAP : firstRect.bottom + GAP;
+      const left = isForward
+        ? Math.max(8, lastRect.right - 120)
+        : Math.max(8, firstRect.left);
+      setPos({ top, left, flipUp: isForward, text });
     };
 
     document.addEventListener("selectionchange", handle);
@@ -161,7 +173,11 @@ export function TextSelectionMenu({
       ref={menuRef}
       role="toolbar"
       aria-label="Selection actions"
-      style={{ top: pos.top, left: pos.left }}
+      style={{
+        top: pos.top,
+        left: pos.left,
+        transform: pos.flipUp ? "translateY(-100%)" : undefined,
+      }}
       className="fixed z-50 flex gap-1 rounded-md border border-border bg-overlay px-1 py-0.5 text-xs shadow-md"
       data-test="portal-selection-menu"
       onMouseDown={(e) => e.preventDefault()}

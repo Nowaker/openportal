@@ -2154,6 +2154,85 @@ Design notes:
 - Deploy ran cleanly via `bash scripts/deploy.sh` from main checkout (WT was clean of source modifications, only untracked docs). New bundle `index-Ddk0BcQP.js` served on dev (`:5001`) and prod (`:5000`) per the dev-first sequence in AGENTS.md.
 - Verified live on prod via chrome-devtools-mcp on `[data-role="user"]` element: `borderLeftWidth: 0px` ✓ (left bar gone), `borderTopWidth/BottomWidth: 1px solid oklab(... / 0.3)` ✓ (top/bottom borders preserved at primary/30), `backgroundColor: oklab(... / 0.15)` ✓ (bg-primary/15 unchanged).
 - AI_TODO race: original #100 sync (sha f218517) lost to `c838a7f` (google-calendar-mcp entry) on `origin` (canonical gitlab). Per AGENTS.md "loser bumps to N+1" rule, this entry is renumbered to #101 in a fresh commit on top of c838a7f. `github` `main-nowaker` momentarily accepted the f218517 push (it FF'd ahead of origin) and now sits diverged at f218517 carrying the old #100; force-push to main-nowaker is forbidden by AGENTS.md so github reconciliation is deferred to the user (likely a merge or one-time `--force-with-lease` from an operator session). The code change at 38542c5 is on both remotes and serving in prod — only the AI_TODO bookkeeping is split.
+### 103. Text selection menu: direction-aware placement (above when dragging down, below when dragging up) (DONE - <COMMIT-SHA>) [loser-bump: originally #102; bumped to #103 because origin sync 52b9eb2 took #102 for the stuck-detector /health probe entry below while this work was mid-rebase]
+
+User prompt (verbatim):
+
+> Copy / quote inline / quote in block actions on selecting text in chat log - this menu should show intelligently on the top or bottom of the current line. Eg if I start selecting from line 2, and dragged cursor to line 3, I'm basically covering the content I may be interested to continue dragging the selection to expand it. It should know to render the menu above when I'm going down with the selection, or below if I'm going up. Render above/below most recently added selection. Not on the the very top or bottom of entire selection.
+
+Design notes:
+
+- Bug: [text-selection-menu.tsx](file:///home/nowaker/projekty/webapps/portal/apps/web/src/components/text-selection-menu.tsx) always rendered the floating Copy / Quote inline / Quote block toolbar at `lastRect.bottom + 6` — i.e. directly below the bottom-most rect of the selection. While the user is still dragging, this floats the toolbar exactly over the next line they want to extend the selection into, blocking their drag target.
+- Fix: detect selection direction by comparing `selection.anchorNode/anchorOffset` to `range.startContainer/startOffset`. When they match, the selection is forward (anchor is the document-order-earliest point, focus is later). When they don't match, the selection is backward (anchor is at `range.end`, focus is at `range.start`).
+- For forward selections (drag going down/right): position menu's BOTTOM edge `GAP=6` px above `lastRect.top`. Realized with `top: lastRect.top - GAP` plus a CSS `transform: translateY(-100%)` on render so we don't need to measure the menu's own height. Anchor `left` to `lastRect.right - 120` (right-aligned to focus side) as the existing code did.
+- For backward selections (drag going up/left): position menu's TOP edge `GAP=6` px below `firstRect.bottom`. No transform. Anchor `left` to `firstRect.left` (left-aligned to focus side, since the focus point for a backward selection is on the LEFT of the first rect, not the right).
+- Visual effect on multi-line selections: when the user starts selecting at line 2 and drags down to line 5, the menu sits just above line 5's top edge. Lines 6+ stay fully visible, so dragging further down isn't blocked. Symmetric for dragging up: when the focus is at line 1 from a selection anchored at line 4, the menu sits just below line 1's bottom edge — lines above line 1 stay visible.
+- Single-line selections degenerate naturally: `firstRect === lastRect`, so the menu sits either just above or just below that single rect depending on drag direction. The user can still see the destination they're dragging toward in either direction.
+- Direction change mid-drag is handled automatically by the existing `selectionchange` listener — the position recomputes every time the focus moves. If the user reverses direction (was dragging down past anchor, now drags up past anchor), `isForward` flips and the menu reposition follows immediately.
+- New `flipUp: boolean` field added to the `MenuPos` interface. Render reads `pos.flipUp` to decide whether to apply `translateY(-100%)`. Internal-only — not exposed via props.
+- Did NOT change the dismissal logic, the dismissingRef escape-hatch behavior, the keyboard handler, the outside-click handler, the clipboard/quote action handlers, the test-data attributes, or the menu's styling. Surgical fix scoped to positioning only.
+- Did NOT add viewport clamping (right-edge overflow protection, top/bottom off-screen fallback). The original code didn't have it either; expanding scope risks regression and the user's complaint was direction-awareness, not viewport-aware clamping.
+
+### 104. ANALYSIS: opencode `/config/providers` returns 500 -> OpenPortal shows "OpenCode unreachable" banner while opencode is fully usable otherwise (DONE - analysis, awaits user review)
+
+User prompt (verbatim):
+
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+>
+> current state of openportal:
+>
+> OpenCode unreachable - retrying every 10s
+> Restart
+> Servers
+> Cached data still showing. OpenPortal-owned features (prompts archive, server list, settings) keep working. Live OpenCode reads resume automatically.
+>
+> chrome log:
+> [connection-monitor] probe ok (trigger=interval, 7ms, health.opencode=down + lastKnown)
+> ...
+> [connection-monitor] probe ok (trigger=interval, 4ms, health.opencode=down + lastKnown)
+>
+> /api/instance/self returns:
+> { "instance": null, "error": "active-server-unreachable", "reason": "Active OpenCode did not respond (server stopped, credentials rejected, or port in use by something else).", "lastKnown": {...srv-2dy1srwz @ 100.105.229.19:4096...}, "health": {"openportal": "up", "opencode": "down", "opencodeReason": "Active OpenCode did not respond..."}, "client": {...}, "presence": {...} }
+>
+> validate the health of 100.105.229.19:4096. why is openportal seeing it as down? it's half working, sure, but what exactly is going on?  if opencode is faulty / bad state, how to fix it? what is it doing? etc.
+
+Design notes:
+
+- This was an [analyze-mode] task. Per project AGENTS.md analysis protocol, full investigation persisted to [ai-analysis-requests/OPENCODE_CONFIG_PROVIDERS_500.md](file:///home/nowaker/projekty/webapps/portal/ai-analysis-requests/OPENCODE_CONFIG_PROVIDERS_500.md). No OpenPortal code changes in this turn (analyze-mode is research-only). The generic worktree+deploy framing in the prompt body is the user's standard preamble and doesn't trigger an implementation when the actual question is diagnostic.
+- Root cause: opencode `1.15.10`'s `Provider.list()` throws `TypeError: undefined is not an object (evaluating 'r.provider')` on every invocation. Same crash from both `/config/providers` (via `ConfigHttpApi.providers`) and `/provider` (via `ProviderHttpApi.list`) — same minified `Provider.list` symbol at `chunk-80zh6mae.js:2:216672` and `:229818`. Crash starts at +782 ms after process start and never recovers.
+- Adjacent diagnostic at startup, 1 ms BEFORE the first `r.provider` 500: `service=plugin error=undefined is not an object (evaluating 'O.config') plugin config hook failed`. Plugin name not logged. Strongly suggests some plugin's `config` hook return value poisoned the in-memory provider registry. 6 external plugins are loaded at startup; companion plugin in this repo is one of them.
+- Other opencode endpoints all return 200: `/`, `/config`, `/agent`, `/mode`, `/session`, `/event` (SSE). Chat sessions work. Only the META "enumerate providers" endpoint is broken — exactly what the user called "half working".
+- OpenPortal sees opencode as down because its probe is hardcoded to `GET /config/providers` in [`apps/web/src/server/lib/server-discovery.ts:548`](file:///home/nowaker/projekty/webapps/portal/apps/web/src/server/lib/server-discovery.ts#L548). A 500 from that endpoint becomes `ok=false, reason=other, status=500` → `instance/self.ts` returns `active-server-unreachable` → the red banner.
+- User's config is clean: `~/.local/share/opencode/auth.json` has exactly 3 providers (anthropic, openai, google), all with `key`+`type` fields. `~/.config/opencode/opencode.json` has NO `provider` key. So the malformed registry entry is being introduced by opencode itself (built-in registry or plugin hook), not by user-authored config.
+- Recommendations in the doc, summarized: (a) restart `opencode-serve-tailscale.service` — fastest diagnostic, side-effect is current SSE sessions blip for ~5s; (b) if reproducible after restart, disable plugins one at a time; (c) OpenPortal-side probe-robustness improvement (separate future task) — teach the probe to recognize opencode's own error envelope shape (`{"name":"UnknownError","ref":"err_..."}`) as proof-of-life on 5xx, OR switch probe target to `/agent` which doesn't go through `Provider.list()`. Three concrete options (A/B/C) detailed in the doc.
+- Did NOT restart opencode in this turn — that interrupts every active session including this one. User decides when. The opencode runtime is mid-investigation; restarting also destroys the live debug log evidence for upstream bug reporting.
+- Open questions parked for the user: (1) restart now? (2) build the OpenPortal probe-robustness change? (3) which option (A/B/C)? Documented at the bottom of the analysis doc.
+
+### 105. Bisect opencode 1.15.10 plugins to find which one breaks `/config/providers` 500 (DONE - bisection launched as detached systemd-run unit, awaiting log inspection in follow-up turn)
+
+User prompt (verbatim):
+
+> do everything that's needed, and as how many times as needed against tailscale opencode. i don't care what. just don't delete anything. bisecting plugins, whatever, just do it.
+> note: restarting tailscale opencode gives no result. so don't even try.
+
+(Followed by a clarification on a second user message:)
+
+> on the tailscale instance.
+
+Design notes:
+
+- User explicitly authorized restart-of-tailscale-opencode AS MANY TIMES AS NEEDED and signaled restart-alone doesn't fix it. So this is a plugin-removal bisection that DOES restart opencode 9 times. Side-effect: my current session blips on every restart - the bisection runs as a detached `systemd-run --user` script that lives in its own cgroup scope, so it survives the opencode-serve-tailscale.service restart sequence (which would otherwise kill my bash tool process as a child of opencode).
+- Script: [/tmp/bisect-opencode.sh](file:///tmp/bisect-opencode.sh). Logs: [/tmp/bisect-opencode.log](file:///tmp/bisect-opencode.log). Completion sentinel: `/tmp/bisect-opencode.DONE`. systemd unit: `bisect-opencode.service` (--user --collect).
+- Test plan in the script:
+  - TEST 0: baseline (unchanged config) — expect HTTP 500 to confirm reproduction.
+  - TEST 1: ALL plugins disabled in BOTH configs — if HTTP 200, bug IS plugin-driven; if HTTP 500, bug is in opencode core or auth.json (cannot bisect via plugins).
+  - TEST 2..N: remove ONE plugin at a time, restart, probe. Plugins iterated: oh-my-openagent@latest, opencode-session-backup@latest, opencode-db-backup-plugin, opencode-log-archive-plugin, opencode-heap-snapshot-pruner-plugin, opencode-stuck-detector (6 in main), openportal-companion-plugin (1 in home). 7 per-plugin tests + baseline + all-off = 9 restarts.
+- Don't-delete-anything compliance: original `~/.config/opencode/opencode.json` and `~/.opencode/opencode.json` are copied to `~/.opencode-bisect-backup-<timestamp>/` BEFORE any edits. Script's EXIT trap runs `restore_full` + final `systemctl restart` on ANY exit (success, error, abort, signal). Backup dir is PRESERVED after completion for forensics.
+- Probe logic: each test polls `http://100.105.229.19:4096/config/providers` up to 60 seconds (1s intervals, 3s curl timeout), accepting only HTTP 200 (clean) or HTTP 500 (the bug) as conclusive. "timeout" means opencode never came back up - unlikely with the systemd unit's `Restart=always`.
+- Follow-up turn (next turn this conversation): read `/tmp/bisect-opencode.log`, identify lines starting with `>>> CULPRIT:`, report findings to user, recommend remediation. If `ALL_OFF_HEALTHY=0` in the final summary, bug is NOT a plugin and a separate auth-file or built-in-provider investigation is required (also do not delete auth.json - move it aside and replace with `{}` temporarily, restoring after).
+- This entry is `DONE - bisection launched` because the QUEUEING + setup is complete. The follow-up turn will UPDATE this entry with the actual bisection RESULT once the log is readable (status flips to `DONE - <conclusion>`).
 
 ### 102. Stuck-detector liveness probe: switch from /config to /health endpoint (DONE - 2bd3d4d)
 
