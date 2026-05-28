@@ -48,6 +48,12 @@ const attachmentSchema = z.object({
 
 const promptBodySchema = z.object({
   text: z.string().min(1),
+  // archiveText: the compact form to persist in SQLite + show in
+  // history. Diverges from `text` when the client expanded init
+  // templates client-side (text gets the bodies, archive keeps the
+  // "/template Name" references). Falls back to `text` when absent
+  // so existing callers (chat composer, refire) are unchanged.
+  archiveText: z.string().optional(),
   attachments: z.array(attachmentSchema).optional(),
   model: z
     .object({
@@ -195,7 +201,7 @@ export default defineHandler(async (event) => {
   const row = await archivePrompt({
     port,
     sessionId: id,
-    rawText: body.text,
+    rawText: body.archiveText ?? body.text,
     modelProvider: body.model?.providerID,
     modelId: body.model?.modelID,
     agent: body.agent,

@@ -181,21 +181,19 @@ function NewSessionPage() {
     });
   };
 
-  const composedAutoPrompt = useMemo(() => {
-    const checkedInOrder = order.filter((t) => selected.has(t.id));
-    if (checkedInOrder.length === 0) return "";
-    return checkedInOrder.map((t) => t.prompt).join("\n\n---\n\n");
-  }, [order, selected]);
-
   const draftKey = directory ? newSessionDraftKey(directory) : null;
 
+  // Init templates do NOT prefill the textarea any more - they are
+  // prepended on submit as "/template Name" lines and expanded server-
+  // side. Only refire-from-history (autoPrompt) or a previous draft
+  // ever populates the textarea on mount.
   const [text, setText] = useState(() => {
     if (autoPrompt) return autoPrompt;
     if (draftKey) {
       const d = readDraft(draftKey);
       if (d) return d;
     }
-    return composedAutoPrompt;
+    return "";
   });
   const [sending, setSending] = useState(false);
   const [sendingStatus, setSendingStatus] = useState<string>("");
@@ -330,12 +328,11 @@ function NewSessionPage() {
     setSttTimeoutProgress(null);
   }, []);
 
-  useEffect(() => {
-    if (autoPrompt) return;
-    if (hasUserEditedRef.current) return;
-    if (draftKey && readDraft(draftKey)) return;
-    setText(composedAutoPrompt);
-  }, [composedAutoPrompt, autoPrompt, draftKey]);
+  // No-op cleanup: prior implementation re-synced text to
+  // composedAutoPrompt whenever the init-checkbox selection changed.
+  // That auto-prefill is gone (templates prepend on submit, not on
+  // check). Kept this comment so a future refactor doesn't reintroduce
+  // the effect chain.
 
   // When the user navigates from /session/new?directory=A to ?directory=B
   // (sidebar + on a different project) the component stays mounted and
@@ -372,8 +369,29 @@ function NewSessionPage() {
         setError("No directory selected.");
         return;
       }
-      const message = (override ?? text).trim();
-      if (!message && pendingAttachments.length === 0) return;
+      const userMessage = (override ?? text).trim();
+      // Pick up checked init templates IN their drag-order. They are
+      // NOT in the textarea (auto-prefill is gone since Phase F) - we
+      // prepend them on submit. Two strings come out:
+      //   - archiveText: "/template Foo\n/template Bar\n\nUser text"
+      //     - readable history, refire-able, matches search "Foo"
+      //   - opencodeText: "<Foo body>\n\n<Bar body>\n\nUser text"
+      //     - what opencode actually executes
+      // Without any checked templates, both equal userMessage.
+      const checkedTemplates = order.filter((t) => selected.has(t.id));
+      const archivePrefix =
+        checkedTemplates.length > 0
+          ? checkedTemplates
+              .map((t) => `/template ${t.name}`)
+              .join("\n") + "\n\n"
+          : "";
+      const opencodePrefix =
+        checkedTemplates.length > 0
+          ? checkedTemplates.map((t) => t.prompt).join("\n\n") + "\n\n"
+          : "";
+      const archiveText = archivePrefix + userMessage;
+      const opencodeText = opencodePrefix + userMessage;
+      if (!archiveText && pendingAttachments.length === 0) return;
       if (!port) {
         setError("Portal not bound to OpenCode.");
         return;
@@ -395,17 +413,15 @@ function NewSessionPage() {
           ? resolveModel(null, instanceId)
           : null;
 
-        // Slash-command detection - mirrors the in-session submit
-        // path in routes/_app/session/$id.tsx. Without this, a /foo
-        // bar typed into the new-session form was POSTed as plain
-        // chat text to /prompt. Opencode would still recognise it
-        // as a command and expand the template, but the dedup
-        // between portal's archived raw text ('/foo bar') and
-        // opencode's emitted user message (the expanded template)
-        // failed - the user saw their submission twice.
+        // Slash-command detection runs on the user's raw input only -
+        // init templates are NOT an opencode command and must not
+        // route through /command. archive prefix is applied regardless.
+        // Mirrors the chat composer dedup rule that archived text and
+        // opencode's emitted user message should NOT diverge except for
+        // template expansion.
         let slashDispatch: { command: string; arguments: string } | null = null;
-        if (message.startsWith("/")) {
-          const m = message.match(/^\/(\S+)\s*([\s\S]*)$/);
+        if (checkedTemplates.length === 0 && userMessage.startsWith("/")) {
+          const m = userMessage.match(/^\/(\S+)\s*([\s\S]*)$/);
           if (m) {
             const name = m[1];
             const argsTail = m[2];
@@ -417,11 +433,13 @@ function NewSessionPage() {
         }
 
         // Bulletproof prompt history (Phase 3): localStorage capture
-        // BEFORE the fetch for the new-session create flow.
+        // BEFORE the fetch for the new-session create flow. We archive
+        // the COMPACT form (template lines) so the safety net matches
+        // what /prompt's archiveText will land in SQLite.
         const pendingLocalId = recordPendingSubmission({
           sessionId,
           port,
-          text: message,
+          text: archiveText,
           model: pickedModel ?? undefined,
           agent: pickedAgent ?? undefined,
           variant: pickedThinking ?? undefined,
@@ -456,7 +474,10 @@ function NewSessionPage() {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    text: message,
+                    text: opencodeText,
+                    ...(archiveText !== opencodeText
+                      ? { archiveText }
+                      : {}),
                     ...(pendingAttachments.length > 0
                       ? { attachments: pendingAttachments }
                       : {}),
@@ -748,7 +769,7 @@ function NewSessionPage() {
                 Init templates
               </h2>
               <p className="text-[11px] text-muted-fg/80">
-                Checked = concatenated as first prompt. Drag to reorder.
+                Checked = prepended on submit. Drag to reorder.
               </p>
             </div>
             <div className="space-y-1">
