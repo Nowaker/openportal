@@ -2155,6 +2155,53 @@ Design notes:
 - Verified live on prod via chrome-devtools-mcp on `[data-role="user"]` element: `borderLeftWidth: 0px` ✓ (left bar gone), `borderTopWidth/BottomWidth: 1px solid oklab(... / 0.3)` ✓ (top/bottom borders preserved at primary/30), `backgroundColor: oklab(... / 0.15)` ✓ (bg-primary/15 unchanged).
 - AI_TODO race: original #100 sync (sha f218517) lost to `c838a7f` (google-calendar-mcp entry) on `origin` (canonical gitlab). Per AGENTS.md "loser bumps to N+1" rule, this entry is renumbered to #101 in a fresh commit on top of c838a7f. `github` `main-nowaker` momentarily accepted the f218517 push (it FF'd ahead of origin) and now sits diverged at f218517 carrying the old #100; force-push to main-nowaker is forbidden by AGENTS.md so github reconciliation is deferred to the user (likely a merge or one-time `--force-with-lease` from an operator session). The code change at 38542c5 is on both remotes and serving in prod — only the AI_TODO bookkeeping is split.
 
+### 102. Stuck-detector liveness probe: switch from /config to /health endpoint (DONE - 2bd3d4d)
+
+User prompt (verbatim):
+
+> continue. (if anything to do left)
+>
+> note: opencode-tools, including all plugins like stuck detector, got updated in the meantime. proceed accordingly.
+> rules of the game: Create a git worktree (if you haven't yet). Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards. Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+
+Design notes:
+
+- The "future / optional" plugin-side improvement footnoted in #25's
+  design notes ("opencode-tools side will add a /health endpoint that
+  returns instant static data, no map/DB access...") has now landed.
+  Verified via direct curl: `GET http://127.0.0.1:4098/health` returns
+  `{"ok":true,"ts":"<iso>"}` — 43 bytes, smaller than /config's 704 B
+  and much smaller than /verdicts' 11+ KB.
+- Single-constant change in
+  apps/web/src/server/stuck-detector/status.get.ts: `PROBE_PATH`
+  flips from `/config` to `/health`. The rationale comment is
+  expanded to document the three-step probe-path evolution
+  (/verdicts → /config → /health), each step further reducing the
+  work the plugin has to do to answer "are you alive?". This matches
+  the existing PROBE_TIMEOUT_MS rationale block right above it.
+- Defense-in-depth motivation per #25's diagnosis: even when host
+  opencode is under heavy LLM/tool-call load and /config/verdicts
+  handlers can't slip between blocking operations, /health's
+  near-zero handler cost (no DB lookup, no map iteration, just
+  returns a static literal with `Date.now()`) is the most likely
+  to make it through. Keeps the stuck-detector-install banner
+  correctly hidden during busy moments instead of false-positive
+  firing as "plugin not loaded".
+- Worktree: `~/projekty/webapps/portal-health-probe` (branch
+  `health-probe`, rebased onto current main-nowaker before
+  ff-merge to absorb the parallel-agent commit 38542c5 user-prompt
+  bubble + 604e52b/93fc003 stuck-detector UI changes that landed
+  mid-work).
+- End-to-end verification on live prod after deploy: `GET
+  http://100.105.229.19:5000/api/stuck-detector/status` returns
+  `{"connected":true,"status":200}` — confirms portal is hitting
+  /health and getting a healthy response. Direct plugin probe at
+  `127.0.0.1:4098/health` confirms the 43-byte static handler is
+  live.
+- Deploy: scripts/deploy.sh shipped index-BphLS6lr.js to dev:5001
+  + prod:5000; both remotes synced at 2bd3d4d.
+
+
 ## Q-DEFERRED (open questions awaiting user input)
 
 - **Q1**: WebRTC for plugin internet access — propose an approach? (See PENDING #14)
