@@ -1257,7 +1257,7 @@ Design notes:
 - Recommended follow-up (NOT auto-queued; for user review): add a per-stream heartbeat watchdog in `use-indicators.ts` and `use-event-stream.ts`. Track last-event-received timestamp; if it exceeds 2x the server's heartbeat interval (~60s for indicators), force-close + reopen + fire `mutate(() => true)`. ~50 lines. Closes the silently-dead-socket gap that F5 currently fixes.
 - AGENTS.md "Connection resilience" section says probe timeout is 5s; actual code at `use-connection-monitor.ts:7` is `PROBE_TIMEOUT_MS = 15_000`. Doc-vs-code drift; worth a separate quick-fix entry if the user wants the docs aligned.
 
-### 74. Session prompt directory routing (bash cwd wrong) - openportal bug, fix on worktree (DONE - <COMMIT-SHA>)
+### 74. Session prompt directory routing (bash cwd wrong) - openportal bug, fix on worktree (DONE - 5f04d77)
 
 User prompt (verbatim):
 
