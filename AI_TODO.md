@@ -2599,7 +2599,7 @@ Design notes:
 - Also updated the trailing echo at line 81 from `(-> 127.0.0.1:4096)` to `(-> $TS_IP:4096)` so the operator sees the actual address.
 - Scope deliberately narrow: only the seed value + adjacent comment + echo. Did NOT change the surrounding bind / hostname / launcher logic, the directory layout, the per-branch isolation paths, the symlink dance, or the systemd-style binding rules. Surgical 4-line diff.
 - Other in-flight worktrees already created with the buggy seed will keep using `127.0.0.1` until their `~/.openportal-worktrees/<branch>/openportal.json` is removed (the script's `[[ ! -f ... ]]` guard skips re-seed on existing files). Fresh worktrees will pick up the fix immediately.
-### 112. Templates redesign: Settings tab UX + new-session prepend-on-submit + per-project .vibekick/templates + slash command integration (DONE - merged with feat/templates-redesign in this commit)
+### 119. Templates redesign: Settings tab UX + new-session prepend-on-submit + per-project .vibekick/templates + slash command integration (DONE - merged in b12d578; hot-fixes 46ff541 + 316f274 + 0c80a83) [loser-bump: originally #112, collided with the existing "Prod MCPs all return HTTP 503" entry at #112 line 2289; bumped to next unused integer after #118 sse-watchdog tests]
 
 User prompt (verbatim):
 
@@ -2678,8 +2678,27 @@ Design notes:
   - **F**: new-session submit + archive format. Stop auto-populating textarea with template content. On submit, build archive text as `/template Foo\n/template Bar\n\n<user prompt>`. Send EXPANDED text (each `/template …` -> body) to opencode. Two-layer split: archive sees readable references; opencode sees expanded bodies.
   - **G**: chat composer parity. Same injection in $id.tsx so mid-session `/template-name` works. Folds in side-fix: inject `/btw` (currently $id.tsx-only) into new.tsx too so the user's observation that "`/btw` doesn't show up on new-session" is closed.
 - Deploy via `bash scripts/deploy.sh` after each major phase. Push to BOTH `origin` (gitlab) and `github` after each commit.
-  - `.vibekick/` is the canonical path because OpenPortal -> vibekick rebrand is queued; adopting now avoids a filesystem migration later.
-  - Side observation surfaced in the same prompt: `/btw` is invisible on new-session because the builtin-injection only exists in $id.tsx (chat composer), not new.tsx. Phase G closes both.
+- `.vibekick/` is the canonical path because OpenPortal -> vibekick rebrand is queued; adopting now avoids a filesystem migration later.
+- Side observation surfaced in the same prompt: `/btw` is invisible on new-session because the builtin-injection only exists in $id.tsx (chat composer), not new.tsx. Phase G closes both.
+
+**Shipped commit chain on `main-nowaker`:**
+
+| Commit | Phase | Description |
+|---|---|---|
+| `271e780` | docs | analysis doc + AI_TODO entry |
+| `7f4a055` | A | new-session picker filters disabled init templates |
+| `282a570` | B | `slashCommandIds` + `isInit`/`isSlash` on `ResolvedTool` |
+| `d329c60` | C | `vibekick-templates` server module + API |
+| `c28e5e5` | D | Settings -> Tools UI redesign (drag-left, 3 checkboxes, sticky add, Disable on stock, no badge) |
+| `4b6ff38` | E+G | slash-popover `extraItems` + body expansion + `/btw` on new-session |
+| `2f417f3` | F | prepend on submit + archive as `/template Name` (server `archiveText`) |
+| `e78e426` | D2 | FS templates UI: SWR hook + Settings section + picker/slash merge |
+| `b12d578` | merge | feat/templates-redesign -> main-nowaker |
+| `46ff541` | fix | TDZ hot-fix (hoist `useFsTemplatesForDirectory`) |
+| `316f274` | fix | React #185 hot-fix (memoise `fsTemplates`) |
+| `0c80a83` | fix | restore "Your custom tools" section header |
+
+Verified live via Chrome DevTools on prod (https://portal.desktop.ts.nowaker.net:8443/) at asset `/assets/index-gFUNvwCJ.js`. `/btw` confirmed visible in new-session slash popover. Settings -> Tools tab renders with 3-checkbox layout, sticky +Add, "Your custom tools" header, and the Filesystem templates section.
 
 ### 118. sse-watchdog: add SSR-safety + close idempotency unit tests (DONE - a52e777)
 
