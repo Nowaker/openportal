@@ -5,6 +5,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import type { UpdateStrategy } from "@/stores/update-strategy-store";
 import { createWatchedEventSource } from "@/lib/sse-watchdog";
+import { logSystemMessage } from "@/stores/system-messages-store";
 
 interface OpencodeEvent {
   type: string;
@@ -74,6 +75,12 @@ export function useEventStream(): void {
         flushTimers.current.clear();
         void mutate(
           (key) => typeof key === "string" && key.startsWith(portPrefix),
+        );
+        logSystemMessage(
+          "connection",
+          "warning",
+          "OpenCode event stream reconnected (>60s silence)",
+          `The opencode /event SSE proxy stopped delivering frames for more than 60s; the client-side watchdog reopened the connection and refreshed SWR data for port ${port}. If this fires repeatedly without obvious cause, your network is dropping the SSE socket silently (wifi handoff, sleep wake, proxy half-close).`,
         );
       },
     });

@@ -31,6 +31,7 @@ import {
   createWatchedEventSource,
   type WatchedEventSource,
 } from "@/lib/sse-watchdog";
+import { logSystemMessage } from "@/stores/system-messages-store";
 
 const SILENCE_TIMEOUT_MS = 60_000;
 
@@ -136,6 +137,14 @@ function ensureConnection(): void {
       } catch {
         /* malformed frame; ignore */
       }
+    },
+    onReconnect: () => {
+      logSystemMessage(
+        "connection",
+        "warning",
+        "Indicator stream reconnected (>60s silence)",
+        "The /api/indicators/stream SSE feed stopped delivering frames for more than 60s; the client-side watchdog reopened the connection. The next snapshot frame will rebuild indicator state automatically. If this fires repeatedly without obvious cause, your network is dropping the SSE socket silently (wifi handoff, sleep wake, proxy half-close).",
+      );
     },
   });
 }

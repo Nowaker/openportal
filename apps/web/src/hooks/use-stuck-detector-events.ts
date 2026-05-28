@@ -1,6 +1,11 @@
 import { useEffect } from "react";
-import { logSystemMessage } from "@/stores/system-messages-store";
+import {
+  logSystemMessage,
+  type SystemMessageCategory,
+} from "@/stores/system-messages-store";
 import { createWatchedEventSource } from "@/lib/sse-watchdog";
+
+const CONNECTION_CATEGORY: SystemMessageCategory = "connection";
 
 const URL = "/api/stuck-detector/events/stream";
 const SILENCE_TIMEOUT_MS = 60_000;
@@ -91,6 +96,14 @@ export function useStuckDetectorEvents(): void {
         } catch {
           /* malformed frame */
         }
+      },
+      onReconnect: () => {
+        logSystemMessage(
+          CONNECTION_CATEGORY,
+          "warning",
+          "Stuck-detector event stream reconnected (>60s silence)",
+          "The /api/stuck-detector/events/stream SSE feed stopped delivering frames for more than 60s; the client-side watchdog reopened the connection. New verdict transitions will resume after reconnect.",
+        );
       },
     });
     return () => {
