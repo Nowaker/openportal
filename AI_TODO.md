@@ -2318,7 +2318,7 @@ Design notes:
 - Separate follow-up: panel-context-new Pending PVC issue. Won't be fixed by the ingress flip. Needs PVC manifest applied (or a missing StorageClass / nodeAffinity diagnosed) in `panel-context-mcp` namespace.
 - This investigation did NOT modify the prod cluster. Only read-only `kubectl get`/`describe` calls + curl probes against public hostnames.
 
-### 113. SSE client heartbeat watchdog: detect silently-dead EventSource sockets and reopen + fire scoped SWR refetch (PENDING - in flight on branch sse-watchdog) [loser-bump from #100; parallel-agent race took #100, #101, #102, #103, #104, #105, and #112 while this work was mid-build; #113 is next unused]
+### 113. SSE client heartbeat watchdog: detect silently-dead EventSource sockets and reopen + fire scoped SWR refetch (DONE - 10d7411) [loser-bump from #100; parallel-agent race took #100, #101, #102, #103, #104, #105, and #112 while this work was mid-build; #113 is next unused]
 
 User prompt (verbatim):
 
