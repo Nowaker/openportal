@@ -2104,7 +2104,27 @@ Design notes:
 - SSE indicator stream (which feeds `useIndicator` / the badge's in-memory state) is left unchanged — it's a single global subscription, not per-session, so filtering per archived state would be a backend change. Indicator state still flows in; the badge just hides itself. Acceptable for now since the badge render is the visible surface.
 - [app-sidebar-nav.tsx](file:///home/nowaker/projekty/webapps/portal/apps/web/src/components/app-sidebar-nav.tsx) already has `isArchived` computed at line 372 from `currentSession.time.archived`; passes through to the badge component.
 
-## Q-DEFERRED (open questions awaiting user input)
+### 100. Drop thick primary left bar on user prompt bubble; keep just top/bottom borders (DONE - 38542c5)
+
+User prompt (verbatim):
+
+> continue.
+>
+> ALSO: i don't want that bright green bold border on the left. just top and bottom borders. as they are now. no change there.
+>
+> note: opencode-tools, including all plugins like stuck detector, got updated in the meantime. proceed accordingly.
+> rules of the game: Create a git worktree (if you haven't yet). Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards. Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+
+Design notes:
+
+- Follow-up on #95. The accent-family bubble (#95 swapped `accent` → `primary`) carried over the thick `border-l-4 border-l-primary` accent bar from the original. In the new primary tone (which on the user's active theme renders as a saturated green — `oklab(0.627 -0.167 0.099 / 0.15)` confirmed in DevTools) the 4px left bar dominates the bubble visually. The bg-tinted top/bottom borders alone are enough framing.
+- Single-line change at [apps/web/src/routes/_app/session/$id.tsx:2912](file:///home/nowaker/projekty/webapps/portal/apps/web/src/routes/_app/session/$id.tsx#L2912):
+  - OLD: `"bg-primary/15 border-t border-b border-l-4 border-primary/30 border-l-primary [[data-role=user]+&]:border-t-0"`
+  - NEW: `"bg-primary/15 border-t border-b border-primary/30 [[data-role=user]+&]:border-t-0"`
+- Synthetic-marker branch on line 2911 (`bg-muted/30` for stuck-detector / compaction-fixer rows) unchanged — those aren't user prompts.
+- Performed on worktree `~/projekty/webapps/portal-drop-leftbar` off `main-nowaker`. Pushed FF to both `origin` (gitlab) and `github` `main-nowaker` (`604e52b..38542c5`). Local main-nowaker FF'd via `git pull --ff-only`.
+- Deploy ran cleanly via `bash scripts/deploy.sh` from main checkout (WT was clean of source modifications, only untracked docs). New bundle `index-Ddk0BcQP.js` served on both dev (`:5001`) and prod (`:5000`) per the dev-first sequence in AGENTS.md.
+- Verified live on prod via chrome-devtools-mcp: the `[data-role="user"]` element shows `borderLeftWidth: 0px`, `borderTopWidth/BottomWidth: 1px solid` at `oklab(... / 0.3)`, `bg` at `oklab(... / 0.15)`. Confirmed the user's "bright green" was literal — their `--primary` resolves to oklab with `b*: -0.167` (greenish hue), not the blue I assumed when reading the raw oklch(0.546 0.245 262.881) declaration in `main.css:88` (which is the LIGHT default theme; the user is on a different theme variant where `--primary` shifts to green).
 
 - **Q1**: WebRTC for plugin internet access — propose an approach? (See PENDING #14)
 - **Q2**: L7 `?scope=` URL-param permalinks — concrete use-case example needed before implementing. (See PENDING #15)
