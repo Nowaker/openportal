@@ -2286,6 +2286,38 @@ Design notes:
   + prod:5000; both remotes synced at 2bd3d4d.
 
 
+### 112. Prod MCPs all return HTTP 503 (cluster-wide) — root-caused to legacy/new ingress split; fix needs Helm chart edit in dreamhost/mcp-proxy (Q-DEFERRED awaiting option pick)
+
+User prompt (verbatim):
+
+> confirm the work is done or continue.
+>
+> note: opencode-tools, including all plugins like stuck detector, got updated in the meantime. proceed accordingly.
+> rules of the game: Create a git worktree (if you haven't yet). Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards. Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+
+Design notes:
+
+- Surfaced while checking the "Deploy the application and make sure it works" clause of the rules of the game after #100 (google-calendar MCP OAuth) shipped. All 5 public MCP endpoints under `*.mcp.dh-int.com` return HTTP 503 (cluster-wide); all 5 under `*.mcp.dev.dh-int.com` return HTTP 200. NOT caused by the google-calendar commit `cd80b65` — that's been live for 27+ days and the 503 only became cluster-wide ~43h ago.
+- Cluster access: `~/.kube/dh-prod` kubeconfig works (Apr 8 2026 mtime is recent enough). `~/.kube/dh-bm-prod` (Aug 2018 mtime) creds are rejected with `the server has asked for the client to provide credentials` — stale and likely no longer the right cluster anyway. `~/.kube/dh-dev` works too. Other dh-* kubeconfigs point at nonexistent / unreachable cluster master DNS names.
+- Root cause: prod cluster has TWO parallel deployment patterns for each MCP, both with their own ingresses claiming non-overlapping hostnames:
+  1. Legacy `mcp-proxy` namespace, ingresses ~98d old (panel-context 26d), serving the canonical `*.mcp.dh-int.com` hostnames. ALL 5 pods are in `ImagePullBackOff` for 43h. Image registry resolves to NotFound:
+     ```
+     Failed to pull image "git.dreamhost.com:5001/dreamhost/dev/ai/mcp-proxy/google-calendar-multiuser-mcp:master":
+     rpc error: code = NotFound desc = ...: master: not found
+     ```
+     (same for context7, panel-context, perplexity, serper). The `:master` tags were either deleted during a registry cleanup or by the per-namespace migration script.
+  2. New per-namespace deployments (`google-calendar-mcp`, `panel-context-mcp`, `perplexity-mcp`, `serper-mcp`, `context7-mcp` namespaces), ingresses ~23d old, serving `*-new.mcp.dh-int.com` hostnames. 4/5 pods `1/1 Running`. Only `prod-panel-context-mcp-master-7fd56c75bb-swzsf` is `Pending` (23d) because `pod has unbound immediate PersistentVolumeClaims. not found` — separate PVC issue, pre-existing.
+- Verified `-new` hostnames work: `curl https://google-calendar-new.mcp.dh-int.com/health` returns `HTTP 200` with `{"status":"ok",...}`. Same for `context7-new`, `perplexity-new`, `serper-new`. `panel-context-new` returns 503 (the Pending pod).
+- The new ingresses are **ArgoCD + Helm managed** (`argocd.argoproj.io/tracking-id`, `app.kubernetes.io/managed-by: Helm`, `helm.sh/chart: google-calendar-mcp-0.1.0`). They also carry `external-dns.alpha.kubernetes.io/hostname: google-calendar-new.mcp.dh-int.com` — external-dns auto-manages the DNS record for the listed host. Direct `kubectl edit` would create drift that ArgoCD reverts on next sync, and would not update the DNS for the canonical hostname. So the fix MUST go through the Helm chart source in `dreamhost/mcp-proxy` repo + commit + push + CI deploy + ArgoCD reconcile, not via kubectl-edit.
+- Three options surfaced to user (held pending pick — AGENTS.md "shared infra changes → ASK FIRST"):
+  1. **Repoint legacy ingress backends** — `kubectl edit ingress -n mcp-proxy` to retarget each legacy ingress's `backend.service.name` + `.namespace` to the new namespace's service. Lowest immediate risk; ArgoCD might still revert if it tracks the legacy ingresses too. Probably partial.
+  2. **Move canonical hostname to new ingress + delete legacy** — Helm chart edit: add canonical host to new ingress's `rules`/`tls`/`external-dns` annotation, delete or scale-down legacy Helm release. Cleanest result; matches the migration's apparent intent (the `-new` suffix is a leftover).
+  3. **Restore the `:master` image tags** — re-push the deleted images to GitLab registry, legacy pods recover. Worst long-term; perpetuates the duplicate-deployment confusion.
+  - Recommended option 2. Awaiting explicit user pick before any infra mutation.
+- Snapshot of all 10 prod ingress YAMLs (5 legacy + 5 new) saved at `~/projekty/dreamhost/mcp-proxy-prod-ingress-snapshot-20260527-233828/` for safe revert if the fix lands and breaks something.
+- Separate follow-up: panel-context-new Pending PVC issue. Won't be fixed by the ingress flip. Needs PVC manifest applied (or a missing StorageClass / nodeAffinity diagnosed) in `panel-context-mcp` namespace.
+- This investigation did NOT modify the prod cluster. Only read-only `kubectl get`/`describe` calls + curl probes against public hostnames.
+
 ## Q-DEFERRED (open questions awaiting user input)
 
 - **Q1**: WebRTC for plugin internet access — propose an approach? (See PENDING #14)
