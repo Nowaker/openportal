@@ -215,7 +215,10 @@ async function hydrateFromStatusEndpoint(
           info: { time: { completed } },
         },
       });
-      rehydratePendingPromptsForSession(serverId, port, sessionId);
+      // TODO: implement rehydratePendingPromptsForSession (see header comment
+      // line 42-44 for design intent). The callsite previously threw
+      // ReferenceError on every hydration, swallowed by the outer try/catch,
+      // aborting the loop after the first session. Disabled until implemented.
     }
   } catch (err) {
     if (!signal.aborted) {
