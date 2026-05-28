@@ -154,134 +154,6 @@ interface SessionSearch {
   prompts?: 1;
 }
 
-// Plugin-driven stuck banner (Section B). The local stallVerdict
-// continues to render its two banners for backward compat when the
-// plugin isn't loaded; this one renders ONLY when the plugin's
-// verdict made it through and stallVerdict didn't already match.
-// Cause copy + action map per the STUCK_DETECTION_INCORPORATION
-// directive's Section B table.
-function StuckBanner({
-  cause,
-  retry,
-  sessionID,
-  onRestoreToComposer,
-}: {
-  cause: string;
-  retry: {
-    attempt: number;
-    next_ms: number | null;
-    message: string | null;
-    overdue: boolean;
-  } | null;
-  sessionID: string;
-  onRestoreToComposer: (() => void) | null;
-}) {
-  const [busy, setBusy] = useState(false);
-  const dispatch = async (causeArg: string) => {
-    setBusy(true);
-    try {
-      const r = await fetch("/api/stuck-detector/unstuck", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionID, cause: causeArg }),
-      });
-      const body = (await r.json().catch(() => null)) as {
-        ok?: boolean;
-        body?: { reason?: string };
-      } | null;
-      if (r.ok && body?.ok) {
-        toast.success("Stuck-detector action dispatched.");
-      } else {
-        toast.error(
-          body?.body?.reason ??
-            `Stuck-detector dispatch failed (HTTP ${r.status}).`,
-        );
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Network error dispatching unstuck",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  let title: string;
-  let actionLabel: string | null = null;
-  let actionCause = cause;
-  let secondaryButton: React.ReactNode = null;
-  switch (cause) {
-    case "no-dispatch":
-      title = "Prompt accepted but never dispatched.";
-      actionLabel = "Resubmit";
-      if (onRestoreToComposer) {
-        secondaryButton = (
-          <button
-            type="button"
-            onClick={onRestoreToComposer}
-            className="text-xs underline underline-offset-2 text-fg hover:text-primary"
-            title="Paste the prompt back into the composer"
-          >
-            Restore to composer
-          </button>
-        );
-      }
-      break;
-    case "stale-stream":
-      title = "Generation stalled.";
-      actionLabel = "Abort + Retry";
-      break;
-    case "stale-compaction":
-      title = "Compaction stalled.";
-      actionLabel = "Abort";
-      break;
-    case "question-with-queue":
-      title = "Question is blocking the queue.";
-      break;
-    case "no-runner":
-      title = "Generation runner died.";
-      actionLabel = "Restart";
-      break;
-    case "compaction-overflow":
-      title =
-        "Compaction overflowed context. Configure a larger compaction model or trim history.";
-      break;
-    case "retry-overdue":
-      title = retry
-        ? `Provider retry wedged (attempt ${retry.attempt}, due ${
-            retry.next_ms
-              ? Math.max(0, Math.round((Date.now() - retry.next_ms) / 1000))
-              : "?"
-          }s ago).`
-        : "Provider retry wedged.";
-      actionLabel = "Bump";
-      actionCause = "retry-overdue";
-      break;
-    default:
-      title = `Stuck: ${cause}`;
-      actionLabel = "Unstuck";
-  }
-
-  return (
-    <div className="py-3 px-3">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm text-warning-subtle-fg">{title}</span>
-        {actionLabel && (
-          <button
-            type="button"
-            onClick={() => void dispatch(actionCause)}
-            disabled={busy}
-            className="text-xs underline underline-offset-2 text-fg hover:text-primary disabled:opacity-50"
-          >
-            {busy ? "Dispatching…" : actionLabel}
-          </button>
-        )}
-        {secondaryButton}
-      </div>
-    </div>
-  );
-}
-
 export const Route = createFileRoute("/_app/session/$id")({
   component: SessionRouteWrapper,
   validateSearch: (raw: Record<string, unknown>): SessionSearch => ({
@@ -3921,68 +3793,6 @@ function SessionPage() {
   }, [messages]);
   const isQuestionBlocked = blockingQuestionMessageId !== null;
 
-  // Stall verdict matching opencode-stuck-detector's three-state vocabulary.
-  // 'silent' (age < 30s): the assistant just received the prompt, give
-  // opencode room to dispatch the LLM call (claude-opus-4-7 with
-  // thinking=max routinely takes 5-15s of plugin hooks + tool resolution
-  // + LLM time-to-first-token before /session/status flips to busy).
-  // No banner during this window prevents the "Server is idle" false
-  // positive that led to double-submissions on the old 5s threshold.
-  // 'no-dispatch' (age >= 30s AND opencode reports idle): the prompt was
-  // persisted but generation never dispatched - the same bug the
-  // stuck-detector flags. Offer Resubmit + Restore-to-composer.
-  // 'stuck-busy' (age >= 5min AND opencode reports busy): opencode says
-  // it is generating but nothing has streamed in five minutes. Likely a
-  // wedged session on the opencode side. Offer Abort+Retry which calls
-  // /session/:id/abort first (free the runner) then re-submits the last
-  // user prompt.
-  const DISPATCH_GRACE_MS = 30_000;
-  const STUCK_BUSY_THRESHOLD_MS = 5 * 60_000;
-  const [busyIdleSince, setBusyIdleSince] = useState<number | null>(null);
-  useEffect(() => {
-    if (!isAssistantBusy) {
-      if (busyIdleSince !== null) setBusyIdleSince(null);
-      return;
-    }
-    if (busyIdleSince === null) {
-      setBusyIdleSince(Date.now());
-    }
-  }, [isAssistantBusy, busyIdleSince]);
-  const [stallElapsedTick, setStallElapsedTick] = useState(0);
-  useEffect(() => {
-    if (busyIdleSince === null) return;
-    const id = window.setInterval(() => setStallElapsedTick((n) => n + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [busyIdleSince]);
-  const stallVerdict = useMemo<
-    "silent" | "no-dispatch" | "stuck-busy" | null
-  >(() => {
-    void stallElapsedTick;
-    if (!isAssistantBusy) return null;
-    if (!busyIdleSince) return null;
-    const age = Date.now() - busyIdleSince;
-    if (age < DISPATCH_GRACE_MS) return "silent";
-    if (!isServerBusy) {
-      // If the last message is already an assistant turn, generation
-      // DID dispatch and produced output - we just don't have
-      // time.completed propagated yet (cache lag from the in-memory
-      // LRU + SQLite throttle, or the streamed-but-not-finalized
-      // window). Showing "Server is idle - generation never started"
-      // when a real response is visible above is nonsense and led to
-      // confused double-resubmits. The 'no-dispatch' verdict is for
-      // the case where the user submitted a prompt and got back zero
-      // assistant content; an existing assistant message disqualifies
-      // that read. The Reconciling pill on the message itself already
-      // surfaces the time.completed-lag state for the rare cases when
-      // operators care.
-      const last = messages[messages.length - 1];
-      if (last?.info.role === "assistant") return null;
-      return "no-dispatch";
-    }
-    if (age >= STUCK_BUSY_THRESHOLD_MS) return "stuck-busy";
-    return null;
-  }, [isAssistantBusy, busyIdleSince, isServerBusy, stallElapsedTick, messages]);
-
   // Pending-prompt safety net: holds the text the user last submitted that
   // hasn't yet received an assistant reply. Hydrated from localStorage on
   // mount/sessionId change. Cleared when an assistant message arrives in
@@ -4419,7 +4229,6 @@ function SessionPage() {
     messages,
     isAssistantBusy,
     isServerBusy,
-    stallVerdict,
     scrollToBottom,
   ]);
 
@@ -4867,86 +4676,6 @@ function SessionPage() {
   );
 
   // Recovery for the 'prompt accepted but generation never dispatched'
-  // failure mode. Walk the messages backwards to the last user-role
-  // message that has no assistant follow-up, take its text, and
-  // re-submit via prompt_async. opencode WILL create a new user
-  // message (no API to re-fire generation against an existing one) -
-  // the caller can revert the duplicate later if needed. The point is
-  // to unstick the session.
-  const handleRetryLastUserPrompt = useCallback(async () => {
-    if (!port || !sessionId) return;
-    let lastUserText: string | null = null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (!m) continue;
-      if (m.info.role === "assistant") break;
-      if (m.info.role === "user") {
-        for (const part of m.parts) {
-          if (part.type === "text" && part.text) {
-            lastUserText = part.text;
-            break;
-          }
-        }
-        if (lastUserText) break;
-      }
-    }
-    if (!lastUserText) return;
-    try {
-      const retryRes = await fetch(
-        `/api/opencode/${port}/session/${sessionId}/prompt`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: lastUserText,
-            model: isOverridingDefault() ? selectedModel : undefined,
-            agent: selectedAgent,
-            variant: thinkingEffort || undefined,
-          }),
-        },
-      );
-      if (retryRes.ok) {
-        const retryResult = (await retryRes
-          .json()
-          .catch(() => null)) as { recoveredFromRestart?: boolean } | null;
-        if (retryResult?.recoveredFromRestart) {
-          toast.success(
-            "Recovered: this session was stuck from a previous restart.",
-          );
-        }
-      }
-      mutateSessionMessages(port, sessionId);
-    } catch {
-      // Best-effort; the indicator will continue to show the stuck
-      // state and the user can hit the button again.
-    }
-  }, [
-    port,
-    sessionId,
-    messages,
-    isOverridingDefault,
-    selectedModel,
-    selectedAgent,
-  ]);
-
-  // stuck-busy recovery: opencode reports busy + ours agrees, but no
-  // streaming progress for >= 5 minutes. abort the wedged generation
-  // first (POST /session/:id/abort), then re-submit the last user
-  // prompt. The order matters - if we resubmit without aborting,
-  // opencode's queue piles up behind the wedged turn.
-  //
-  // Declared AFTER handleRetryLastUserPrompt because the deps array
-  // (a real expression) reads handleRetryLastUserPrompt at render
-  // time. With handleAbortAndRetry placed BEFORE handleRetryLast
-  // UserPrompt, the dep-array evaluation TDZ-errors on the const
-  // before initialization; minifier symbol-reuse for the same name
-  // means the throw surfaces as the cryptic 'Cannot access X before
-  // initialization' from anywhere downstream in the same render.
-  const handleAbortAndRetry = useCallback(async () => {
-    await handleAbort();
-    await handleRetryLastUserPrompt();
-  }, [handleAbort, handleRetryLastUserPrompt]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionId || !port) return;
@@ -5221,14 +4950,6 @@ function SessionPage() {
       // in the DB). Optimistically claiming opencode-accepted here
       // was a lie the user noticed - the 'Sent to OpenCode' badge
       // would show before the worker had even run.
-      const promptResult = (await response
-        .json()
-        .catch(() => null)) as { recoveredFromRestart?: boolean } | null;
-      if (promptResult?.recoveredFromRestart) {
-        toast.success(
-          "Recovered: this session was stuck from a previous restart.",
-        );
-      }
       let postClearValue = "";
       if (textareaRef.current) {
         const result = smartPostSubmitClear(
@@ -5689,73 +5410,6 @@ function SessionPage() {
             </div>
           </div>
         )}
-        {stallVerdict === "no-dispatch" && (
-          <div className="py-3 px-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-warning-subtle-fg">
-                Server is idle - prompt accepted but generation never started.
-              </span>
-              <button
-                type="button"
-                onClick={() => handleRetryLastUserPrompt()}
-                className="text-xs underline underline-offset-2 text-fg hover:text-primary"
-              >
-                Resubmit
-              </button>
-              {pendingPrompt && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (textareaRef.current) {
-                      textareaRef.current.value = pendingPrompt;
-                      setHasContent(pendingPrompt.length > 0);
-                      textareaRef.current.focus();
-                    }
-                  }}
-                  className="text-xs underline underline-offset-2 text-fg hover:text-primary"
-                  title="Paste the prompt text back into the composer so you can edit and resend it"
-                >
-                  Restore to composer
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-        {sessionIndicator?.stuck_verdict === "stuck" &&
-          sessionIndicator.stuck_cause ? (
-            <StuckBanner
-              cause={sessionIndicator.stuck_cause}
-              retry={sessionIndicator.retry}
-              sessionID={sessionId}
-              onRestoreToComposer={
-                pendingPrompt
-                  ? () => {
-                      if (textareaRef.current) {
-                        textareaRef.current.value = pendingPrompt;
-                        setHasContent(pendingPrompt.length > 0);
-                        textareaRef.current.focus();
-                      }
-                    }
-                  : null
-              }
-            />
-          ) : stallVerdict === "stuck-busy" ? (
-            <div className="py-3 px-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-warning-subtle-fg">
-                  Session may be wedged - OpenCode reports busy but no streaming progress.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleAbortAndRetry()}
-                  className="text-xs underline underline-offset-2 text-fg hover:text-primary"
-                  title="Cancel the in-flight turn on OpenCode, then re-submit the last user prompt"
-                >
-                  Abort + retry
-                </button>
-              </div>
-            </div>
-          ) : null}
       </div>
         {/* Vertical stack of nav buttons in the bottom-right of the chat
             scroll area:

@@ -3,24 +3,21 @@
 // Async-by-default since the pending-prompt durability rework. Flow:
 //
 //   1. Parse + validate body.
-//   2. Run the cheap stuck-from-restart preflight so the browser
-//      gets a recoveredFromRestart signal for the recovery toast.
-//      The cleanup-stuck-session call that used to live here is
-//      gone - the worker retries failed deliveries with backoff,
-//      which subsumes the cleanup case (a zombie session would
-//      cause promptAsync to fail, the worker retries, eventually
-//      opencode's own state self-heals).
-//   3. INSERT a row in `prompts` with status='pending' + the full
+//   2. INSERT a row in `prompts` with status='pending' + the full
 //      opencode payload as JSON. After this returns the prompt is
 //      durably stored - openportal can crash and a fresh process
 //      will resume delivery on the next worker scan.
-//   4. Wake the worker so it doesn't wait for the next interval
+//   3. Wake the worker so it doesn't wait for the next interval
 //      tick.
-//   5. Return 202 to the browser. The composer clears immediately;
+//   4. Return 202 to the browser. The composer clears immediately;
 //      the worker drains the queue and transitions status to
 //      'delivered' once opencode's promptAsync 204s (which is
 //      itself near-instant - opencode just appends to the session
 //      DB and serialises turns server-side).
+//
+// No "stuck-from-restart" preflight. Submit just submits. Special
+// recovery actions (abort, unstuck, bump-overdue) only flow through
+// the STUCK badge in the session title line.
 
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
@@ -37,7 +34,6 @@ import {
 import { invalidateMessagesCache } from "../../../../lib/messages-cache";
 import { invalidateSessionsCache } from "../../../../lib/sessions-cache";
 import { archivePrompt } from "../../../../lib/prompt-archive";
-import { detectStuckFromRestart } from "../../../../lib/stuck-detector-bridge";
 import { wakePendingPromptWorker } from "../../../../plugins/pending-prompt-worker";
 
 const attachmentSchema = z.object({
@@ -166,32 +162,6 @@ export default defineHandler(async (event) => {
     messageID: opencodeMessageId,
   };
 
-  // Stuck-from-restart probe + abort moved AFTER archivePrompt and made
-  // fire-and-forget. The probe makes multiple opencode SDK calls;
-  // awaiting it blocked the /prompt 202 response by up to opencode's
-  // request timeout when opencode was sick. User invariant: 'openportal
-  // must accept the prompt. Period. Opencode up or down, whatever.' The
-  // recoveredFromRestart toast is sacrificed (we set it to false always)
-  // - the recovery still HAPPENS in the background, the user just
-  // doesn't get the heads-up toast on this turn. If we need the toast
-  // back, the worker could emit a system message after a background
-  // abort succeeds.
-  const recoveredFromRestart = false;
-  void (async () => {
-    try {
-      if (await detectStuckFromRestart(port, id)) {
-        const client = await getOpencodeClient(port);
-        const directory = await resolveSessionDirectory(port, id);
-        await client.session.abort({
-          path: { id },
-          query: directory ? { directory } : undefined,
-        });
-      }
-    } catch {
-      // background; failures here MUST NOT block the /prompt path
-    }
-  })();
-
   const row = await archivePrompt({
     port,
     sessionId: id,
@@ -232,7 +202,6 @@ export default defineHandler(async (event) => {
       return {
         accepted: true,
         status: "delivered" as const,
-        recoveredFromRestart,
       };
     } catch (error) {
       throw new HTTPError(
@@ -249,6 +218,5 @@ export default defineHandler(async (event) => {
     accepted: true,
     id: row.id,
     status: "pending" as const,
-    recoveredFromRestart,
   };
 });
