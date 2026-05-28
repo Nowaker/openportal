@@ -2582,3 +2582,20 @@ Design notes:
 - One-line drift fix in the "Connection resilience" section of `AGENTS.md` (under `## UX preferences`). Replaced "5s timeout" with the actual `15s timeout` value, plus the failure-threshold detail that was also missing from the doc (2 consecutive failed probes before flipping the banner to `openportal-down`; probe interval drops to 2s while non-connected). Both facts live verbatim in [`use-connection-monitor.ts:5-13`](file:///home/nowaker/projekty/webapps/portal/apps/web/src/hooks/use-connection-monitor.ts#L5-L13).
 - Pure doc change. No worktree (per AGENTS.md "Develop and test there (when possible)" — a one-line doc fix is the case where it's NOT possible / NOT needed). No deploy (AGENTS.md content does not ship to the running bundle; the file is read by AI agents, not by the Nitro server). No browser verification needed (no UI change).
 - Scope: smallest correct change. The other bullets in the section (Reconnecting banner on disconnect, global `mutate(() => true)` on reconnect, focus / visibilitychange / online triggers) all still match the code, so left untouched.
+
+### 117. scripts/run-worktree.sh: seed openportal.json with $TS_IP instead of hardcoded 127.0.0.1 (DONE - <COMMIT-SHA>) [loser-bump: originally #113; bumped through #115 then #116 because main-nowaker advanced through #113 (sse watchdog 10d7411), #114 (stuck-handling cleanup 6707dc4), #115 (server-config-persist ebcde74), and #116 (AGENTS.md probe-timeout drift 3a049de) during repeated rebases]
+
+User prompt (verbatim):
+
+> (no explicit user prompt — autonomous fix during text-select-menu task in worktree text-select-menu-flip)
+
+Design notes:
+
+- Observed first-hand while running `bash scripts/run-worktree.sh 5200` for the text-select-menu fix worktree (#103 / c8ab08d): the worktree's auto-approve-worker and indicator-broadcaster spammed reconnect-failed loops because the seeded `~/.openportal-worktrees/<branch>/openportal.json` pointed at `127.0.0.1:4096`, but opencode-serve-tailscale.service binds to the tailnet IP `100.105.229.19:4096` (verified via `ss -tlnp | grep :4096`). Loopback connect ECONNREFUSED forever; worktree UI saw no real opencode state.
+- Worked around manually by `sed -i 's|"host": "127.0.0.1"|"host": "100.105.229.19"|'` on the seeded file, then restarted the worktree server. Fix here makes that workaround unnecessary.
+- Fix: change the heredoc on [scripts/run-worktree.sh:72](file:///home/nowaker/projekty/webapps/portal/scripts/run-worktree.sh#L72) from literal `"host": "127.0.0.1"` to `"host": "$TS_IP"`. `$TS_IP` was already detected at line 59 via `tailscale ip -4 2>/dev/null | head -n1 || echo '127.0.0.1'` and used for `--hostname "$TS_IP"`. The heredoc uses `<<EOF` (no-quoted EOF) so variable expansion is enabled.
+- Fallback path preserved: if `tailscale ip -4` fails (rare on this host), $TS_IP falls back to `127.0.0.1`, which matches the OLD behavior — so the patch is a strict improvement, never worse.
+- Updated the misleading comment "points at the user's prod opencode (127.0.0.1:4096)" → "points at $TS_IP (not loopback) because opencode-serve-tailscale binds to the tailnet IP - 127.0.0.1:4096 would yield ECONNREFUSED forever" so the next agent doesn't "simplify" `$TS_IP` back to a literal.
+- Also updated the trailing echo at line 81 from `(-> 127.0.0.1:4096)` to `(-> $TS_IP:4096)` so the operator sees the actual address.
+- Scope deliberately narrow: only the seed value + adjacent comment + echo. Did NOT change the surrounding bind / hostname / launcher logic, the directory layout, the per-branch isolation paths, the symlink dance, or the systemd-style binding rules. Surgical 4-line diff.
+- Other in-flight worktrees already created with the buggy seed will keep using `127.0.0.1` until their `~/.openportal-worktrees/<branch>/openportal.json` is removed (the script's `[[ ! -f ... ]]` guard skips re-seed on existing files). Fresh worktrees will pick up the fix immediately.

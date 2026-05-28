@@ -58,9 +58,9 @@ fi
 # tailscale isn't up (rare on this host but keeps the script portable).
 TS_IP="$(tailscale ip -4 2>/dev/null | head -n1 || echo '127.0.0.1')"
 
-# Seed the isolated openportal config on first run only. The seed
-# points at the user's prod opencode (127.0.0.1:4096) so the worktree
-# UI sees real sessions / MCPs / state. Customize if needed.
+# Seed the isolated openportal config on first run only. Points at
+# $TS_IP (not loopback) because opencode-serve-tailscale binds to the
+# tailnet IP - 127.0.0.1:4096 would yield ECONNREFUSED forever.
 if [[ ! -f "$ISO_DIR/openportal.json" ]]; then
   cat > "$ISO_DIR/openportal.json" <<EOF
 {
@@ -69,7 +69,7 @@ if [[ ! -f "$ISO_DIR/openportal.json" ]]; then
     {
       "id": "srv-local-4096",
       "label": "opencode-serve-tailscale",
-      "host": "127.0.0.1",
+      "host": "$TS_IP",
       "port": 4096,
       "ephemeral": false,
       "addedAt": "$(date -Iseconds)"
@@ -78,7 +78,7 @@ if [[ ! -f "$ISO_DIR/openportal.json" ]]; then
   "activeServerId": "srv-local-4096"
 }
 EOF
-  echo "[worktree-runner] seeded $ISO_DIR/openportal.json (-> 127.0.0.1:4096)"
+  echo "[worktree-runner] seeded $ISO_DIR/openportal.json (-> $TS_IP:4096)"
 fi
 
 cat <<EOF
