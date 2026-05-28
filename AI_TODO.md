@@ -2570,3 +2570,15 @@ Design notes:
   - The history dedupe contract (still by stringified `directories` comparison), the history cap (10 entries), or the empty-prev / unchanged-prev suppression — kept verbatim.
   - The top-level (non-per-server) `directories` config in `openportal.json` — that's hand-edited per the existing file comment; no UI editor exists for it.
   - Asset retention, deploy infrastructure, the Caddy reverse-proxy block, or any systemd-unit-level config. Pure source fix; deploy used the canonical `scripts/deploy.sh` path.
+
+### 116. AGENTS.md: connection-monitor probe timeout drift — doc said 5s, actual code is 15s (DONE - 3a049de)
+
+User prompt (verbatim):
+
+> Self-initiated cleanup picked up during the SSE-watchdog continuation. The watchdog implementation (#113) flagged in its design notes that AGENTS.md "Connection resilience" section is out of sync with the actual code — doc says "5s timeout", real value at `use-connection-monitor.ts:7` is `PROBE_TIMEOUT_MS = 15_000`. Internal continuation prompt asked me to follow up on that flagged drift.
+
+Design notes:
+
+- One-line drift fix in the "Connection resilience" section of `AGENTS.md` (under `## UX preferences`). Replaced "5s timeout" with the actual `15s timeout` value, plus the failure-threshold detail that was also missing from the doc (2 consecutive failed probes before flipping the banner to `openportal-down`; probe interval drops to 2s while non-connected). Both facts live verbatim in [`use-connection-monitor.ts:5-13`](file:///home/nowaker/projekty/webapps/portal/apps/web/src/hooks/use-connection-monitor.ts#L5-L13).
+- Pure doc change. No worktree (per AGENTS.md "Develop and test there (when possible)" — a one-line doc fix is the case where it's NOT possible / NOT needed). No deploy (AGENTS.md content does not ship to the running bundle; the file is read by AI agents, not by the Nitro server). No browser verification needed (no UI change).
+- Scope: smallest correct change. The other bullets in the section (Reconnecting banner on disconnect, global `mutate(() => true)` on reconnect, focus / visibilitychange / online triggers) all still match the code, so left untouched.
