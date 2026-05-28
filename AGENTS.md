@@ -930,7 +930,7 @@ hash array, and TabPanel ids all live in
 | `prompt` | Default model, default thinking effort, default agent (per-server / global / default). Voice input. |
 | `composer` | Enter-key behaviour, auto-approve permissions (global default + per-session overrides). |
 | `chat` | Date/time format (locale / 12h / 24h), link opening behavior, per-icon visibility grid, hover info toggle, info icon toggle, markdown rendering. |
-| `tools` | The system + custom tool catalog with enable / edit / reset, project-init ordering. |
+| `tools` | System + custom tool catalog with three per-row flags (On / Init / Slash). Drag-handle on the LEFT of each row reorders Init-marked rows in the durable `projectInitOrder`. Init pre-checks the row in the new-session picker and concatenates body on submit (archived as `/template Name` lines). Slash registers the row as a `/template <name>` autocomplete entry in both composers. Stock tools have Edit + Disable (no Delete); custom tools have Edit + Delete (no [Custom] badge — the "Your custom tools" section header carries that). Separate "Filesystem templates" section lists per-workspace `.vibekick/templates/*.md` files with the same three flags driven by YAML frontmatter (toggle a checkbox to rewrite the YAML). "+ Add custom tool" footer is sticky. |
 | `content` | Content visibility — what types of content show in the chat log and how (tool output byte cap; Section I will expand this into a per-content-type visibility table). |
 | `performance` | Live updates strategy (per-platform) and other UI responsiveness knobs. |
 | `diagnostics` | Health + presence + companion plugin state. |
