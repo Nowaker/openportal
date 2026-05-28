@@ -2583,7 +2583,7 @@ Design notes:
 - Pure doc change. No worktree (per AGENTS.md "Develop and test there (when possible)" — a one-line doc fix is the case where it's NOT possible / NOT needed). No deploy (AGENTS.md content does not ship to the running bundle; the file is read by AI agents, not by the Nitro server). No browser verification needed (no UI change).
 - Scope: smallest correct change. The other bullets in the section (Reconnecting banner on disconnect, global `mutate(() => true)` on reconnect, focus / visibilitychange / online triggers) all still match the code, so left untouched.
 
-### 117. scripts/run-worktree.sh: seed openportal.json with $TS_IP instead of hardcoded 127.0.0.1 (DONE - <COMMIT-SHA>) [loser-bump: originally #113; bumped through #115 then #116 because main-nowaker advanced through #113 (sse watchdog 10d7411), #114 (stuck-handling cleanup 6707dc4), #115 (server-config-persist ebcde74), and #116 (AGENTS.md probe-timeout drift 3a049de) during repeated rebases]
+### 117. scripts/run-worktree.sh: seed openportal.json with $TS_IP instead of hardcoded 127.0.0.1 (DONE - 88695d8) [loser-bump: originally #113; bumped through #115 then #116 because main-nowaker advanced through #113 (sse watchdog 10d7411), #114 (stuck-handling cleanup 6707dc4), #115 (server-config-persist ebcde74), and #116 (AGENTS.md probe-timeout drift 3a049de) during repeated rebases]
 
 User prompt (verbatim):
 
