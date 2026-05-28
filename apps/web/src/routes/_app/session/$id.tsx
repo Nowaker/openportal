@@ -3848,6 +3848,13 @@ function SessionPage() {
 
   const sessions: Session[] = sessionsData ?? [];
   const currentSession = sessions.find((s) => s.id === sessionId);
+  const archivedTs = (
+    currentSession as
+      | (typeof currentSession & { time?: { archived?: number } })
+      | undefined
+  )?.time?.archived;
+  const sessionIsArchived =
+    typeof archivedTs === "number" && archivedTs > 0;
 
   useEffect(() => {
     if (currentSession?.title) {
@@ -5845,20 +5852,14 @@ function SessionPage() {
 
       {!composerCollapsed && (
         <div
-          className="border-t border-border shrink-0 relative flex flex-col overflow-hidden"
+          className={`border-t border-border shrink-0 relative flex flex-col overflow-hidden${
+            sessionIsArchived ? " [&>*:not([data-archived-banner])]:opacity-60 [&>*:not([data-archived-banner])]:pointer-events-none" : ""
+          }`}
           style={{ maxHeight: `${composerMaxHeight}px` }}
+          aria-disabled={sessionIsArchived}
         >
-          {(() => {
-            const archivedTs = (
-              currentSession as
-                | (typeof currentSession & {
-                    time?: { archived?: number };
-                  })
-                | undefined
-            )?.time?.archived;
-            const sessionIsArchived =
-              typeof archivedTs === "number" && archivedTs > 0;
-            return sessionIsArchived ? (
+          {sessionIsArchived && (
+            <div data-archived-banner>
               <ArchivedSessionOverlay
                 port={port}
                 sessionId={sessionId}
@@ -5873,8 +5874,8 @@ function SessionPage() {
                   );
                 }}
               />
-            ) : null;
-          })()}
+            </div>
+          )}
           <>
             <div className="flex items-center gap-0.5 sm:gap-1 px-1 py-1 text-[10px] sm:text-sm [&_button[data-slot=control]]:py-0.5 sm:[&_button[data-slot=control]]:py-1 [&_button[data-slot=control]]:px-1.5 sm:[&_button[data-slot=control]]:px-2.5 [&_button[data-slot=control]]:text-[10px] sm:[&_button[data-slot=control]]:text-sm">
               <div data-test="portal-composer-agent" className="flex-1 min-w-0 sm:flex-none sm:shrink-0 sm:w-fit [&>*]:!w-full sm:[&>*]:!w-auto">
@@ -6230,8 +6231,15 @@ function SessionPage() {
                         }
                       }
                     }}
-                    placeholder="Type your message..."
-                    className="resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-14"
+                    placeholder={
+                      sessionIsArchived
+                        ? "This session is archived. Unarchive it to send new prompts."
+                        : "Type your message..."
+                    }
+                    isDisabled={sessionIsArchived}
+                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-14${
+                      sessionIsArchived ? " text-center placeholder:text-center" : ""
+                    }`}
                   />
                 <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
                   {(sttMode !== "off" && speechRecognition.isSupported) ||
