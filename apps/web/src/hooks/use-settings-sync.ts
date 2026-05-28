@@ -82,6 +82,7 @@ export function useSettingsSync(): boolean {
       useToolsStore.subscribe((s) =>
         push("tools", {
           disabledIds: s.disabledIds,
+          burgerHiddenIds: s.burgerHiddenIds,
           systemOverrides: s.systemOverrides,
           customTools: s.customTools,
         }),

@@ -34,8 +34,14 @@ const fetcher = async (url: string) => {
 const ALL_KEY = "/api/vibekick-templates";
 
 export function useAllFsTemplates() {
+  // keepPreviousData: when SWR revalidates (e.g. after a toggle write
+  // calls globalMutate), the cached list stays painted instead of
+  // unmounting to a loader. The consumer can read `isValidating` from
+  // the returned object to render a "Rescanning files…" indicator
+  // without dropping the visible rows.
   return useSWR<AllFsTemplatesResponse>(ALL_KEY, fetcher, {
     revalidateOnFocus: false,
+    keepPreviousData: true,
   });
 }
 
@@ -45,6 +51,7 @@ export function useFsTemplatesForDirectory(directory?: string | null) {
     : null;
   return useSWR<DirectoryFsTemplatesResponse>(key, fetcher, {
     revalidateOnFocus: false,
+    keepPreviousData: true,
   });
 }
 

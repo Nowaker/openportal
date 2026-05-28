@@ -4016,6 +4016,7 @@ function SessionPage() {
   const { data: agentsData } = useAgents();
   const { data: providersData } = useProviders();
   const slashToolDisabledIds = useToolsStore((s) => s.disabledIds);
+  const slashToolBurgerHiddenIds = useToolsStore((s) => s.burgerHiddenIds);
   const slashToolSystemOverrides = useToolsStore((s) => s.systemOverrides);
   const slashToolCustom = useToolsStore((s) => s.customTools);
   const slashProjectInitOrder = useToolsStore((s) => s.projectInitOrder);
@@ -4024,6 +4025,7 @@ function SessionPage() {
     () =>
       resolveToolsFromState({
         disabledIds: slashToolDisabledIds,
+        burgerHiddenIds: slashToolBurgerHiddenIds,
         systemOverrides: slashToolSystemOverrides,
         customTools: slashToolCustom,
         projectInitOrder: slashProjectInitOrder,
@@ -4031,6 +4033,7 @@ function SessionPage() {
       }),
     [
       slashToolDisabledIds,
+      slashToolBurgerHiddenIds,
       slashToolSystemOverrides,
       slashToolCustom,
       slashProjectInitOrder,
@@ -4059,7 +4062,7 @@ function SessionPage() {
   // templates come from the directory-scoped vibekick-templates API.
   const templateSlashEntries = useMemo(() => {
     const local = slashResolvedTools
-      .filter((t) => t.enabled && t.isSlash)
+      .filter((t) => !t.isDisabled && t.isSlash)
       .map((t) => ({
         name: `template ${t.name}`,
         body: t.prompt,

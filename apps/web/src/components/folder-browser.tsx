@@ -400,6 +400,7 @@ function CreateProjectView({
   onClose,
 }: CreateProjectViewProps) {
   const disabledIds = useToolsStore((s) => s.disabledIds);
+  const burgerHiddenIds = useToolsStore((s) => s.burgerHiddenIds);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
@@ -409,12 +410,20 @@ function CreateProjectView({
     () =>
       resolveToolsFromState({
         disabledIds,
+        burgerHiddenIds,
         systemOverrides,
         customTools,
         projectInitOrder,
         slashCommandIds,
       }),
-    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
+    [
+      disabledIds,
+      burgerHiddenIds,
+      systemOverrides,
+      customTools,
+      projectInitOrder,
+      slashCommandIds,
+    ],
   );
 
   // Initial ordering: init-marked tools first (in projectInitOrder),

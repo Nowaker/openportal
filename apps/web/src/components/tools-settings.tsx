@@ -3,7 +3,20 @@ import { Bars3Icon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader } from "@/components/ui/loader";
+import {
+  PathInput,
+  type PathInputEntry,
+  type PathInputHandle,
+} from "@/components/ui/path-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { splitInput } from "@/lib/path-utils";
 import {
   resolveToolsFromState,
   useToolsStore,
@@ -19,6 +32,7 @@ import {
 
 function useResolvedTools(): ResolvedTool[] {
   const disabledIds = useToolsStore((s) => s.disabledIds);
+  const burgerHiddenIds = useToolsStore((s) => s.burgerHiddenIds);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
@@ -27,12 +41,20 @@ function useResolvedTools(): ResolvedTool[] {
     () =>
       resolveToolsFromState({
         disabledIds,
+        burgerHiddenIds,
         systemOverrides,
         customTools,
         projectInitOrder,
         slashCommandIds,
       }),
-    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
+    [
+      disabledIds,
+      burgerHiddenIds,
+      systemOverrides,
+      customTools,
+      projectInitOrder,
+      slashCommandIds,
+    ],
   );
 }
 
@@ -57,21 +79,28 @@ function FlagCheckbox({
   checked,
   onChange,
   title,
+  disabled,
 }: {
   label: string;
   checked: boolean;
   onChange: (next: boolean) => void;
   title: string;
+  disabled?: boolean;
 }) {
   return (
     <label
-      className="inline-flex w-14 items-center gap-1 text-[10px] uppercase tracking-wide text-muted-fg cursor-pointer"
+      className={`inline-flex w-14 items-center gap-1 text-[10px] uppercase tracking-wide text-muted-fg ${
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+      }`}
       title={title}
     >
       <input
         type="checkbox"
-        className="size-4 cursor-pointer accent-primary"
+        className={`size-4 accent-primary ${
+          disabled ? "cursor-not-allowed" : "cursor-pointer"
+        }`}
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
       {label}
@@ -100,7 +129,8 @@ function SystemToolRow({
   onDrop,
   onDragEnd,
 }: ToolRowProps) {
-  const setEnabled = useToolsStore((s) => s.setEnabled);
+  const setBurgerVisible = useToolsStore((s) => s.setBurgerVisible);
+  const setFullyDisabled = useToolsStore((s) => s.setFullyDisabled);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
   const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const setSystemOverride = useToolsStore((s) => s.setSystemOverride);
@@ -119,9 +149,11 @@ function SystemToolRow({
 
   if (tool.kind !== "system") return null;
 
+  const isDisabled = tool.isDisabled;
+
   return (
     <div
-      draggable={draggable}
+      draggable={draggable && !isDisabled}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -132,37 +164,42 @@ function SystemToolRow({
       onDragEnd={onDragEnd}
       className={`rounded-lg border border-border bg-bg p-2 space-y-2 ${
         isDragOver ? "border-primary/40 bg-primary/5" : ""
-      }`}
+      } ${isDisabled ? "opacity-50" : ""}`}
     >
       <div className="flex items-center gap-2">
         <Bars3Icon
           className={`size-4 shrink-0 ${
-            draggable
+            draggable && !isDisabled
               ? "text-muted-fg cursor-grab active:cursor-grabbing"
               : "text-muted-fg/30"
           }`}
           title={
-            draggable
-              ? "Drag to reorder among init templates"
-              : "Mark as Init to enable drag-reorder"
+            isDisabled
+              ? "Re-enable this template to drag-reorder"
+              : draggable
+                ? "Drag to reorder among init templates"
+                : "Mark as Init to enable drag-reorder"
           }
         />
         <FlagCheckbox
-          label="On"
-          title="Enabled - appears in the topbar Tools menu"
-          checked={tool.enabled}
-          onChange={(next) => setEnabled(tool.id, next)}
+          label="Burger"
+          title="Show in the topbar Tools (burger) menu"
+          checked={tool.isInBurger && !isDisabled}
+          disabled={isDisabled}
+          onChange={(next) => setBurgerVisible(tool.id, next)}
         />
         <FlagCheckbox
           label="Init"
-          title="Include in new-project init prompt"
-          checked={tool.isInit}
+          title="Pre-checked in the new-session picker"
+          checked={tool.isInit && !isDisabled}
+          disabled={isDisabled}
           onChange={(next) => toggleProjectInit(tool.id, next)}
         />
         <FlagCheckbox
           label="Slash"
-          title="Available as /<name> slash command in composers"
-          checked={tool.isSlash}
+          title="Available as /template <name> slash command in composers"
+          checked={tool.isSlash && !isDisabled}
+          disabled={isDisabled}
           onChange={(next) => toggleSlashCommand(tool.id, next)}
         />
         <div className="min-w-0 flex-1 px-2">
@@ -180,6 +217,7 @@ function SystemToolRow({
           <Button
             size="xs"
             intent="outline"
+            isDisabled={isDisabled}
             onPress={() => setEditing((v) => !v)}
           >
             {editing ? "Cancel" : "Edit"}
@@ -187,11 +225,11 @@ function SystemToolRow({
           <Button
             size="xs"
             intent="outline"
-            onPress={() => setEnabled(tool.id, !tool.enabled)}
+            onPress={() => setFullyDisabled(tool.id, !isDisabled)}
           >
-            {tool.enabled ? "Disable" : "Enable"}
+            {isDisabled ? "Enable" : "Disable"}
           </Button>
-          {tool.isOverridden && (
+          {tool.isOverridden && !isDisabled && (
             <Button
               size="xs"
               intent="outline"
@@ -205,13 +243,14 @@ function SystemToolRow({
           )}
         </div>
       </div>
-      {editing && (
+      {editing && !isDisabled && (
         <div className="space-y-2 pt-2 border-t border-border/50">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-fg">
+          <div className="flex items-start gap-3">
+            <label className="text-xs font-medium text-muted-fg w-32 shrink-0 pt-2">
               Display name
             </label>
             <Input
+              className="flex-1"
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
               placeholder={tool.name}
@@ -225,7 +264,6 @@ function SystemToolRow({
               value={draftPrompt}
               onChange={(e) => setDraftPrompt(e.target.value)}
               rows={8}
-              className="font-mono text-xs"
             />
           </div>
           <div className="flex justify-end gap-2">
@@ -269,7 +307,7 @@ function CustomToolRow({
   onDrop,
   onDragEnd,
 }: ToolRowProps) {
-  const setEnabled = useToolsStore((s) => s.setEnabled);
+  const setBurgerVisible = useToolsStore((s) => s.setBurgerVisible);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
   const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const upsertCustomTool = useToolsStore((s) => s.upsertCustomTool);
@@ -322,20 +360,20 @@ function CustomToolRow({
           }
         />
         <FlagCheckbox
-          label="On"
-          title="Enabled - appears in the topbar Tools menu"
-          checked={tool.enabled}
-          onChange={(next) => setEnabled(tool.id, next)}
+          label="Burger"
+          title="Show in the topbar Tools (burger) menu"
+          checked={tool.isInBurger}
+          onChange={(next) => setBurgerVisible(tool.id, next)}
         />
         <FlagCheckbox
           label="Init"
-          title="Include in new-project init prompt"
+          title="Pre-checked in the new-session picker"
           checked={tool.isInit}
           onChange={(next) => toggleProjectInit(tool.id, next)}
         />
         <FlagCheckbox
           label="Slash"
-          title="Available as /<name> slash command in composers"
+          title="Available as /template <name> slash command in composers"
           checked={tool.isSlash}
           onChange={(next) => toggleSlashCommand(tool.id, next)}
         />
@@ -398,7 +436,6 @@ function CustomToolRow({
               value={draftPrompt}
               onChange={(e) => setDraftPrompt(e.target.value)}
               rows={8}
-              className="font-mono text-xs"
             />
           </div>
           <div className="flex justify-end gap-2">
@@ -480,8 +517,7 @@ function AddCustomTool() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={6}
-          placeholder="What should the agent do when this tool is invoked?"
-          className="font-mono text-xs"
+          placeholder="What should the agent do when this template is invoked?"
         />
       </div>
       <div className="flex justify-end gap-2">
@@ -678,16 +714,28 @@ function FsTemplateRow({
           title="Filesystem templates carry their `order` in YAML; drag-reorder lives on the row's MD file."
         />
         <FlagCheckbox
-          label="On"
-          title="Enabled flag in this template's YAML frontmatter"
+          label="Burger"
+          title="Burger flag in this template's YAML frontmatter (controls topbar menu visibility)"
+          checked={template.enabled}
+          onChange={wrapToggle("enabled")}
+        />
+        <FlagCheckbox
+          label="Burger"
+          title="Burger flag in this template's YAML frontmatter - shows in the topbar Tools (burger) menu"
           checked={template.enabled}
           onChange={wrapToggle("enabled")}
         />
         <FlagCheckbox
           label="Init"
-          title="Init flag in this template's YAML frontmatter"
+          title="Init flag in this template's YAML frontmatter - pre-checked in the new-session picker"
           checked={template.init}
           onChange={wrapToggle("init")}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Slash flag in this template's YAML frontmatter - available as /template <name> in composers"
+          checked={template.slash}
+          onChange={wrapToggle("slash")}
         />
         <FlagCheckbox
           label="Slash"
@@ -862,7 +910,7 @@ function NewFsTemplateForm({
           onChange={(e) => setPrompt(e.target.value)}
           rows={6}
           placeholder="What should the agent do when this template is invoked?"
-          className="font-mono text-xs"
+          className="text-xs"
         />
       </div>
       {error && <p className="text-xs text-danger-fg">{error}</p>}

@@ -193,6 +193,7 @@ export function AppSidebarNav() {
   // a fresh array on every render and triggers React 18 error #185
   // (infinite update loop) because Zustand sees a new identity each time.
   const disabledIds = useToolsStore((s) => s.disabledIds);
+  const burgerHiddenIds = useToolsStore((s) => s.burgerHiddenIds);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
@@ -201,12 +202,20 @@ export function AppSidebarNav() {
     () =>
       resolveToolsFromState({
         disabledIds,
+        burgerHiddenIds,
         systemOverrides,
         customTools,
         projectInitOrder,
         slashCommandIds,
       }).filter((tool) => tool.enabled),
-    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
+    [
+      disabledIds,
+      burgerHiddenIds,
+      systemOverrides,
+      customTools,
+      projectInitOrder,
+      slashCommandIds,
+    ],
   );
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
