@@ -9,10 +9,18 @@ const PLUGIN_URL = "http://127.0.0.1:4098";
 // regardless of timeout). Pre-fix this was 1_000 ms which surfaced the
 // banner permanently on busy opencodes.
 const PROBE_TIMEOUT_MS = 10_000;
-// /config is 704 bytes (bounded) vs /verdicts which is 11+ KB and grows
-// with the stuck-session count. Both are equally good liveness probes;
-// /config has the smaller payload + the smaller handler work.
-const PROBE_PATH = "/config";
+// /health is the dedicated liveness endpoint: instant static handler
+// (no DB lookup, no verdicts-map iteration, no scan), 43-byte response
+// ({ok:true,ts:<iso>}). It's defense-in-depth against a saturated host
+// opencode event loop - even when /config and /verdicts handlers can't
+// slip in between blocking LLM/tool-call work, /health's near-zero
+// handler cost is the most likely to make it through. Landed in
+// opencode-tools alongside the #25 portal-side timeout fix. Pre-fix
+// this was /config (704 B but still touches the config map);
+// pre-pre-fix it was /verdicts (11+ KB and grows with stuck-session
+// count). Each step further reduces the work the plugin has to do to
+// answer "are you alive?".
+const PROBE_PATH = "/health";
 
 export default defineHandler(async () => {
   const controller = new AbortController();
