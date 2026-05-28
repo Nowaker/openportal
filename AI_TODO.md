@@ -2512,3 +2512,61 @@ Design notes:
 - Likely root cause: opencode's runtime mcp.disconnect toggles in-memory state, but the MCP is configured with `"enabled":true` in opencode.json so it immediately re-attaches on next event-loop tick.
 - Fix path: route the slider OFF action through the openportal MCP-config PUT endpoint (set enabled:false) instead of opencode's runtime toggle. Slider ON sets enabled:true. Persistent through restart. Triggers PENDING RESTART badge so the user knows to restart opencode for the disable to take effect at the connection layer.
 - Alternative: file a bug with opencode for the silent-fail disconnect. Out of scope for this iteration.
+
+### 115. Server directories editor: advanced JSON edits don't persist on Save; nice editor lacks level/level1 inputs; history shape mismatch (DONE - <COMMIT-SHA>) [loser-bump: originally #103; bumped to #115 because main-nowaker advanced through #100..#114 (incl. parallel SSE watchdog #113 + stuck-handling cleanup #114) while this work was mid-rebase]
+
+User prompt (verbatim):
+
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+>
+> ---
+>
+> [
+>     {
+>       "path": "~/projekty",
+>       "level": 2,
+>       "level1": [
+>         "ai-workspace",
+>         "dreamhost-ai-configuration"
+>       ]
+>     },
+>     "~/sync/owncloud/virtkick-private/dreamhost"
+>   ]
+>
+>
+> this is the server config for 192.168.something and 100.something (tailscale)
+> there is an advanced json editor, and when i click save, then open (connect), it will apply it.
+> however saving, then going back to edit, it's gone. it doesn't get persisted in any way.
+> servers need to remember the configuration, and must be editable. json editor should work. nice editor (fields) should reflect 100% what advanced mode can achieve (levels definition etc).
+
+Design notes:
+
+- Per-server workspace directories editor at [DirectoriesModalBody](file:///home/nowaker/projekty/webapps/portal/apps/web/src/routes/servers.tsx#L1909) had three coupled defects:
+  1. **JSON edits silently discarded on Save.** The `save()` handler only POSTed `entries.filter(...)` to the backend. If the user opened the advanced JSON editor, typed/pasted their config, and clicked Save without first clicking "Apply JSON -> list", their JSON was discarded — only the (unchanged) form-mode `entries` were sent. The persisted result was "whatever was in the form before they touched JSON", so on next open the modal looked unchanged and the user's edits appeared "gone".
+  2. **Nice editor exposed only `path`, not `level` or `level1`.** Each row rendered a single path `<input>` plus a read-only `adv` badge when level/level1 were present. The only way to set or change `level=2` or `level1=[...]` was via the JSON editor — the user's "json editor should work. nice editor (fields) should reflect 100% what advanced mode can achieve (levels definition etc)" was a direct callout.
+  3. **`directoriesHistory` schema mismatch.** Backend stored history as `string[]` (JSON-stringified `directories` arrays, no timestamps). Frontend `DirectoriesResponse` type expected `Array<{at: number, directories: Array<DirEntry | string>}>`. The history list rendered garbage (`h.at` and `h.directories` were `undefined` on a string) and the "Restore this snapshot" button silently no-op'd because `loadHistorical(h.directories)` got `undefined`.
+
+- Fix:
+  - **Frontend** ([apps/web/src/routes/servers.tsx](file:///home/nowaker/projekty/webapps/portal/apps/web/src/routes/servers.tsx)):
+    - Extracted `parseJsonEntries(text)` as a pure helper (throws on parse / shape failure). `applyJson()` is now a thin wrapper that calls it + updates state.
+    - `save()` checks `showJson` first: if the JSON editor is visible, parse `jsonText` and use the result as the POST payload (and sync `entries` to it so the form reflects the saved value if the modal is reused). Parse failure on save: surface as `jsonError`, abort save, don't close modal. The user no longer needs to click "Apply JSON -> list" before Save — Save itself respects what's on screen.
+    - Per-row "adv" toggle button replaces the read-only badge. When expanded, the row shows a `level` numeric input (min=1, step=1) and a `level1` comma-separated text input, with inline help text explaining both fields. The button shows `adv*` when the underlying entry already carries level/level1, so the user can spot existing advanced rows at a glance.
+    - `level1` uses a tiny per-row draft `Map<number, string>` so the user can type intermediate state (`"foo, "` with trailing comma+space) without auto-normalize stripping the in-flight character. Live-parsed into `entries.level1` on every keystroke, so Save / Sync-list-to-JSON pick up the latest. Drafts cleared on row remove / Apply JSON / Restore-from-history to avoid stale indices.
+  - **Backend** ([apps/web/src/server/lib/server-registry.ts](file:///home/nowaker/projekty/webapps/portal/apps/web/src/server/lib/server-registry.ts)):
+    - New `DirectoriesHistoryEntry = { at: number, directories: ServerDirectoryEntry[] }` interface. `ConfiguredServer.directoriesHistory` changed from `string[]` to `DirectoriesHistoryEntry[]`.
+    - New `normalizeHistory(raw: unknown)` helper accepts BOTH legacy `string[]` entries (parsed back, given synthetic `at: 0`) AND the new shape. Called once at the registry's read boundary (`listConfiguredServers`) and once inside `setServerDirectories` before mutation, so every downstream caller sees a single shape. Migration is automatic: the next save against any server with legacy history rewrites it in the new format.
+    - `setServerDirectories` now pushes `{ at: Date.now(), directories: prevDirs }` instead of `JSON.stringify(prevDirs)`. De-dup still compares stringified `directories`, history cap (`HISTORY_MAX = 10`) unchanged.
+  - **HTTP layer** ([directories.get.ts](file:///home/nowaker/projekty/webapps/portal/apps/web/src/server/servers/[id]/directories.get.ts) + [directories.post.ts](file:///home/nowaker/projekty/webapps/portal/apps/web/src/server/servers/[id]/directories.post.ts)): no code change needed. Both handlers return `server.directoriesHistory ?? []`; with the registry now normalizing the shape, the response automatically matches the frontend's existing `DirectoriesResponse` type.
+
+- Worktree + deploy:
+  - Branched off `main-nowaker` HEAD (`604e52b`) at `~/projekty/webapps/portal-server-config-persist` (branch `server-config-persist`). Rebased twice as main-nowaker advanced mid-work (first onto `6707dc4`, then onto `8fd12c4`).
+  - Built + ran the worktree on tailnet port 5250 (port 5200 was taken by another active worktree) via `bash scripts/run-worktree.sh 5250`. Drove the UI through a real browser to verify the round-trip: paste the user's exact `[{path:~/projekty, level:2, level1:[ai-workspace, dreamhost-ai-configuration]}, "~/sync/..."]` JSON into the advanced editor, click Save WITHOUT first clicking Apply, reopen the modal, confirm both the form fields (path + advanced disclosure with level=2 + level1=ai-workspace, dreamhost-ai-configuration) AND the JSON editor reflect the saved state. History list also confirmed working — timestamps render, Restore buttons functional.
+  - Merged via fast-forward into `main-nowaker`. Deployed via `bash scripts/deploy.sh` (dev :5001 health probe → prod :5000 restart + probe). Pushed to both `origin` (gitlab, canonical) and `github` (mirror) remotes.
+
+- Did NOT touch:
+  - Server add/discovery flow — the bug is in the per-server directories editor, not in server creation.
+  - The history dedupe contract (still by stringified `directories` comparison), the history cap (10 entries), or the empty-prev / unchanged-prev suppression — kept verbatim.
+  - The top-level (non-per-server) `directories` config in `openportal.json` — that's hand-edited per the existing file comment; no UI editor exists for it.
+  - Asset retention, deploy infrastructure, the Caddy reverse-proxy block, or any systemd-unit-level config. Pure source fix; deploy used the canonical `scripts/deploy.sh` path.

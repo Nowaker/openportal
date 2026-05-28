@@ -1878,6 +1878,37 @@ function entriesToJson(entries: DirEntry[]): string {
   );
 }
 
+function parseJsonEntries(text: string): DirEntry[] {
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Top-level value must be a JSON array");
+  }
+  const normalized: DirEntry[] = [];
+  for (const item of parsed) {
+    if (typeof item === "string") {
+      if (item.trim()) normalized.push({ path: item.trim() });
+      continue;
+    }
+    if (item && typeof item === "object") {
+      const obj = item as Record<string, unknown>;
+      const path = typeof obj.path === "string" ? obj.path.trim() : "";
+      if (!path) continue;
+      const entry: DirEntry = { path };
+      if (typeof obj.level === "number" && Number.isInteger(obj.level)) {
+        entry.level = obj.level;
+      }
+      if (Array.isArray(obj.level1)) {
+        const items = (obj.level1 as unknown[]).filter(
+          (s): s is string => typeof s === "string" && s.length > 0,
+        );
+        if (items.length > 0) entry.level1 = items;
+      }
+      normalized.push(entry);
+    }
+  }
+  return normalized;
+}
+
 function DirectoriesModal({
   target,
   onClose,
@@ -1922,6 +1953,10 @@ function DirectoriesModalBody({
   const [showHistory, setShowHistory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [expandedAdv, setExpandedAdv] = useState<Set<number>>(new Set());
+  const [level1Drafts, setLevel1Drafts] = useState<Map<number, string>>(
+    new Map(),
+  );
   const seededRef = useRef(false);
 
   useEffect(() => {
@@ -1940,8 +1975,63 @@ function DirectoriesModalBody({
     });
   };
 
+  const updateLevel = (idx: number, raw: string) => {
+    setEntries((prev) => {
+      const next = [...prev];
+      if (raw.trim() === "") {
+        const copy = { ...next[idx] };
+        delete copy.level;
+        next[idx] = copy;
+      } else {
+        const n = Number.parseInt(raw, 10);
+        if (Number.isInteger(n) && n >= 1) {
+          next[idx] = { ...next[idx], level: n };
+        }
+      }
+      return next;
+    });
+  };
+
+  const updateLevel1 = (idx: number, raw: string) => {
+    setLevel1Drafts((prev) => {
+      const next = new Map(prev);
+      next.set(idx, raw);
+      return next;
+    });
+    setEntries((prev) => {
+      const next = [...prev];
+      const parts = raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      if (parts.length === 0) {
+        const copy = { ...next[idx] };
+        delete copy.level1;
+        next[idx] = copy;
+      } else {
+        next[idx] = { ...next[idx], level1: parts };
+      }
+      return next;
+    });
+  };
+
+  const toggleAdv = (idx: number) => {
+    setExpandedAdv((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const resetDrafts = () => {
+    setLevel1Drafts(new Map());
+  };
+
   const removeRow = (idx: number) => {
     setEntries((prev) => prev.filter((_, i) => i !== idx));
+    setExpandedAdv(new Set());
+    resetDrafts();
   };
 
   const addRow = () => {
@@ -1955,33 +2045,10 @@ function DirectoriesModalBody({
 
   const applyJson = () => {
     try {
-      const parsed = JSON.parse(jsonText);
-      if (!Array.isArray(parsed)) {
-        throw new Error("Top-level value must be a JSON array");
-      }
-      const normalized: DirEntry[] = [];
-      for (const item of parsed) {
-        if (typeof item === "string") {
-          if (item.trim()) normalized.push({ path: item.trim() });
-        } else if (item && typeof item === "object") {
-          const obj = item as Record<string, unknown>;
-          const path = typeof obj.path === "string" ? obj.path.trim() : "";
-          if (!path) continue;
-          const entry: DirEntry = { path };
-          if (typeof obj.level === "number" && Number.isInteger(obj.level)) {
-            entry.level = obj.level;
-          }
-          if (Array.isArray(obj.level1)) {
-            const items = (obj.level1 as unknown[]).filter(
-              (s): s is string => typeof s === "string" && s.length > 0,
-            );
-            if (items.length > 0) entry.level1 = items;
-          }
-          normalized.push(entry);
-        }
-      }
-      setEntries(normalized);
+      const next = parseJsonEntries(jsonText);
+      setEntries(next);
       setJsonError(null);
+      resetDrafts();
     } catch (e) {
       setJsonError(e instanceof Error ? e.message : "Invalid JSON");
     }
@@ -1992,17 +2059,36 @@ function DirectoriesModalBody({
     setEntries(normalized);
     setJsonText(entriesToJson(normalized));
     setJsonError(null);
+    resetDrafts();
   };
 
   const save = async () => {
     setSaving(true);
     setSaveError(null);
+
+    // When the JSON editor is visible, treat its content as the source
+    // of truth. Without this, edits in the textarea were silently dropped
+    // if the user clicked Save without first clicking "Apply JSON -> list".
+    let payload = entries;
+    if (showJson) {
+      try {
+        payload = parseJsonEntries(jsonText);
+        setEntries(payload);
+        setJsonError(null);
+        resetDrafts();
+      } catch (e) {
+        setJsonError(e instanceof Error ? e.message : "Invalid JSON");
+        setSaving(false);
+        return;
+      }
+    }
+
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          directories: entries.filter((e) => e.path.trim()),
+          directories: payload.filter((e) => e.path.trim()),
         }),
       });
       if (!res.ok) {
@@ -2052,33 +2138,106 @@ function DirectoriesModalBody({
               No directories configured. The top-level Portal fallback will apply.
             </p>
           )}
-          {entries.map((e, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={e.path}
-                onChange={(ev) => updatePath(idx, ev.target.value)}
-                placeholder="/absolute/path or ~/relative"
-                className="flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm font-mono outline-none focus:border-primary"
-              />
-              {(typeof e.level === "number" || (e.level1 && e.level1.length > 0)) && (
-                <span
-                  className="text-[10px] text-muted-fg"
-                  title={`level=${e.level ?? "?"}${e.level1 ? `, level1=${e.level1.join(",")}` : ""}`}
-                >
-                  adv
-                </span>
-              )}
-              <Button
-                size="sm"
-                intent="secondary"
-                onPress={() => removeRow(idx)}
-                aria-label="Remove path"
-              >
-                <XMarkIcon className="size-3.5" />
-              </Button>
-            </div>
-          ))}
+          {entries.map((e, idx) => {
+            const isExpanded = expandedAdv.has(idx);
+            const hasAdv =
+              typeof e.level === "number" ||
+              (e.level1 !== undefined && e.level1.length > 0);
+            const level1DisplayValue =
+              level1Drafts.get(idx) ?? (e.level1 ?? []).join(", ");
+            return (
+              <div key={idx} className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={e.path}
+                    onChange={(ev) => updatePath(idx, ev.target.value)}
+                    placeholder="/absolute/path or ~/relative"
+                    className="flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm font-mono outline-none focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleAdv(idx)}
+                    className={
+                      isExpanded
+                        ? "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide bg-primary/15 text-primary"
+                        : hasAdv
+                          ? "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide bg-muted/40 text-fg hover:bg-muted/60"
+                          : "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-fg hover:bg-muted/30 hover:text-fg"
+                    }
+                    title="Toggle level / level1 advanced fields"
+                    aria-label={
+                      isExpanded
+                        ? "Hide advanced fields"
+                        : "Show advanced fields"
+                    }
+                    aria-expanded={isExpanded}
+                  >
+                    adv{hasAdv ? "*" : ""}
+                  </button>
+                  <Button
+                    size="sm"
+                    intent="secondary"
+                    onPress={() => removeRow(idx)}
+                    aria-label="Remove path"
+                  >
+                    <XMarkIcon className="size-3.5" />
+                  </Button>
+                </div>
+                {isExpanded && (
+                  <div className="ml-2 rounded-md border border-border/40 bg-muted/5 p-2 space-y-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <label
+                        htmlFor={`dir-${idx}-level`}
+                        className="w-14 shrink-0 text-muted-fg"
+                      >
+                        level
+                      </label>
+                      <input
+                        id={`dir-${idx}-level`}
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={
+                          typeof e.level === "number" ? String(e.level) : ""
+                        }
+                        onChange={(ev) => updateLevel(idx, ev.target.value)}
+                        placeholder="(default: 1)"
+                        className="w-24 rounded border border-border bg-bg px-2 py-0.5 font-mono outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label
+                        htmlFor={`dir-${idx}-level1`}
+                        className="w-14 shrink-0 text-muted-fg"
+                      >
+                        level1
+                      </label>
+                      <input
+                        id={`dir-${idx}-level1`}
+                        type="text"
+                        value={level1DisplayValue}
+                        onChange={(ev) =>
+                          updateLevel1(idx, ev.target.value)
+                        }
+                        placeholder="comma-separated, e.g. ai-workspace, dreamhost-ai-configuration"
+                        className="flex-1 rounded border border-border bg-bg px-2 py-0.5 font-mono outline-none focus:border-primary"
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-fg">
+                      <code className="font-mono">level</code>: how many
+                      folders deep to expand this base path
+                      (default&nbsp;
+                      <code className="font-mono">1</code>).{" "}
+                      <code className="font-mono">level1</code>: explicit list
+                      of sub-folder names to include at the first level
+                      (overrides auto-expansion). Both are optional.
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <Button size="sm" intent="secondary" onPress={addRow}>
             <PlusIcon className="size-3.5" />
             Add path

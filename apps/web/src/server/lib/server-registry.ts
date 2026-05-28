@@ -35,11 +35,17 @@ export type DiscoveryHint = {
 // field when present. Same shape as the top-level: either a bare string
 // path or a { path, level, level1 } object specifying how deep to walk
 // from the base when grouping sessions by project. directoriesHistory
-// keeps prior configurations as JSON strings for the user to revert /
-// re-apply from the UI (most recent first, capped at 10 entries).
+// keeps prior configurations as { at, directories } snapshots for the
+// user to revert / re-apply from the UI (most recent first, capped at
+// 10 entries).
 export type ServerDirectoryEntry =
   | string
   | { path: string; level?: number; level1?: string[] };
+
+export interface DirectoriesHistoryEntry {
+  at: number;
+  directories: ServerDirectoryEntry[];
+}
 
 export interface ConfiguredServer {
   id: string;
@@ -50,7 +56,43 @@ export interface ConfiguredServer {
   discoveryHint?: DiscoveryHint;
   addedAt: string;
   directories?: ServerDirectoryEntry[];
-  directoriesHistory?: string[];
+  directoriesHistory?: DirectoriesHistoryEntry[];
+}
+
+// Normalize a raw history value from disk into the canonical
+// `DirectoriesHistoryEntry[]` shape. Tolerates the legacy `string[]`
+// format (each string is a JSON-stringified ServerDirectoryEntry[]
+// with no timestamp - those entries get a synthetic `at: 0`). Silently
+// drops anything that doesn't decode into a usable snapshot. Callers
+// that READ directoriesHistory should run it through here exactly once,
+// up at the boundary where the registry hands data out.
+function normalizeHistory(raw: unknown): DirectoriesHistoryEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DirectoriesHistoryEntry[] = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      try {
+        const parsed = JSON.parse(item);
+        if (Array.isArray(parsed)) {
+          out.push({ at: 0, directories: parsed as ServerDirectoryEntry[] });
+        }
+      } catch {
+        /* malformed legacy entry; drop */
+      }
+      continue;
+    }
+    if (item && typeof item === "object") {
+      const obj = item as { at?: unknown; directories?: unknown };
+      if (Array.isArray(obj.directories)) {
+        const at = typeof obj.at === "number" ? obj.at : 0;
+        out.push({
+          at,
+          directories: obj.directories as ServerDirectoryEntry[],
+        });
+      }
+    }
+  }
+  return out;
 }
 
 export interface RawOpenPortalDoc {
@@ -143,13 +185,17 @@ function generateServerId(): string {
 export function listConfiguredServers(): ConfiguredServer[] {
   const doc = readRaw();
   if (!Array.isArray(doc.servers)) return [];
-  return doc.servers
-    .filter(isServer)
-    .map((s) => ({
+  return doc.servers.filter(isServer).map((s) => {
+    const rawHistory = (s as { directoriesHistory?: unknown })
+      .directoriesHistory;
+    return {
       ...s,
       ephemeral: Boolean(s.ephemeral),
       discoveryHint: s.discoveryHint,
-    }));
+      directoriesHistory:
+        rawHistory === undefined ? undefined : normalizeHistory(rawHistory),
+    };
+  });
 }
 
 export function getActiveServerId(): string | null {
@@ -279,15 +325,36 @@ export function setServerDirectories(
   const idx = servers.findIndex((s) => s.id === id);
   if (idx === -1) return null;
   const prev = servers[idx];
-  const prevSerialized = JSON.stringify(prev.directories ?? []);
+  const prevDirs = prev.directories ?? [];
+  const prevSerialized = JSON.stringify(prevDirs);
   const nextSerialized = JSON.stringify(directories);
-  const history = (prev.directoriesHistory ?? []).filter(
-    (h) => h !== nextSerialized,
+
+  // Normalize whatever shape lives on disk (handles both the legacy
+  // `string[]` format and the canonical `DirectoriesHistoryEntry[]`)
+  // before we mutate it. This is also the migration point: legacy data
+  // that has been touched once will be re-written in the new shape.
+  const existingHistory = normalizeHistory(
+    (prev as { directoriesHistory?: unknown }).directoriesHistory,
   );
+
+  // De-dup: drop any historical entry that matches the value we're
+  // about to commit, so a round-trip A -> B -> A leaves history with
+  // just one A entry (the older one, kept for chronology).
+  const filteredHistory = existingHistory.filter(
+    (h) => JSON.stringify(h.directories) !== nextSerialized,
+  );
+
+  // Push the previous directories onto history, but only when it was
+  // non-empty AND actually changing (avoids spurious "saved empty over
+  // empty" snapshots).
   if (prevSerialized !== "[]" && prevSerialized !== nextSerialized) {
-    history.unshift(prevSerialized);
+    filteredHistory.unshift({
+      at: Date.now(),
+      directories: prevDirs,
+    });
   }
-  const trimmedHistory = history.slice(0, HISTORY_MAX);
+
+  const trimmedHistory = filteredHistory.slice(0, HISTORY_MAX);
   const merged: ConfiguredServer = {
     ...prev,
     directories,
