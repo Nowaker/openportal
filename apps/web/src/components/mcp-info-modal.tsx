@@ -1022,6 +1022,8 @@ function EditForm({
         Edit configuration
       </h3>
 
+      <div className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2.5 items-start">
+
       <Field label="Type">
         <div className="flex gap-1">
           <select
@@ -1189,6 +1191,8 @@ function EditForm({
         </div>
       </Field>
 
+      </div>
+
       {error && (
         <p className="text-xs text-danger break-words">{error}</p>
       )}
@@ -1224,12 +1228,12 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label className="block text-[11px] font-medium uppercase tracking-wide text-muted-fg mb-1">
+    <>
+      <div className="text-xs font-medium text-muted-fg pt-1.5 whitespace-nowrap">
         {label}
-      </label>
-      {children}
-    </div>
+      </div>
+      <div className="min-w-0">{children}</div>
+    </>
   );
 }
 
