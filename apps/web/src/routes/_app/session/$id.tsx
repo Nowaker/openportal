@@ -37,7 +37,12 @@ import {
   SlashCommandPopover,
   useSlashCommand,
   useCommands,
+  expandTemplateAtSlash,
 } from "@/components/slash-command-popover";
+import {
+  resolveToolsFromState,
+  useToolsStore,
+} from "@/stores/tools-store";
 import { TodoStrip, TodoFloat } from "@/components/todo-strip";
 
 import {
@@ -4199,10 +4204,66 @@ function SessionPage() {
   const { data: commandsData } = useCommands();
   const { data: agentsData } = useAgents();
   const { data: providersData } = useProviders();
-  // Slash sub-picker items: when in agent/model mode, the popover renders
-  // these instead of commandsData. Built once per render from the same SWR
-  // caches feeding the AgentSelect/ModelSelect dropdowns in the composer
-  // toolbar so the source of truth stays single.
+  const slashToolDisabledIds = useToolsStore((s) => s.disabledIds);
+  const slashToolSystemOverrides = useToolsStore((s) => s.systemOverrides);
+  const slashToolCustom = useToolsStore((s) => s.customTools);
+  const slashProjectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
+  const slashResolvedTools = useMemo(
+    () =>
+      resolveToolsFromState({
+        disabledIds: slashToolDisabledIds,
+        systemOverrides: slashToolSystemOverrides,
+        customTools: slashToolCustom,
+        projectInitOrder: slashProjectInitOrder,
+        slashCommandIds,
+      }),
+    [
+      slashToolDisabledIds,
+      slashToolSystemOverrides,
+      slashToolCustom,
+      slashProjectInitOrder,
+      slashCommandIds,
+    ],
+  );
+  // Template-slash entries injected alongside opencode's commandsData
+  // in the popover. Each carries its body (prompt) so the onSelect
+  // handler can expand the /<name> token into the full template body
+  // with \n\n padding, per the slash-checkbox spec.
+  const templateSlashEntries = useMemo(() => {
+    return slashResolvedTools
+      .filter((t) => t.enabled && t.isSlash)
+      .map((t) => ({
+        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
+        description: t.name,
+        body: t.prompt,
+      }));
+  }, [slashResolvedTools]);
+
+  // Slash extras: synthetic /btw + every template-slash entry. Passed
+  // to the popover as extraItems so they merge with opencode's command
+  // catalog in command mode. The popover applies the searchQuery
+  // filter; we keep this list unfiltered so the keyboard-count memo
+  // below can independently re-apply the same filter.
+  const slashExtras = useMemo(() => {
+    return [
+      {
+        name: "btw",
+        description:
+          "Side question - one short answer, no tools. Claude-Code parity.",
+        source: "builtin" as const,
+      },
+      ...templateSlashEntries.map((t) => ({
+        name: t.name,
+        description: t.description,
+        source: "template" as const,
+      })),
+    ];
+  }, [templateSlashEntries]);
+
+  // Sub-picker items: only used when mode is agent/model. The command-
+  // mode popover uses extraItems (above) merged with the popover's
+  // internal commandsData; consumers do not pass customItems for it.
   const slashItems = useMemo(() => {
     if (slashCommand.mode === "agent") {
       const agents = (agentsData as Array<{
@@ -4246,25 +4307,33 @@ function SessionPage() {
         .slice(0, 50)
         .map((m) => ({ ...m, source: "model" as const }));
     }
-    const builtin = [
-      {
-        name: "btw",
-        description:
-          "Side question - one short answer, no tools. Claude-Code parity.",
-      },
-    ];
-    const merged = [...builtin, ...(commandsData ?? [])];
-    return merged.filter((c) =>
-      c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
+    return [];
+  }, [
+    slashCommand.mode,
+    slashCommand.searchQuery,
+    agentsData,
+    providersData,
+  ]);
+
+  // filteredCommands is the count used by the keyboard handler. In
+  // command mode the popover renders commandsData + slashExtras filtered
+  // by searchQuery, so we replicate that filter here to keep ↑↓ ranging
+  // over the same items the user can see.
+  const filteredCommands = useMemo(() => {
+    if (slashCommand.mode === "agent" || slashCommand.mode === "model") {
+      return slashItems;
+    }
+    const lc = slashCommand.searchQuery.toLowerCase();
+    return [...(commandsData ?? []), ...slashExtras].filter((c) =>
+      c.name.toLowerCase().startsWith(lc),
     );
   }, [
     slashCommand.mode,
     slashCommand.searchQuery,
+    slashItems,
     commandsData,
-    agentsData,
-    providersData,
+    slashExtras,
   ]);
-  const filteredCommands = slashItems;
 
   const connectionStatus = useConnectionMonitor();
   // When opencode is down, useSessionMessages naturally fails (the
@@ -5963,6 +6032,9 @@ function SessionPage() {
               customItems={
                 slashCommand.mode === "command" ? undefined : slashItems
               }
+              extraItems={
+                slashCommand.mode === "command" ? slashExtras : undefined
+              }
               textareaRef={textareaRef}
               slashStart={slashCommand.slashStart}
               selectedIndex={slashCommand.selectedIndex}
@@ -5970,6 +6042,29 @@ function SessionPage() {
               onClose={slashCommand.close}
               onSelect={(commandName) => {
                 const current = textareaRef.current?.value ?? "";
+                // Template-slash selection: expand the /<name> token
+                // into the template body with \n\n padding instead of
+                // routing through the opencode-command pipeline.
+                const template = templateSlashEntries.find(
+                  (t) => t.name === commandName,
+                );
+                if (template && slashCommand.slashStart !== null) {
+                  const tokenLen = 1 + commandName.length;
+                  const { newValue, cursorPos } = expandTemplateAtSlash(
+                    current,
+                    slashCommand.slashStart,
+                    tokenLen,
+                    template.body,
+                  );
+                  if (textareaRef.current) {
+                    textareaRef.current.value = newValue;
+                    setHasContent(newValue.length > 0);
+                    textareaRef.current.focus();
+                    textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+                  }
+                  slashCommand.close();
+                  return;
+                }
                 const newValue = slashCommand.handleSelect(
                   commandName,
                   current,

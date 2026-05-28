@@ -34,6 +34,7 @@ import {
   SlashCommandPopover,
   useSlashCommand,
   useCommands,
+  expandTemplateAtSlash,
 } from "@/components/slash-command-popover";
 import { useSWRConfig } from "swr";
 import { mutate as mutateSWR } from "swr";
@@ -215,11 +216,42 @@ function NewSessionPage() {
   const slashCommand = useSlashCommand();
   const { data: commandsData } = useCommands();
   const [, setFileResults] = useState<{ path: string; name: string }[]>([]);
+  // Template-slash entries injected alongside opencode commands. Each
+  // carries its body so the onSelect handler can expand /<name> into
+  // the template body with \n\n padding per the slash-checkbox spec.
+  const templateSlashEntries = useMemo(() => {
+    return tools
+      .filter((t) => t.enabled && t.isSlash)
+      .map((t) => ({
+        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
+        description: t.name,
+        body: t.prompt,
+      }));
+  }, [tools]);
+  // Synthetic /btw + every slash-marked template. Parity with the
+  // chat composer ($id.tsx) so /btw and templates work BEFORE the
+  // session exists too. Passed to the popover as extraItems.
+  const slashExtras = useMemo(() => {
+    return [
+      {
+        name: "btw",
+        description:
+          "Side question - one short answer, no tools. Claude-Code parity.",
+        source: "builtin" as const,
+      },
+      ...templateSlashEntries.map((t) => ({
+        name: t.name,
+        description: t.description,
+        source: "template" as const,
+      })),
+    ];
+  }, [templateSlashEntries]);
   const filteredCommands = useMemo(() => {
-    return (commandsData ?? []).filter((c) =>
-      c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
+    const lc = slashCommand.searchQuery.toLowerCase();
+    return [...(commandsData ?? []), ...slashExtras].filter((c) =>
+      c.name.toLowerCase().startsWith(lc),
     );
-  }, [commandsData, slashCommand.searchQuery]);
+  }, [commandsData, slashExtras, slashCommand.searchQuery]);
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
   const anyFileAttachInputRef = useRef<HTMLInputElement>(null);
 
@@ -922,6 +954,9 @@ function NewSessionPage() {
             isOpen={slashCommand.isOpen}
             searchQuery={slashCommand.searchQuery}
             mode={slashCommand.mode}
+            extraItems={
+              slashCommand.mode === "command" ? slashExtras : undefined
+            }
             textareaRef={textareaRef}
             slashStart={slashCommand.slashStart}
             selectedIndex={slashCommand.selectedIndex}
@@ -929,6 +964,27 @@ function NewSessionPage() {
             onClose={slashCommand.close}
             onSelect={(commandName) => {
               const current = textareaRef.current?.value ?? "";
+              const template = templateSlashEntries.find(
+                (t) => t.name === commandName,
+              );
+              if (template && slashCommand.slashStart !== null) {
+                const tokenLen = 1 + commandName.length;
+                const { newValue, cursorPos } = expandTemplateAtSlash(
+                  current,
+                  slashCommand.slashStart,
+                  tokenLen,
+                  template.body,
+                );
+                if (textareaRef.current) {
+                  textareaRef.current.value = newValue;
+                  setText(newValue);
+                  scheduleDraftSave(newValue);
+                  textareaRef.current.focus();
+                  textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+                }
+                slashCommand.close();
+                return;
+              }
               const newValue = slashCommand.handleSelect(
                 commandName,
                 current,

@@ -125,7 +125,7 @@ function getCaretCoordinates(
 export interface SlashItem {
   name: string;
   description?: string;
-  source?: "command" | "mcp" | "skill" | "agent" | "model";
+  source?: "command" | "mcp" | "skill" | "agent" | "model" | "template" | "builtin";
 }
 
 interface SlashCommandPopoverProps {
@@ -133,6 +133,10 @@ interface SlashCommandPopoverProps {
   searchQuery: string;
   mode: SlashMode;
   customItems?: SlashItem[];
+  // extraItems merge with the internally-fetched opencode commands when
+  // mode === "command". Used for client-side synthetic commands like
+  // /btw and for user-defined template slash commands.
+  extraItems?: SlashItem[];
   onSelect: (itemName: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   slashStart: number | null;
@@ -148,6 +152,7 @@ export function SlashCommandPopover({
   searchQuery,
   mode,
   customItems,
+  extraItems,
   onSelect,
   textareaRef,
   slashStart,
@@ -156,8 +161,13 @@ export function SlashCommandPopover({
   onClose,
 }: SlashCommandPopoverProps) {
   const { data: commands, isLoading: commandsLoading } = useCommands();
+  const lcQuery = searchQuery.toLowerCase();
   const items: SlashItem[] =
-    mode === "command" ? (commands ?? []) : (customItems ?? []);
+    mode === "command"
+      ? [...(commands ?? []), ...(extraItems ?? [])].filter((c) =>
+          c.name.toLowerCase().startsWith(lcQuery),
+        )
+      : (customItems ?? []);
   const isLoading = mode === "command" && commandsLoading && !commands;
   const [position, setPosition] = useState<CaretPosition | null>(null);
   const [, forceTick] = useState(0);
@@ -249,7 +259,9 @@ export function SlashCommandPopover({
             ? "(agent)"
             : cmd.source === "model"
               ? "(model)"
-              : "(builtin)";
+              : cmd.source === "template"
+                ? "(template)"
+                : "(builtin)";
     let cleanedDescription = (cmd.description ?? "").trimStart();
     if (
       cleanedDescription.toLowerCase().startsWith(sourceLabel.toLowerCase())
@@ -408,6 +420,30 @@ interface UseSlashCommandResult {
   handleSelect: (itemName: string, currentValue: string) => string;
   close: () => void;
   setSelectedIndex: (index: number) => void;
+}
+
+// Expand a `/<name>` token at slashStart..slashStart+1+name.length with
+// `body`, ensuring the body sits between at least 2 newlines on each
+// side (clamped to 2 - the user's spec: "padding up to 2x \n before
+// and after so proper spacing is added before/after content"). Returns
+// the new textarea value and the cursor position immediately after the
+// inserted body.
+export function expandTemplateAtSlash(
+  value: string,
+  slashStart: number,
+  slashTokenLength: number,
+  body: string,
+): { newValue: string; cursorPos: number } {
+  const before = value.slice(0, slashStart);
+  const tail = value.slice(slashStart + slashTokenLength);
+  const after = tail.replace(/^\s+/, "");
+  const trailingNl = (before.match(/\n*$/) ?? [""])[0].length;
+  const leadingPad =
+    before.length === 0 ? "" : "\n".repeat(Math.max(0, 2 - trailingNl));
+  const afterPad = after.length === 0 ? "" : "\n\n";
+  const newValue = `${before}${leadingPad}${body}${afterPad}${after}`;
+  const cursorPos = (before + leadingPad + body).length;
+  return { newValue, cursorPos };
 }
 
 export function useSlashCommand(): UseSlashCommandResult {
