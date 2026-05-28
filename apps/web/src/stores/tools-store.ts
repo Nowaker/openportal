@@ -2,8 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SYSTEM_TOOLS, type SystemTool } from "@/lib/prompt-tools";
 
-// User-defined tool that lives only in the user's settings (no system
-// default to fall back to). resetToDefault is a no-op for these.
 export interface CustomTool {
   id: string;
   name: string;
@@ -11,12 +9,11 @@ export interface CustomTool {
   prompt: string;
 }
 
-// What the topbar Tools menu actually renders, after merging the system
-// list with the user's overrides and additions. Discriminated by `kind`
-// so callers can offer "reset" only for system tools.
 export type ResolvedTool =
   | (SystemTool & {
       kind: "system";
+      isInBurger: boolean;
+      isDisabled: boolean;
       enabled: boolean;
       isOverridden: boolean;
       isInit: boolean;
@@ -24,40 +21,63 @@ export type ResolvedTool =
     })
   | (CustomTool & {
       kind: "custom";
+      isInBurger: boolean;
+      isDisabled: boolean;
       enabled: boolean;
       isInit: boolean;
       isSlash: boolean;
     });
 
 interface ToolsPersistedState {
-  // Tool ids the user has unchecked in Settings. Default = all enabled.
-  // We store the disabled set rather than the enabled set so newly-shipped
-  // system tools opt the user IN by default - if we tracked enabled-set,
-  // a fresh tool would default to off until the user found Settings.
+  // Templates the user has clicked "Disable" on (in Settings). Fully off:
+  // hidden from the topbar burger menu, the new-session picker, and the
+  // slash autocomplete. Visualised in Settings as opacity-50 with the
+  // three flag checkboxes greyed out. Click "Enable" to restore.
+  //
+  // localStorage key stays "disabledIds" - matches the pre-split meaning
+  // where unchecking the single "On" checkbox effectively fully-disabled
+  // the template. Existing user entries continue to mean "I don't want
+  // this anywhere", which is exactly what the new "Disabled" state
+  // means. No migration needed.
   disabledIds: string[];
-  // Per-tool prompt overrides. Stored as full text rather than as a
-  // diff so the system text can change underneath without merge surprises.
-  // Drop the override (resetToDefault) to fall back to the system text.
+
+  // Templates the user has unchecked from the "Burger" flag (the
+  // per-row first checkbox). Controls topbar burger menu visibility ONLY.
+  // Templates here STILL appear in the new-session picker and slash
+  // autocomplete; Burger-off is NOT a kill switch. New slice introduced
+  // when the spec split "On" into "Burger" + "Disable".
+  burgerHiddenIds: string[];
+
+  // Per-tool prompt overrides. Stored as full text rather than a diff
+  // so the system text can change underneath without merge surprises.
+  // Drop the override (resetSystemOverride) to fall back to the system
+  // text.
   systemOverrides: Record<string, { name?: string; prompt?: string }>;
+
   customTools: CustomTool[];
-  // Tool ids designated as "project-init templates" with explicit ordering.
-  // When the user creates a new project (folder browser triggers the
-  // mkdir+git-init flow), these templates are pre-checked in the
-  // create-project modal and concatenated (in this order) as the new
-  // session's first auto-prompt. Stored as ORDERED array so drag-drop
-  // reordering in Settings is the source of truth for concatenation order.
+
+  // Tool ids designated as "Init" templates with explicit ordering.
+  // On new-session create, the picker pre-checks these and concatenates
+  // their bodies (in this order) as the first submitted prompt. Stored
+  // as ORDERED array so drag-drop reordering in Settings is the source
+  // of truth for concatenation order. Note: non-init non-disabled
+  // templates ALSO appear in the new-session picker (unchecked); the
+  // init flag just controls the default-checked state.
   projectInitOrder: string[];
+
   // Tool ids designated as slash commands. When the user types
-  // /<name> in any composer, these tools appear in the slash autocomplete
-  // popover under their template body. Selecting one replaces the
-  // /<name> token with the body padded to a clean \n\n…\n\n boundary.
-  // Set semantics (membership matters, order does not - the slash list
-  // sorts by tool name).
+  // "/template <q>" in any composer, these tools appear in the slash
+  // autocomplete popover under "/template <Full name>". Selecting one
+  // replaces the typed token with the body padded to a clean
+  // \n\n…\n\n boundary. Set semantics (membership matters, order does
+  // not). Filtered by !isDisabled - the Burger flag does NOT affect
+  // slash-command visibility.
   slashCommandIds: string[];
 }
 
 interface ToolsState extends ToolsPersistedState {
-  setEnabled: (id: string, enabled: boolean) => void;
+  setBurgerVisible: (id: string, visible: boolean) => void;
+  setFullyDisabled: (id: string, disabled: boolean) => void;
   setSystemOverride: (
     id: string,
     override: { name?: string; prompt?: string },
@@ -79,15 +99,33 @@ export function resolveToolsFromState(
   state: Pick<
     ToolsPersistedState,
     | "disabledIds"
+    | "burgerHiddenIds"
     | "systemOverrides"
     | "customTools"
     | "projectInitOrder"
     | "slashCommandIds"
   >,
 ): ResolvedTool[] {
-  const disabled = new Set(state.disabledIds);
+  const fullyDisabled = new Set(state.disabledIds);
+  const burgerHidden = new Set(state.burgerHiddenIds);
   const initSet = new Set(state.projectInitOrder);
   const slashSet = new Set(state.slashCommandIds);
+  const resolveFlags = (id: string) => {
+    const isInBurger = !burgerHidden.has(id);
+    const isDisabled = fullyDisabled.has(id);
+    return {
+      isInBurger,
+      isDisabled,
+      // Backward-compat alias for callers that only care about the
+      // "is this template active on the surface that asks?" question.
+      // For the topbar burger menu this maps correctly; for the
+      // new-session picker / slash popover those callers should use
+      // !isDisabled directly.
+      enabled: isInBurger && !isDisabled,
+      isInit: initSet.has(id),
+      isSlash: slashSet.has(id),
+    };
+  };
   const systemResolved: ResolvedTool[] = SYSTEM_TOOLS.map((tool) => {
     const override = state.systemOverrides[tool.id] ?? {};
     return {
@@ -95,19 +133,15 @@ export function resolveToolsFromState(
       name: override.name ?? tool.name,
       prompt: override.prompt ?? tool.prompt,
       kind: "system" as const,
-      enabled: !disabled.has(tool.id),
+      ...resolveFlags(tool.id),
       isOverridden:
         override.name !== undefined || override.prompt !== undefined,
-      isInit: initSet.has(tool.id),
-      isSlash: slashSet.has(tool.id),
     };
   });
   const customResolved: ResolvedTool[] = state.customTools.map((tool) => ({
     ...tool,
     kind: "custom" as const,
-    enabled: !disabled.has(tool.id),
-    isInit: initSet.has(tool.id),
-    isSlash: slashSet.has(tool.id),
+    ...resolveFlags(tool.id),
   }));
   return [...systemResolved, ...customResolved];
 }
@@ -123,25 +157,32 @@ export const useToolsStore = create<ToolsState>()(
   persist(
     (set) => ({
       disabledIds: [],
+      burgerHiddenIds: [],
       systemOverrides: {},
       customTools: [],
       projectInitOrder: [],
       slashCommandIds: [],
 
-      setEnabled: (id, enabled) =>
+      setBurgerVisible: (id, visible) =>
         set((state) => {
-          const disabled = new Set(state.disabledIds);
-          if (enabled) disabled.delete(id);
-          else disabled.add(id);
-          return { disabledIds: Array.from(disabled) };
+          const hidden = new Set(state.burgerHiddenIds);
+          if (visible) hidden.delete(id);
+          else hidden.add(id);
+          return { burgerHiddenIds: Array.from(hidden) };
+        }),
+
+      setFullyDisabled: (id, disabled) =>
+        set((state) => {
+          const off = new Set(state.disabledIds);
+          if (disabled) off.add(id);
+          else off.delete(id);
+          return { disabledIds: Array.from(off) };
         }),
 
       setSystemOverride: (id, override) =>
         set((state) => {
           const existing = state.systemOverrides[id] ?? {};
           const next = { ...existing, ...override };
-          // Drop empty fields so the resolver falls back cleanly to the
-          // system default rather than rendering an explicit empty string.
           if (next.name === "") delete next.name;
           if (next.prompt === "") delete next.prompt;
           if (Object.keys(next).length === 0) {
@@ -164,8 +205,6 @@ export const useToolsStore = create<ToolsState>()(
             !state.customTools.some((t) => t.id === tool.id) &&
             customIdExists(state, tool.id)
           ) {
-            // ID collision with a system tool. Refuse silently; the
-            // settings UI should validate IDs before calling.
             return state;
           }
           const idx = state.customTools.findIndex((t) => t.id === tool.id);
@@ -180,9 +219,8 @@ export const useToolsStore = create<ToolsState>()(
       removeCustomTool: (id) =>
         set((state) => ({
           customTools: state.customTools.filter((t) => t.id !== id),
-          // Strip the disabled flag too so re-adding a tool with the same
-          // id later doesn't inherit the previous disabled state.
           disabledIds: state.disabledIds.filter((d) => d !== id),
+          burgerHiddenIds: state.burgerHiddenIds.filter((d) => d !== id),
           projectInitOrder: state.projectInitOrder.filter((p) => p !== id),
           slashCommandIds: state.slashCommandIds.filter((p) => p !== id),
         })),
@@ -216,6 +254,7 @@ export const useToolsStore = create<ToolsState>()(
       name: "opencode-tools",
       partialize: (state) => ({
         disabledIds: state.disabledIds,
+        burgerHiddenIds: state.burgerHiddenIds,
         systemOverrides: state.systemOverrides,
         customTools: state.customTools,
         projectInitOrder: state.projectInitOrder,

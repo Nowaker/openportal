@@ -421,6 +421,78 @@ Set in `~/.openportal/openportal.json`. Priority order:
 
 ## UX preferences
 
+### Native HTML widgets (mandatory)
+
+NEVER use the browser's built-in alert/confirm/prompt dialogs,
+native `<select>` dropdowns, native file pickers, or any other
+default-browser-chrome control inside the application. ALWAYS reach
+for the project's visual framework component first.
+
+Hard rules:
+
+- No `window.alert`, `window.confirm`, `window.prompt`. The drawer
+  modal pattern (react-aria `<Modal>` / `<Dialog>`) is the canonical
+  replacement; toast notifications cover the alert case.
+- No bare `<select>` / `<option>`. Use `<Select>` +
+  `<SelectTrigger>` + `<SelectContent>` + `<SelectItem>` from
+  `apps/web/src/components/ui/select.tsx`. For searchable lists,
+  use the Autocomplete + SearchField variant (model-select.tsx is
+  the canonical example).
+- No bare `<input type="file">`. Use the project's drag-drop
+  attachment surface and/or the explicit "Attach file" buttons that
+  trigger a hidden, controlled input.
+- For path text fields, use `<PathInput>` from
+  `apps/web/src/components/ui/path-input.tsx` so Tab-completion,
+  Enter-submit, and the project's styling all come for free.
+- For confirmations with destructive action, the existing
+  ConfirmDialog / Modal patterns are the right surface - no
+  `window.confirm` shortcut even when it would compile.
+
+Why: native widgets render with the browser's OS theme (light/dark
+mismatch, weird mobile pickers, no font/spacing harmony with the
+rest of the app), do not respect the project's accent color or
+text-selection rules, and produce inconsistent UX across desktop /
+mobile / TalkBack. The visual-framework components address every
+one of those gaps.
+
+This rule applies retroactively. If a reviewer finds a native
+widget on a form surface, they can swap it for the visual-framework
+equivalent without further discussion.
+
+### Form-field fonts (mandatory)
+
+Prompt fields and other free-form text fields are NEVER monospace.
+Code-like fields (file paths, URLs, hostnames, ports, IPs, JSON
+blobs, shell commands, command-line arguments, identifier strings)
+SHOULD be monospace.
+
+Hard rules:
+
+- NEVER apply `font-mono` (Tailwind) or `font-family: monospace`
+  (raw CSS) to a textarea that holds prose - prompts, descriptions,
+  chat composer input, search queries, names, titles, message
+  bodies, free-form notes.
+- DO apply monospace to fields that hold code-shaped content -
+  see audit list in this section's commit history for the
+  canonical legitimate set (host / port / path / URL / JSON / argv
+  / level-1 list / MCP type).
+- The base `<Input>` and `<Textarea>` components do NOT apply
+  monospace by default. Monospace is opt-in at the call site, which
+  is the right shape - each field declares its own semantics.
+- The `<PathInput>` component DOES default to monospace because
+  every consumer of it is a path field. That's correct.
+
+Why: monospace on a prose field reads as "this looks like code I'm
+not supposed to mistype". Users hesitate, slow down, or paste
+mismatched whitespace. Proportional fonts on prose remove the
+friction and signal "type whatever you want".
+
+This rule applies retroactively. Reviewers may strip `font-mono`
+from any prompt textarea without further discussion. Cross-ref:
+the monospace audit shipped alongside this rule classified every
+existing `font-mono` form-field hit as legitimate (kept) or wrong
+(stripped) - see the commit's accompanying report.
+
 ### Text selection (mandatory)
 
 Any text rendered in the UI MUST be selectable by the user. Period.
@@ -927,7 +999,7 @@ hash array, and TabPanel ids all live in
 | `prompt` | Default model, default thinking effort, default agent (per-server / global / default). Voice input. |
 | `composer` | Enter-key behaviour, auto-approve permissions (global default + per-session overrides). |
 | `chat` | Date/time format (locale / 12h / 24h), link opening behavior, per-icon visibility grid, hover info toggle, info icon toggle, markdown rendering. |
-| `tools` | The system + custom tool catalog with enable / edit / reset, project-init ordering. |
+| `templates` | System + custom + filesystem template catalog with three per-row flags (On / Init / Slash). Drag-handle on the LEFT of each row reorders Init-marked rows in the durable `projectInitOrder`. Init pre-checks the row in the new-session picker and concatenates body on submit (archived as `/template Name` lines). Slash registers the row as a `/template <name>` autocomplete entry in both composers. Three sections in order: System templates (stock - Pull / Push / Create PR), Your templates - global (custom from local store, Edit + Delete, no [Custom] badge), Your templates - filesystem (per-workspace `.vibekick/templates/*.md` files with the same three flags driven by YAML frontmatter; "+ New filesystem template" form has workspace-root `<Select>` + sub-path `<PathInput>` with `/api/fs/list` completion). Stock tools have Edit + Disable (no Delete); custom tools have Edit + Delete. Filesystem rows render the workspace path as a header above each group. "+ Add custom tool" footer is sticky. |
 | `content` | Content visibility — what types of content show in the chat log and how (tool output byte cap; Section I will expand this into a per-content-type visibility table). |
 | `performance` | Live updates strategy (per-platform) and other UI responsiveness knobs. |
 | `diagnostics` | Health + presence + companion plugin state. |

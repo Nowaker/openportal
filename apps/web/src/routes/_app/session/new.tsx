@@ -128,6 +128,7 @@ function NewSessionPage() {
   }, [directoryFromUrl, storeDir, setStoreDir]);
 
   const disabledIds = useToolsStore((s) => s.disabledIds);
+  const burgerHiddenIds = useToolsStore((s) => s.burgerHiddenIds);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
@@ -137,12 +138,20 @@ function NewSessionPage() {
     () =>
       resolveToolsFromState({
         disabledIds,
+        burgerHiddenIds,
         systemOverrides,
         customTools,
         projectInitOrder,
         slashCommandIds,
       }),
-    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
+    [
+      disabledIds,
+      burgerHiddenIds,
+      systemOverrides,
+      customTools,
+      projectInitOrder,
+      slashCommandIds,
+    ],
   );
 
   // FS templates load early so the `initialOrder` memo below can read
@@ -162,34 +171,59 @@ function NewSessionPage() {
     [fsTemplatesResp],
   );
 
-  // The picker shows ONLY templates the user has both (a) marked as
-  // init AND (b) left enabled. Three sources merge into one list:
+  // The picker shows ALL non-disabled templates. The Init flag controls
+  // the default-checked state + ordering; non-Init templates still
+  // appear (unchecked) so the user can opt them in for this session.
+  // Per the user spec (AI_TODO #126):
+  //   "init" means it's default on on session new screen. all other
+  //   non-disabled templates are to be shown.
+  // Three sources merge into one list:
   //   - stock + custom tools from the local tools-store
-  //     (enabled+init resolved from disabledIds + projectInitOrder)
+  //     (filtered by !isDisabled - the master kill switch)
   //   - filesystem templates from the directory-scoped
-  //     vibekick-templates API (enabled+init from YAML frontmatter)
-  // Stock/custom rows appear first in their drag-reorder order;
-  // filesystem rows follow, sorted by YAML order then scope path.
-  // Drag-reorder in this picker only persists for stock/custom (FS
-  // items are reordered via Settings -> filesystem section instead).
+  //     vibekick-templates API (FS has no "fully disabled" state;
+  //     delete the file to remove it, so all FS templates appear)
+  // Ordering: init-marked rows first (in projectInitOrder for
+  // stock/custom, YAML order for FS), then non-init alphabetically.
+  // Drag-reorder in this picker only persists for stock/custom in
+  // projectInitOrder; FS reorder happens via Settings -> filesystem
+  // YAML order field.
   const initialOrder = useMemo<InitPickerItem[]>(() => {
-    const stockCustom: InitPickerItem[] = projectInitOrder
-      .map((id) => tools.find((t) => t.id === id))
-      .filter((t): t is ResolvedTool => Boolean(t) && t.enabled)
+    const local = tools.filter((t) => !t.isDisabled);
+    const initSet = new Set(projectInitOrder);
+    const localInit: InitPickerItem[] = projectInitOrder
+      .map((id) => local.find((t) => t.id === id))
+      .filter((t): t is ResolvedTool => Boolean(t))
       .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    const fs: InitPickerItem[] = fsTemplates
-      .filter((t) => t.enabled && t.init)
+    const localOther: InitPickerItem[] = local
+      .filter((t) => !initSet.has(t.id))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+    const fsInit: InitPickerItem[] = fsTemplates
+      .filter((t) => t.init)
       .sort(
         (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
       )
       .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    return [...stockCustom, ...fs];
+    const fsOther: InitPickerItem[] = fsTemplates
+      .filter((t) => !t.init)
+      .sort(
+        (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
+      )
+      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+    return [...localInit, ...fsInit, ...localOther, ...fsOther];
   }, [tools, projectInitOrder, fsTemplates]);
 
+  // Default-checked set on first paint: only the init-marked templates
+  // get pre-selected. Non-init rows are visible but unchecked.
   const [order, setOrder] = useState<InitPickerItem[]>(initialOrder);
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(projectInitOrder),
-  );
+  const [selected, setSelected] = useState<Set<string>>(() => {
+    const initIds = new Set<string>(projectInitOrder);
+    for (const t of fsTemplates) {
+      if (t.init) initIds.add(t.id);
+    }
+    return initIds;
+  });
   const dragSourceIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
@@ -265,14 +299,19 @@ function NewSessionPage() {
   // templates come from the directory-scoped vibekick-templates API
   // and carry their slash flag in YAML frontmatter.
   const templateSlashEntries = useMemo(() => {
+    // Slash filter: !isDisabled (the master kill switch), NOT enabled.
+    // A template with Burger unchecked but Slash checked MUST appear in
+    // the popover - Burger only controls topbar visibility.
+    // For FS templates we don't have a master-disable state (delete the
+    // file instead), so they pass through if their YAML slash flag is on.
     const local = tools
-      .filter((t) => t.enabled && t.isSlash)
+      .filter((t) => !t.isDisabled && t.isSlash)
       .map((t) => ({
         name: `template ${t.name}`,
         body: t.prompt,
       }));
     const fs = fsTemplates
-      .filter((t) => t.enabled && t.slash)
+      .filter((t) => t.slash)
       .map((t) => ({
         name: `template ${t.name}`,
         body: t.prompt,

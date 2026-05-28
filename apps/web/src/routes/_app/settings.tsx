@@ -1662,14 +1662,16 @@ function SettingsPage() {
       "composer",
       "chat",
       "files",
-      "tools",
+      "templates",
       "content",
       "notifications",
       "performance",
       "diagnostics",
     ].includes(hash)
       ? hash
-      : "appearance";
+      : hash === "tools"
+        ? "templates"
+        : "appearance";
   });
 
   React.useEffect(() => {
@@ -1683,14 +1685,16 @@ function SettingsPage() {
           "composer",
           "chat",
           "files",
-          "tools",
+          "templates",
           "content",
           "notifications",
           "performance",
           "diagnostics",
         ].includes(hash)
           ? hash
-          : "appearance",
+          : hash === "tools"
+            ? "templates"
+            : "appearance",
       );
     };
     window.addEventListener("hashchange", onHash);
@@ -1752,9 +1756,9 @@ function SettingsPage() {
             <FolderIcon className="size-4" data-slot="icon" />
             Files
           </Tab>
-          <Tab id="tools" data-test="portal-settings-tab-tools">
+          <Tab id="templates" data-test="portal-settings-tab-templates">
             <WrenchScrewdriverIcon className="size-4" data-slot="icon" />
-            Tools
+            Templates
           </Tab>
           <Tab id="content" data-test="portal-settings-tab-content">
             <EyeIcon className="size-4" data-slot="icon" />
@@ -2033,7 +2037,7 @@ function SettingsPage() {
           </div>
         </TabPanel>
 
-        <TabPanel id="tools" className="pt-6">
+        <TabPanel id="templates" className="pt-6">
           <div className="space-y-10">
             <ToolsSettings />
           </div>

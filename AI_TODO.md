@@ -2513,3 +2513,202 @@ Design notes:
 - Deploy via `bash scripts/deploy.sh` after each major phase. Push to BOTH `origin` (gitlab) and `github` after each commit.
 - `.vibekick/` is the canonical path because OpenPortal -> vibekick rebrand is queued; adopting now avoids a filesystem migration later.
 - Side observation surfaced in the same prompt: `/btw` is invisible on new-session because the builtin-injection only exists in $id.tsx (chat composer), not new.tsx. Phase G closes both.
+
+### 125. Templates redesign polish: rename tools->templates, three Your-templates sections, visual-framework dropdown, sub-path completion, no monospace on prompt fields, horizontal label/field for small fields (PENDING - on feat/templates-redesign)
+
+User prompt (verbatim):
+
+> section name in settings should be called "templates". anywhere we call it tools (when talking about this feature, not other), we need to use the correct term from now on.
+>
+> there is a section called "Your custom tools". like that one, there should be "System templates" at the beginning, then "Your templates - global" and the last one - "Your templates - filesystem"
+>
+> Workspace root - has a native browser dropdown. project ui rule to introduce (agents.md) - don't use native alerts, confirms, dropddowns, etc. use our visual framework, always.
+>
+> Sub-path under workspace (optional) - must offer path completion similar to "open session" feature. remember about the rule: DRY princple, code reuse.
+>
+> prompt field - both here and other forms. no monotype font. where did the idea for monotype font come from? our prompt fields are never monotype. add to agents.md, and at the very end, screen the system for other places where monotype font is used in fields, and provide a report.
+>
+> field label       field form
+> field label2     field form2
+>
+> for small elements like root, path, name, description
+
+Design notes:
+
+- Follow-up to AI_TODO #119 (templates redesign). Scope is polish + correctness, no new features.
+- **Rename "tools" -> "templates" in this feature's surface**: Settings tab name "Tools" -> "Templates", section headers, label copy. File names (tools-store.ts, prompt-tools.ts) and the topbar Tools menu stay - those are outside the templates-redesign feature surface and renaming would be churn without value. The store's localStorage key "opencode-tools" stays too (renaming loses user data).
+- **Three "Your templates" sections in the unified list**: "System templates" (stock - was unlabelled), "Your templates - global" (custom from local store - was "Your custom tools"), "Your templates - filesystem" (FS-backed .vibekick/templates/*.md - was "Filesystem templates"). Matches the spec's parallel structure.
+- **Visual-framework dropdown**: NewFsTemplateForm's workspace-root field is a native `<select>`. Swap for the project's <Select> component (likely from components/ui/select.tsx). Explore agent fired for the canonical pick.
+- **Sub-path completion**: The sub-path input is a plain text field. The "open session" / new-session flow has directory completion - reuse that component. Explore agent fired to identify the right reusable piece. DRY principle applies; don't reinvent.
+- **No monospace on prompt fields**: Drop font-mono from every prompt textarea in tools-settings.tsx (and any other prompt-shaped field that has it). Audit explore agent fired to catalog every monospace-on-form-field occurrence in apps/web/src and classify legitimate-vs-wrong.
+- **Horizontal label/field layout**: For SMALL fields (workspace root, sub-path, name, description) use "label    field" on one line instead of label-on-top-of-field. Multi-line textareas (prompt) keep the stacked layout - horizontal doesn't fit a tall field. Specific class change: drop `space-y-1` + remove the standalone `<label>` line, switch to a flex row with the label sized to the left.
+- **AGENTS.md additions**:
+  - Under "UX preferences" - new rule: "Never use native alerts/confirms/dropdowns/file pickers. Always use the project's visual framework components."
+  - Same section - new rule: "Prompt fields are NEVER monospace. Code/path/log fields can be; prompts cannot."
+- Plan:
+  1. AI_TODO entry (this commit, AI_TODO-only)
+  2. Wait for the three explore agents
+  3. AGENTS.md rule additions
+  4. tools-settings.tsx rewrite for renaming + section restructure + horizontal layout + font-mono removal
+  5. NewFsTemplateForm: visual-framework dropdown + path completion swap
+  6. Settings tab rename Tools -> Templates (hash id, tab label)
+  7. Deploy + verify in browser
+  8. Push to both remotes
+  9. Final monospace audit report delivered verbatim to user
+
+### 126. Templates redesign polish (Round 2): Burger rename, Disable as separate state, new-session shows all non-disabled, slash filter respects only disabled (PENDING - on feat/templates-redesign)
+
+User prompt (verbatim):
+
+> On — visible in the topbar Tools menu. -> rename to "burger"
+> Init — pre-checked in the create-project modal and concatenated (in drag order below) as the new session's first prompt.
+> Slash — appears in the composer "/" autocomplete as /template Full name. Accepting it replaces the token with the template body.
+> "disable" -> totally disables the template. deselects all  like it doesn't exist. equivalent of delete for user defined ones, except it's the system so it cannot be deleted. should visualize as disabled, e.g. opacity change or something. must click enable to get it back.
+>
+> "burger" deselected shouldn't hide template from the init template list on create new session. "burger" just toggles whether it's shown in burger. only "
+> then - "init" means it's default on on session new screen. all other non-disabled templates are to be shown.
+>
+>
+> slash command behavior: not up to the spec i provided: If enabled as slash command, it shows on the list of /slashcommands as "/template Full name here" on the list, and when activated, immediately replaces itself with that template's content + padding up to 2x \n before and after so proper spacing is added before/after content (if any). Only show templates active for a given project (not disabled), only. Current project, and all directories down to the workspace root.
+
+Design notes:
+
+- Follow-up to #119 + #125 that splits the conflated "enabled" concept into TWO orthogonal axes:
+  - **Burger** (per-row checkbox): controls visibility in the topbar Tools/Burger menu ONLY. Default = visible. Burger OFF still shows the template in the new-session picker, the slash autocomplete (if slash flag is set), etc. Effectively the old "On"/"enabled" semantic narrowed to the topbar surface.
+  - **Disabled** (per-row button toggling state): totally hides the template from every surface - topbar, new-session picker, slash autocomplete. Equivalent to soft-delete for stock templates that can't be hard-deleted. Click Enable to restore. Visualize as `opacity-50` (or similar) with the three flag checkboxes greyed-out while disabled.
+
+- **State model**:
+  - Tools-store: rename existing `disabledIds` slice -> `burgerHiddenIds` (semantic shift: now means "hidden from topbar burger menu", not "fully disabled"). Add new `fullyDisabledIds: string[]`. Add `toggleFullyDisabled(id, next)` mutator.
+  - `ResolvedTool` shape: replace `enabled` field with TWO fields - `burgerVisible: boolean` (= !burgerHiddenIds.includes(id)) and `fullyDisabled: boolean` (= fullyDisabledIds.includes(id)).
+  - Migration: zustand persist `migrate` hook. Old `disabledIds` entries map to `fullyDisabledIds` (preserves user intent - if they previously chose "I don't want this", new "disabled" state matches the old "fully hidden" behavior). Existing `disabledIds` localStorage values silently move to `fullyDisabledIds` and the key is cleared.
+
+- **Resolver across surfaces**:
+  - Topbar (app-sidebar-nav.tsx): show iff `burgerVisible && !fullyDisabled`.
+  - New-session picker (new.tsx): show iff `!fullyDisabled` (ALL non-disabled templates, regardless of init flag). Pre-check the ones in `projectInitOrder`. User can manually check / uncheck any non-disabled template.
+  - Slash popover (both composers): show iff `isSlash && !fullyDisabled`. Burger flag is irrelevant for slash.
+  - Settings list: show all templates regardless of state. Disabled rows render with `opacity-50` + disabled-state checkboxes.
+
+- **FS templates** also need this model:
+  - YAML frontmatter gains `burger: true` field (default true). Existing `enabled: true` field semantically shifts to "not fully disabled" (default true).
+  - Migration on existing FS templates: missing `burger` defaults to true (backward compat).
+  - Toggle in Settings rewrites YAML same as the other flags.
+
+- **Slash spec verification**:
+  - User said "not up to the spec i provided". My current filter is `enabled && isSlash`. After the rename + new semantics: filter becomes `!fullyDisabled && isSlash`. A template with Burger OFF but Slash ON will now correctly appear in the slash popover.
+  - Confirmed all other slash-spec items already shipped (4ff5680): popover display as `/template <full-name>`, body expansion with \n\n padding, scope walk-up-to-workspace-root for FS templates.
+
+- Plan:
+  1. AI_TODO entry (this commit, AI_TODO-only)
+  2. tools-store: schema migration + new flags + mutator
+  3. tools-settings.tsx: Burger label rename + Disable button rewires fullyDisabled + visual disabled state + section headers + horizontal label layout + Select + PathInput
+  4. ResolvedTool / resolver consumers (new.tsx, $id.tsx, app-sidebar-nav.tsx, folder-browser.tsx) - update each call-site
+  5. New-session picker: show-all-non-disabled (not just init)
+  6. Slash filter: !fullyDisabled instead of enabled
+  7. FS templates: add `burger` to YAML schema
+  8. Build + deploy + push + verify in browser
+  9. Deliver monospace audit report (carried forward from #125)
+
+### 126. Templates redesign correctness: rename "On" to "Burger", separate Disable from Burger, show all non-disabled on new-session, fix slash filter to ignore burger state (PENDING - on feat/templates-redesign)
+
+User prompt (verbatim):
+
+> On — visible in the topbar Tools menu. -> rename to "burger"
+> Init — pre-checked in the create-project modal and concatenated (in drag order below) as the new session's first prompt. 
+> Slash — appears in the composer "/" autocomplete as /template Full name. Accepting it replaces the token with the template body.
+> "disable" -> totally disables the template. deselects all  like it doesn't exist. equivalent of delete for user defined ones, except it's the system so it cannot be deleted. should visualize as disabled, e.g. opacity change or something. must click enable to get it back. 
+>
+> "burger" deselected shouldn't hide template from the init template list on create new session. "burger" just toggles whether it's shown in burger. only "
+> then - "init" means it's default on on session new screen. all other non-disabled templates are to be shown.
+>
+>
+> slash command behavior: not up to the spec i provided: If enabled as slash command, it shows on the list of /slashcommands as "/template Full name here" on the list, and when activated, immediately replaces itself with that template's content + padding up to 2x \n before and after so proper spacing is added before/after content (if any). Only show templates active for a given project (not disabled), only. Current project, and all directories down to the workspace root.
+
+Design notes:
+
+- Follow-up to #125. The "On" checkbox in my Phase D layout had ambiguous semantics: it was simultaneously "is this template in the burger menu?" and "is this template enabled at all?". The user splits them.
+- **New 4-state model** per template:
+  - `disabled` (master kill): when set, the row renders dimmed, all three flags appear visually deselected and uninteractive, and the template does not appear in the burger menu / init picker / slash popover. Equivalent of Delete for custom + FS templates which can be removed entirely; stock templates can't be deleted so they get this soft-disable instead.
+  - `burger` (was "On"): controls topbar burger menu visibility only. NOT a kill switch.
+  - `init`: pre-checked default on new-session picker. Order is `projectInitOrder` as before.
+  - `slash`: registers the template as a `/template <name>` slash command. Filtered by `!disabled && slash` (NOT by burger).
+- **New-session picker semantics change**: previously the picker showed ONLY templates with `init` checked. New behaviour: picker shows ALL non-disabled templates; init-marked ones are pre-checked + ordered first (per `projectInitOrder`); non-init ones appear alphabetically after; user can opt in/out of any individual template via checkbox before submitting.
+- **Slash filter fix**: my Phase D filter was `tool.enabled && tool.isSlash`. Under the new model, `enabled` is no longer the right gate - the slash popover must show templates where `!isDisabled && isSlash`. A template with Burger unchecked but Slash checked MUST appear in the popover (it just doesn't appear in the topbar burger menu).
+- **Data model**:
+  - `disabledIds` keeps its name in localStorage but its semantic shifts to "not in burger menu" (was: "fully disabled"). Existing users who unchecked "On" on a tool now see that tool out of the burger menu but still in the init picker / slash popover, which is closer to what they probably wanted anyway.
+  - New field `templateDisabledIds: string[]` tracks the master-disable state. Default empty.
+  - Resolver: `isInBurger = !disabledIds.has(id)`, `isDisabled = templateDisabledIds.has(id)`, plus a backward-compat `enabled = isInBurger && !isDisabled` for existing callers (topbar burger menu, etc.).
+- **FS template YAML**: the `enabled` field in `.vibekick/templates/*.md` frontmatter gets a semantic rename - it now means `burger`. Acceptable break since no user has shipped FS templates in the wild yet (the feature is brand-new this week). YAML reader treats either `enabled` or `burger` as the burger flag for backward-compat.
+- **UI affordances**:
+  - Stock template row: Edit + Disable/Enable button (toggles `templateDisabledIds`); never Delete.
+  - Custom template row: Edit + Delete (removes from `customTools`); no Disable.
+  - FS template row: Edit + Delete (removes file); no Disable.
+  - All three row types render with `opacity-50` + pointer-events-none on flag checkboxes when the row is in `templateDisabledIds` (only applicable to stock - custom/FS get fully removed instead).
+- Folds in pending Phase D2 polish: workspace-root native `<select>` -> `<Select>`, sub-path `<Input>` -> `<PathInput>` with `/api/fs/list` completion, horizontal label/field layout for small fields, "tool" -> "template" copy update everywhere.
+- Plan order: store schema change first (foundation), then tools-settings.tsx UI rewrite (big), then callers (new.tsx + $id.tsx) in parallel, then FS YAML schema, then deploy + verify.
+
+### 127. FS templates polish: editable rows, graceful refresh, duplicate-template flow, flags on create form (PENDING - on feat/templates-redesign)
+
+User prompt (verbatim):
+
+> fs templates: should allow to edit them when they're created.
+> when refreshing list, don't dump the list only to rerender it. gracefully modify it. just indicate somewhere it's rescanning files.
+> allow to duplicate a template - which means prefill everything as the existing one has, and let me modify if needed and create new.
+> burger/init/slash should be fields on create too.
+
+Design notes:
+
+- Follow-up to #119 + #125 + #126. Four small but visible UX bumps for the FS template surface:
+
+  1. **Edit on FS templates**: FsTemplateRow currently exposes only flag toggles + Delete. Add the same inline edit affordance CustomToolRow has - Edit button toggles an in-row form for name/description/prompt; submit writes back to the YAML via `writeFsTemplate`. Stock and Custom already have this; FS was missing it.
+
+  2. **Graceful refresh**: today, toggling a flag (or any write) calls `globalMutate(/api/vibekick-templates*)` which triggers an SWR refetch. Without `keepPreviousData`, the consumer sees `data === undefined` for the duration of the refetch and unmounts every row. Result: the entire list visibly empties and re-renders on every checkbox click. Fix: use SWR's `keepPreviousData` (or pass `revalidate: false` then patch the cache optimistically). Add a small inline indicator - "Rescanning files…" with the existing `<Loader>` glyph - next to the section heading whenever `isValidating` is true and the cache is non-empty.
+
+  3. **Duplicate template**: new button per row (both Custom and FS) that opens the create-form pre-filled with the source template's name / description / prompt / flags. User edits, picks a new name (uniqueness handled by `makeCustomId` for custom, by `templateBasenameForName` collision check for FS), and submits as a new template. Source row is untouched. The create-form already exists; this is just a "pre-fill" entry point into it. Wire via an explicit `initialValues` prop on AddCustomTool + NewFsTemplateForm.
+
+  4. **Flags on FS create form**: NewFsTemplateForm currently hardcodes `enabled: true, init: false, slash: false` at submit time. Surface the three flag checkboxes (Burger / Init / Slash) inline so the user can set them at creation. Same FlagCheckbox component the rows use; same wiring to local form state. The "Burger" flag in the form maps to YAML `enabled` field (backward-compat with the field name decided in #126).
+
+- Carry-forward from #126:
+  - new.tsx picker still shows enabled+init only - must change to all !isDisabled (init pre-checked).
+  - Slash filter in new.tsx + $id.tsx still uses `tool.enabled` - must change to `!tool.isDisabled`.
+
+- Plan order (highest user impact first):
+  1. AI_TODO entry (this commit, AI_TODO-only)
+  2. new.tsx picker: show all !isDisabled, init pre-checked
+  3. Slash filter: !isDisabled instead of enabled in both composers
+  4. FS Edit button + inline form
+  5. Duplicate button on Custom + FS rows, hooked into create-form via initialValues prop
+  6. NewFsTemplateForm: add Burger / Init / Slash checkboxes
+  7. SWR keepPreviousData + "Rescanning files..." indicator
+  8. Deploy + verify + push
+  9. (Polish if budget) section headers, copy "tool"->"template", Select, PathInput, horizontal layout. Monospace audit report deliverable to user.
+
+### 127. Templates redesign correctness round 3: FS template edit/duplicate, graceful refresh, Burger/Init/Slash on create (PENDING - on feat/templates-redesign)
+
+User prompt (verbatim):
+
+> fs templates: should allow to edit them when they're created.
+> when refreshing list, don't dump the list only to rerender it. gracefully modify it. just indicate somewhere it's rescanning files.
+> allow to duplicate a template - which means prefill everything as the existing one has, and let me modify if needed and create new.
+> burger/init/slash should be fields on create too.
+
+Design notes:
+
+- Follow-up to #119 + #125 + #126. FS-template UX polish.
+- **Edit FS templates**: existing FsTemplateRow had Delete only - now needs an Edit button that pops an inline form pre-filled with the row's current name/description/burger/init/slash/order/prompt. Submitting overwrites the same .md file (location is locked - user can't move an existing template via the Edit UI; they'd Delete + New + Duplicate-like flow for that). Cancel discards drafts.
+- **Duplicate**: new button on FsTemplateRow that opens the create form pre-filled with the source row's contents - workspace pre-selected, sub-path inherited (but editable), name/description/prompt populated, flags copied. User edits as needed and clicks Create. Lands as a NEW file at the new location with a fresh slug.
+- **Burger/Init/Slash on create**: NewFsTemplateForm currently hard-codes init:false / slash:false / enabled:true. Surface all three flags as checkboxes in the form so the user can pre-mark a new template as init / slash / burger-hidden at creation time. Same three checkboxes used in the row UI - reuse FlagCheckbox.
+- **Graceful refresh**: useAllFsTemplates currently lets SWR replace data with `undefined` while revalidating, which dumps the visible list to a loader. Switch to `keepPreviousData: true` so the cached list stays painted while new data is fetched. Expose `isValidating` from the SWR result and render a small "Rescanning .vibekick/templates/..." indicator on the section header. Same treatment for useFsTemplatesForDirectory.
+- **Refactor approach**: instead of duplicating NewFsTemplateForm into NewFsTemplateForm + EditFsTemplateForm + DuplicateFsTemplateForm, parameterise into one FsTemplateForm with three modes - `{ mode: "new" | "duplicate", workspaces, initialValues? }` for new/duplicate and `{ mode: "edit", template }` for edit (location locked). Render mode-specific labels ("Create" vs "Save" vs "Create copy"), share field rendering + validation. DRY principle.
+- **Form behaviour by mode**:
+  - new: empty fields; workspace = workspaces[0]; sub-path empty; flags default (burger:true, init:false, slash:false); button "Create"
+  - duplicate(source): workspace = source's; sub-path = source's parent; fields = source's; flags = source's; button "Create copy"; on success, the parent collapses the duplicate form and the new row appears in the list via SWR revalidation
+  - edit(target): workspace + sub-path locked (read-only display); fields = target's; flags = target's; button "Save"; on success, the same .md file is overwritten and the row updates in-place via SWR's keepPreviousData
+- **Also folds in**: the rest of #125 polish that hasn't shipped yet - section headers "System templates / Your templates - global / Your templates - filesystem", native `<select>` -> `<Select>` for workspace root, plain `<Input>` -> `<PathInput>` for sub-path, horizontal label/field layout for small fields (workspace / sub-path / name / description), "tool" -> "template" copy update everywhere.
+- **Also folds in**: #126 last bits - new-session picker shows ALL non-disabled (with init pre-checked); slash filter uses `!isDisabled` not `enabled`.
+- Plan order (single commit after all the changes land cleanly):
+  1. AI_TODO #127 entry (in this commit OR separate dedicated AI_TODO commit)
+  2. use-vibekick-templates.ts - keepPreviousData + expose isValidating
+  3. tools-settings.tsx - comprehensive rewrite covering #125 + #126 + #127
+  4. new.tsx - picker shows-all-non-disabled + slash filter !isDisabled
+  5. \$id.tsx - slash filter !isDisabled
+  6. build + deploy + push + browser-verify
