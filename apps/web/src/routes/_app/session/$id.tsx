@@ -43,6 +43,7 @@ import {
   resolveToolsFromState,
   useToolsStore,
 } from "@/stores/tools-store";
+import { useFsTemplatesForDirectory } from "@/hooks/use-vibekick-templates";
 import { TodoStrip, TodoFloat } from "@/components/todo-strip";
 
 import {
@@ -4226,19 +4227,42 @@ function SessionPage() {
       slashCommandIds,
     ],
   );
+  // Filesystem templates scoped to this session's directory. The
+  // hook walks upward from session.directory to its workspace root
+  // and yields enabled+slash-marked .vibekick/templates/*.md files
+  // (server-side filter via the GET endpoint). When session has no
+  // directory bound yet, the hook is dormant.
+  const { data: fsTemplatesResp } = useFsTemplatesForDirectory(
+    currentSession?.directory ?? null,
+  );
+  const fsSlashTemplates = useMemo(
+    () =>
+      (fsTemplatesResp?.templates ?? []).filter(
+        (t) => t.enabled && t.slash,
+      ),
+    [fsTemplatesResp],
+  );
   // Template-slash entries injected alongside opencode's commandsData
   // in the popover. Each carries its body (prompt) so the onSelect
   // handler can expand the /<name> token into the full template body
   // with \n\n padding, per the slash-checkbox spec.
+  // Stock + custom tools come from the local tools-store; filesystem
+  // templates come from the directory-scoped vibekick-templates API.
   const templateSlashEntries = useMemo(() => {
-    return slashResolvedTools
+    const local = slashResolvedTools
       .filter((t) => t.enabled && t.isSlash)
       .map((t) => ({
         name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
         description: t.name,
         body: t.prompt,
       }));
-  }, [slashResolvedTools]);
+    const fs = fsSlashTemplates.map((t) => ({
+      name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
+      description: t.name,
+      body: t.prompt,
+    }));
+    return [...local, ...fs];
+  }, [slashResolvedTools, fsSlashTemplates]);
 
   // Slash extras: synthetic /btw + every template-slash entry. Passed
   // to the popover as extraItems so they merge with opencode's command

@@ -2,12 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Loader } from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
 import {
   resolveToolsFromState,
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+import {
+  deleteFsTemplate,
+  templateBasenameForName,
+  useAllFsTemplates,
+  writeFsTemplate,
+  type FsTemplate,
+} from "@/hooks/use-vibekick-templates";
 
 function useResolvedTools(): ResolvedTool[] {
   const disabledIds = useToolsStore((s) => s.disabledIds);
@@ -587,11 +595,369 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
   );
 }
 
+function FsTemplateRow({
+  template,
+  onToggle,
+  onDelete,
+}: {
+  template: FsTemplate;
+  onToggle: (
+    field: "enabled" | "init" | "slash",
+    next: boolean,
+  ) => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const wrapToggle = (field: "enabled" | "init" | "slash") => async (next: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onToggle(field, next);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-lg border border-border bg-bg p-2 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Bars3Icon
+          className="size-4 shrink-0 text-muted-fg/30"
+          title="Filesystem templates carry their `order` in YAML; drag-reorder lives on the row's MD file."
+        />
+        <FlagCheckbox
+          label="On"
+          title="Enabled flag in this template's YAML frontmatter"
+          checked={template.enabled}
+          onChange={wrapToggle("enabled")}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Init flag in this template's YAML frontmatter"
+          checked={template.init}
+          onChange={wrapToggle("init")}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Slash flag in this template's YAML frontmatter"
+          checked={template.slash}
+          onChange={wrapToggle("slash")}
+        />
+        <div className="min-w-0 flex-1 px-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{template.name}</span>
+          </div>
+          <p className="text-[10px] text-muted-fg/80 mt-0.5 font-mono truncate">
+            {template.scope}
+          </p>
+          {template.description && (
+            <p className="text-xs text-muted-fg mt-0.5">
+              {template.description}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {busy && <Loader className="size-3 text-muted-fg" />}
+          <Button
+            size="xs"
+            intent="danger"
+            onPress={async () => {
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `Delete filesystem template "${template.name}" from ${template.scope}?`,
+                )
+              ) {
+                return;
+              }
+              setBusy(true);
+              try {
+                await onDelete();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewFsTemplateForm({
+  workspaces,
+  onClose,
+}: {
+  workspaces: string[];
+  onClose: () => void;
+}) {
+  const [workspace, setWorkspace] = useState(workspaces[0] ?? "");
+  const [subpath, setSubpath] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (workspaces.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-fg">
+        No workspace roots configured. Add a workspace path to
+        <code className="mx-1">~/.openportal/openportal.json</code>
+        under <code>directories</code> first.
+        <div className="flex justify-end mt-2">
+          <Button intent="outline" size="xs" onPress={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    if (!name.trim() || !prompt.trim()) {
+      setError("Name and prompt are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const basename = templateBasenameForName(name);
+      const trimmedSubpath = subpath
+        .replace(/^\/+/, "")
+        .replace(/\/+$/, "");
+      const dirPart = trimmedSubpath
+        ? `${workspace}/${trimmedSubpath}`
+        : workspace;
+      const location = `${dirPart}/.vibekick/templates/${basename}`;
+      await writeFsTemplate({
+        location,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        enabled: true,
+        init: false,
+        slash: false,
+        order: 0,
+        prompt,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 space-y-2">
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Workspace root
+        </label>
+        <select
+          className="w-full rounded-md border border-border bg-bg px-2 py-1 text-sm"
+          value={workspace}
+          onChange={(e) => setWorkspace(e.target.value)}
+        >
+          {workspaces.map((w) => (
+            <option key={w} value={w}>
+              {w}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Sub-path under workspace (optional)
+        </label>
+        <Input
+          value={subpath}
+          onChange={(e) => setSubpath(e.target.value)}
+          placeholder="webapps/portal  (leave empty for workspace root)"
+        />
+        <p className="text-[10px] text-muted-fg/80">
+          Template lands in <code>&lt;workspace&gt;/&lt;subpath&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
+          A template visible everywhere under the workspace sits at
+          the workspace root with sub-path empty; one scoped to a
+          specific project nests deeper.
+        </p>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">Name</label>
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="git worktree -> main -> deploy -> push"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Description (optional)
+        </label>
+        <Input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Cycle a feature branch into main with deploy + push"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">Prompt</label>
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={6}
+          placeholder="What should the agent do when this template is invoked?"
+          className="font-mono text-xs"
+        />
+      </div>
+      {error && <p className="text-xs text-danger-fg">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button
+          intent="outline"
+          size="xs"
+          onPress={onClose}
+          isDisabled={saving}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="xs"
+          isDisabled={saving || !name.trim() || !prompt.trim()}
+          onPress={submit}
+        >
+          {saving ? "Saving..." : "Create"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FsTemplatesSection() {
+  const { data, isLoading, error } = useAllFsTemplates();
+  const [creating, setCreating] = useState(false);
+
+  const workspaces = data?.workspaces ?? [];
+  const templates = data?.templates ?? [];
+
+  // Group templates by their workspace root so each section header
+  // matches the workspace the templates live under. Sort within a
+  // workspace by YAML order then scope path.
+  const byWorkspace = useMemo(() => {
+    const groups = new Map<string, FsTemplate[]>();
+    for (const tpl of templates) {
+      const list = groups.get(tpl.workspaceRoot) ?? [];
+      list.push(tpl);
+      groups.set(tpl.workspaceRoot, list);
+    }
+    for (const list of groups.values()) {
+      list.sort(
+        (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
+      );
+    }
+    return groups;
+  }, [templates]);
+
+  const handleToggle = async (
+    template: FsTemplate,
+    field: "enabled" | "init" | "slash",
+    next: boolean,
+  ) => {
+    await writeFsTemplate({
+      location: template.location,
+      name: template.name,
+      description: template.description,
+      enabled: field === "enabled" ? next : template.enabled,
+      init: field === "init" ? next : template.init,
+      slash: field === "slash" ? next : template.slash,
+      order: template.order,
+      prompt: template.prompt,
+    });
+  };
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">Filesystem templates</h3>
+        <p className="text-xs text-muted-fg">
+          Templates stored next to your code at{" "}
+          <code>&lt;workspace&gt;/&lt;…&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
+          Each file&apos;s YAML frontmatter carries its flags
+          (enabled / init / slash) and ordering. Toggle a checkbox to
+          rewrite the YAML. New-session pickers and the slash
+          autocomplete show templates whose directory is current or
+          a parent of the active project, up to the workspace root.
+        </p>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 text-xs text-muted-fg">
+          <Loader className="size-4" />
+          Scanning workspaces for .vibekick/templates/…
+        </div>
+      )}
+      {error && (
+        <p className="text-xs text-danger-fg">
+          Failed to load filesystem templates:{" "}
+          {error instanceof Error ? error.message : "unknown error"}
+        </p>
+      )}
+
+      {!isLoading && templates.length === 0 && (
+        <p className="text-xs text-muted-fg">
+          No filesystem templates found. Add one below; it lands at
+          the location you choose.
+        </p>
+      )}
+
+      {workspaces.map((workspace) => {
+        const list = byWorkspace.get(workspace) ?? [];
+        if (list.length === 0) return null;
+        return (
+          <div key={workspace} className="space-y-1">
+            <h4 className="text-[10px] uppercase tracking-wide text-muted-fg/80 font-mono">
+              {workspace}
+            </h4>
+            <div className="space-y-1.5">
+              {list.map((tpl) => (
+                <FsTemplateRow
+                  key={tpl.id}
+                  template={tpl}
+                  onToggle={(field, next) =>
+                    handleToggle(tpl, field, next)
+                  }
+                  onDelete={() => deleteFsTemplate(tpl.location)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {creating ? (
+        <NewFsTemplateForm
+          workspaces={workspaces}
+          onClose={() => setCreating(false)}
+        />
+      ) : (
+        <Button
+          intent="outline"
+          size="sm"
+          onPress={() => setCreating(true)}
+        >
+          + New filesystem template
+        </Button>
+      )}
+    </section>
+  );
+}
+
 export function ToolsSettings() {
   const tools = useResolvedTools();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section className="space-y-2">
         <p className="text-xs text-muted-fg">
           Tools appear in the topbar action menu. Three flags per tool
@@ -622,6 +988,8 @@ export function ToolsSettings() {
       </section>
 
       <UnifiedToolList tools={tools} />
+
+      <FsTemplatesSection />
 
       <div className="sticky bottom-0 -mx-1 px-1 py-3 bg-bg border-t border-border/40">
         <AddCustomTool />

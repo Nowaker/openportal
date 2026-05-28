@@ -47,6 +47,7 @@ import {
   DocumentIcon,
   StopIcon,
 } from "@heroicons/react/24/outline";
+import { useFsTemplatesForDirectory } from "@/hooks/use-vibekick-templates";
 import {
   resolveToolsFromState,
   useToolsStore,
@@ -89,6 +90,17 @@ function dataUrlToBlob(dataUrl: string): Blob {
   const arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   return new Blob([arr], { type: mime });
+}
+
+// Picker item shape that fits both ResolvedTool (stock + custom from
+// the local tools-store) and FsTemplate (filesystem-backed) without
+// inheriting all their other fields. The picker only needs id (for
+// the checkbox identity + drag drop), name (for display), and prompt
+// (for the on-submit prepend). Anything else stays on the source.
+interface InitPickerItem {
+  id: string;
+  name: string;
+  prompt: string;
 }
 
 function NewSessionPage() {
@@ -134,18 +146,30 @@ function NewSessionPage() {
   );
 
   // The picker shows ONLY templates the user has both (a) marked as
-  // init in Settings AND (b) left enabled. Disabled-but-init templates
-  // and non-init enabled templates do NOT appear here - they belong to
-  // other surfaces (topbar Tools menu, slash command palette). Display
-  // order follows projectInitOrder so the user's drag-reorder in
-  // Settings is the source of truth.
-  const initialOrder = useMemo(() => {
-    return projectInitOrder
+  // init AND (b) left enabled. Three sources merge into one list:
+  //   - stock + custom tools from the local tools-store
+  //     (enabled+init resolved from disabledIds + projectInitOrder)
+  //   - filesystem templates from the directory-scoped
+  //     vibekick-templates API (enabled+init from YAML frontmatter)
+  // Stock/custom rows appear first in their drag-reorder order;
+  // filesystem rows follow, sorted by YAML order then scope path.
+  // Drag-reorder in this picker only persists for stock/custom (FS
+  // items are reordered via Settings -> filesystem section instead).
+  const initialOrder = useMemo<InitPickerItem[]>(() => {
+    const stockCustom: InitPickerItem[] = projectInitOrder
       .map((id) => tools.find((t) => t.id === id))
-      .filter((t): t is ResolvedTool => Boolean(t) && t.enabled);
-  }, [tools, projectInitOrder]);
+      .filter((t): t is ResolvedTool => Boolean(t) && t.enabled)
+      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+    const fs: InitPickerItem[] = fsTemplates
+      .filter((t) => t.enabled && t.init)
+      .sort(
+        (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
+      )
+      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+    return [...stockCustom, ...fs];
+  }, [tools, projectInitOrder, fsTemplates]);
 
-  const [order, setOrder] = useState<ResolvedTool[]>(initialOrder);
+  const [order, setOrder] = useState<InitPickerItem[]>(initialOrder);
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(projectInitOrder),
   );
@@ -213,19 +237,32 @@ function NewSessionPage() {
   const fileMention = useFileMention();
   const slashCommand = useSlashCommand();
   const { data: commandsData } = useCommands();
+  const { data: fsTemplatesResp } = useFsTemplatesForDirectory(directory);
+  const fsTemplates = fsTemplatesResp?.templates ?? [];
   const [, setFileResults] = useState<{ path: string; name: string }[]>([]);
   // Template-slash entries injected alongside opencode commands. Each
   // carries its body so the onSelect handler can expand /<name> into
   // the template body with \n\n padding per the slash-checkbox spec.
+  // Stock + custom tools come from the local tools-store; filesystem
+  // templates come from the directory-scoped vibekick-templates API
+  // and carry their slash flag in YAML frontmatter.
   const templateSlashEntries = useMemo(() => {
-    return tools
+    const local = tools
       .filter((t) => t.enabled && t.isSlash)
       .map((t) => ({
         name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
         description: t.name,
         body: t.prompt,
       }));
-  }, [tools]);
+    const fs = fsTemplates
+      .filter((t) => t.enabled && t.slash)
+      .map((t) => ({
+        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
+        description: t.name,
+        body: t.prompt,
+      }));
+    return [...local, ...fs];
+  }, [tools, fsTemplates]);
   // Synthetic /btw + every slash-marked template. Parity with the
   // chat composer ($id.tsx) so /btw and templates work BEFORE the
   // session exists too. Passed to the popover as extraItems.
