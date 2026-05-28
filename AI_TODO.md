@@ -2748,4 +2748,21 @@ Design notes:
   1. **"Follow-up enhancements shipped same session"** — three bullets, one each for `3a049de` (AGENTS.md drift), `a52e777` (SSR-safety tests), `a10273b` (drawer logging). Each names the commit, links to the file(s) touched, and explains in 1-2 sentences what changed.
   2. **"Testing limitation found while verifying"** — documents the Chrome DevTools `emulate({networkConditions: "Offline"})` finding: offline emulation does NOT sever existing TCP sockets, only blocks NEW outbound. The watchdog test came back "watchdog never fired" — but that was correct behaviour given the test setup couldn't actually trigger a silently-dead-socket scenario.
 - Pure doc update. No deploy needed (the doc is read by AI agents + humans, not by the Nitro bundle).
-- Direct commit to `main-nowaker` (no worktree) — same rationale as #118's tests: 51 added lines, no behaviour changes, no risk to live prod.
+  - Direct commit to `main-nowaker` (no worktree) — same rationale as #118's tests: 51 added lines, no behaviour changes, no risk to live prod.
+
+### 122. sse-watchdog: add timer-mock test for silence-detection + reconnect path (DONE - c98cffc)
+
+User prompt (verbatim):
+
+> Self-initiated test-coverage follow-up that closes the verification gap left open by #113 + #121. The Chrome DevTools functional test was inconclusive because `emulate({networkConditions: "Offline"})` doesn't sever existing TCP sockets, so the silently-dead-socket scenario couldn't be reproduced in-browser. An in-process timer-mock test verifies the same logic in isolation, where every global the watchdog touches is a controllable double.
+
+Design notes:
+
+- Test file [`apps/web/src/lib/sse-watchdog.test.ts`](file:///home/nowaker/projekty/webapps/portal/apps/web/src/lib/sse-watchdog.test.ts) now has 5 tests (was 2). The 2 existing tests (SSR safety + idempotent close, from #118) are unchanged. 3 new tests under `describe("createWatchedEventSource: silence-detection + reconnect")` exercise the core logic.
+- `installHarness()` swaps `window` (with a `setInterval` stub on it - the watchdog uses `window.setInterval`, NOT `globalThis.setInterval`), `EventSource` (constructor that records every instance + supports `.close()` + `.onmessage`), `Date.now` (returns `harness.now`), `setInterval` and `clearInterval` (record the registered callback + delay, support id-keyed removal). `restore()` puts everything back.
+- Test #3 (silence-detection + reconnect): construct watcher with `silenceTimeoutMs: 5_000` and `checkIntervalMs: 1_000`. Advance `harness.now` past the threshold. Manually fire the captured `check` callback. Assert old EventSource `.closed === true`, new one constructed at same URL, `onReconnect` fired exactly once. Then advance time partially and fire check again — assert no second reconnect.
+- Test #4 (messages reset the silence timer): dispatch a synthetic `onmessage` event after some idle time. Advance time within the new threshold from that message — assert no reconnect. Advance past the full threshold — assert reconnect fires.
+- Test #5 (close() stops further ticks): close the watcher, then fire the captured check callback. Assert no new EventSource is constructed (the `closed` flag early-returns).
+- Output during the test run shows actual watchdog log lines (`[sse-watchdog] /api/test: silence > 5000ms; closing and reopening`), confirming the silence path executed end-to-end.
+- Run: `bun test apps/web/src/lib/sse-watchdog.test.ts` → 5 pass, 0 fail, 30 expect() calls (~90ms).
+- Direct commit to `main-nowaker` (no worktree, no deploy) — same rationale as #118 + #121: pure additive tests, no behaviour changes, no risk to live prod.
