@@ -2697,8 +2697,11 @@ Design notes:
 | `46ff541` | fix | TDZ hot-fix (hoist `useFsTemplatesForDirectory`) |
 | `316f274` | fix | React #185 hot-fix (memoise `fsTemplates`) |
 | `0c80a83` | fix | restore "Your custom tools" section header |
+| `fa7d643` | docs | AI_TODO.md loser-bump #112 -> #119 + commit chain backfill |
+| `6be195f` | polish | stop uppercase'ing the FS workspace path header |
+| `4ff5680` | spec-match | templates show as `/template <full-name>` in popover (per the user's verbatim spec). Required allowing spaces in `/template <q>` slash detection and switching template entry `name` from `<slug>` to `template <full-name>`. Verified live in a real-browser Chrome DevTools snapshot showing uid -> `/template git worktree -> main -> deploy -> push`. |
 
-Verified live via Chrome DevTools on prod (https://portal.desktop.ts.nowaker.net:8443/) at asset `/assets/index-gFUNvwCJ.js`. `/btw` confirmed visible in new-session slash popover. Settings -> Tools tab renders with 3-checkbox layout, sticky +Add, "Your custom tools" header, and the Filesystem templates section.
+Final live asset after all polish: `/assets/index-BeiEHwLX.js`. Verified live via Chrome DevTools on prod (https://portal.desktop.ts.nowaker.net:8443/): `/btw` shown in new-session slash popover; Settings -> Tools tab renders with 3-checkbox layout, sticky +Add, "Your custom tools" header, and the Filesystem templates section; FS template create + visible-in-list + delete round-trip works end-to-end (test file landed at /home/nowaker/projekty/.vibekick/templates/qa-templatesredesign-test.md with the expected YAML frontmatter, then deleted via the Settings UI Delete button); templates with the slash flag render as `/template <full-name>` in the popover.
 
 ### 118. sse-watchdog: add SSR-safety + close idempotency unit tests (DONE - a52e777)
 
