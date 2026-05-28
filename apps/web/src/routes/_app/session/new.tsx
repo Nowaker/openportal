@@ -124,15 +124,16 @@ function NewSessionPage() {
     [disabledIds, systemOverrides, customTools],
   );
 
+  // The picker shows ONLY templates the user has both (a) marked as
+  // init in Settings AND (b) left enabled. Disabled-but-init templates
+  // and non-init enabled templates do NOT appear here - they belong to
+  // other surfaces (topbar Tools menu, slash command palette). Display
+  // order follows projectInitOrder so the user's drag-reorder in
+  // Settings is the source of truth.
   const initialOrder = useMemo(() => {
-    const initSet = new Set(projectInitOrder);
-    const inOrder = projectInitOrder
+    return projectInitOrder
       .map((id) => tools.find((t) => t.id === id))
-      .filter((t): t is ResolvedTool => Boolean(t));
-    const others = tools
-      .filter((t) => !initSet.has(t.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return [...inOrder, ...others];
+      .filter((t): t is ResolvedTool => Boolean(t) && t.enabled);
   }, [tools, projectInitOrder]);
 
   const [order, setOrder] = useState<ResolvedTool[]>(initialOrder);
@@ -754,11 +755,6 @@ function NewSessionPage() {
                       />
                       <span className="truncate">{tool.name}</span>
                     </label>
-                    {!tool.enabled && (
-                      <span className="text-[10px] uppercase tracking-wide text-muted-fg shrink-0">
-                        disabled
-                      </span>
-                    )}
                   </div>
                 );
               })}
