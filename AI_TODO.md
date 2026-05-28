@@ -2513,7 +2513,7 @@ Design notes:
 - Fix path: route the slider OFF action through the openportal MCP-config PUT endpoint (set enabled:false) instead of opencode's runtime toggle. Slider ON sets enabled:true. Persistent through restart. Triggers PENDING RESTART badge so the user knows to restart opencode for the disable to take effect at the connection layer.
 - Alternative: file a bug with opencode for the silent-fail disconnect. Out of scope for this iteration.
 
-### 115. Server directories editor: advanced JSON edits don't persist on Save; nice editor lacks level/level1 inputs; history shape mismatch (DONE - <COMMIT-SHA>) [loser-bump: originally #103; bumped to #115 because main-nowaker advanced through #100..#114 (incl. parallel SSE watchdog #113 + stuck-handling cleanup #114) while this work was mid-rebase]
+### 115. Server directories editor: advanced JSON edits don't persist on Save; nice editor lacks level/level1 inputs; history shape mismatch (DONE - ebcde74) [loser-bump: originally #103; bumped to #115 because main-nowaker advanced through #100..#114 (incl. parallel SSE watchdog #113 + stuck-handling cleanup #114) while this work was mid-rebase]
 
 User prompt (verbatim):
 
