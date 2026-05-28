@@ -34,6 +34,7 @@ import {
   SlashCommandPopover,
   useSlashCommand,
   useCommands,
+  expandTemplateAtSlash,
 } from "@/components/slash-command-popover";
 import { useSWRConfig } from "swr";
 import { mutate as mutateSWR } from "swr";
@@ -46,6 +47,7 @@ import {
   DocumentIcon,
   StopIcon,
 } from "@heroicons/react/24/outline";
+import { useFsTemplatesForDirectory } from "@/hooks/use-vibekick-templates";
 import {
   resolveToolsFromState,
   useToolsStore,
@@ -90,6 +92,17 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([arr], { type: mime });
 }
 
+// Picker item shape that fits both ResolvedTool (stock + custom from
+// the local tools-store) and FsTemplate (filesystem-backed) without
+// inheriting all their other fields. The picker only needs id (for
+// the checkbox identity + drag drop), name (for display), and prompt
+// (for the on-submit prepend). Anything else stays on the source.
+interface InitPickerItem {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
 function NewSessionPage() {
   const navigate = useNavigate();
   const { directory: directoryFromUrl, autoPrompt } = Route.useSearch();
@@ -118,24 +131,45 @@ function NewSessionPage() {
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
 
   const tools = useMemo(
-    () => resolveToolsFromState({ disabledIds, systemOverrides, customTools }),
-    [disabledIds, systemOverrides, customTools],
+    () =>
+      resolveToolsFromState({
+        disabledIds,
+        systemOverrides,
+        customTools,
+        projectInitOrder,
+        slashCommandIds,
+      }),
+    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
   );
 
-  const initialOrder = useMemo(() => {
-    const initSet = new Set(projectInitOrder);
-    const inOrder = projectInitOrder
+  // The picker shows ONLY templates the user has both (a) marked as
+  // init AND (b) left enabled. Three sources merge into one list:
+  //   - stock + custom tools from the local tools-store
+  //     (enabled+init resolved from disabledIds + projectInitOrder)
+  //   - filesystem templates from the directory-scoped
+  //     vibekick-templates API (enabled+init from YAML frontmatter)
+  // Stock/custom rows appear first in their drag-reorder order;
+  // filesystem rows follow, sorted by YAML order then scope path.
+  // Drag-reorder in this picker only persists for stock/custom (FS
+  // items are reordered via Settings -> filesystem section instead).
+  const initialOrder = useMemo<InitPickerItem[]>(() => {
+    const stockCustom: InitPickerItem[] = projectInitOrder
       .map((id) => tools.find((t) => t.id === id))
-      .filter((t): t is ResolvedTool => Boolean(t));
-    const others = tools
-      .filter((t) => !initSet.has(t.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return [...inOrder, ...others];
-  }, [tools, projectInitOrder]);
+      .filter((t): t is ResolvedTool => Boolean(t) && t.enabled)
+      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+    const fs: InitPickerItem[] = fsTemplates
+      .filter((t) => t.enabled && t.init)
+      .sort(
+        (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
+      )
+      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+    return [...stockCustom, ...fs];
+  }, [tools, projectInitOrder, fsTemplates]);
 
-  const [order, setOrder] = useState<ResolvedTool[]>(initialOrder);
+  const [order, setOrder] = useState<InitPickerItem[]>(initialOrder);
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(projectInitOrder),
   );
@@ -171,21 +205,19 @@ function NewSessionPage() {
     });
   };
 
-  const composedAutoPrompt = useMemo(() => {
-    const checkedInOrder = order.filter((t) => selected.has(t.id));
-    if (checkedInOrder.length === 0) return "";
-    return checkedInOrder.map((t) => t.prompt).join("\n\n---\n\n");
-  }, [order, selected]);
-
   const draftKey = directory ? newSessionDraftKey(directory) : null;
 
+  // Init templates do NOT prefill the textarea any more - they are
+  // prepended on submit as "/template Name" lines and expanded server-
+  // side. Only refire-from-history (autoPrompt) or a previous draft
+  // ever populates the textarea on mount.
   const [text, setText] = useState(() => {
     if (autoPrompt) return autoPrompt;
     if (draftKey) {
       const d = readDraft(draftKey);
       if (d) return d;
     }
-    return composedAutoPrompt;
+    return "";
   });
   const [sending, setSending] = useState(false);
   const [sendingStatus, setSendingStatus] = useState<string>("");
@@ -205,12 +237,56 @@ function NewSessionPage() {
   const fileMention = useFileMention();
   const slashCommand = useSlashCommand();
   const { data: commandsData } = useCommands();
+  const { data: fsTemplatesResp } = useFsTemplatesForDirectory(directory);
+  const fsTemplates = fsTemplatesResp?.templates ?? [];
   const [, setFileResults] = useState<{ path: string; name: string }[]>([]);
+  // Template-slash entries injected alongside opencode commands. Each
+  // carries its body so the onSelect handler can expand /<name> into
+  // the template body with \n\n padding per the slash-checkbox spec.
+  // Stock + custom tools come from the local tools-store; filesystem
+  // templates come from the directory-scoped vibekick-templates API
+  // and carry their slash flag in YAML frontmatter.
+  const templateSlashEntries = useMemo(() => {
+    const local = tools
+      .filter((t) => t.enabled && t.isSlash)
+      .map((t) => ({
+        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
+        description: t.name,
+        body: t.prompt,
+      }));
+    const fs = fsTemplates
+      .filter((t) => t.enabled && t.slash)
+      .map((t) => ({
+        name: t.id.replace(/[^a-zA-Z0-9_.-]+/g, "-"),
+        description: t.name,
+        body: t.prompt,
+      }));
+    return [...local, ...fs];
+  }, [tools, fsTemplates]);
+  // Synthetic /btw + every slash-marked template. Parity with the
+  // chat composer ($id.tsx) so /btw and templates work BEFORE the
+  // session exists too. Passed to the popover as extraItems.
+  const slashExtras = useMemo(() => {
+    return [
+      {
+        name: "btw",
+        description:
+          "Side question - one short answer, no tools. Claude-Code parity.",
+        source: "builtin" as const,
+      },
+      ...templateSlashEntries.map((t) => ({
+        name: t.name,
+        description: t.description,
+        source: "template" as const,
+      })),
+    ];
+  }, [templateSlashEntries]);
   const filteredCommands = useMemo(() => {
-    return (commandsData ?? []).filter((c) =>
-      c.name.toLowerCase().startsWith(slashCommand.searchQuery.toLowerCase()),
+    const lc = slashCommand.searchQuery.toLowerCase();
+    return [...(commandsData ?? []), ...slashExtras].filter((c) =>
+      c.name.toLowerCase().startsWith(lc),
     );
-  }, [commandsData, slashCommand.searchQuery]);
+  }, [commandsData, slashExtras, slashCommand.searchQuery]);
   const fileAttachInputRef = useRef<HTMLInputElement>(null);
   const anyFileAttachInputRef = useRef<HTMLInputElement>(null);
 
@@ -289,12 +365,11 @@ function NewSessionPage() {
     setSttTimeoutProgress(null);
   }, []);
 
-  useEffect(() => {
-    if (autoPrompt) return;
-    if (hasUserEditedRef.current) return;
-    if (draftKey && readDraft(draftKey)) return;
-    setText(composedAutoPrompt);
-  }, [composedAutoPrompt, autoPrompt, draftKey]);
+  // No-op cleanup: prior implementation re-synced text to
+  // composedAutoPrompt whenever the init-checkbox selection changed.
+  // That auto-prefill is gone (templates prepend on submit, not on
+  // check). Kept this comment so a future refactor doesn't reintroduce
+  // the effect chain.
 
   // When the user navigates from /session/new?directory=A to ?directory=B
   // (sidebar + on a different project) the component stays mounted and
@@ -331,8 +406,29 @@ function NewSessionPage() {
         setError("No directory selected.");
         return;
       }
-      const message = (override ?? text).trim();
-      if (!message && pendingAttachments.length === 0) return;
+      const userMessage = (override ?? text).trim();
+      // Pick up checked init templates IN their drag-order. They are
+      // NOT in the textarea (auto-prefill is gone since Phase F) - we
+      // prepend them on submit. Two strings come out:
+      //   - archiveText: "/template Foo\n/template Bar\n\nUser text"
+      //     - readable history, refire-able, matches search "Foo"
+      //   - opencodeText: "<Foo body>\n\n<Bar body>\n\nUser text"
+      //     - what opencode actually executes
+      // Without any checked templates, both equal userMessage.
+      const checkedTemplates = order.filter((t) => selected.has(t.id));
+      const archivePrefix =
+        checkedTemplates.length > 0
+          ? checkedTemplates
+              .map((t) => `/template ${t.name}`)
+              .join("\n") + "\n\n"
+          : "";
+      const opencodePrefix =
+        checkedTemplates.length > 0
+          ? checkedTemplates.map((t) => t.prompt).join("\n\n") + "\n\n"
+          : "";
+      const archiveText = archivePrefix + userMessage;
+      const opencodeText = opencodePrefix + userMessage;
+      if (!archiveText && pendingAttachments.length === 0) return;
       if (!port) {
         setError("Portal not bound to OpenCode.");
         return;
@@ -354,17 +450,15 @@ function NewSessionPage() {
           ? resolveModel(null, instanceId)
           : null;
 
-        // Slash-command detection - mirrors the in-session submit
-        // path in routes/_app/session/$id.tsx. Without this, a /foo
-        // bar typed into the new-session form was POSTed as plain
-        // chat text to /prompt. Opencode would still recognise it
-        // as a command and expand the template, but the dedup
-        // between portal's archived raw text ('/foo bar') and
-        // opencode's emitted user message (the expanded template)
-        // failed - the user saw their submission twice.
+        // Slash-command detection runs on the user's raw input only -
+        // init templates are NOT an opencode command and must not
+        // route through /command. archive prefix is applied regardless.
+        // Mirrors the chat composer dedup rule that archived text and
+        // opencode's emitted user message should NOT diverge except for
+        // template expansion.
         let slashDispatch: { command: string; arguments: string } | null = null;
-        if (message.startsWith("/")) {
-          const m = message.match(/^\/(\S+)\s*([\s\S]*)$/);
+        if (checkedTemplates.length === 0 && userMessage.startsWith("/")) {
+          const m = userMessage.match(/^\/(\S+)\s*([\s\S]*)$/);
           if (m) {
             const name = m[1];
             const argsTail = m[2];
@@ -376,11 +470,13 @@ function NewSessionPage() {
         }
 
         // Bulletproof prompt history (Phase 3): localStorage capture
-        // BEFORE the fetch for the new-session create flow.
+        // BEFORE the fetch for the new-session create flow. We archive
+        // the COMPACT form (template lines) so the safety net matches
+        // what /prompt's archiveText will land in SQLite.
         const pendingLocalId = recordPendingSubmission({
           sessionId,
           port,
-          text: message,
+          text: archiveText,
           model: pickedModel ?? undefined,
           agent: pickedAgent ?? undefined,
           variant: pickedThinking ?? undefined,
@@ -415,7 +511,10 @@ function NewSessionPage() {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    text: message,
+                    text: opencodeText,
+                    ...(archiveText !== opencodeText
+                      ? { archiveText }
+                      : {}),
                     ...(pendingAttachments.length > 0
                       ? { attachments: pendingAttachments }
                       : {}),
@@ -707,7 +806,7 @@ function NewSessionPage() {
                 Init templates
               </h2>
               <p className="text-[11px] text-muted-fg/80">
-                Checked = concatenated as first prompt. Drag to reorder.
+                Checked = prepended on submit. Drag to reorder.
               </p>
             </div>
             <div className="space-y-1">
@@ -754,11 +853,6 @@ function NewSessionPage() {
                       />
                       <span className="truncate">{tool.name}</span>
                     </label>
-                    {!tool.enabled && (
-                      <span className="text-[10px] uppercase tracking-wide text-muted-fg shrink-0">
-                        disabled
-                      </span>
-                    )}
                   </div>
                 );
               })}
@@ -918,6 +1012,9 @@ function NewSessionPage() {
             isOpen={slashCommand.isOpen}
             searchQuery={slashCommand.searchQuery}
             mode={slashCommand.mode}
+            extraItems={
+              slashCommand.mode === "command" ? slashExtras : undefined
+            }
             textareaRef={textareaRef}
             slashStart={slashCommand.slashStart}
             selectedIndex={slashCommand.selectedIndex}
@@ -925,6 +1022,27 @@ function NewSessionPage() {
             onClose={slashCommand.close}
             onSelect={(commandName) => {
               const current = textareaRef.current?.value ?? "";
+              const template = templateSlashEntries.find(
+                (t) => t.name === commandName,
+              );
+              if (template && slashCommand.slashStart !== null) {
+                const tokenLen = 1 + commandName.length;
+                const { newValue, cursorPos } = expandTemplateAtSlash(
+                  current,
+                  slashCommand.slashStart,
+                  tokenLen,
+                  template.body,
+                );
+                if (textareaRef.current) {
+                  textareaRef.current.value = newValue;
+                  setText(newValue);
+                  scheduleDraftSave(newValue);
+                  textareaRef.current.focus();
+                  textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+                }
+                slashCommand.close();
+                return;
+              }
               const newValue = slashCommand.handleSelect(
                 commandName,
                 current,

@@ -15,8 +15,19 @@ export interface CustomTool {
 // list with the user's overrides and additions. Discriminated by `kind`
 // so callers can offer "reset" only for system tools.
 export type ResolvedTool =
-  | (SystemTool & { kind: "system"; enabled: boolean; isOverridden: boolean })
-  | (CustomTool & { kind: "custom"; enabled: boolean });
+  | (SystemTool & {
+      kind: "system";
+      enabled: boolean;
+      isOverridden: boolean;
+      isInit: boolean;
+      isSlash: boolean;
+    })
+  | (CustomTool & {
+      kind: "custom";
+      enabled: boolean;
+      isInit: boolean;
+      isSlash: boolean;
+    });
 
 interface ToolsPersistedState {
   // Tool ids the user has unchecked in Settings. Default = all enabled.
@@ -36,6 +47,13 @@ interface ToolsPersistedState {
   // session's first auto-prompt. Stored as ORDERED array so drag-drop
   // reordering in Settings is the source of truth for concatenation order.
   projectInitOrder: string[];
+  // Tool ids designated as slash commands. When the user types
+  // /<name> in any composer, these tools appear in the slash autocomplete
+  // popover under their template body. Selecting one replaces the
+  // /<name> token with the body padded to a clean \n\n…\n\n boundary.
+  // Set semantics (membership matters, order does not - the slash list
+  // sorts by tool name).
+  slashCommandIds: string[];
 }
 
 interface ToolsState extends ToolsPersistedState {
@@ -49,6 +67,7 @@ interface ToolsState extends ToolsPersistedState {
   removeCustomTool: (id: string) => void;
   toggleProjectInit: (id: string, enabled: boolean) => void;
   reorderProjectInit: (order: string[]) => void;
+  toggleSlashCommand: (id: string, enabled: boolean) => void;
 }
 
 // Pure derivation: given the persisted slices, return the resolved tool
@@ -57,9 +76,18 @@ interface ToolsState extends ToolsPersistedState {
 // fresh array identity on every render and triggers React's infinite
 // update loop guard (error #185).
 export function resolveToolsFromState(
-  state: Pick<ToolsPersistedState, "disabledIds" | "systemOverrides" | "customTools">,
+  state: Pick<
+    ToolsPersistedState,
+    | "disabledIds"
+    | "systemOverrides"
+    | "customTools"
+    | "projectInitOrder"
+    | "slashCommandIds"
+  >,
 ): ResolvedTool[] {
   const disabled = new Set(state.disabledIds);
+  const initSet = new Set(state.projectInitOrder);
+  const slashSet = new Set(state.slashCommandIds);
   const systemResolved: ResolvedTool[] = SYSTEM_TOOLS.map((tool) => {
     const override = state.systemOverrides[tool.id] ?? {};
     return {
@@ -70,12 +98,16 @@ export function resolveToolsFromState(
       enabled: !disabled.has(tool.id),
       isOverridden:
         override.name !== undefined || override.prompt !== undefined,
+      isInit: initSet.has(tool.id),
+      isSlash: slashSet.has(tool.id),
     };
   });
   const customResolved: ResolvedTool[] = state.customTools.map((tool) => ({
     ...tool,
     kind: "custom" as const,
     enabled: !disabled.has(tool.id),
+    isInit: initSet.has(tool.id),
+    isSlash: slashSet.has(tool.id),
   }));
   return [...systemResolved, ...customResolved];
 }
@@ -94,6 +126,7 @@ export const useToolsStore = create<ToolsState>()(
       systemOverrides: {},
       customTools: [],
       projectInitOrder: [],
+      slashCommandIds: [],
 
       setEnabled: (id, enabled) =>
         set((state) => {
@@ -151,6 +184,7 @@ export const useToolsStore = create<ToolsState>()(
           // id later doesn't inherit the previous disabled state.
           disabledIds: state.disabledIds.filter((d) => d !== id),
           projectInitOrder: state.projectInitOrder.filter((p) => p !== id),
+          slashCommandIds: state.slashCommandIds.filter((p) => p !== id),
         })),
 
       toggleProjectInit: (id, enabled) =>
@@ -168,6 +202,15 @@ export const useToolsStore = create<ToolsState>()(
             state.projectInitOrder.includes(id),
           ),
         })),
+
+      toggleSlashCommand: (id, enabled) =>
+        set((state) => ({
+          slashCommandIds: enabled
+            ? state.slashCommandIds.includes(id)
+              ? state.slashCommandIds
+              : [...state.slashCommandIds, id]
+            : state.slashCommandIds.filter((x) => x !== id),
+        })),
     }),
     {
       name: "opencode-tools",
@@ -176,6 +219,7 @@ export const useToolsStore = create<ToolsState>()(
         systemOverrides: state.systemOverrides,
         customTools: state.customTools,
         projectInitOrder: state.projectInitOrder,
+        slashCommandIds: state.slashCommandIds,
       }),
     },
   ),

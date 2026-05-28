@@ -2,55 +2,40 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Loader } from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
 import {
   resolveToolsFromState,
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+import {
+  deleteFsTemplate,
+  templateBasenameForName,
+  useAllFsTemplates,
+  writeFsTemplate,
+  type FsTemplate,
+} from "@/hooks/use-vibekick-templates";
 
-function ProjectInitCheckbox({ toolId }: { toolId: string }) {
-  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
-  const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
-  const isInit = projectInitOrder.includes(toolId);
-  // Fixed-width slot so the Init column aligns vertically across rows
-  // regardless of which action buttons (Edit/Reset/Delete) follow on each
-  // row. w-20 fits the longest variant ("Init" label + checkbox + breathing
-  // room) without crowding the action buttons on its right.
-  return (
-    <label
-      className="inline-flex w-20 items-center gap-2 text-[11px] uppercase tracking-wide text-muted-fg cursor-pointer select-none px-2"
-      title="Include this template when creating a new project"
-    >
-      <input
-        type="checkbox"
-        className="size-4 cursor-pointer accent-primary"
-        checked={isInit}
-        onChange={(e) => toggleProjectInit(toolId, e.target.checked)}
-      />
-      Init
-    </label>
-  );
-}
-
-// Subscribe to the persisted slices and derive the resolved list via
-// useMemo. Calling resolveTools()/enabledTools() inside a Zustand
-// selector returns a fresh array identity on every render and trips
-// React error #185 (infinite update depth).
 function useResolvedTools(): ResolvedTool[] {
   const disabledIds = useToolsStore((s) => s.disabledIds);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
   return useMemo(
     () =>
-      resolveToolsFromState({ disabledIds, systemOverrides, customTools }),
-    [disabledIds, systemOverrides, customTools],
+      resolveToolsFromState({
+        disabledIds,
+        systemOverrides,
+        customTools,
+        projectInitOrder,
+        slashCommandIds,
+      }),
+    [disabledIds, systemOverrides, customTools, projectInitOrder, slashCommandIds],
   );
 }
 
-// Slugifies a free-form name into a stable id for new custom tools.
-// Falls back to a timestamp suffix if the user picks an empty name or
-// one that collides with an existing tool.
 function makeCustomId(name: string, taken: Set<string>): string {
   const base =
     name
@@ -64,12 +49,60 @@ function makeCustomId(name: string, taken: Set<string>): string {
   return `custom.${base}-${Date.now().toString(36)}`;
 }
 
-interface ToolRowProps {
-  tool: ResolvedTool;
+// Inline checkbox cluster on the left side of every row. Three flags
+// per template, three columns. Fixed widths keep the columns aligned
+// vertically across rows regardless of tool name length.
+function FlagCheckbox({
+  label,
+  checked,
+  onChange,
+  title,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  title: string;
+}) {
+  return (
+    <label
+      className="inline-flex w-14 items-center gap-1 text-[10px] uppercase tracking-wide text-muted-fg cursor-pointer"
+      title={title}
+    >
+      <input
+        type="checkbox"
+        className="size-4 cursor-pointer accent-primary"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      {label}
+    </label>
+  );
 }
 
-function SystemToolRow({ tool }: ToolRowProps) {
+interface ToolRowProps {
+  tool: ResolvedTool;
+  draggable: boolean;
+  isDragOver: boolean;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+}
+
+function SystemToolRow({
+  tool,
+  draggable,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+}: ToolRowProps) {
   const setEnabled = useToolsStore((s) => s.setEnabled);
+  const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
+  const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const setSystemOverride = useToolsStore((s) => s.setSystemOverride);
   const resetSystemOverride = useToolsStore((s) => s.resetSystemOverride);
 
@@ -77,10 +110,6 @@ function SystemToolRow({ tool }: ToolRowProps) {
   const [draftName, setDraftName] = useState(tool.name);
   const [draftPrompt, setDraftPrompt] = useState(tool.prompt);
 
-  // Sync drafts back to current tool state when not editing. Deps are
-  // primitives (the strings themselves) rather than the tool object so
-  // a parent re-render with a new tool reference but identical values
-  // does NOT re-fire setState - this avoids React error #185.
   useEffect(() => {
     if (!editing) {
       setDraftName(tool.name);
@@ -91,16 +120,52 @@ function SystemToolRow({ tool }: ToolRowProps) {
   if (tool.kind !== "system") return null;
 
   return (
-    <div className="rounded-lg border border-border bg-bg p-3 space-y-2">
-      <div className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          aria-label={`Enable ${tool.name}`}
-          className="mt-1 size-4 cursor-pointer accent-primary"
-          checked={tool.enabled}
-          onChange={(e) => setEnabled(tool.id, e.target.checked)}
+    <div
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+      onDragEnd={onDragEnd}
+      className={`rounded-lg border border-border bg-bg p-2 space-y-2 ${
+        isDragOver ? "border-primary/40 bg-primary/5" : ""
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <Bars3Icon
+          className={`size-4 shrink-0 ${
+            draggable
+              ? "text-muted-fg cursor-grab active:cursor-grabbing"
+              : "text-muted-fg/30"
+          }`}
+          title={
+            draggable
+              ? "Drag to reorder among init templates"
+              : "Mark as Init to enable drag-reorder"
+          }
         />
-        <div className="min-w-0 flex-1">
+        <FlagCheckbox
+          label="On"
+          title="Enabled - appears in the topbar Tools menu"
+          checked={tool.enabled}
+          onChange={(next) => setEnabled(tool.id, next)}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Include in new-project init prompt"
+          checked={tool.isInit}
+          onChange={(next) => toggleProjectInit(tool.id, next)}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Available as /<name> slash command in composers"
+          checked={tool.isSlash}
+          onChange={(next) => toggleSlashCommand(tool.id, next)}
+        />
+        <div className="min-w-0 flex-1 px-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{tool.name}</span>
             {tool.isOverridden && (
@@ -112,13 +177,19 @@ function SystemToolRow({ tool }: ToolRowProps) {
           <p className="text-xs text-muted-fg mt-0.5">{tool.description}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <ProjectInitCheckbox toolId={tool.id} />
           <Button
             size="xs"
             intent="outline"
             onPress={() => setEditing((v) => !v)}
           >
             {editing ? "Cancel" : "Edit"}
+          </Button>
+          <Button
+            size="xs"
+            intent="outline"
+            onPress={() => setEnabled(tool.id, !tool.enabled)}
+          >
+            {tool.enabled ? "Disable" : "Enable"}
           </Button>
           {tool.isOverridden && (
             <Button
@@ -169,8 +240,12 @@ function SystemToolRow({ tool }: ToolRowProps) {
               size="xs"
               onPress={() => {
                 setSystemOverride(tool.id, {
-                  name: draftName.trim() === tool.name ? undefined : draftName.trim(),
-                  prompt: draftPrompt === tool.prompt ? undefined : draftPrompt,
+                  name:
+                    draftName.trim() === tool.name
+                      ? undefined
+                      : draftName.trim(),
+                  prompt:
+                    draftPrompt === tool.prompt ? undefined : draftPrompt,
                 });
                 setEditing(false);
               }}
@@ -184,8 +259,19 @@ function SystemToolRow({ tool }: ToolRowProps) {
   );
 }
 
-function CustomToolRow({ tool }: ToolRowProps) {
+function CustomToolRow({
+  tool,
+  draggable,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+}: ToolRowProps) {
   const setEnabled = useToolsStore((s) => s.setEnabled);
+  const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
+  const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const upsertCustomTool = useToolsStore((s) => s.upsertCustomTool);
   const removeCustomTool = useToolsStore((s) => s.removeCustomTool);
 
@@ -197,10 +283,6 @@ function CustomToolRow({ tool }: ToolRowProps) {
   const [draftDescription, setDraftDescription] = useState(customDescription);
   const [draftPrompt, setDraftPrompt] = useState(tool.prompt);
 
-  // Sync drafts when the underlying tool changes via primitive deps
-  // (NOT [tool] - the object reference is fresh on every parent render
-  // and would cause a redundant effect that, combined with React 18's
-  // strict double-invocation, can blank the page on rapid toggles).
   useEffect(() => {
     if (!editing) {
       setDraftName(tool.name);
@@ -212,28 +294,60 @@ function CustomToolRow({ tool }: ToolRowProps) {
   if (tool.kind !== "custom") return null;
 
   return (
-    <div className="rounded-lg border border-border bg-bg p-3 space-y-2">
-      <div className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          aria-label={`Enable ${tool.name}`}
-          className="mt-1 size-4 cursor-pointer accent-primary"
-          checked={tool.enabled}
-          onChange={(e) => setEnabled(tool.id, e.target.checked)}
+    <div
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+      onDragEnd={onDragEnd}
+      className={`rounded-lg border border-border bg-bg p-2 space-y-2 ${
+        isDragOver ? "border-primary/40 bg-primary/5" : ""
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <Bars3Icon
+          className={`size-4 shrink-0 ${
+            draggable
+              ? "text-muted-fg cursor-grab active:cursor-grabbing"
+              : "text-muted-fg/30"
+          }`}
+          title={
+            draggable
+              ? "Drag to reorder among init templates"
+              : "Mark as Init to enable drag-reorder"
+          }
         />
-        <div className="min-w-0 flex-1">
+        <FlagCheckbox
+          label="On"
+          title="Enabled - appears in the topbar Tools menu"
+          checked={tool.enabled}
+          onChange={(next) => setEnabled(tool.id, next)}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Include in new-project init prompt"
+          checked={tool.isInit}
+          onChange={(next) => toggleProjectInit(tool.id, next)}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Available as /<name> slash command in composers"
+          checked={tool.isSlash}
+          onChange={(next) => toggleSlashCommand(tool.id, next)}
+        />
+        <div className="min-w-0 flex-1 px-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{tool.name}</span>
-            <span className="text-[10px] uppercase tracking-wide text-muted-fg bg-muted px-1.5 py-0.5 rounded">
-              Custom
-            </span>
           </div>
           {tool.description && (
             <p className="text-xs text-muted-fg mt-0.5">{tool.description}</p>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <ProjectInitCheckbox toolId={tool.id} />
           <Button
             size="xs"
             intent="outline"
@@ -326,11 +440,7 @@ function AddCustomTool() {
 
   if (!open) {
     return (
-      <Button
-        intent="outline"
-        size="sm"
-        onPress={() => setOpen(true)}
-      >
+      <Button intent="outline" size="sm" onPress={() => setOpen(true)}>
         + Add custom tool
       </Button>
     );
@@ -400,26 +510,52 @@ function AddCustomTool() {
   );
 }
 
-function ProjectInitOrderingSection({ tools }: { tools: ResolvedTool[] }) {
+// One unified list of tools (system + custom). Drag-reorder is active
+// ONLY for tools the user has marked as Init - that's the order that
+// flows into the new-project init prompt. Non-init rows render the
+// drag handle as a passive affordance so the user knows what's missing.
+function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
   const reorderProjectInit = useToolsStore((s) => s.reorderProjectInit);
   const dragSourceIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  const orderedInitTools = useMemo(() => {
+  // Init tools first (in their explicit projectInitOrder), then everyone
+  // else alphabetically. Stock and custom tools coexist in this single
+  // list - the section header for custom tools is gone.
+  const ordered = useMemo(() => {
     const byId = new Map(tools.map((t) => [t.id, t]));
-    return projectInitOrder
+    const initSet = new Set(projectInitOrder);
+    const initFirst = projectInitOrder
       .map((id) => byId.get(id))
       .filter((t): t is ResolvedTool => Boolean(t));
-  }, [projectInitOrder, tools]);
+    const others = tools
+      .filter((t) => !initSet.has(t.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...initFirst, ...others];
+  }, [tools, projectInitOrder]);
 
-  if (orderedInitTools.length === 0) return null;
+  const handleDragStart = (id: string) => {
+    dragSourceIdRef.current = id;
+  };
+
+  const handleDragOver = (id: string) => (e: React.DragEvent) => {
+    const src = dragSourceIdRef.current;
+    if (!src) return;
+    if (!projectInitOrder.includes(src)) return;
+    if (!projectInitOrder.includes(id)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverId !== id) setDragOverId(id);
+  };
 
   const handleDrop = (targetId: string) => {
     const sourceId = dragSourceIdRef.current;
     dragSourceIdRef.current = null;
     setDragOverId(null);
     if (!sourceId || sourceId === targetId) return;
+    if (!projectInitOrder.includes(sourceId)) return;
+    if (!projectInitOrder.includes(targetId)) return;
     const order = projectInitOrder.slice();
     const from = order.indexOf(sourceId);
     const to = order.indexOf(targetId);
@@ -429,101 +565,435 @@ function ProjectInitOrderingSection({ tools }: { tools: ResolvedTool[] }) {
     reorderProjectInit(order);
   };
 
+  const handleDragEnd = () => {
+    dragSourceIdRef.current = null;
+    setDragOverId(null);
+  };
+
   return (
     <div className="space-y-2">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-fg">
-        Project init template ordering
-      </h4>
-      <p className="text-xs text-muted-fg">
-        Drag to reorder. When you create a new project, these templates
-        are pre-checked in the create-project modal and concatenated in
-        this order as the new session's first auto-prompt.
-      </p>
-      <div className="space-y-1">
-        {orderedInitTools.map((tool) => {
-          const isDragOver = dragOverId === tool.id;
-          return (
-            <div
-              key={tool.id}
-              draggable
-              onDragStart={(e) => {
-                dragSourceIdRef.current = tool.id;
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", tool.id);
-              }}
-              onDragOver={(e) => {
-                if (!dragSourceIdRef.current) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                if (dragOverId !== tool.id) setDragOverId(tool.id);
-              }}
-              onDragLeave={() => {
-                if (dragOverId === tool.id) setDragOverId(null);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                handleDrop(tool.id);
-              }}
-              onDragEnd={() => {
-                dragSourceIdRef.current = null;
-                setDragOverId(null);
-              }}
-              className={`flex items-center gap-2 rounded-md border border-border bg-bg/60 px-2 py-1.5 text-sm cursor-grab active:cursor-grabbing ${
-                isDragOver ? "bg-primary/10 border-primary/40" : ""
-              }`}
-            >
-              <Bars3Icon className="size-4 text-muted-fg shrink-0" />
-              <span className="flex-1 min-w-0 truncate">{tool.name}</span>
-              {!tool.enabled && (
-                <span className="text-[10px] uppercase tracking-wide text-muted-fg">
-                  disabled
-                </span>
-              )}
-            </div>
-          );
-        })}
+      {ordered.map((tool) => {
+        const isInit = projectInitOrder.includes(tool.id);
+        const props: ToolRowProps = {
+          tool,
+          draggable: isInit,
+          isDragOver: dragOverId === tool.id,
+          onDragStart: () => handleDragStart(tool.id),
+          onDragOver: handleDragOver(tool.id),
+          onDragLeave: () => {
+            if (dragOverId === tool.id) setDragOverId(null);
+          },
+          onDrop: () => handleDrop(tool.id),
+          onDragEnd: handleDragEnd,
+        };
+        if (tool.kind === "system") {
+          return <SystemToolRow key={tool.id} {...props} />;
+        }
+        return <CustomToolRow key={tool.id} {...props} />;
+      })}
+    </div>
+  );
+}
+
+function FsTemplateRow({
+  template,
+  onToggle,
+  onDelete,
+}: {
+  template: FsTemplate;
+  onToggle: (
+    field: "enabled" | "init" | "slash",
+    next: boolean,
+  ) => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const wrapToggle = (field: "enabled" | "init" | "slash") => async (next: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onToggle(field, next);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-lg border border-border bg-bg p-2 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Bars3Icon
+          className="size-4 shrink-0 text-muted-fg/30"
+          title="Filesystem templates carry their `order` in YAML; drag-reorder lives on the row's MD file."
+        />
+        <FlagCheckbox
+          label="On"
+          title="Enabled flag in this template's YAML frontmatter"
+          checked={template.enabled}
+          onChange={wrapToggle("enabled")}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Init flag in this template's YAML frontmatter"
+          checked={template.init}
+          onChange={wrapToggle("init")}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Slash flag in this template's YAML frontmatter"
+          checked={template.slash}
+          onChange={wrapToggle("slash")}
+        />
+        <div className="min-w-0 flex-1 px-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{template.name}</span>
+          </div>
+          <p className="text-[10px] text-muted-fg/80 mt-0.5 font-mono truncate">
+            {template.scope}
+          </p>
+          {template.description && (
+            <p className="text-xs text-muted-fg mt-0.5">
+              {template.description}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {busy && <Loader className="size-3 text-muted-fg" />}
+          <Button
+            size="xs"
+            intent="danger"
+            onPress={async () => {
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `Delete filesystem template "${template.name}" from ${template.scope}?`,
+                )
+              ) {
+                return;
+              }
+              setBusy(true);
+              try {
+                await onDelete();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function NewFsTemplateForm({
+  workspaces,
+  onClose,
+}: {
+  workspaces: string[];
+  onClose: () => void;
+}) {
+  const [workspace, setWorkspace] = useState(workspaces[0] ?? "");
+  const [subpath, setSubpath] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (workspaces.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-fg">
+        No workspace roots configured. Add a workspace path to
+        <code className="mx-1">~/.openportal/openportal.json</code>
+        under <code>directories</code> first.
+        <div className="flex justify-end mt-2">
+          <Button intent="outline" size="xs" onPress={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    if (!name.trim() || !prompt.trim()) {
+      setError("Name and prompt are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const basename = templateBasenameForName(name);
+      const trimmedSubpath = subpath
+        .replace(/^\/+/, "")
+        .replace(/\/+$/, "");
+      const dirPart = trimmedSubpath
+        ? `${workspace}/${trimmedSubpath}`
+        : workspace;
+      const location = `${dirPart}/.vibekick/templates/${basename}`;
+      await writeFsTemplate({
+        location,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        enabled: true,
+        init: false,
+        slash: false,
+        order: 0,
+        prompt,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 space-y-2">
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Workspace root
+        </label>
+        <select
+          className="w-full rounded-md border border-border bg-bg px-2 py-1 text-sm"
+          value={workspace}
+          onChange={(e) => setWorkspace(e.target.value)}
+        >
+          {workspaces.map((w) => (
+            <option key={w} value={w}>
+              {w}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Sub-path under workspace (optional)
+        </label>
+        <Input
+          value={subpath}
+          onChange={(e) => setSubpath(e.target.value)}
+          placeholder="webapps/portal  (leave empty for workspace root)"
+        />
+        <p className="text-[10px] text-muted-fg/80">
+          Template lands in <code>&lt;workspace&gt;/&lt;subpath&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
+          A template visible everywhere under the workspace sits at
+          the workspace root with sub-path empty; one scoped to a
+          specific project nests deeper.
+        </p>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">Name</label>
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="git worktree -> main -> deploy -> push"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">
+          Description (optional)
+        </label>
+        <Input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Cycle a feature branch into main with deploy + push"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">Prompt</label>
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={6}
+          placeholder="What should the agent do when this template is invoked?"
+          className="font-mono text-xs"
+        />
+      </div>
+      {error && <p className="text-xs text-danger-fg">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button
+          intent="outline"
+          size="xs"
+          onPress={onClose}
+          isDisabled={saving}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="xs"
+          isDisabled={saving || !name.trim() || !prompt.trim()}
+          onPress={submit}
+        >
+          {saving ? "Saving..." : "Create"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FsTemplatesSection() {
+  const { data, isLoading, error } = useAllFsTemplates();
+  const [creating, setCreating] = useState(false);
+
+  const workspaces = data?.workspaces ?? [];
+  const templates = data?.templates ?? [];
+
+  // Group templates by their workspace root so each section header
+  // matches the workspace the templates live under. Sort within a
+  // workspace by YAML order then scope path.
+  const byWorkspace = useMemo(() => {
+    const groups = new Map<string, FsTemplate[]>();
+    for (const tpl of templates) {
+      const list = groups.get(tpl.workspaceRoot) ?? [];
+      list.push(tpl);
+      groups.set(tpl.workspaceRoot, list);
+    }
+    for (const list of groups.values()) {
+      list.sort(
+        (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
+      );
+    }
+    return groups;
+  }, [templates]);
+
+  const handleToggle = async (
+    template: FsTemplate,
+    field: "enabled" | "init" | "slash",
+    next: boolean,
+  ) => {
+    await writeFsTemplate({
+      location: template.location,
+      name: template.name,
+      description: template.description,
+      enabled: field === "enabled" ? next : template.enabled,
+      init: field === "init" ? next : template.init,
+      slash: field === "slash" ? next : template.slash,
+      order: template.order,
+      prompt: template.prompt,
+    });
+  };
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">Filesystem templates</h3>
+        <p className="text-xs text-muted-fg">
+          Templates stored next to your code at{" "}
+          <code>&lt;workspace&gt;/&lt;…&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
+          Each file&apos;s YAML frontmatter carries its flags
+          (enabled / init / slash) and ordering. Toggle a checkbox to
+          rewrite the YAML. New-session pickers and the slash
+          autocomplete show templates whose directory is current or
+          a parent of the active project, up to the workspace root.
+        </p>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 text-xs text-muted-fg">
+          <Loader className="size-4" />
+          Scanning workspaces for .vibekick/templates/…
+        </div>
+      )}
+      {error && (
+        <p className="text-xs text-danger-fg">
+          Failed to load filesystem templates:{" "}
+          {error instanceof Error ? error.message : "unknown error"}
+        </p>
+      )}
+
+      {!isLoading && templates.length === 0 && (
+        <p className="text-xs text-muted-fg">
+          No filesystem templates found. Add one below; it lands at
+          the location you choose.
+        </p>
+      )}
+
+      {workspaces.map((workspace) => {
+        const list = byWorkspace.get(workspace) ?? [];
+        if (list.length === 0) return null;
+        return (
+          <div key={workspace} className="space-y-1">
+            <h4 className="text-[10px] uppercase tracking-wide text-muted-fg/80 font-mono">
+              {workspace}
+            </h4>
+            <div className="space-y-1.5">
+              {list.map((tpl) => (
+                <FsTemplateRow
+                  key={tpl.id}
+                  template={tpl}
+                  onToggle={(field, next) =>
+                    handleToggle(tpl, field, next)
+                  }
+                  onDelete={() => deleteFsTemplate(tpl.location)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {creating ? (
+        <NewFsTemplateForm
+          workspaces={workspaces}
+          onClose={() => setCreating(false)}
+        />
+      ) : (
+        <Button
+          intent="outline"
+          size="sm"
+          onPress={() => setCreating(true)}
+        >
+          + New filesystem template
+        </Button>
+      )}
+    </section>
   );
 }
 
 export function ToolsSettings() {
   const tools = useResolvedTools();
 
-  const systemTools = tools.filter((t) => t.kind === "system");
-  const customTools = tools.filter((t) => t.kind === "custom");
-
   return (
-    <div className="space-y-6">
-      <p className="text-xs text-muted-fg">
-        Tools appear in the topbar action menu. Disable any you don&#39;t want
-        to see; edit a system tool&#39;s prompt to customise it (your edit
-        survives future updates and you can hit Reset to restore the shipped
-        version). Add your own prompt templates with the button at the bottom.
-        Use the <strong>Init</strong> checkbox on any template to mark it as
-        a project-init template.
-      </p>
+    <div className="space-y-8">
+      <section className="space-y-2">
+        <p className="text-xs text-muted-fg">
+          Tools appear in the topbar action menu. Three flags per tool
+          control where it shows up:
+        </p>
+        <ul className="text-xs text-muted-fg list-disc pl-5 space-y-0.5">
+          <li>
+            <strong>On</strong> — visible in the topbar Tools menu.
+          </li>
+          <li>
+            <strong>Init</strong> — pre-checked in the create-project
+            modal and concatenated (in drag order below) as the new
+            session&apos;s first prompt.
+          </li>
+          <li>
+            <strong>Slash</strong> — appears in the composer
+            &quot;/&quot; autocomplete as <code>/template Full name</code>.
+            Accepting it replaces the token with the template body.
+          </li>
+        </ul>
+        <p className="text-xs text-muted-fg">
+          Edit a system tool&apos;s prompt to customise it - your edit
+          survives future updates and you can hit Reset to restore the
+          shipped version. Add your own templates with the button at
+          the bottom. Drag the handle on any Init-marked row to
+          reorder the init prompt.
+        </p>
+      </section>
 
-      <ProjectInitOrderingSection tools={tools} />
+      <UnifiedToolList tools={tools} />
 
-      <div className="space-y-2">
-        {systemTools.map((tool) => (
-          <SystemToolRow key={tool.id} tool={tool} />
-        ))}
+      <FsTemplatesSection />
+
+      <div className="sticky bottom-0 -mx-1 px-1 py-3 bg-bg border-t border-border/40">
+        <AddCustomTool />
       </div>
-
-      {customTools.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-fg">
-            Your custom tools
-          </h4>
-          {customTools.map((tool) => (
-            <CustomToolRow key={tool.id} tool={tool} />
-          ))}
-        </div>
-      )}
-
-      <AddCustomTool />
     </div>
   );
 }
