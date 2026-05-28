@@ -489,6 +489,20 @@ export function useSlashCommand(): UseSlashCommandResult {
       return;
     }
     const afterSlash = firstLine.slice(1);
+    // Template entries in extras have names shaped "template <full-name>"
+    // so they render as "/template Full name here" in the popover (per
+    // the user spec). Names contain spaces, so the default "close on
+    // first space" rule below would dismiss the popover the moment the
+    // user typed past "/template ". Keep it open for the entire first
+    // line whenever it starts with /template.
+    if (/^template($|\s)/i.test(afterSlash)) {
+      setMode("command");
+      setSearchQuery(afterSlash);
+      setSlashStart(0);
+      setSelectedIndex(0);
+      setIsOpen(true);
+      return;
+    }
     const firstSpace = afterSlash.search(/\s/);
     const query =
       firstSpace === -1 ? afterSlash : afterSlash.slice(0, firstSpace);
