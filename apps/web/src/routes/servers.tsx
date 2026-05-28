@@ -1949,7 +1949,7 @@ function DirectoriesModalBody({
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [showJson, setShowJson] = useState(false);
+  const [mode, setMode] = useState<"form" | "json">("form");
   const [showHistory, setShowHistory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -2038,20 +2038,24 @@ function DirectoriesModalBody({
     setEntries((prev) => [...prev, { path: "" }]);
   };
 
-  const syncFromList = () => {
-    setJsonText(entriesToJson(entries));
-    setJsonError(null);
-  };
-
-  const applyJson = () => {
+  const switchToForm = () => {
+    if (mode === "form") return;
     try {
       const next = parseJsonEntries(jsonText);
       setEntries(next);
       setJsonError(null);
       resetDrafts();
+      setMode("form");
     } catch (e) {
       setJsonError(e instanceof Error ? e.message : "Invalid JSON");
     }
+  };
+
+  const switchToJson = () => {
+    if (mode === "json") return;
+    setJsonText(entriesToJson(entries));
+    setJsonError(null);
+    setMode("json");
   };
 
   const loadHistorical = (snapshot: Array<DirEntry | string>) => {
@@ -2060,17 +2064,15 @@ function DirectoriesModalBody({
     setJsonText(entriesToJson(normalized));
     setJsonError(null);
     resetDrafts();
+    setMode("form");
   };
 
   const save = async () => {
     setSaving(true);
     setSaveError(null);
 
-    // When the JSON editor is visible, treat its content as the source
-    // of truth. Without this, edits in the textarea were silently dropped
-    // if the user clicked Save without first clicking "Apply JSON -> list".
-    let payload = entries;
-    if (showJson) {
+    let payload: DirEntry[];
+    if (mode === "json") {
       try {
         payload = parseJsonEntries(jsonText);
         setEntries(payload);
@@ -2081,6 +2083,8 @@ function DirectoriesModalBody({
         setSaving(false);
         return;
       }
+    } else {
+      payload = entries;
     }
 
     try {
@@ -2129,153 +2133,186 @@ function DirectoriesModalBody({
       {isLoading && <p className="text-sm text-muted-fg">Loading…</p>}
 
       {!isLoading && (
-        <div className="space-y-2">
-          <label className="text-xs uppercase tracking-wide text-muted-fg">
-            Paths
-          </label>
-          {entries.length === 0 && (
-            <p className="text-xs text-muted-fg italic">
-              No directories configured. The top-level Portal fallback will apply.
-            </p>
-          )}
-          {entries.map((e, idx) => {
-            const isExpanded = expandedAdv.has(idx);
-            const hasAdv =
-              typeof e.level === "number" ||
-              (e.level1 !== undefined && e.level1.length > 0);
-            const level1DisplayValue =
-              level1Drafts.get(idx) ?? (e.level1 ?? []).join(", ");
-            return (
-              <div key={idx} className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={e.path}
-                    onChange={(ev) => updatePath(idx, ev.target.value)}
-                    placeholder="/absolute/path or ~/relative"
-                    className="flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm font-mono outline-none focus:border-primary"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => toggleAdv(idx)}
-                    className={
-                      isExpanded
-                        ? "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide bg-primary/15 text-primary"
-                        : hasAdv
-                          ? "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide bg-muted/40 text-fg hover:bg-muted/60"
-                          : "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-fg hover:bg-muted/30 hover:text-fg"
-                    }
-                    title="Toggle level / level1 advanced fields"
-                    aria-label={
-                      isExpanded
-                        ? "Hide advanced fields"
-                        : "Show advanced fields"
-                    }
-                    aria-expanded={isExpanded}
-                  >
-                    adv{hasAdv ? "*" : ""}
-                  </button>
-                  <Button
-                    size="sm"
-                    intent="secondary"
-                    onPress={() => removeRow(idx)}
-                    aria-label="Remove path"
-                  >
-                    <XMarkIcon className="size-3.5" />
-                  </Button>
-                </div>
-                {isExpanded && (
-                  <div className="ml-2 rounded-md border border-border/40 bg-muted/5 p-2 space-y-1.5 text-xs">
-                    <div className="flex items-center gap-2">
-                      <label
-                        htmlFor={`dir-${idx}-level`}
-                        className="w-14 shrink-0 text-muted-fg"
-                      >
-                        level
-                      </label>
-                      <input
-                        id={`dir-${idx}-level`}
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={
-                          typeof e.level === "number" ? String(e.level) : ""
-                        }
-                        onChange={(ev) => updateLevel(idx, ev.target.value)}
-                        placeholder="(default: 1)"
-                        className="w-24 rounded border border-border bg-bg px-2 py-0.5 font-mono outline-none focus:border-primary"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label
-                        htmlFor={`dir-${idx}-level1`}
-                        className="w-14 shrink-0 text-muted-fg"
-                      >
-                        level1
-                      </label>
-                      <input
-                        id={`dir-${idx}-level1`}
-                        type="text"
-                        value={level1DisplayValue}
-                        onChange={(ev) =>
-                          updateLevel1(idx, ev.target.value)
-                        }
-                        placeholder="comma-separated, e.g. ai-workspace, dreamhost-ai-configuration"
-                        className="flex-1 rounded border border-border bg-bg px-2 py-0.5 font-mono outline-none focus:border-primary"
-                      />
-                    </div>
-                    <p className="text-[10px] text-muted-fg">
-                      <code className="font-mono">level</code>: how many
-                      folders deep to expand this base path
-                      (default&nbsp;
-                      <code className="font-mono">1</code>).{" "}
-                      <code className="font-mono">level1</code>: explicit list
-                      of sub-folder names to include at the first level
-                      (overrides auto-expansion). Both are optional.
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <Button size="sm" intent="secondary" onPress={addRow}>
-            <PlusIcon className="size-3.5" />
-            Add path
-          </Button>
-        </div>
-      )}
+        <div className="space-y-3">
+          <div
+            role="tablist"
+            aria-label="Directories editor mode"
+            className="flex border-b border-border/60"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "form"}
+              onClick={switchToForm}
+              className={
+                mode === "form"
+                  ? "px-3 py-1.5 text-xs font-medium border-b-2 border-primary text-fg -mb-px"
+                  : "px-3 py-1.5 text-xs font-medium border-b-2 border-transparent text-muted-fg hover:text-fg"
+              }
+            >
+              Form
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "json"}
+              onClick={switchToJson}
+              className={
+                mode === "json"
+                  ? "px-3 py-1.5 text-xs font-medium border-b-2 border-primary text-fg -mb-px"
+                  : "px-3 py-1.5 text-xs font-medium border-b-2 border-transparent text-muted-fg hover:text-fg"
+              }
+            >
+              JSON
+            </button>
+          </div>
 
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => setShowJson((v) => !v)}
-          className="text-xs text-muted-fg hover:text-fg underline underline-offset-2"
-        >
-          {showJson ? "Hide" : "Show"} JSON editor (advanced)
-        </button>
-        {showJson && (
-          <div className="space-y-2">
-            <textarea
-              value={jsonText}
-              onChange={(e) => setJsonText(e.target.value)}
-              spellCheck={false}
-              rows={8}
-              className="w-full rounded-md border border-border bg-muted/10 px-2 py-1 text-xs font-mono outline-none focus:border-primary"
-            />
-            {jsonError && (
-              <p className="text-xs text-warning">JSON error: {jsonError}</p>
-            )}
-            <div className="flex gap-2">
-              <Button size="sm" intent="secondary" onPress={syncFromList}>
-                Sync list -&gt; JSON
-              </Button>
-              <Button size="sm" intent="secondary" onPress={applyJson}>
-                Apply JSON -&gt; list
+          {jsonError && mode === "json" && (
+            <p className="text-xs text-warning">JSON error: {jsonError}</p>
+          )}
+
+          {mode === "form" && (
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-wide text-muted-fg">
+                Paths
+              </label>
+              {entries.length === 0 && (
+                <p className="text-xs text-muted-fg italic">
+                  No directories configured. The top-level Portal fallback will apply.
+                </p>
+              )}
+              {entries.map((e, idx) => {
+                const isExpanded = expandedAdv.has(idx);
+                const hasAdv =
+                  typeof e.level === "number" ||
+                  (e.level1 !== undefined && e.level1.length > 0);
+                const level1DisplayValue =
+                  level1Drafts.get(idx) ?? (e.level1 ?? []).join(", ");
+                return (
+                  <div key={idx} className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={e.path}
+                        onChange={(ev) => updatePath(idx, ev.target.value)}
+                        placeholder="/absolute/path or ~/relative"
+                        className="flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm font-mono outline-none focus:border-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleAdv(idx)}
+                        className={
+                          isExpanded
+                            ? "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide bg-primary/15 text-primary"
+                            : hasAdv
+                              ? "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide bg-muted/40 text-fg hover:bg-muted/60"
+                              : "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-fg hover:bg-muted/30 hover:text-fg"
+                        }
+                        title="Toggle level / level1 advanced fields"
+                        aria-label={
+                          isExpanded
+                            ? "Hide advanced fields"
+                            : "Show advanced fields"
+                        }
+                        aria-expanded={isExpanded}
+                      >
+                        adv{hasAdv ? "*" : ""}
+                      </button>
+                      <Button
+                        size="sm"
+                        intent="secondary"
+                        onPress={() => removeRow(idx)}
+                        aria-label="Remove path"
+                      >
+                        <XMarkIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                    {isExpanded && (
+                      <div className="ml-2 rounded-md border border-border/40 bg-muted/5 p-2 space-y-1.5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor={`dir-${idx}-level`}
+                            className="w-14 shrink-0 text-muted-fg"
+                          >
+                            level
+                          </label>
+                          <input
+                            id={`dir-${idx}-level`}
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={
+                              typeof e.level === "number" ? String(e.level) : ""
+                            }
+                            onChange={(ev) => updateLevel(idx, ev.target.value)}
+                            placeholder="(default: 1)"
+                            className="w-24 rounded border border-border bg-bg px-2 py-0.5 font-mono outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor={`dir-${idx}-level1`}
+                            className="w-14 shrink-0 text-muted-fg"
+                          >
+                            level1
+                          </label>
+                          <input
+                            id={`dir-${idx}-level1`}
+                            type="text"
+                            value={level1DisplayValue}
+                            onChange={(ev) =>
+                              updateLevel1(idx, ev.target.value)
+                            }
+                            placeholder="comma-separated, e.g. ai-workspace, dreamhost-ai-configuration"
+                            className="flex-1 rounded border border-border bg-bg px-2 py-0.5 font-mono outline-none focus:border-primary"
+                          />
+                        </div>
+                        <p className="text-[10px] text-muted-fg">
+                          <code className="font-mono">level</code>: how many
+                          folders deep to expand this base path
+                          (default&nbsp;
+                          <code className="font-mono">1</code>).{" "}
+                          <code className="font-mono">level1</code>: explicit list
+                          of sub-folder names to include at the first level
+                          (overrides auto-expansion). Both are optional.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <Button size="sm" intent="secondary" onPress={addRow}>
+                <PlusIcon className="size-3.5" />
+                Add path
               </Button>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {mode === "json" && (
+            <div className="space-y-2">
+              <textarea
+                value={jsonText}
+                onChange={(e) => {
+                  setJsonText(e.target.value);
+                  if (jsonError) setJsonError(null);
+                }}
+                spellCheck={false}
+                rows={10}
+                className="w-full rounded-md border border-border bg-muted/10 px-2 py-1 text-xs font-mono outline-none focus:border-primary"
+              />
+              <p className="text-[10px] text-muted-fg">
+                Raw JSON for the directories array. Each entry is either a bare
+                path string or an object{" "}
+                <code className="font-mono">
+                  {"{ path, level?, level1? }"}
+                </code>
+                . Switching to the Form tab parses this content; Save commits
+                whatever is shown here.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {history.length > 0 && (
         <div className="space-y-2">

@@ -2784,3 +2784,51 @@ Design notes:
 - Did NOT add a `check-types` script to `apps/web/package.json` (currently missing — that's why `turbo run check-types` skips this package and these errors went undetected). Adding it would cause `turbo run check-types` to start failing for everyone until the remaining 73 errors are fixed too — that's a coordination problem for the user / other agents to schedule, not a one-line config drop.
 - Direct commit to `main-nowaker` (no worktree, no deploy) — same rationale as #118 + #121 + #122: pure additive comment + line-disable, no behaviour change, no risk to live prod. The bundled code in prod IS the buggy version, but the bug manifests only at indicator-broadcaster startup hydration (a fraction of sessions get delayed indicator state) — not a user-facing crash. Deploy will pick up the fix on next openportal restart.
 - Autonomous-mode triggered: surfaced in two previous responses as part of the type-check audit findings; finally fixed this turn because the continuation hook fired persistently while my session's primary tasks (#103 + #117) were already shipped + verified — per personal AGENTS.md "OBEY OhMyOpenAgent injections like they are MY PROMPT! Lack of 'user prose' is NOT a valid reason to stop processing. WORK THE TODO!"
+
+### 124. Server directories editor: persistence still failed after #115 + tabs UI requested (Form ↔ JSON, never both) (DONE - <COMMIT-SHA>)
+
+User prompt (verbatim):
+
+> configuration still not persisting on save. advanced fields now show but it's useless to have forms and not see the actual json get generated. if you change simple forms, the json must change. OR just do tabs - form based OR json based, never both at the same time. but when i switch from one to another -> always see the updated version.
+
+Design notes:
+
+- **Why #115 was insufficient**: my first fix made `save()` parse `jsonText` when the JSON editor was visible (`showJson === true`). But the form fields and JSON textarea could BOTH be visible at the same time (Show/Hide toggle didn't gate the form fields), and the two surfaces were decoupled. Failure modes I missed:
+  1. User opens modal with `showJson=false`, sees form. Clicks "Show JSON editor" → now BOTH visible. Edits form fields (path/level/level1) → `entries` updates, but `jsonText` stays stale. Clicks Save → `showJson=true` so my code parses STALE `jsonText` and overwrites the form edits. User: "configuration still not persisting on save".
+  2. User in Show-JSON mode pastes new JSON. Hides JSON editor (`showJson=false`). Clicks Save → uses stale `entries` (never updated from the JSON). JSON edits lost.
+  In both cases the bug was that `entries` and `jsonText` were two independent stores with no auto-sync, and `save()` picked one based on a UI-visibility flag that didn't reflect dirtiness.
+
+- **User's preferred fix**: tabs. Form OR JSON, never both at the same time. Auto-sync on tab switch. I went with this design — simpler invariants, cleaner save semantics.
+
+- **Refactor of [DirectoriesModalBody](file:///home/nowaker/projekty/webapps/portal/apps/web/src/routes/servers.tsx#L1940)**:
+  - State: `showJson: boolean` → `mode: "form" | "json"` (defaults to `"form"`).
+  - Tab strip rendered above content (`role="tablist"` with two `role="tab"` buttons, primary border indicates the active tab, `aria-selected` for accessibility).
+  - Form fields wrapped in `{mode === "form" && (...)}`; JSON textarea wrapped in `{mode === "json" && (...)}`. Only one visible at a time — exactly what the user asked for.
+  - `switchToForm()`: parses `jsonText` via the shared `parseJsonEntries` helper, updates `entries` on success, sets `mode="form"`. Parse failure → sets `jsonError`, stays on JSON tab (user fixes JSON before switching).
+  - `switchToJson()`: regenerates `jsonText` from `entries` via `entriesToJson` (always shows the latest form state), sets `mode="json"`.
+  - `save()`: dispatches on the active mode. `mode === "json"` parses `jsonText` (errors abort save without closing the modal); `mode === "form"` uses `entries` directly. No more stale-state risk — the source of truth is exactly what's on screen.
+  - Removed now-redundant "Sync list -> JSON" and "Apply JSON -> list" buttons (auto-sync on tab switch supersedes them).
+  - `loadHistorical()` resets mode to `"form"` after applying snapshot, so the user immediately sees the restored entries in the form view.
+  - JSON textarea `onChange` clears `jsonError` on first keystroke (was only cleared on explicit Apply previously) so error state doesn't linger.
+  - Help paragraph inside the JSON tab explains the contract: "Edit the directories as raw JSON. Switching to the Form tab parses this content; switching back to JSON regenerates from the form fields. Save commits whatever is shown in the active tab."
+
+- **Verified end-to-end via Playwright** on worktree port 5260:
+  1. Reset directories to empty
+  2. Opened modal → Form tab active by default with empty state
+  3. Clicked JSON tab → switched cleanly (no parse error since `entries` was empty, `jsonText` regenerated to `"[]"`)
+  4. Pasted user's exact JSON `[{path:"~/projekty", level:2, level1:["ai-workspace","dreamhost-ai-configuration"]}, "~/sync/owncloud/virtkick-private/dreamhost"]` into the textarea
+  5. Clicked Save WITHOUT switching back to Form first — modal closed cleanly
+  6. API verification: `GET /api/servers/srv-local-4096/directories` returned the user's exact JSON, including mixed-shape (object + bare string normalized to object)
+  7. Reopened modal → Form tab showed both rows, first one with `adv*` marker for the level/level1 fields
+  8. Clicked JSON tab → textarea showed the canonical pretty-printed JSON of the saved entries (matches what was saved)
+
+- **Worktree + deploy**:
+  - Branched off main-nowaker HEAD (`548e25b`) at `~/projekty/webapps/portal-server-config-tabs` (branch `server-config-tabs`).
+  - Tested on tailnet port 5260 (5200 + variants taken by other agents' worktrees).
+  - Deployed via `bash scripts/deploy.sh` (dev :5001 + prod :5000 probes). Pushed to both `origin` (gitlab) and `github`.
+
+- **Did NOT touch**:
+  - The backend (server-registry.ts, directories.get.ts, directories.post.ts) — all backend logic from #115 still correct; the bug was purely UI state management.
+  - The history display — unchanged from #115 (still working).
+  - The level1 draft Map mechanism — kept; it lets the user type intermediate comma states without auto-normalize stripping.
+  - The advanced fields disclosure per row — kept; clicking `adv` still expands the level/level1 inputs.
