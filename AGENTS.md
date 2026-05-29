@@ -445,15 +445,18 @@ Hard rules:
   `apps/web/src/components/ui/path-input.tsx` so Tab-completion,
   Enter-submit, and the project's styling all come for free.
 - For confirmations with destructive action, the existing
-  ConfirmDialog / Modal patterns are the right surface - no
-  `window.confirm` shortcut even when it would compile.
+  ConfirmDialog / Modal patterns are the right surface, with explicit
+  Cancel / Confirm buttons - no `window.confirm` shortcut even when it
+  would compile.
 
 Why: native widgets render with the browser's OS theme (light/dark
 mismatch, weird mobile pickers, no font/spacing harmony with the
 rest of the app), do not respect the project's accent color or
 text-selection rules, and produce inconsistent UX across desktop /
-mobile / TalkBack. The visual-framework components address every
-one of those gaps.
+mobile / TalkBack. The blocking dialogs (`alert` / `confirm` /
+`prompt`) additionally freeze the whole page synchronously and read
+as dated 90s-era browser chrome, out of place in a modern app. The
+visual-framework components address every one of those gaps.
 
 This rule applies retroactively. If a reviewer finds a native
 widget on a form surface, they can swap it for the visual-framework
