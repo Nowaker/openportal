@@ -4811,14 +4811,9 @@ function SessionPage() {
         toast.error(`/btw failed: ${msg}`);
         return;
       }
-      // Clear the composer and refresh - the question synthetic message
-      // already landed server-side and will appear on the next poll.
       if (textareaRef.current) textareaRef.current.value = "";
       setHasContent(false);
       void mutateSessionMessages(port, sessionId);
-      toast.success(
-        "/btw dispatched. Answer will appear in chat when ready.",
-      );
       return;
     }
 

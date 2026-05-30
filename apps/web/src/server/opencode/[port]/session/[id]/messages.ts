@@ -338,25 +338,42 @@ async function loadFullMessages(
 
 function toSyntheticChatMessage(row: SyntheticMessageRow): unknown {
   const msgId = `synthetic::${row.id}`;
+  // completed_at IS NULL + _pending sentinel reuses the existing
+  // in-flight ("Thinking...") indicator path; see toVirtualUserMessage.
+  const completed = row.completed_at ?? null;
+  const isPending = completed === null;
   return {
     info: {
       id: msgId,
       sessionID: row.parent_session_id,
       role: row.role,
-      time: { created: row.created_at, completed: row.created_at },
+      time: { created: row.created_at, completed },
       _synthetic: true,
       _btw_index: row.btw_index,
       _btw_fork_session_id: row.fork_session_id,
+      ...(isPending
+        ? {
+            _pending: {
+              attempts: 0,
+              lastAttemptAt: row.created_at,
+              lastError: null,
+              archiveId: row.id,
+              phase: "opencode-accepted" as const,
+            },
+          }
+        : {}),
     },
-    parts: [
-      {
-        id: `${msgId}::p0`,
-        messageID: msgId,
-        sessionID: row.parent_session_id,
-        type: "text",
-        text: row.text,
-      },
-    ],
+    parts: row.text
+      ? [
+          {
+            id: `${msgId}::p0`,
+            messageID: msgId,
+            sessionID: row.parent_session_id,
+            type: "text",
+            text: row.text,
+          },
+        ]
+      : [],
   };
 }
 
