@@ -2871,7 +2871,7 @@ Design notes:
 - On completion, if disposition yields a new session id, auto-navigate to that session route.
 - Implement on a dedicated git worktree, verify in browser, deploy with scripts/deploy.sh, then push.
 
-### 132. Path linkization parity in chat messages (PENDING - implement missing links now)
+### 132. Path linkization parity in chat messages (DONE - 8b94dc3)
 
 User prompt (verbatim):
 
