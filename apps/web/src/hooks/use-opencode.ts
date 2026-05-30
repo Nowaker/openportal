@@ -362,30 +362,86 @@ export function useDeleteSession() {
   };
 }
 
+// Apply an optimistic time.archived flip to the cached sessions list
+// so the sidebar reacts instantly - the row jumps to (or out of) the
+// archived subsection on the same click that fires the API call,
+// instead of waiting for an SWR poll or a manual refresh. The server
+// returns the updated session JSON; revalidation after a successful
+// call reconciles any drift. On error we revalidate to roll back.
+type LooseSession = { id?: string; time?: Record<string, unknown> } & Record<
+  string,
+  unknown
+>;
+
+function patchArchivedInCache(
+  current: unknown,
+  sessionId: string,
+  archivedAt: number | undefined,
+): unknown {
+  if (!Array.isArray(current)) return current;
+  return (current as LooseSession[]).map((s) => {
+    if (s?.id !== sessionId) return s;
+    const time = { ...(s.time ?? {}) } as Record<string, unknown>;
+    if (archivedAt === undefined) {
+      delete time.archived;
+    } else {
+      time.archived = archivedAt;
+    }
+    return { ...s, time };
+  });
+}
+
 export function useArchiveSession() {
   const port = usePort();
+  const { mutate } = useSWRConfig();
   return async (sessionId: string) => {
     if (!port) throw new Error("No instance selected");
-    const res = await fetch(
-      `/api/opencode/${port}/session/${sessionId}/archive`,
-      { method: "POST" },
-    );
-    if (!res.ok) throw new Error(`Failed to archive session: ${res.status}`);
-    return res.json();
+    const key = `/api/opencode/${port}/sessions`;
+    const now = Date.now();
+    await mutate(key, (current) => patchArchivedInCache(current, sessionId, now), {
+      revalidate: false,
+    });
+    try {
+      const res = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/archive`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error(`Failed to archive session: ${res.status}`);
+      const payload = await res.json();
+      void mutate(key);
+      return payload;
+    } catch (err) {
+      void mutate(key);
+      throw err;
+    }
   };
 }
 
 export function useUnarchiveSession() {
   const port = usePort();
+  const { mutate } = useSWRConfig();
   return async (sessionId: string) => {
     if (!port) throw new Error("No instance selected");
-    const res = await fetch(
-      `/api/opencode/${port}/session/${sessionId}/unarchive`,
-      { method: "POST" },
+    const key = `/api/opencode/${port}/sessions`;
+    await mutate(
+      key,
+      (current) => patchArchivedInCache(current, sessionId, undefined),
+      { revalidate: false },
     );
-    if (!res.ok)
-      throw new Error(`Failed to unarchive session: ${res.status}`);
-    return res.json();
+    try {
+      const res = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/unarchive`,
+        { method: "POST" },
+      );
+      if (!res.ok)
+        throw new Error(`Failed to unarchive session: ${res.status}`);
+      const payload = await res.json();
+      void mutate(key);
+      return payload;
+    } catch (err) {
+      void mutate(key);
+      throw err;
+    }
   };
 }
 
