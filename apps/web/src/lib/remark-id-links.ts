@@ -40,13 +40,29 @@ interface MdastNode {
 export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
   return (tree: MdastNode) => {
     visit(tree, (node: MdastNode, index: number | undefined, parent: MdastNode | undefined) => {
-      if (
-        node.type === "link" ||
-        node.type === "linkReference" ||
-        node.type === "code" ||
-        node.type === "inlineCode"
-      ) {
+      if (node.type === "link" || node.type === "linkReference" || node.type === "code") {
         return SKIP;
+      }
+      if (node.type === "inlineCode" && parent && typeof index === "number") {
+        const value = node.value ?? "";
+        const m = value.match(/^(ses_[A-Za-z0-9]{9,32}|msg_[A-Za-z0-9]{20,32})$/);
+        if (!m) return;
+        const id = m[1];
+        let targetId: string | null = id;
+        if (id.startsWith("ses_")) {
+          const charCount = id.length - "ses_".length;
+          if (charCount < FULL_SES_MIN_CHARS) {
+            targetId = options?.resolveSessionId?.(id) ?? null;
+          }
+        }
+        if (targetId === null) return;
+        const href = id.startsWith("ses_") ? `/session/${targetId}` : `#msg-${id}`;
+        parent.children!.splice(index, 1, {
+          type: "link",
+          url: href,
+          children: [{ type: "text", value: id }],
+        });
+        return index + 1;
       }
       if (node.type !== "text" || !parent || typeof index !== "number") return;
       const text = node.value ?? "";

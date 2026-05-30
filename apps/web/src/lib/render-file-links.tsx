@@ -2,7 +2,7 @@ import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import useMediaQuery from "@/hooks/use-media-query";
 import { linkifySessionIds } from "@/lib/linkify-session-ids";
 
-const PATH_REGEX = /(^|[\s'"\[\]{}()=:])((?:\/(?:[\w.-]+\/)+|~\/(?:[\w.-]+\/)*)[\w.-]*[\w])(?=$|[\s'"\[\]{}().,:;?!])/g;
+const PATH_REGEX = /(^|[\s'"\[\]{}()=:])((?:\/(?:[\w$.-]+\/)+|~\/(?:[\w$.-]+\/)*)[\w$.-]*[\w$])(?=$|[\s'"\[\]{}().,:;?!])/g;
 
 export function FileLinks({ text }: { text: string }) {
   const { isMobile } = useMediaQuery();

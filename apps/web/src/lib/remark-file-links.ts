@@ -21,10 +21,10 @@ import { visit, SKIP } from "unist-util-visit";
 //     parsing - including absolute, tilde, and relative - and the
 //     click handler reads URLSearchParams.get("path") to recover it.
 const PATTERNS: RegExp[] = [
-  /(^|[\s'"\[\]{}()=:])(\/(?:[\w.-]+\/)+[\w.-]*[\w])(?=$|[\s'"\[\]{}().,:;?!])/g,
-  /(^|[\s'"\[\]{}()=:])(~\/(?:[\w.-]+\/)*[\w.-]*[\w])(?=$|[\s'"\[\]{}().,:;?!])/g,
-  /(^|[\s'"\[\]{}()=:])((?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,8})(?=$|[\s'"\[\]{}().,:;?!])/g,
-  /(^|[\s'"\[\]{}()=:])([A-Za-z][\w.-]*\.[A-Za-z0-9]{1,8})(?=$|[\s'"\[\]{}().,:;?!])/g,
+  /(^|[\s'"\[\]{}()=:])(\/(?:[\w$.-]+\/)+[\w$.-]*[\w$])(?=$|[\s'"\[\]{}().,:;?!])/g,
+  /(^|[\s'"\[\]{}()=:])(~\/(?:[\w$.-]+\/)*[\w$.-]*[\w$])(?=$|[\s'"\[\]{}().,:;?!])/g,
+  /(^|[\s'"\[\]{}()=:])((?:[\w$.-]+\/)+[\w$.-]+\.[A-Za-z0-9]{1,8})(?=$|[\s'"\[\]{}().,:;?!])/g,
+  /(^|[\s'"\[\]{}()=:])([A-Za-z][\w$.-]*\.[A-Za-z0-9]{1,8})(?=$|[\s'"\[\]{}().,:;?!])/g,
 ];
 
 function findMatches(text: string): Array<{ start: number; end: number; path: string }> {
@@ -52,39 +52,52 @@ function makeLinkUrl(path: string): string {
   return `/files?path=${encodeURIComponent(path)}`;
 }
 
+function makePathChildren(text: string): any[] | null {
+  const matches = findMatches(text);
+  if (matches.length === 0) return null;
+
+  const newChildren: any[] = [];
+  let cursor = 0;
+  for (const m of matches) {
+    if (m.start > cursor) {
+      newChildren.push({ type: "text", value: text.slice(cursor, m.start) });
+    }
+    newChildren.push({
+      type: "link",
+      url: makeLinkUrl(m.path),
+      children: [{ type: "text", value: m.path }],
+    });
+    cursor = m.end;
+  }
+  if (cursor < text.length) {
+    newChildren.push({ type: "text", value: text.slice(cursor) });
+  }
+  return newChildren;
+}
+
 export const remarkFileLinks = () => {
   return (tree: any) => {
     visit(tree, (node: any, index: number | undefined, parent: any) => {
       if (
         node.type === "link" ||
         node.type === "linkReference" ||
-        node.type === "code" ||
-        node.type === "inlineCode"
+        node.type === "code"
       ) {
         return SKIP;
       }
 
+      if (node.type === "inlineCode" && parent && typeof index === "number") {
+        const text = node.value ?? "";
+        const newChildren = makePathChildren(text);
+        if (!newChildren) return undefined;
+        parent.children.splice(index, 1, ...newChildren);
+        return index + newChildren.length;
+      }
+
       if (node.type === "text" && parent && typeof index === "number") {
         const text = node.value;
-        const matches = findMatches(text);
-        if (matches.length === 0) return undefined;
-
-        const newChildren: any[] = [];
-        let cursor = 0;
-        for (const m of matches) {
-          if (m.start > cursor) {
-            newChildren.push({ type: "text", value: text.slice(cursor, m.start) });
-          }
-          newChildren.push({
-            type: "link",
-            url: makeLinkUrl(m.path),
-            children: [{ type: "text", value: m.path }],
-          });
-          cursor = m.end;
-        }
-        if (cursor < text.length) {
-          newChildren.push({ type: "text", value: text.slice(cursor) });
-        }
+        const newChildren = makePathChildren(text);
+        if (!newChildren) return undefined;
         parent.children.splice(index, 1, ...newChildren);
         return index + newChildren.length;
       }

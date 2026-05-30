@@ -2870,3 +2870,29 @@ Design notes:
 - Add progress streaming via `--progress-file` (or equivalent) and display live phases/status in modal while running.
 - On completion, if disposition yields a new session id, auto-navigate to that session route.
 - Implement on a dedicated git worktree, verify in browser, deploy with scripts/deploy.sh, then push.
+
+### 132. Path linkization parity in chat messages (PENDING - implement missing links now)
+
+User prompt (verbatim):
+
+> ok looking at my above submission, this is how linkization happened:
+>
+> - /home/nowaker/projekty/webapps/portal/apps/web/src/routes/_app/session/$id.tsx <- not a link
+> - ~/projekty/webapps/portal/apps/web/src/routes/_app/session/$id.tsx <- not a link
+> - ./AI_TODO.md <- LINK
+> - AI_TODO.md <- LINK
+> - `/home/nowaker/projekty/webapps/portal/apps/web/src/routes/_app/session/$id.tsx` <- not a link
+> - `~/projekty/webapps/portal/apps/web/src/routes/_app/session/$id.tsx` <- not a link
+> - `./AI_TODO.md` <- not a link
+> - `AI_TODO.md` <- not a link
+>
+>
+> i don't need any analysis - implement links where they are missing
+>
+> Please address this message and continue with your tasks.
+
+Design notes:
+- Reuse existing file-path linkization path (the `FileLinks` renderer used in message content) instead of introducing a second independent parser.
+- Make absolute paths (`/home/...`) and home-short paths (`~/...`) clickable consistently in plain prose and inline-code surfaces where they currently fail.
+- Preserve current behavior for `./AI_TODO.md` and `AI_TODO.md` (already linkized in prose); add missing coverage in code-formatted text.
+- Keep fenced code blocks readable (fix single-letter regression) while adding linkization only where intended.
