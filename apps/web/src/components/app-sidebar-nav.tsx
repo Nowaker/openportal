@@ -1015,7 +1015,13 @@ export function AppSidebarNav() {
                     Fix stuck compaction...
                   </MenuItem>
                   <MenuItem
-                    onAction={() => setShowArchiveConfirm(true)}
+                    onAction={() => {
+                      if (isArchived) {
+                        setShowArchiveConfirm(true);
+                        return;
+                      }
+                      void handleArchiveToggle();
+                    }}
                     data-test={`portal-hamburger-${isArchived ? "unarchive" : "archive"}`}
                   >
                     <ArchiveBoxIcon className="size-4" data-slot="icon" />

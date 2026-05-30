@@ -93,6 +93,7 @@ import type { Session } from "@opencode-ai/sdk";
 import { FolderBrowserDialog } from "@/components/folder-browser";
 import { CreateProjectModal } from "@/components/create-project-modal";
 import { SidebarRailLayout } from "@/components/sidebar-rail-layout";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { mutate as swrMutate } from "swr";
 import { useVirtualSessionStore } from "@/stores/virtual-session-store";
 import { useSidebarExpandStore } from "@/stores/sidebar-expand-store";
@@ -139,7 +140,7 @@ interface ProjectGroupProps {
   onNewSessionInProject: () => void;
   currentSessionId: string | undefined;
   onSessionClick: () => void;
-  onArchiveSession: (id: string) => void;
+  onArchiveSession: (id: string, title: string) => void;
   onUnarchiveSession: (id: string) => void;
   statusMap: SessionStatusMap | undefined;
   searchQuery: string;
@@ -429,7 +430,7 @@ function ProjectGroup({
               </UILink>
               <button
                 type="button"
-                onClick={() => onArchiveSession(session.id)}
+                onClick={() => onArchiveSession(session.id, session.title)}
                 title="Archive session"
                 aria-label={`Archive ${session.title}`}
                 className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
@@ -544,7 +545,7 @@ interface ProjectsListProps {
   currentSessionId: string | undefined;
   virtualDirectory: string | null;
   onSessionClick: () => void;
-  onArchiveSession: (id: string) => void;
+  onArchiveSession: (id: string, title: string) => void;
   onUnarchiveSession: (id: string) => void;
   onNewSessionInProject: (directory: string) => void;
   statusMap: SessionStatusMap | undefined;
@@ -1121,7 +1122,7 @@ interface TreeChildrenProps {
   toggleExpand: (key: string) => void;
   currentSessionId: string | undefined;
   onSessionClick: () => void;
-  onArchiveSession: (id: string) => void;
+  onArchiveSession: (id: string, title: string) => void;
   onUnarchiveSession: (id: string) => void;
   onNewSessionInProject: (dir: string) => void;
   statusMap: SessionStatusMap | undefined;
@@ -1186,7 +1187,7 @@ interface TreeNodeRowProps {
   toggleExpand: (key: string) => void;
   currentSessionId: string | undefined;
   onSessionClick: () => void;
-  onArchiveSession: (id: string) => void;
+  onArchiveSession: (id: string, title: string) => void;
   onUnarchiveSession: (id: string) => void;
   onNewSessionInProject: (dir: string) => void;
   statusMap: SessionStatusMap | undefined;
@@ -1429,6 +1430,10 @@ export default function AppSidebar(
   }
 
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [archiveConfirmSession, setArchiveConfirmSession] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const currentSessionMatch = useMatch({
     from: "/_app/session/$id",
@@ -1461,6 +1466,17 @@ export default function AppSidebar(
       console.error("Failed to archive session:", error);
       toast.error("Failed to archive session");
     }
+  }
+
+  function requestArchiveSession(sessionId: string, title: string) {
+    setArchiveConfirmSession({ id: sessionId, title });
+  }
+
+  async function handleArchiveConfirm() {
+    if (!archiveConfirmSession) return;
+    const target = archiveConfirmSession;
+    setArchiveConfirmSession(null);
+    await handleArchiveSession(target.id);
   }
 
   async function handleUnarchiveSession(sessionId: string) {
@@ -1588,7 +1604,7 @@ export default function AppSidebar(
                 lastViewedMap={lastViewedMap}
                 home={portalConfig?.home ?? ""}
                 onSessionClick={() => setIsOpenOnMobile(false)}
-                onArchiveSession={handleArchiveSession}
+                onArchiveSession={requestArchiveSession}
                 onUnarchiveSession={handleUnarchiveSession}
                 onNewSessionInProject={(dir) => {
                   setIsOpenOnMobile(false);
@@ -1727,6 +1743,21 @@ export default function AppSidebar(
         </Menu>
       </SidebarFooter>
       <SidebarRail />
+      <ConfirmDialog
+        isOpen={archiveConfirmSession !== null}
+        title="Archive this session?"
+        description={
+          archiveConfirmSession
+            ? `"${archiveConfirmSession.title}" will be moved to the archived sessions list. Unarchive any time from the same menu.`
+            : ""
+        }
+        confirmLabel="Archive"
+        tone="default"
+        onConfirm={() => {
+          void handleArchiveConfirm();
+        }}
+        onClose={() => setArchiveConfirmSession(null)}
+      />
       <FolderBrowserDialog
         isOpen={browserOpen}
         onOpenChange={setBrowserOpen}
