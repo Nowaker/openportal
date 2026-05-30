@@ -3118,7 +3118,7 @@ Design notes:
 - Fix approach: apply an immediate local SWR mutation for the target session (`_pendingTitle`) before awaiting the network response, so both topbar title and sidebar list render the new title on the same paint.
 - Follow-up hardening: ensure pinned rows in `app-sidebar.tsx` also read `effectiveTitle(...)` instead of raw `session.title`, so every navbar surface honors `_pendingTitle` consistently.
 
-### 141. Optimistic mutation pattern + error recovery + AGENTS.md general rule (PENDING - in progress)
+### 141. Optimistic mutation pattern + error recovery + AGENTS.md general rule (DONE - b3ef800)
 
 User prompt (verbatim):
 
