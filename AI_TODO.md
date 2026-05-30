@@ -2928,7 +2928,7 @@ Design notes:
 - Keep the existing collapsed behavior for archived sections when the current session is not archived.
 - Target file: `apps/web/src/components/app-sidebar.tsx`.
 
-### 135. Remove OpenCode server-ID pre-generation from portal request paths (PENDING)
+### 135. Remove OpenCode server-ID pre-generation from portal request paths (DONE - 39d11a5)
 
 User prompt (verbatim):
 
