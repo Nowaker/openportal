@@ -13,6 +13,12 @@ import {
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 
 export type LongOpKind = "clean" | "stuck-fix";
 
@@ -45,6 +51,41 @@ interface KindConfig {
   optionHint: string;
   optionRequestField: "aggressive" | "cleanBeforeCompaction";
 }
+
+type SessionDisposition = "archive" | "keep" | "delete" | "inline";
+
+interface CleanDialogOptions {
+  aggressive: boolean;
+  keepIntermediateText: boolean;
+  keepStepMarkers: boolean;
+  stripUserSnapshots: boolean;
+  stripSynthetic: boolean;
+  pruneLoop: boolean;
+  pruneTodowrite: boolean;
+  pruneTask: boolean;
+  pruneWebfetch: boolean;
+  oldSessionDisposition: SessionDisposition;
+}
+
+const AGGRESSIVE_PRESET = {
+  keepIntermediateText: false,
+  keepStepMarkers: false,
+  stripUserSnapshots: true,
+  stripSynthetic: true,
+} as const;
+
+const DEFAULT_CLEAN_DIALOG_OPTIONS: CleanDialogOptions = {
+  aggressive: false,
+  keepIntermediateText: true,
+  keepStepMarkers: true,
+  stripUserSnapshots: false,
+  stripSynthetic: false,
+  pruneLoop: false,
+  pruneTodowrite: false,
+  pruneTask: false,
+  pruneWebfetch: false,
+  oldSessionDisposition: "archive",
+};
 
 const KIND_CONFIG: Record<LongOpKind, KindConfig> = {
   clean: {
@@ -220,6 +261,9 @@ function Body({
   onClose: () => void;
 }) {
   const [option, setOption] = React.useState(false);
+  const [cleanOptions, setCleanOptions] = React.useState<CleanDialogOptions>(
+    DEFAULT_CLEAN_DIALOG_OPTIONS,
+  );
   const [phase, setPhase] = React.useState<Phase>("idle");
   const [events, setEvents] = React.useState<ProgressEvent[]>([]);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -298,6 +342,17 @@ function Body({
       };
       if (directory) requestBody.directory = directory;
       requestBody[config.optionRequestField] = option;
+      if (kind === "clean") {
+        requestBody.oldSessionDisposition = cleanOptions.oldSessionDisposition;
+        requestBody.keepIntermediateText = cleanOptions.keepIntermediateText;
+        requestBody.keepStepMarkers = cleanOptions.keepStepMarkers;
+        requestBody.stripUserSnapshots = cleanOptions.stripUserSnapshots;
+        requestBody.stripSynthetic = cleanOptions.stripSynthetic;
+        requestBody.pruneLoop = cleanOptions.pruneLoop;
+        requestBody.pruneTodowrite = cleanOptions.pruneTodowrite;
+        requestBody.pruneTask = cleanOptions.pruneTask;
+        requestBody.pruneWebfetch = cleanOptions.pruneWebfetch;
+      }
       const res = await fetch(config.startPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -331,7 +386,65 @@ function Body({
       setPhase("failed");
       setErrorMsg(err instanceof Error ? err.message : "Network error");
     }
-  }, [config, directory, handleEvent, option, port, sessionId]);
+  }, [
+    cleanOptions,
+    config,
+    directory,
+    handleEvent,
+    kind,
+    option,
+    port,
+    sessionId,
+  ]);
+
+  const setAggressive = React.useCallback((next: boolean) => {
+    setOption(next);
+    if (!next) return;
+    setCleanOptions((prev) => ({
+      ...prev,
+      aggressive: true,
+      keepIntermediateText: AGGRESSIVE_PRESET.keepIntermediateText,
+      keepStepMarkers: AGGRESSIVE_PRESET.keepStepMarkers,
+      stripUserSnapshots: AGGRESSIVE_PRESET.stripUserSnapshots,
+      stripSynthetic: AGGRESSIVE_PRESET.stripSynthetic,
+    }));
+  }, []);
+
+  const setCleanFlag = React.useCallback(
+    (key: keyof CleanDialogOptions, value: boolean | SessionDisposition) => {
+      setCleanOptions((prev) => {
+        const next = { ...prev, [key]: value } as CleanDialogOptions;
+        const aggressiveMatches =
+          next.keepIntermediateText === AGGRESSIVE_PRESET.keepIntermediateText &&
+          next.keepStepMarkers === AGGRESSIVE_PRESET.keepStepMarkers &&
+          next.stripUserSnapshots === AGGRESSIVE_PRESET.stripUserSnapshots &&
+          next.stripSynthetic === AGGRESSIVE_PRESET.stripSynthetic;
+        const aggressive = option && aggressiveMatches;
+        return { ...next, aggressive };
+      });
+      if (
+        key === "keepIntermediateText" ||
+        key === "keepStepMarkers" ||
+        key === "stripUserSnapshots" ||
+        key === "stripSynthetic"
+      ) {
+        setOption((current) => {
+          if (!current) return current;
+          const merged = {
+            ...cleanOptions,
+            [key]: value,
+          } as CleanDialogOptions;
+          const stillMatches =
+            merged.keepIntermediateText === AGGRESSIVE_PRESET.keepIntermediateText &&
+            merged.keepStepMarkers === AGGRESSIVE_PRESET.keepStepMarkers &&
+            merged.stripUserSnapshots === AGGRESSIVE_PRESET.stripUserSnapshots &&
+            merged.stripSynthetic === AGGRESSIVE_PRESET.stripSynthetic;
+          return stillMatches;
+        });
+      }
+    },
+    [cleanOptions, option],
+  );
 
   const busy = phase === "starting" || phase === "running";
   const completed = phase === "completed";
@@ -387,7 +500,7 @@ function Body({
               <input
                 type="checkbox"
                 checked={option}
-                onChange={(e) => setOption(e.target.checked)}
+                onChange={(e) => setAggressive(e.target.checked)}
                 className="mt-0.5 size-4 accent-primary shrink-0"
                 data-test={`portal-long-op-${kind}-option`}
               />
@@ -398,6 +511,103 @@ function Body({
                 </div>
               </div>
             </label>
+            {kind === "clean" && (
+              <div className="space-y-2 rounded-md border border-border bg-bg/60 p-2">
+                <div className="text-xs font-medium">Mode-applied clean flags</div>
+                <FlagCheckbox
+                  checked={!cleanOptions.keepIntermediateText}
+                  label="Prune intermediate assistant text"
+                  hint="Aggressive enables this"
+                  onChange={(checked) =>
+                    setCleanFlag("keepIntermediateText", !checked)
+                  }
+                />
+                <FlagCheckbox
+                  checked={!cleanOptions.keepStepMarkers}
+                  label="Prune step markers"
+                  hint="Aggressive enables this"
+                  onChange={(checked) => setCleanFlag("keepStepMarkers", !checked)}
+                />
+                <FlagCheckbox
+                  checked={cleanOptions.stripUserSnapshots}
+                  label="Strip user snapshots"
+                  hint="Aggressive enables this"
+                  onChange={(checked) =>
+                    setCleanFlag("stripUserSnapshots", checked)
+                  }
+                />
+                <FlagCheckbox
+                  checked={cleanOptions.stripSynthetic}
+                  label="Strip synthetic messages/parts"
+                  hint="Aggressive enables this"
+                  onChange={(checked) => setCleanFlag("stripSynthetic", checked)}
+                />
+              </div>
+            )}
+            {kind === "clean" && (
+              <div className="space-y-2 rounded-md border border-border bg-bg/60 p-2">
+                <div className="text-xs font-medium">Additional pruning flags</div>
+                <FlagCheckbox
+                  checked={cleanOptions.pruneLoop}
+                  label="Prune compaction loops"
+                  hint="Adds --prune-loop"
+                  onChange={(checked) => setCleanFlag("pruneLoop", checked)}
+                />
+                <FlagCheckbox
+                  checked={cleanOptions.pruneTodowrite}
+                  label="Prune todowrite outputs"
+                  hint="Adds --prune-todowrite"
+                  onChange={(checked) => setCleanFlag("pruneTodowrite", checked)}
+                />
+                <FlagCheckbox
+                  checked={cleanOptions.pruneTask}
+                  label="Prune task/subagent outputs"
+                  hint="Adds --prune-task"
+                  onChange={(checked) => setCleanFlag("pruneTask", checked)}
+                />
+                <FlagCheckbox
+                  checked={cleanOptions.pruneWebfetch}
+                  label="Prune webfetch outputs"
+                  hint="Adds --prune-webfetch"
+                  onChange={(checked) => setCleanFlag("pruneWebfetch", checked)}
+                />
+              </div>
+            )}
+            {kind === "clean" && (
+              <div className="space-y-2 rounded-md border border-border bg-bg/60 p-2">
+                <div>
+                  <div className="text-xs font-medium">Old session disposition</div>
+                  <p className="text-[11px] text-muted-fg">
+                    Controls what happens to the original session after cleanup.
+                  </p>
+                </div>
+                <Select
+                  selectedKey={cleanOptions.oldSessionDisposition}
+                  onSelectionChange={(key) => {
+                    if (typeof key !== "string") return;
+                    if (
+                      key !== "archive" &&
+                      key !== "keep" &&
+                      key !== "delete" &&
+                      key !== "inline"
+                    ) {
+                      return;
+                    }
+                    setCleanFlag("oldSessionDisposition", key);
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    {cleanOptions.oldSessionDisposition}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem id="archive">archive (default)</SelectItem>
+                    <SelectItem id="keep">keep original session</SelectItem>
+                    <SelectItem id="delete">delete original session</SelectItem>
+                    <SelectItem id="inline">inline (no fork)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </>
         )}
 
@@ -521,5 +731,32 @@ function Body({
         )}
       </div>
     </>
+  );
+}
+
+function FlagCheckbox({
+  checked,
+  label,
+  hint,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  hint: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start gap-2 cursor-pointer rounded border border-border/80 bg-bg/40 p-2">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 size-4 accent-primary shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-medium">{label}</div>
+        <div className="text-[11px] text-muted-fg mt-0.5">{hint}</div>
+      </div>
+    </label>
   );
 }

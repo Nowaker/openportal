@@ -6,6 +6,15 @@ interface RequestBody {
   port?: unknown;
   directory?: unknown;
   aggressive?: unknown;
+  oldSessionDisposition?: unknown;
+  keepIntermediateText?: unknown;
+  keepStepMarkers?: unknown;
+  stripUserSnapshots?: unknown;
+  stripSynthetic?: unknown;
+  pruneLoop?: unknown;
+  pruneTodowrite?: unknown;
+  pruneTask?: unknown;
+  pruneWebfetch?: unknown;
 }
 
 export default defineHandler(async (event) => {
@@ -17,6 +26,21 @@ export default defineHandler(async (event) => {
       ? body.directory
       : undefined;
   const aggressive = body?.aggressive === true;
+  const oldSessionDisposition =
+    body?.oldSessionDisposition === "archive" ||
+    body?.oldSessionDisposition === "keep" ||
+    body?.oldSessionDisposition === "delete" ||
+    body?.oldSessionDisposition === "inline"
+      ? body.oldSessionDisposition
+      : "archive";
+  const keepIntermediateText = body?.keepIntermediateText === true;
+  const keepStepMarkers = body?.keepStepMarkers === true;
+  const stripUserSnapshots = body?.stripUserSnapshots === true;
+  const stripSynthetic = body?.stripSynthetic === true;
+  const pruneLoop = body?.pruneLoop === true;
+  const pruneTodowrite = body?.pruneTodowrite === true;
+  const pruneTask = body?.pruneTask === true;
+  const pruneWebfetch = body?.pruneWebfetch === true;
   if (!sessionId) {
     setResponseStatus(event, 400);
     return { ok: false, error: "sessionId required" };
@@ -32,6 +56,15 @@ export default defineHandler(async (event) => {
       opencodeUrl: `http://127.0.0.1:${port}`,
       directory,
       aggressive,
+      oldSessionDisposition,
+      keepIntermediateText,
+      keepStepMarkers,
+      stripUserSnapshots,
+      stripSynthetic,
+      pruneLoop,
+      pruneTodowrite,
+      pruneTask,
+      pruneWebfetch,
     });
     return { ok: true, runId };
   } catch (err) {
