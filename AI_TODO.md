@@ -3006,7 +3006,7 @@ Design notes:
   - `ai-analysis-requests/SESSION_STATUS_SIGNAL_AUDIT.md` enumerating every session.status type + relevant message Part types and surfaced-vs-dropped per portal indicator/chat path.
   - Live verification: trigger retry on opencode and confirm portal indicator shows it end-to-end.
 
-### 138. /btw (side question) - redesign to fork-archive-replay pattern (PENDING)
+### 138. /btw (side question) - redesign to fork-archive-replay pattern (DONE - 0b9786e)
 
 User prompt (verbatim):
 
