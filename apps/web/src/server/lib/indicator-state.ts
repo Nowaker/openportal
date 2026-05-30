@@ -65,6 +65,25 @@ export interface SessionIndicatorState {
     message: string | null;
     overdue: boolean;
   } | null;
+  // Opencode-native retry signal from `session.status` SSE event with
+  // discriminated `type:"retry"` (see opencode's session/status.ts). Held
+  // in a separate field from `retry` above so the two authoritative
+  // sources (stuck-detector inference vs opencode itself telling us)
+  // don't stomp each other. `next` is the absolute Unix timestamp (ms)
+  // of the next attempt; UI computes countdown as `max(0, next - now)`.
+  opencode_retry: {
+    attempt: number;
+    next: number;
+    message: string;
+    action?: {
+      reason: string;
+      provider: string;
+      title: string;
+      message: string;
+      label: string;
+      link?: string;
+    };
+  } | null;
 }
 
 export type SubscriberPayload =
@@ -115,6 +134,7 @@ function emptyState(
     stuck_cause: null,
     stuck_warnings: [],
     retry: null,
+    opencode_retry: null,
     pendingPromptIds: [],
     connected: serverConnected.get(serverId) ?? true,
     mode: null,
@@ -220,14 +240,52 @@ export function applyOpencodeEvent(
 
   switch (event.type) {
     case "session.status": {
-      const info = props.info as
-        | { time?: { completed?: number | null } }
+      // opencode v1.15.12 SSE shape (packages/opencode/src/session/status.ts):
+      //   properties: { sessionID, status: { type: "idle" | "busy" }
+      //     | { type: "retry", attempt, message, next, action? } }
+      // The legacy `props.info.time.completed` field this handler used
+      // to read does not exist on this event; reading it silently
+      // dropped every retry frame and never flipped busy/idle from
+      // this path (busy/idle survived only because message.created and
+      // session.idle drive them independently).
+      const status = props.status as
+        | {
+            type?: string;
+            attempt?: unknown;
+            message?: unknown;
+            next?: unknown;
+            action?: unknown;
+          }
         | undefined;
-      if (info?.time && typeof info.time === "object") {
-        const completed = info.time.completed;
-        next.busy =
-          completed === null || completed === undefined || completed === 0;
-        next.idle = !next.busy;
+      const t = status?.type;
+      if (t === "idle") {
+        next.busy = false;
+        next.idle = true;
+        next.opencode_retry = null;
+      } else if (t === "busy") {
+        next.busy = true;
+        next.idle = false;
+        next.opencode_retry = null;
+      } else if (t === "retry") {
+        next.busy = true;
+        next.idle = false;
+        const attempt =
+          typeof status?.attempt === "number" ? status.attempt : 0;
+        const nextAt = typeof status?.next === "number" ? status.next : 0;
+        const message =
+          typeof status?.message === "string" ? status.message : "";
+        const action =
+          status?.action && typeof status.action === "object"
+            ? (status.action as {
+                reason: string;
+                provider: string;
+                title: string;
+                message: string;
+                label: string;
+                link?: string;
+              })
+            : undefined;
+        next.opencode_retry = { attempt, next: nextAt, message, action };
       }
       break;
     }

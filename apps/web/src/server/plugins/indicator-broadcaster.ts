@@ -202,17 +202,18 @@ async function hydrateFromStatusEndpoint(
     if (!res.ok) return;
     const body = (await res.json()) as Record<string, unknown>;
     if (!body || typeof body !== "object") return;
+    // opencode's GET /session/status returns Record<sessionID, Info>
+    // where Info is the discriminated union { type: "idle" | "busy" }
+    // | { type: "retry", attempt, message, next, action? } (only
+    // non-idle entries are stored, idle sessions are absent). Hand the
+    // raw entry through as the `status` property so applyOpencodeEvent
+    // sees the same shape it would receive on a live SSE frame.
     for (const [sessionId, info] of Object.entries(body)) {
-      const time = (info as { time?: { completed?: number | null } })?.time;
-      const completed =
-        time && typeof time === "object"
-          ? (time.completed ?? null)
-          : undefined;
       applyOpencodeEvent(serverId, port, {
         type: "session.status",
         properties: {
           sessionID: sessionId,
-          info: { time: { completed } },
+          status: info,
         },
       });
       // TODO: implement rehydratePendingPromptsForSession (see header comment

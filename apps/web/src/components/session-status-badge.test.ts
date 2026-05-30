@@ -24,6 +24,8 @@ function makeState(overrides: Partial<SessionIndicatorState> = {}): SessionIndic
     stuck_verdict: null,
     stuck_cause: null,
     stuck_warnings: [],
+    retry: null,
+    opencode_retry: null,
     ...overrides,
   };
 }
@@ -132,6 +134,57 @@ describe("pickBadge priority chain", () => {
     );
     expect(badge?.kind).toBe("thinking");
     expect(badge?.label).toBe("THINKING");
+  });
+
+  test("RETRY surfaces opencode-native retry with attempt in label", () => {
+    const badge = pickBadge(
+      makeState({
+        busy: true,
+        idle: false,
+        opencode_retry: {
+          attempt: 3,
+          next: Date.now() + 28_000,
+          message: "rate limited",
+        },
+      }),
+    );
+    expect(badge?.kind).toBe("retry");
+    expect(badge?.label).toBe("RETRY 3");
+    expect(badge?.title).toContain("Attempt 3");
+    expect(badge?.title).toContain("rate limited");
+    expect(badge?.title).toContain("Next attempt in");
+  });
+
+  test("RETRY wins over TOOL+THINKING (busy+tool+retry)", () => {
+    const badge = pickBadge(
+      makeState({
+        busy: true,
+        idle: false,
+        currentToolName: "Read",
+        opencode_retry: {
+          attempt: 1,
+          next: Date.now() + 5_000,
+          message: "transient error",
+        },
+      }),
+    );
+    expect(badge?.kind).toBe("retry");
+  });
+
+  test("COMPACTING wins over RETRY (priority chain)", () => {
+    const badge = pickBadge(
+      makeState({
+        mode: "compaction",
+        busy: true,
+        idle: false,
+        opencode_retry: {
+          attempt: 2,
+          next: Date.now() + 5_000,
+          message: "x",
+        },
+      }),
+    );
+    expect(badge?.kind).toBe("compacting");
   });
 
   test("QUEUED when pendingPromptIds non-empty and otherwise idle", () => {

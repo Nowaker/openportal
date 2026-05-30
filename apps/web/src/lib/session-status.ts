@@ -23,9 +23,16 @@
 //   3. question          - sky-blue, pulsing   (pendingQuestionIds > 0)
 //   4. permission        - sky-blue, pulsing   (pendingPermissionIds > 0)
 //   5. compacting        - fuchsia, pulsing    (mode === "compaction")
-//   6. tool: <name>      - amber, pulsing      (busy + currentToolName)
-//   7. thinking          - amber, pulsing      (busy without tool name)
-//   8. retry             - orange, solid       (status === "retry")
+//   6. retry             - orange, solid       (opencode_retry !== null;
+//                                               opencode itself told us it's
+//                                               retrying. Surfaces BEFORE
+//                                               tool/thinking because the
+//                                               retry attempt is the most
+//                                               informative status while it
+//                                               persists - "thinking" would
+//                                               be a less-useful overlap)
+//   7. tool: <name>      - amber, pulsing      (busy + currentToolName)
+//   8. thinking          - amber, pulsing      (busy without tool name)
 //   9. subagent-busy     - violet, pulsing     (a subagent of this row is busy,
 //                                               OR this row IS a busy subagent)
 //   10. queued           - slate, solid        (pendingPromptIds > 0)
@@ -212,6 +219,27 @@ export function pickBadgeStatus(state: SessionIndicatorState | null): StatusInfo
 
   if (state.mode === "compaction") {
     return { kind: "compacting", ...STATUS_DEFAULTS.compacting };
+  }
+
+  if (state.opencode_retry) {
+    const r = state.opencode_retry;
+    const remainingMs = Math.max(0, r.next - Date.now());
+    const sec = Math.ceil(remainingMs / 1000);
+    const countdown =
+      sec >= 60
+        ? `${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, "0")}s`
+        : `${sec}s`;
+    const titleParts = [
+      `Attempt ${r.attempt}`,
+      r.message,
+      r.next > 0 ? `Next attempt in ${countdown}` : null,
+      r.action?.title ?? null,
+    ].filter(Boolean);
+    return {
+      kind: "retry",
+      label: `RETRY ${r.attempt}`,
+      title: titleParts.join(" - "),
+    };
   }
 
   const runtimeBusy = state.busy || state.stuck_verdict === "in-progress";
