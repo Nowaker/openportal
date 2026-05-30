@@ -194,6 +194,14 @@ function ProjectGroup({
   useEffect(() => {
     if (!archivedExpanded) setArchivedLimit(sessionStep);
   }, [archivedExpanded, sessionStep]);
+  const currentSessionIsArchived = archivedSessions.some(
+    (s) => s.id === currentSessionId,
+  );
+  useEffect(() => {
+    if (isExpanded && currentSessionIsArchived) {
+      setArchivedExpanded(true);
+    }
+  }, [isExpanded, currentSessionIsArchived]);
 
   // If the user is viewing a session that lives below the per-project
   // visible window, hoist it to the top of the visible slice so they can
@@ -504,29 +512,36 @@ function ProjectGroup({
           <span>Archived ({archivedSessions.length})</span>
         </button>
       )}
-      {archivedVisible.map((session) => (
-        <div
-          key={session.id}
-          className="col-span-full flex items-center gap-1 pl-6 pr-1 hover:bg-muted/20 rounded text-muted-fg"
-        >
-          <UILink
-            href={`/session/${session.id}`}
-            onClick={onSessionClick}
-            className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal italic text-muted-fg hover:text-fg truncate block"
+      {archivedVisible.map((session) => {
+        const isCurrent = session.id === currentSessionId;
+        return (
+          <div
+            key={session.id}
+            className={`col-span-full flex items-center gap-1 pl-6 pr-1 rounded text-muted-fg ${
+              isCurrent ? "bg-primary/15" : "hover:bg-muted/20"
+            }`}
           >
-            {highlightMatch(truncateTitle(session.title), searchQuery)}
-          </UILink>
-          <button
-            type="button"
-            onClick={() => onUnarchiveSession(session.id)}
-            title="Unarchive session"
-            aria-label={`Unarchive ${session.title}`}
-            className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
-          >
-            <ArrowUturnLeftIcon className="size-3.5" />
-          </button>
-        </div>
-      ))}
+            <UILink
+              href={`/session/${session.id}`}
+              onClick={onSessionClick}
+              className={`flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal italic truncate block ${
+                isCurrent ? "text-fg" : "text-muted-fg hover:text-fg"
+              }`}
+            >
+              {highlightMatch(truncateTitle(session.title), searchQuery)}
+            </UILink>
+            <button
+              type="button"
+              onClick={() => onUnarchiveSession(session.id)}
+              title="Unarchive session"
+              aria-label={`Unarchive ${session.title}`}
+              className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
+            >
+              <ArrowUturnLeftIcon className="size-3.5" />
+            </button>
+          </div>
+        );
+      })}
       {archivedExpanded && archivedRemaining > 0 && (
         <button
           type="button"
