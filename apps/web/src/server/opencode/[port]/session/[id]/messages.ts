@@ -15,6 +15,10 @@ import {
   listVisiblePromptsForSession,
   type PromptRow,
 } from "../../../../lib/prompt-archive";
+import {
+  listSynthetic,
+  type SyntheticMessageRow,
+} from "../../../../lib/synthetic-messages";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -318,7 +322,42 @@ async function loadFullMessages(
     .map((row) =>
       toVirtualUserMessage(row, Math.max(row.ts_ms, latestRealAnyMs + 1)),
     );
-  return filtered.length === 0 ? real : [...real, ...filtered];
+  // Synthetic messages from the /btw side-question feature live in
+  // openportal's own SQLite and are NEVER part of opencode's message
+  // stream. Wrap them in an opencode-shaped object so MessageItem
+  // renders them like any other user/assistant message; the
+  // `info._synthetic` flag lets the frontend apply distinct styling
+  // (per AI_TODO #138: green-question with /btw prefix label,
+  // mid-color answer between user-prompt bg and chat-log bg).
+  const synthRows = listSynthetic(id);
+  const synthMessages = synthRows.map(toSyntheticChatMessage);
+  const merged =
+    filtered.length === 0 ? real : [...real, ...filtered];
+  return synthMessages.length === 0 ? merged : [...merged, ...synthMessages];
+}
+
+function toSyntheticChatMessage(row: SyntheticMessageRow): unknown {
+  const msgId = `synthetic::${row.id}`;
+  return {
+    info: {
+      id: msgId,
+      sessionID: row.parent_session_id,
+      role: row.role,
+      time: { created: row.created_at, completed: row.created_at },
+      _synthetic: true,
+      _btw_index: row.btw_index,
+      _btw_fork_session_id: row.fork_session_id,
+    },
+    parts: [
+      {
+        id: `${msgId}::p0`,
+        messageID: msgId,
+        sessionID: row.parent_session_id,
+        type: "text",
+        text: row.text,
+      },
+    ],
+  };
 }
 
 function collectUserText(parts: unknown[] | undefined): string {

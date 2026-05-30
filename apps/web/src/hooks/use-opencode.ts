@@ -94,7 +94,29 @@ export function useSelfInstance() {
 export function useSessions() {
   const port = usePort();
 
-  return useSWR(port ? `/api/opencode/${port}/sessions` : null, fetcher);
+  const swr = useSWR(
+    port ? `/api/opencode/${port}/sessions` : null,
+    fetcher,
+  );
+  // Hide /btw fork sessions from the live sidebar/navbar per AI_TODO
+  // #138. These are background side-question forks named "[btw#N] ..."
+  // and the user should never interact with them directly - the
+  // question + answer surface as synthetic chat-log entries in the
+  // parent session. The forks also get archived once /btw completes,
+  // so they additionally fall out of the live list via archive
+  // filtering; this title-prefix filter covers the in-flight window.
+  const filteredData = useMemo(() => {
+    if (!Array.isArray(swr.data)) return swr.data;
+    return (swr.data as Array<{ title?: string } | undefined>).filter(
+      (s) =>
+        !(
+          s &&
+          typeof s.title === "string" &&
+          s.title.startsWith("[btw#")
+        ),
+    );
+  }, [swr.data]);
+  return { ...swr, data: filteredData };
 }
 
 export function useSession(id: string | null) {

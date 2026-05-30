@@ -4776,14 +4776,50 @@ function SessionPage() {
     let messageText = rawValue.trim();
     if (!messageText && pendingAttachments.length === 0) return;
 
-    // /btw <question> wraps the question with a system-prompt hint so
-    // the model answers in a single short turn without firing tools.
-    // The user gets Claude-Code-style "side question" semantics without
-    // a separate session-forking pipeline.
+    // /btw <question> per AI_TODO #138: openportal forks the parent
+    // session in the background, runs the question on the fork with a
+    // tool-disable hint, archives the fork, and renders both the
+    // question and the answer as synthetic chat-log entries in THIS
+    // session. The fork is hidden from the sidebar via the `[btw#`
+    // title prefix filter (see sidebar/useSessions). The question is
+    // never sent to opencode in the parent's history.
     const btwMatch = messageText.match(/^\/btw\s+([\s\S]+)$/);
     if (btwMatch) {
       const question = btwMatch[1].trim();
-      messageText = `[BTW: side question - answer briefly in ONE response, do not call any tools, do not promise follow-up actions]\n\n${question}`;
+      if (question.length === 0) {
+        toast.error("/btw needs a question after the slash command.");
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/btw/${encodeURIComponent(sessionId)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question, port }),
+          },
+        );
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => "");
+          toast.error(
+            `/btw failed: ${errBody.slice(0, 200) || res.statusText}`,
+          );
+          return;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`/btw failed: ${msg}`);
+        return;
+      }
+      // Clear the composer and refresh - the question synthetic message
+      // already landed server-side and will appear on the next poll.
+      if (textareaRef.current) textareaRef.current.value = "";
+      setHasContent(false);
+      void mutateSessionMessages(port, sessionId);
+      toast.success(
+        "/btw dispatched. Answer will appear in chat when ready.",
+      );
+      return;
     }
 
     // Phase 5 of slash UX: /agent <name> [prompt] and /model <name> [prompt]
