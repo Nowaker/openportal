@@ -1240,6 +1240,110 @@ implementation MUST:
 If any of these aren't possible for a new surface, it doesn't
 belong in this cache - figure out a different storage shape.
 
+## Never pre-generate opencode-assigned IDs (binding)
+
+OpenPortal **MUST NOT** generate any ID that opencode is the canonical
+owner of. This is a hard architectural invariant. Concretely:
+
+- **Message IDs (`msg_...`)** - opencode stamps these on every user /
+  assistant / system message. Portal MUST NOT supply `messageID` in
+  `POST /session/:id/prompt_async` or `POST /session/:id/command`
+  bodies. opencode's own ULID-style generator is the only legitimate
+  source.
+- **Session IDs (`ses_...`)** - opencode stamps these on
+  `POST /session`. Portal MUST NOT supply `id` in the session-create
+  body. `POST /session/:id/...` calls reference EXISTING server-
+  assigned session IDs and are fine.
+- **Part IDs (`prt_...`)** - opencode stamps these on every message
+  part. Portal MUST NOT supply `partID` anywhere.
+- **Any other server-assigned ID** - same rule.
+
+### Why this is harmful
+
+opencode's prompt-loop exit guard does a **lexicographic string
+compare** between `lastUser.id` and `lastAssistant.id` to decide
+"has this user message already been answered?". The compare works
+ONLY when both IDs sort time-ascending - which is true for opencode's
+own ULID-style IDs (hex timestamp prefix, currently `e6...` in 2026)
+but NOT for any caller-supplied UUID. A `crypto.randomUUID()`-shaped
+messageID has ~89% probability of sorting BELOW opencode's last
+assistant ID, which fires the exit guard, exits the loop at step=0,
+and silently swallows the prompt. The user-message row is created,
+no assistant message is started, and stuck-detector classifies the
+session as `verdict=stuck, cause=no-dispatch`. See
+[ai-analysis-requests/STUCK_NO_DISPATCH_LEXICOGRAPHIC_ID_BUG.md](ai-analysis-requests/STUCK_NO_DISPATCH_LEXICOGRAPHIC_ID_BUG.md)
+for the full forensic write-up of the bug this rule prevents.
+
+Beyond the lex-compare trap, caller-generated IDs:
+
+- Break opencode's "latest message" selection (every other place
+  in opencode that orders by ID instead of `time.created` mis-ranks
+  portal-stamped messages relative to server-stamped ones).
+- Create non-monotonic histories that confuse any future indexer
+  built on top of the message stream.
+- Risk collisions across portal instances or across opencode
+  instances that share storage.
+- Introduce silent infinite loops in any opencode subsystem that
+  reaches the "is X newer than Y" question via string compare.
+
+### "But I need to correlate the archive row with the user message opencode emits"
+
+That was the original justification for pre-generating `messageID`
+(commit `b6cc833`, 2026-05-23). It is **not a valid justification.**
+Correlation must be done via:
+
+- **Text match** between the archive `raw_text` and the user
+  message's parts (current `messages.ts` dedup pass 1).
+- **Slash-command defence** for `/foo bar` archives whose opencode-
+  emitted text shape differs from the literal keystroke (current
+  `messages.ts` dedup pass 2).
+- **Read-back correlation** - if a future feature needs a stable
+  link from archive row to server-stamped messageID, populate the
+  `opencode_message_id` column by reading the ID off the SSE
+  `message.updated` event AFTER opencode has stamped it. Portal
+  is the **caching proxy**, not the canonical generator. The
+  archive `opencode_message_id` column exists for legacy rows and
+  for this future read-back path; it MUST NEVER be populated by
+  a portal-generated value.
+
+### What MAY pass an ID to opencode (legitimate cases)
+
+References to EXISTING server-assigned IDs are fine and required by
+the opencode API itself:
+
+- `POST /session/:id/fork` body `messageID` - fork-point on an
+  existing message the client already saw.
+- `DELETE /session/:id/message/:messageID` - delete an existing
+  message.
+- `POST /session/:id/revert` body `messageIDs` - revert existing
+  messages.
+- Path parameters like `:id` on session-scoped routes - the session
+  ID was created earlier via `POST /session` and opencode echoed
+  it back.
+
+The distinction: **Portal NEVER mints; Portal MAY reference what
+opencode minted.**
+
+### Enforcement
+
+- `apps/web/src/server/lib/prompt-archive.ts` `ArchiveInput` type
+  no longer accepts `opencodeMessageId`. New rows always insert
+  `opencode_message_id=NULL`. This kills the field at the type
+  layer.
+- `apps/web/src/server/plugins/pending-prompt-worker.ts` strips
+  `messageID`, `sessionID`, `partID` from any legacy `payload_json`
+  blob before replay, so historical rows never resurrect a
+  pre-generated ID.
+- `apps/web/src/server/opencode/[port]/session/[id]/prompt.ts` and
+  `command.ts` send payloads with NO `messageID` field. Reviewer
+  must reject any PR that adds `crypto.randomUUID()` /
+  `randomUUID()` / `nanoid()` / `ulid()` near a `prompt_async`,
+  `command`, or `session.create` call.
+- Regression test:
+  `apps/web/src/server/lib/prompt-archive.test.ts` asserts that
+  `archivePrompt` writes `payload_json` WITHOUT a `messageID` field
+  and `opencode_message_id=NULL`.
+
 ## Codebase environment
 
 - OS: Arch Linux. Bun runtime. Tailscale networking.

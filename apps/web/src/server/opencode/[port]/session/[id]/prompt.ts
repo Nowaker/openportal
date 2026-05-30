@@ -80,92 +80,18 @@ export default defineHandler(async (event) => {
     url: a.url,
   }));
 
-  // Smart-dedup: pre-generate the opencode messageID portal-side so the
-  // user-message dedup in messages.ts can match by ID instead of fuzzy
-  // text. opencode accepts an optional messageID on prompt_async; when
-  // we supply it, opencode stamps the resulting user message with that
-  // exact ID. Stored on the archive row + included in payload_json so
-  // the pending-prompt-worker retries with the same ID (idempotent).
-  //
-  // ============================================================
-  // WHY THE `f` PREFIX (DO NOT REMOVE - BUG WORKAROUND)
-  // ============================================================
-  //
-  // opencode's prompt loop in
-  //   packages/opencode/src/session/prompt.ts (≈line 1268-1276)
-  // has an exit guard that decides "has this user message already
-  // been answered?" by string-comparing the latest user-message ID
-  // against the latest assistant-message ID:
-  //
-  //   if (
-  //     lastAssistant?.finish &&
-  //     !["tool-calls"].includes(lastAssistant.finish) &&
-  //     !hasToolCalls &&
-  //     lastUser.id < lastAssistant.id   // ← LEX COMPARE on strings
-  //   ) {
-  //     yield* slog.info("exiting loop")
-  //     break
-  //   }
-  //
-  // The lex compare is a proxy for `time.created` ordering. It works
-  // ONLY when both IDs are time-sortable. opencode's own IDs are
-  // ULID-style with a hex timestamp prefix (currently `e6...` in
-  // 2026). Any caller-supplied messageID that sorts lex-BELOW
-  // opencode's last assistant ID fires the guard as TRUE on the
-  // SECOND-AND-LATER prompt of any session → loop exits at step=0
-  // → no LLM call → user message silently swallowed →
-  // stuck-detector classifies as `verdict=stuck, cause=no-dispatch`.
-  //
-  // crypto.randomUUID() returns a uniformly-distributed hex string.
-  // 15 of 16 first chars (`0`-`e`) sort BELOW opencode's `e6...`
-  // prefix. Without this `f` prefix, ~89% of prompts to existing
-  // sessions get silently swallowed. The first prompt of a fresh
-  // session always works (no prior assistant → guard's
-  // `lastAssistant?.finish` short-circuits) which is why this bug
-  // hides behind "new sessions seem fine".
-  //
-  // Prefix `f` is the ONLY hex char that ALWAYS sorts GREATER than
-  // any opencode-generated ID currently in the wild. By forcing
-  // every portal-generated messageID to start with `f`, the loop
-  // guard sees `lastUser.id > lastAssistant.id` and continues
-  // normally. Dispatch works, LLM gets called, assistant message
-  // is created, session unsticks.
-  //
-  // FULL FORENSIC ANALYSIS:
-  //   ai-analysis-requests/STUCK_NO_DISPATCH_LEXICOGRAPHIC_ID_BUG.md
-  //
-  // WHEN TO REMOVE THIS PREFIX:
-  // - When opencode replaces the lex compare with a numeric
-  //   `lastUser.time.created < lastAssistant.time.created` check.
-  //   That fix is invariant under any ID format. Confirm by
-  //   reading the current `packages/opencode/src/session/prompt.ts`
-  //   loop body before reverting this workaround.
-  //
-  // IF OPENCODE'S ID TIMESTAMP PREFIX EVER ADVANCES PAST `f...`:
-  // - This wouldn't happen for many years (opencode's prefix
-  //   currently sits at `e6` and only climbs as wall-clock advances
-  //   through ULID timestamp space).
-  // - When it does, this `f` prefix will START sorting BELOW
-  //   opencode's IDs and the bug returns.
-  // - At that point, swap the literal `f` for something higher in
-  //   ASCII sort order than opencode's new prefix (e.g. `z`,
-  //   uppercase letters do NOT work — uppercase ASCII sorts below
-  //   lowercase). Verify opencode's `messageID` schema accepts the
-  //   chosen char before shipping.
-  //
-  // PATTERN MUST MATCH `command.ts` SIBLING:
-  // - The same workaround exists in command.ts. If you touch this,
-  //   touch that. Both files send caller-supplied messageIDs to
-  //   opencode and both hit the same loop guard.
-  // ============================================================
-  const opencodeMessageId = `msg_f${crypto.randomUUID().replace(/-/g, "").slice(0, 31)}`;
-
+  // HARD RULE: never pre-generate opencode message/session/part IDs.
+  // The `messageID` field on prompt_async is intentionally omitted so
+  // opencode's canonical ULID-style generator stamps the user message.
+  // Caller-supplied IDs break opencode's prompt-loop exit guard
+  // (lex compare on lastUser.id vs lastAssistant.id) - see
+  // ai-analysis-requests/STUCK_NO_DISPATCH_LEXICOGRAPHIC_ID_BUG.md and
+  // the "Never pre-generate opencode-assigned IDs" section in AGENTS.md.
   const payload = {
     parts: [...fileParts, { type: "text" as const, text: body.text }],
     model: body.model,
     agent: body.agent,
     variant: body.variant,
-    messageID: opencodeMessageId,
   };
 
   const row = await archivePrompt({
@@ -180,7 +106,6 @@ export default defineHandler(async (event) => {
     attachmentsCount: body.attachments?.length ?? 0,
     status: "pending",
     payload,
-    opencodeMessageId,
   });
 
   if (!row) {

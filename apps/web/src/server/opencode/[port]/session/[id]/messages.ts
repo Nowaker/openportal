@@ -290,15 +290,17 @@ async function loadFullMessages(
   // ascending, so virtual ts_ms is normalised to max-real-created + 1
   // ms (or kept at row.ts_ms if it was already later than that).
   // Dedup priority:
-  //   pass 0 (NEW): match by opencode_message_id. When portal generated
-  //     the messageID up-front and passed it to opencode in
-  //     prompt_async/command, opencode stamps the user message with
-  //     that exact ID. ID match is bulletproof - immune to slash-
-  //     command template expansion or any other text shape drift.
-  //   pass 1: text match (legacy). Required for rows archived before
-  //     this commit whose opencode_message_id is NULL.
-  //   pass 2: slash-command defence (legacy). Required for rows whose
-  //     ID match somehow missed AND the text doesn't match.
+  //   pass 0 (LEGACY-ONLY): match by opencode_message_id. Until the
+  //     no-pre-gen rule landed, portal stamped its own messageID into
+  //     prompt_async/command and stored it on the archive row;
+  //     opencode echoed it back, making this match bulletproof.
+  //     Per AGENTS.md ("Never pre-generate opencode-assigned IDs"),
+  //     new rows ALWAYS have opencode_message_id=NULL, so this branch
+  //     only fires for rows archived before the rule landed. Kept so
+  //     legacy rows still dedup cleanly.
+  //   pass 1: text match (primary path for all new rows).
+  //   pass 2: slash-command defence (text-shape drift, e.g. `/foo`
+  //     archive vs expanded template text).
   const filtered = visible
     .filter((row) => {
       if (row.opencode_message_id && realUserIds.has(row.opencode_message_id)) {

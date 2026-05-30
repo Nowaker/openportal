@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
 import {
@@ -46,13 +45,11 @@ export default defineHandler(async (event) => {
   const reconstructedText = body.arguments
     ? `/${body.command} ${body.arguments}`
     : `/${body.command}`;
-  // Smart-dedup: pre-generate messageID so the user message opencode
-  // creates carries the same ID we store on the archive row. Without
-  // this, slash-command expansion would emit text bearing no
-  // resemblance to '/foo bar' and the text-based dedup misses it.
-  // (See the long banner in prompt.ts for why the `f` prefix is load-
-  // bearing - same bug, same workaround. Touch one, touch both.)
-  const opencodeMessageId = `msg_f${randomUUID().replace(/-/g, "").slice(0, 31)}`;
+  // HARD RULE: never pre-generate opencode message/session/part IDs.
+  // The `messageID` field on /session/:id/command is intentionally
+  // omitted so opencode stamps the resulting user message with its
+  // canonical ULID-style ID. See AGENTS.md ("Never pre-generate
+  // opencode-assigned IDs") and the prompt.ts sibling.
   void archivePrompt({
     port,
     sessionId: sessionID,
@@ -63,7 +60,6 @@ export default defineHandler(async (event) => {
     variant: body.variant,
     source: "command",
     attachmentsCount: 0,
-    opencodeMessageId,
   }).catch((err) => {
     console.error("[prompt-archive] async failure:", err);
   });
@@ -88,7 +84,6 @@ export default defineHandler(async (event) => {
       agent: body.agent,
       model: body.model,
       variant: body.variant,
-      messageID: opencodeMessageId,
     });
     invalidateMessagesCache(sessionID);
     invalidateSessionsCache(port);

@@ -16,11 +16,6 @@ export interface ArchiveInput {
   variant?: string;
   source: PromptSource;
   attachmentsCount?: number;
-  // Smart-dedup correlation token: a portal-generated message ID that
-  // we pass to opencode in the prompt_async/command body. opencode
-  // stamps the resulting user message with this exact ID so the
-  // dedup in messages.ts can match by ID rather than fuzzy text.
-  opencodeMessageId?: string | null;
   // Test-mode overrides.
   projectPathOverride?: string;
   parentSessionIdOverride?: string | null;
@@ -201,7 +196,11 @@ export async function archivePrompt(
     last_attempt_at: null,
     attempts: 0,
     last_error: null,
-    opencode_message_id: input.opencodeMessageId ?? null,
+    // HARD RULE: never pre-generate opencode message IDs. This column
+    // exists for legacy rows and for future server-stamped IDs we may
+    // learn about via SSE correlation. New rows always insert NULL.
+    // See AGENTS.md ("Never pre-generate opencode-assigned IDs").
+    opencode_message_id: null,
   };
   try {
     getPromptDb()

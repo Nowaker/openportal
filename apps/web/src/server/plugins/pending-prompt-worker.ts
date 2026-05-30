@@ -39,6 +39,7 @@ import {
   type PromptRow,
   type PendingPayload,
 } from "../lib/prompt-archive";
+import { stripCallerSuppliedIds } from "../lib/opencode-id-sanitizer";
 
 const SCAN_INTERVAL_MS = 5_000;
 
@@ -63,6 +64,12 @@ async function deliverOne(row: PromptRow): Promise<void> {
     markPromptFailed(row.id, "invalid payload_json");
     return;
   }
+  // HARD RULE: never replay a portal-generated opencode ID. Legacy
+  // payload_json blobs (rows inserted before the no-pregen rule
+  // landed) carry a `messageID` field; the sanitizer strips it so
+  // the retry path never resurrects a pre-generated ID. See
+  // AGENTS.md ("Never pre-generate opencode-assigned IDs").
+  payload = stripCallerSuppliedIds(payload);
 
   try {
     // Cross-instance owner resolution. Without this, the worker dispatches
