@@ -50,6 +50,15 @@ export interface StartRunOptions {
   opencodeUrl: string;
   directory?: string;
   aggressive?: boolean;
+  oldSessionDisposition?: "archive" | "keep" | "delete" | "inline";
+  keepIntermediateText?: boolean;
+  keepStepMarkers?: boolean;
+  stripUserSnapshots?: boolean;
+  stripSynthetic?: boolean;
+  pruneLoop?: boolean;
+  pruneTodowrite?: boolean;
+  pruneTask?: boolean;
+  pruneWebfetch?: boolean;
   cleanBeforeCompaction?: boolean;
 }
 
@@ -105,6 +114,16 @@ function buildArgs(opts: StartRunOptions, progressPath: string): string[] {
   if (opts.directory) baseArgs.push("--directory", opts.directory);
   if (opts.kind === "clean") {
     if (opts.aggressive) baseArgs.push("--mode", "aggressive");
+    if (opts.oldSessionDisposition)
+      baseArgs.push("--old-session-disposition", opts.oldSessionDisposition);
+    if (opts.keepIntermediateText) baseArgs.push("--keep-intermediate-text");
+    if (opts.keepStepMarkers) baseArgs.push("--keep-step-markers");
+    if (opts.stripUserSnapshots) baseArgs.push("--strip-user-snapshots");
+    if (opts.stripSynthetic) baseArgs.push("--strip-synthetic");
+    if (opts.pruneLoop) baseArgs.push("--prune-loop");
+    if (opts.pruneTodowrite) baseArgs.push("--prune-todowrite");
+    if (opts.pruneTask) baseArgs.push("--prune-task");
+    if (opts.pruneWebfetch) baseArgs.push("--prune-webfetch");
   } else {
     if (opts.cleanBeforeCompaction) baseArgs.push("--clean-before-compaction");
   }
