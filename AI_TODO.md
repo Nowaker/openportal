@@ -3071,7 +3071,7 @@ Design notes:
 - Net effect: the archived row jumps into the archived subsection on the same click; the auto-expand effect added in #134 keeps it visible because it is now the current session.
 - Files: `apps/web/src/hooks/use-opencode.ts`.
 
-### 139. Server-side mutation reconciliation layer (archive, unarchive, rename) (PENDING - in progress)
+### 139. Server-side mutation reconciliation layer (archive, unarchive, rename) (DONE - 9d0be86)
 
 User prompt (verbatim):
 
