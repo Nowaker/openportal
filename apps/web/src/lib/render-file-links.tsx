@@ -1,5 +1,6 @@
 import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import useMediaQuery from "@/hooks/use-media-query";
+import { linkifySessionIds } from "@/lib/linkify-session-ids";
 
 const PATH_REGEX = /(^|[\s'"\[\]{}()=:])((?:\/(?:[\w.-]+\/)+|~\/(?:[\w.-]+\/)*)[\w.-]*[\w])(?=$|[\s'"\[\]{}().,:;?!])/g;
 
@@ -46,9 +47,17 @@ export function FileLinks({ text }: { text: string }) {
     lastIndex = matchEnd;
   }
 
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
 
-  return <>{parts.length > 0 ? parts : text}</>;
+  const linkizeFallback = () => null;
+  const withSessionLinks = parts.map((part, i) => {
+    if (typeof part !== "string") return part;
+    return (
+      <span key={`txt-${i}`}>
+        {linkifySessionIds(part, { resolveSessionId: linkizeFallback })}
+      </span>
+    );
+  });
+
+  return <>{withSessionLinks.length > 0 ? withSessionLinks : text}</>;
 }

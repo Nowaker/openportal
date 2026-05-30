@@ -22,7 +22,7 @@ import { visit, SKIP } from "unist-util-visit";
 // Link targets are openportal-internal. MessageMarkdown's `a`
 // component override routes them through tanstack SPA nav.
 const ID_REGEX =
-  /(^|[\s'"\[\]{}()=:,;.])((?:ses_[A-Za-z0-9]{9,32})|(?:msg_[A-Za-z0-9]{20,32}))(?=$|[\s'"\[\]{}().,:;?!])/g;
+  /(^|[\s'"\[\]{}()=:,;./?#&-])((?:ses_[A-Za-z0-9]{9,32})|(?:msg_[A-Za-z0-9]{20,32}))(?=$|[\s'"\[\]{}().,:;?!/&#-])/g;
 
 const FULL_SES_MIN_CHARS = 20;
 
