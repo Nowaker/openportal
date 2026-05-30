@@ -58,10 +58,10 @@ import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import {
-  clearPendingSubmission,
-  recordFailedAttempt,
-  recordPendingSubmission,
-} from "@/lib/pending-prompts";
+  effectiveTitle,
+  isEffectivelyArchived,
+  type SessionWithOverlay,
+} from "@/lib/session-overlay";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DirectoryPicker } from "@/components/directory-picker/directory-picker";
 import { mutate as globalSWRMutate } from "swr";
@@ -284,7 +284,8 @@ export function AppSidebarNav() {
     ? newSessionDirFromUrl || storeDirForNewSession || null
     : null;
   const sessionTitle =
-    currentSession?.title ?? (newSessionDirectory ? "New session" : null);
+    effectiveTitle(currentSession as SessionWithOverlay | null | undefined) ??
+    (newSessionDirectory ? "New session" : null);
   const systemMessagesUnread = useSystemMessagesStore((s) => s.unreadCount);
   const directoryForLabel =
     currentSession?.directory ?? newSessionDirectory ?? undefined;
@@ -377,12 +378,10 @@ export function AppSidebarNav() {
     void togglePinTopbar(sessionId, isPinnedHere ? "unpin" : "pin");
   };
 
-  // opencode's Session type doesn't surface time.archived yet, but the
-  // PATCH endpoint accepts it and the unarchive route writes archived: 0
-  // as the sentinel for "not archived". Cast through the SDK shape to
-  // read it safely.
-  const archivedTs = (currentSession as Session & { time?: { archived?: number } } | null | undefined)?.time?.archived;
-  const isArchived = typeof archivedTs === "number" && archivedTs > 0;
+  // Resolver, not direct field read - honors pending overlay before opencode catches up.
+  const isArchived = isEffectivelyArchived(
+    currentSession as SessionWithOverlay | null | undefined,
+  );
 
   const callMoveLocal = async (
     targetPath: string,
@@ -643,6 +642,8 @@ export function AppSidebarNav() {
       cancelEditTitle();
       return;
     }
+    setEditingTitle(false);
+    setDraftTitle("");
     setRenameSaving(true);
     try {
       const res = await fetch(`/api/opencode/${port}/session/${sessionId}`, {
@@ -651,13 +652,12 @@ export function AppSidebarNav() {
         body: JSON.stringify({ title: trimmed }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await mutateSessions();
-      setEditingTitle(false);
-      setDraftTitle("");
+      void mutateSessions();
     } catch (e) {
       toast.error(
         `Failed to rename: ${e instanceof Error ? e.message : "unknown"}`,
       );
+      void mutateSessions();
     } finally {
       setRenameSaving(false);
     }
@@ -1016,10 +1016,6 @@ export function AppSidebarNav() {
                   </MenuItem>
                   <MenuItem
                     onAction={() => {
-                      if (isArchived) {
-                        setShowArchiveConfirm(true);
-                        return;
-                      }
                       void handleArchiveToggle();
                     }}
                     data-test={`portal-hamburger-${isArchived ? "unarchive" : "archive"}`}

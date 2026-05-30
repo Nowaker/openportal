@@ -12,6 +12,7 @@ import {
   getStaleSessions,
   setCachedSessions,
 } from "../../lib/sessions-cache";
+import { applyOverlay, reconcile } from "../../lib/session-overlay";
 
 type Session = { directory?: string; [k: string]: unknown };
 
@@ -90,14 +91,21 @@ export default defineHandler(async (event) => {
 
   if (sessions === null) sessions = [];
 
+  // Clear overlay entries that opencode has caught up on, then merge any
+  // remaining pending mutations onto each session. The frontend reads
+  // `_pendingArchived` / `_pendingTitle` in preference to the raw
+  // authoritative fields - see apps/web/src/lib/session-overlay.ts.
+  reconcile(port, sessions);
+  const overlayed = sessions.map((s) => applyOverlay(port, s));
+
   const scopes = pickScopes(query, port);
   const filtered =
     !scopes || scopes.length === 0
-      ? sessions
-      : sessions.filter((s) =>
+      ? overlayed
+      : overlayed.filter((s) =>
           scopes.some((scope) => isUnder(s.directory, scope)),
         );
-  setResponseHeader(event, "X-Sessions-Total", String(sessions.length));
+  setResponseHeader(event, "X-Sessions-Total", String(overlayed.length));
   return filtered;
 });
 

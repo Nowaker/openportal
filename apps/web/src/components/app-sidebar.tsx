@@ -80,6 +80,11 @@ import {
   archivedRowIsCurrent,
   shouldAutoExpandArchivedSection,
 } from "@/lib/sidebar-archive-visibility";
+import {
+  effectiveTitle,
+  isEffectivelyArchived,
+  type SessionWithOverlay,
+} from "@/lib/session-overlay";
 
 import {
   newSessionDraftKey,
@@ -440,13 +445,23 @@ function ProjectGroup({
                 onClick={onSessionClick}
                 className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
               >
-                {highlightMatch(truncateTitle(session.title), searchQuery)}
+                {highlightMatch(
+                  truncateTitle(
+                    effectiveTitle(session as SessionWithOverlay) ?? "",
+                  ),
+                  searchQuery,
+                )}
               </UILink>
               <button
                 type="button"
-                onClick={() => onArchiveSession(session.id, session.title)}
+                onClick={() =>
+                  onArchiveSession(
+                    session.id,
+                    effectiveTitle(session as SessionWithOverlay) ?? "",
+                  )
+                }
                 title="Archive session"
-                aria-label={`Archive ${session.title}`}
+                aria-label={`Archive ${effectiveTitle(session as SessionWithOverlay) ?? ""}`}
                 className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
               >
                 <ArchiveBoxArrowDownIcon className="size-3.5" />
@@ -534,13 +549,18 @@ function ProjectGroup({
                 isCurrent ? "text-fg" : "text-muted-fg hover:text-fg"
               }`}
             >
-              {highlightMatch(truncateTitle(session.title), searchQuery)}
+              {highlightMatch(
+                truncateTitle(
+                  effectiveTitle(session as SessionWithOverlay) ?? "",
+                ),
+                searchQuery,
+              )}
             </UILink>
             <button
               type="button"
               onClick={() => onUnarchiveSession(session.id)}
               title="Unarchive session"
-              aria-label={`Unarchive ${session.title}`}
+              aria-label={`Unarchive ${effectiveTitle(session as SessionWithOverlay) ?? ""}`}
               className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
             >
               <ArrowUturnLeftIcon className="size-3.5" />
@@ -586,8 +606,7 @@ interface ProjectBin {
 }
 
 function isArchived(s: Session): boolean {
-  const t = (s.time as { archived?: number } | undefined)?.archived;
-  return typeof t === "number" && t > 0;
+  return isEffectivelyArchived(s as SessionWithOverlay);
 }
 
 function ProjectsList({
