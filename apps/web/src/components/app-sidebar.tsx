@@ -982,6 +982,8 @@ function PinnedSection({
       </div>
       <div className="col-span-full">
         {rows.map((session) => {
+          const sessionLabel =
+            effectiveTitle(session as SessionWithOverlay) ?? "(untitled)";
           const status = statusMap?.[session.id]?.type;
           const hasNewContent = sessionHasNewContent(
             session,
@@ -1019,15 +1021,13 @@ function PinnedSection({
                 }}
                 className="flex-1 min-w-0 truncate text-left text-xs sm:text-sm text-sidebar-fg hover:text-fg"
               >
-                {session.title
-                  ? highlightMatch(session.title, searchQuery)
-                  : "(untitled)"}
+                {highlightMatch(sessionLabel, searchQuery)}
               </button>
               <button
                 type="button"
                 onClick={() => void togglePin(session.id, "unpin")}
                 title="Unpin"
-                aria-label={`Unpin ${session.title || "session"}`}
+                aria-label={`Unpin ${sessionLabel}`}
                 className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
               >
                 <XMarkIcon className="size-3.5" />

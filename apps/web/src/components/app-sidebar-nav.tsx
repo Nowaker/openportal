@@ -645,6 +645,23 @@ export function AppSidebarNav() {
     setEditingTitle(false);
     setDraftTitle("");
     setRenameSaving(true);
+
+    mutateSessions(
+      (prev) => {
+        if (!Array.isArray(prev)) return prev;
+        const now = Date.now();
+        return prev.map((session) =>
+          session.id === sessionId
+            ? ({
+                ...session,
+                _pendingTitle: { value: trimmed, setAt: now },
+              } as Session)
+            : session,
+        );
+      },
+      { revalidate: false },
+    );
+
     try {
       const res = await fetch(`/api/opencode/${port}/session/${sessionId}`, {
         method: "PATCH",
