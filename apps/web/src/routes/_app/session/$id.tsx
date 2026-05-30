@@ -2772,6 +2772,10 @@ const MessageItem = memo(function MessageItem({
     !isAssistant &&
     messageAny.synthetic === true &&
     firstTextPart?.ignored === true;
+  const isBtwSynthetic =
+    (message.info as { _synthetic?: boolean })._synthetic === true &&
+    typeof (message.info as { _btw_index?: unknown })._btw_index === "number";
+  const btwIndex = (message.info as { _btw_index?: number })._btw_index;
   const syntheticSource = messageAny.metadata?.source ?? "synthetic";
   const syntheticTag =
     syntheticSource === "stuck-detector-plugin"
@@ -2788,11 +2792,13 @@ const MessageItem = memo(function MessageItem({
   const userBgClass = isSyntheticMarker
     ? "bg-muted/30 border-t border-b border-muted/50 [[data-role=user]+&]:border-t-0"
     : "bg-primary/15 border-t border-b border-primary/30 [[data-role=user]+&]:border-t-0";
+  const btwAnswerBgClass =
+    "bg-primary/[0.06] border-t border-b border-primary/15";
   return (
     <div
       className={`${decoration} relative px-3 py-3 ${
         !isAssistant && hasHeaderRow ? userBgClass : ""
-      }`}
+      } ${isAssistant && isBtwSynthetic ? btwAnswerBgClass : ""}`}
       data-role={message.info.role}
       data-message-id={message.info.id}
       data-synthetic={isSyntheticMarker ? "true" : undefined}
@@ -2807,6 +2813,20 @@ const MessageItem = memo(function MessageItem({
           {messageAny.metadata?.kind && (
             <span className="opacity-70">{messageAny.metadata.kind}</span>
           )}
+        </div>
+      )}
+      {isBtwSynthetic && hasHeaderRow && (
+        <div className="mb-1 flex items-center gap-2 text-xs text-muted-fg">
+          <span
+            className="inline-flex items-center rounded-md border border-primary/40 bg-primary/20 px-1.5 py-0.5 font-mono text-primary"
+            title={
+              isAssistant
+                ? `Side-question #${btwIndex} answer (no tools, single response)`
+                : `Side-question #${btwIndex} - ephemeral, not part of the main conversation`
+            }
+          >
+            /btw{typeof btwIndex === "number" ? `#${btwIndex}` : ""}
+          </span>
         </div>
       )}
       {hasHeaderRow && (
