@@ -59,6 +59,8 @@ export interface StartRunOptions {
   pruneTodowrite?: boolean;
   pruneTask?: boolean;
   pruneWebfetch?: boolean;
+  dropAfter?: string;
+  dropAfterPreserveUser?: boolean;
   cleanBeforeCompaction?: boolean;
 }
 
@@ -124,6 +126,12 @@ function buildArgs(opts: StartRunOptions, progressPath: string): string[] {
     if (opts.pruneTodowrite) baseArgs.push("--prune-todowrite");
     if (opts.pruneTask) baseArgs.push("--prune-task");
     if (opts.pruneWebfetch) baseArgs.push("--prune-webfetch");
+    if (opts.dropAfter) {
+      baseArgs.push("--drop-after", opts.dropAfter);
+      if (opts.dropAfterPreserveUser) {
+        baseArgs.push("--drop-after-preserve=user");
+      }
+    }
   } else {
     if (opts.cleanBeforeCompaction) baseArgs.push("--clean-before-compaction");
   }

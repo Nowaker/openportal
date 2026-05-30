@@ -15,6 +15,8 @@ interface RequestBody {
   pruneTodowrite?: unknown;
   pruneTask?: unknown;
   pruneWebfetch?: unknown;
+  dropAfter?: unknown;
+  dropAfterPreserveUser?: unknown;
 }
 
 export default defineHandler(async (event) => {
@@ -41,6 +43,12 @@ export default defineHandler(async (event) => {
   const pruneTodowrite = body?.pruneTodowrite === true;
   const pruneTask = body?.pruneTask === true;
   const pruneWebfetch = body?.pruneWebfetch === true;
+  const dropAfter =
+    typeof body?.dropAfter === "string" && body.dropAfter.trim().length > 0
+      ? body.dropAfter.trim()
+      : undefined;
+  const dropAfterPreserveUser =
+    dropAfter != null && body?.dropAfterPreserveUser === true;
   if (!sessionId) {
     setResponseStatus(event, 400);
     return { ok: false, error: "sessionId required" };
@@ -65,6 +73,8 @@ export default defineHandler(async (event) => {
       pruneTodowrite,
       pruneTask,
       pruneWebfetch,
+      dropAfter,
+      dropAfterPreserveUser,
     });
     return { ok: true, runId };
   } catch (err) {

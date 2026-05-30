@@ -64,6 +64,8 @@ interface CleanDialogOptions {
   pruneTodowrite: boolean;
   pruneTask: boolean;
   pruneWebfetch: boolean;
+  dropAfter: string;
+  dropAfterPreserveUser: boolean;
   oldSessionDisposition: SessionDisposition;
 }
 
@@ -84,6 +86,8 @@ const DEFAULT_CLEAN_DIALOG_OPTIONS: CleanDialogOptions = {
   pruneTodowrite: false,
   pruneTask: false,
   pruneWebfetch: false,
+  dropAfter: "",
+  dropAfterPreserveUser: false,
   oldSessionDisposition: "archive",
 };
 
@@ -352,6 +356,10 @@ function Body({
         requestBody.pruneTodowrite = cleanOptions.pruneTodowrite;
         requestBody.pruneTask = cleanOptions.pruneTask;
         requestBody.pruneWebfetch = cleanOptions.pruneWebfetch;
+        requestBody.dropAfter = cleanOptions.dropAfter.trim();
+        requestBody.dropAfterPreserveUser =
+          cleanOptions.dropAfter.trim().length > 0 &&
+          cleanOptions.dropAfterPreserveUser;
       }
       const res = await fetch(config.startPath, {
         method: "POST",
@@ -571,6 +579,38 @@ function Body({
                   hint="Adds --prune-webfetch"
                   onChange={(checked) => setCleanFlag("pruneWebfetch", checked)}
                 />
+                <label className="grid gap-1 text-xs">
+                  <span className="font-medium">Drop after message id</span>
+                  <input
+                    type="text"
+                    value={cleanOptions.dropAfter}
+                    onChange={(e) =>
+                      setCleanOptions((prev) => {
+                        const nextDropAfter = e.target.value;
+                        return {
+                          ...prev,
+                          dropAfter: nextDropAfter,
+                          dropAfterPreserveUser:
+                            nextDropAfter.trim().length > 0
+                              ? prev.dropAfterPreserveUser
+                              : false,
+                        };
+                      })
+                    }
+                    placeholder="msg_..."
+                    className="h-9 rounded-md border border-input bg-bg px-2 text-xs font-mono"
+                    data-test="portal-clean-drop-after"
+                  />
+                </label>
+                <FlagCheckbox
+                  checked={cleanOptions.dropAfterPreserveUser}
+                  label="Preserve user prompts past drop-after"
+                  hint="Adds --drop-after-preserve=user"
+                  onChange={(checked) =>
+                    setCleanFlag("dropAfterPreserveUser", checked)
+                  }
+                  disabled={cleanOptions.dropAfter.trim().length === 0}
+                />
               </div>
             )}
             {kind === "clean" && (
@@ -738,18 +778,25 @@ function FlagCheckbox({
   checked,
   label,
   hint,
+  disabled = false,
   onChange,
 }: {
   checked: boolean;
   label: string;
   hint: string;
+  disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="flex items-start gap-2 cursor-pointer rounded border border-border/80 bg-bg/40 p-2">
+    <label
+      className={`flex items-start gap-2 rounded border border-border/80 bg-bg/40 p-2 ${
+        disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="mt-0.5 size-4 accent-primary shrink-0"
       />
