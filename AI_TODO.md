@@ -2896,3 +2896,34 @@ Design notes:
 - Make absolute paths (`/home/...`) and home-short paths (`~/...`) clickable consistently in plain prose and inline-code surfaces where they currently fail.
 - Preserve current behavior for `./AI_TODO.md` and `AI_TODO.md` (already linkized in prose); add missing coverage in code-formatted text.
 - Keep fenced code blocks readable (fix single-letter regression) while adding linkization only where intended.
+
+### 133. Archive confirmation split by trigger source (PENDING - in progress)
+
+User prompt (verbatim):
+
+> do not show this confirmation modal for archiving triggered from hamburger > archive.
+> at the same time, trigeger it on slick from the navbar as thiere it's very easy to misclick that button.
+
+Design notes:
+
+- Keep the hamburger menu action fast: archive immediately from hamburger without opening the confirmation modal.
+- Keep unarchive conservative in hamburger: still use confirmation there so destructive direction changes stay explicit.
+- Move confirmation to the navbar archive affordance (session-row archive icon in the sidebar/nav surface), because misclick risk is highest there.
+- Files:
+  - `apps/web/src/components/app-sidebar-nav.tsx` - bypass modal for hamburger archive action.
+  - `apps/web/src/components/app-sidebar.tsx` - add archive confirm dialog for session-row archive action.
+- Verify manually by clicking both entry points and confirming behavior split matches prompt.
+
+### 134. Archived-session placement and highlight parity in sidebar (PENDING - in progress)
+
+User prompt (verbatim):
+
+> after archiving, navbar should update - archived session needs to go where it belongs.
+> also, current session is being highlighted green. that was overlooked and not implemented for archived ones. they should be highlighted also. (if within view - ie the archived section where it belongs is currently in view)
+
+Design notes:
+
+- When the current session becomes archived, the project's archived subsection should become visible so the row appears in its archived location immediately.
+- Archived rows must receive the same active-session highlight treatment as active rows when they are visible.
+- Keep the existing collapsed behavior for archived sections when the current session is not archived.
+- Target file: `apps/web/src/components/app-sidebar.tsx`.
