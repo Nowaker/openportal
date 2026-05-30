@@ -1240,6 +1240,99 @@ implementation MUST:
 If any of these aren't possible for a new surface, it doesn't
 belong in this cache - figure out a different storage shape.
 
+## Optimistic mutations + reconciliation overlay (binding)
+
+OpenCode PATCH endpoints can take 0.5-6s to settle. Any user-initiated
+mutation (archive, unarchive, rename, future delete / move / pin /
+toggle / ...) that just awaits the round-trip and then refetches
+produces a dead UI window the user reads as "did my click register?".
+That window violates the **Async-action feedback** rule above. The
+project's general answer is a three-layer pattern. EVERY mutating user
+action must follow it.
+
+### The three layers
+
+1. **Server-side overlay** (`apps/web/src/server/lib/session-overlay.ts`).
+   In-memory map keyed `port:sessionId`. Mutation endpoints set
+   `_pending<Field>` (e.g. `_pendingArchived`, `_pendingTitle`) BEFORE
+   awaiting opencode. The next `/sessions` GET applies the overlay
+   onto every returned row, so OTHER tabs / concurrent polls
+   immediately see the post-mutation state without any cross-tab
+   coordination. A `reconcile()` pass clears entries opencode has
+   caught up on (authoritative === pending), plus a 30s stale-safety
+   drop in case opencode silently never reflects the mutation.
+2. **Frontend resolver** (`apps/web/src/lib/session-overlay.ts`).
+   `effectiveTitle(s)`, `effectiveArchivedAt(s)`,
+   `isEffectivelyArchived(s)`, ... read `_pendingX` in preference to
+   the raw authoritative field. UI code MUST go through the resolver
+   - NEVER read `s.title` / `s.time.archived` / etc. directly. A
+   reviewer inlining the resolver back to a direct field read
+   re-introduces the bug.
+3. **Originating-tab optimistic SWR patch + rollback**. The mutation
+   hook (`useArchiveSession`, `useUnarchiveSession`, the rename
+   submit handler, ...) patches the SWR cache for the relevant key
+   (`/api/opencode/<port>/sessions` today) BEFORE firing the PATCH:
+   sets `_pendingX` on the row locally with
+   `mutate(key, updater, { revalidate: false })`. On success, fires a
+   plain `mutate(key)` to revalidate (server returns the overlay-
+   applied state). On error, mutates the cache back (deletes the
+   `_pendingX`) AND records an error in
+   `apps/web/src/stores/mutation-errors-store.ts`.
+
+The three layers compose: layer 1 protects other tabs, layer 2
+ensures the UI always reads through the right lens, layer 3 gives
+the originating tab a zero-latency feel.
+
+### Error recovery (mandatory)
+
+Every optimistic mutation MUST surface its failure if the server
+ultimately rejects it. The contract:
+
+- On error: roll back the optimistic SWR patch in the same tab.
+- On error: write a `MutationError` to the mutation-errors store
+  keyed by sessionId. Include the field and a one-line message.
+- On error: render `<MutationErrorIndicator sessionId={id} />` from
+  `apps/web/src/components/mutation-error-indicator.tsx` adjacent
+  to the affected control. The component renders a small warning
+  triangle with the error message available via `title` (hover) /
+  `aria-label` (tap / screen reader).
+- On the next successful mutation for the same session, the
+  indicator clears itself (the hook calls
+  `useMutationErrorStore.getState().clearError(sessionId)` before
+  staging the new optimistic patch).
+
+### When to apply which response
+
+| Round-trip cost | UX response |
+|---|---|
+| Sub-100ms, never fails meaningfully | Just await and refetch. Don't bother with optimism. |
+| 100ms-3s, can fail (most mutations against opencode) | Three-layer pattern above. Apply immediately, server stages overlay, rollback + indicator on failure. |
+| Multi-second waits with no graceful pre-confirm UI (rare) | Show a spinner / disabled state while waiting. Never freeze the UI silently. |
+
+The rule: **if the originating tab is going to wait for the
+backend before reflecting the user's change, the wait MUST be
+visible (spinner / disabled state / progress text). If the tab
+applies the change immediately, a failure MUST be visible and
+recoverable.** No silent waits. No silent failures.
+
+### Extension points
+
+When adding a new mutating action that lives at the
+`/sessions` surface (delete / move / pin / star / ...), follow the
+pattern verbatim: add a new `_pending<Field>` to
+`OverlayState` + `LooseSession`, teach `reconcile()` how to detect
+"opencode caught up" for that field, add a new resolver function
+in the client overlay module, wire the hook with optimistic patch
++ rollback + error-store integration. No new files unless the
+storage shape genuinely doesn't fit (then read the cache section
+above).
+
+When adding a mutation against a DIFFERENT surface (messages,
+permissions, plugin state), the same three layers apply but keyed
+on that surface's primary record id. Build the new overlay store
+in `apps/web/src/server/lib/<surface>-overlay.ts` with the same
+shape contract.
+
 ## Never pre-generate opencode-assigned IDs (binding)
 
 OpenPortal **MUST NOT** generate any ID that opencode is the canonical

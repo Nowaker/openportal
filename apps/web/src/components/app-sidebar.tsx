@@ -85,6 +85,7 @@ import {
   isEffectivelyArchived,
   type SessionWithOverlay,
 } from "@/lib/session-overlay";
+import { MutationErrorIndicator } from "@/components/mutation-error-indicator";
 
 import {
   newSessionDraftKey,
@@ -452,6 +453,10 @@ function ProjectGroup({
                   searchQuery,
                 )}
               </UILink>
+              <MutationErrorIndicator
+                sessionId={session.id}
+                className="shrink-0"
+              />
               <button
                 type="button"
                 onClick={() =>
@@ -556,6 +561,10 @@ function ProjectGroup({
                 searchQuery,
               )}
             </UILink>
+            <MutationErrorIndicator
+              sessionId={session.id}
+              className="shrink-0"
+            />
             <button
               type="button"
               onClick={() => onUnarchiveSession(session.id)}

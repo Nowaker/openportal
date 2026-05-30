@@ -62,6 +62,8 @@ import {
   isEffectivelyArchived,
   type SessionWithOverlay,
 } from "@/lib/session-overlay";
+import { useMutationErrorStore } from "@/stores/mutation-errors-store";
+import { MutationErrorIndicator } from "@/components/mutation-error-indicator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DirectoryPicker } from "@/components/directory-picker/directory-picker";
 import { mutate as globalSWRMutate } from "swr";
@@ -644,24 +646,20 @@ export function AppSidebarNav() {
     }
     setEditingTitle(false);
     setDraftTitle("");
-    setRenameSaving(true);
-
-    mutateSessions(
-      (prev) => {
-        if (!Array.isArray(prev)) return prev;
-        const now = Date.now();
-        return prev.map((session) =>
-          session.id === sessionId
-            ? ({
-                ...session,
-                _pendingTitle: { value: trimmed, setAt: now },
-              } as Session)
-            : session,
+    useMutationErrorStore.getState().clearError(sessionId);
+    const key = `/api/opencode/${port}/sessions`;
+    await globalSWRMutate(
+      key,
+      (current: unknown) => {
+        if (!Array.isArray(current)) return current;
+        return current.map((s) =>
+          s?.id === sessionId
+            ? { ...s, _pendingTitle: { value: trimmed, setAt: Date.now() } }
+            : s,
         );
       },
       { revalidate: false },
     );
-
     try {
       const res = await fetch(`/api/opencode/${port}/session/${sessionId}`, {
         method: "PATCH",
@@ -669,14 +667,26 @@ export function AppSidebarNav() {
         body: JSON.stringify({ title: trimmed }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      void mutateSessions();
+      void globalSWRMutate(key);
     } catch (e) {
-      toast.error(
-        `Failed to rename: ${e instanceof Error ? e.message : "unknown"}`,
+      await globalSWRMutate(
+        key,
+        (current: unknown) => {
+          if (!Array.isArray(current)) return current;
+          return current.map((s) => {
+            if (s?.id !== sessionId) return s;
+            const copy = { ...s };
+            delete copy._pendingTitle;
+            return copy;
+          });
+        },
+        { revalidate: false },
       );
-      void mutateSessions();
-    } finally {
-      setRenameSaving(false);
+      useMutationErrorStore.getState().setError(sessionId, {
+        field: "title",
+        message: `Failed to rename: ${e instanceof Error ? e.message : "unknown"}`,
+        at: Date.now(),
+      });
     }
   };
 
@@ -838,6 +848,12 @@ export function AppSidebarNav() {
               >
                 <PencilSquareIcon className="size-4" />
               </button>
+            )}
+            {sessionId && (
+              <MutationErrorIndicator
+                sessionId={sessionId}
+                className="shrink-0"
+              />
             )}
             {sessionId && port && titleBarPlacements.compact === "both" && (
               <button

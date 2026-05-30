@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useMutationErrorStore } from "@/stores/mutation-errors-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import {
   useIndicator,
@@ -384,25 +385,74 @@ export function useDeleteSession() {
   };
 }
 
-// Archive/unarchive now rely on the server-side mutation reconciliation
-// overlay (apps/web/src/server/lib/session-overlay.ts). The endpoint
-// stages the `_pendingArchived` overlay before opencode's slow PATCH
-// returns, so the next /sessions GET already reports the row in its
-// new state. These hooks just fire the API and trigger SWR to re-fetch.
-// Architecture: ai-analysis-requests/MUTATION_RECONCILIATION_ARCHITECTURE.md
+// Optimistic SWR patch + server-side overlay + rollback. See AGENTS.md "Optimistic mutations".
+type ArchivedPatchValue = number;
+
+function patchSessionField(
+  list: unknown,
+  sessionId: string,
+  apply: (s: Record<string, unknown>) => Record<string, unknown>,
+): unknown {
+  if (!Array.isArray(list)) return list;
+  return list.map((s) => {
+    if (!s || typeof s !== "object" || (s as { id?: string }).id !== sessionId)
+      return s;
+    return apply(s as Record<string, unknown>);
+  });
+}
+
+function applyPendingArchived(
+  sessionId: string,
+  value: ArchivedPatchValue,
+): (list: unknown) => unknown {
+  return (list) =>
+    patchSessionField(list, sessionId, (s) => ({
+      ...s,
+      _pendingArchived: { value, setAt: Date.now() },
+    }));
+}
+
+function clearPendingArchived(
+  sessionId: string,
+): (list: unknown) => unknown {
+  return (list) =>
+    patchSessionField(list, sessionId, (s) => {
+      const copy = { ...s };
+      delete copy._pendingArchived;
+      return copy;
+    });
+}
+
 export function useArchiveSession() {
   const port = usePort();
   const { mutate } = useSWRConfig();
   return async (sessionId: string) => {
     if (!port) throw new Error("No instance selected");
-    const res = await fetch(
-      `/api/opencode/${port}/session/${sessionId}/archive`,
-      { method: "POST" },
-    );
-    if (!res.ok) throw new Error(`Failed to archive session: ${res.status}`);
-    const payload = await res.json();
-    void mutate(`/api/opencode/${port}/sessions`);
-    return payload;
+    const key = `/api/opencode/${port}/sessions`;
+    useMutationErrorStore.getState().clearError(sessionId);
+    await mutate(key, applyPendingArchived(sessionId, Date.now()), {
+      revalidate: false,
+    });
+    try {
+      const res = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/archive`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      void mutate(key);
+      return payload;
+    } catch (e) {
+      await mutate(key, clearPendingArchived(sessionId), {
+        revalidate: false,
+      });
+      useMutationErrorStore.getState().setError(sessionId, {
+        field: "archived",
+        message: `Failed to archive: ${e instanceof Error ? e.message : "unknown"}`,
+        at: Date.now(),
+      });
+      throw e;
+    }
   };
 }
 
@@ -411,15 +461,31 @@ export function useUnarchiveSession() {
   const { mutate } = useSWRConfig();
   return async (sessionId: string) => {
     if (!port) throw new Error("No instance selected");
-    const res = await fetch(
-      `/api/opencode/${port}/session/${sessionId}/unarchive`,
-      { method: "POST" },
-    );
-    if (!res.ok)
-      throw new Error(`Failed to unarchive session: ${res.status}`);
-    const payload = await res.json();
-    void mutate(`/api/opencode/${port}/sessions`);
-    return payload;
+    const key = `/api/opencode/${port}/sessions`;
+    useMutationErrorStore.getState().clearError(sessionId);
+    await mutate(key, applyPendingArchived(sessionId, 0), {
+      revalidate: false,
+    });
+    try {
+      const res = await fetch(
+        `/api/opencode/${port}/session/${sessionId}/unarchive`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      void mutate(key);
+      return payload;
+    } catch (e) {
+      await mutate(key, clearPendingArchived(sessionId), {
+        revalidate: false,
+      });
+      useMutationErrorStore.getState().setError(sessionId, {
+        field: "archived",
+        message: `Failed to unarchive: ${e instanceof Error ? e.message : "unknown"}`,
+        at: Date.now(),
+      });
+      throw e;
+    }
   };
 }
 
