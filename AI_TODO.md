@@ -3102,7 +3102,7 @@ Files:
 - `apps/web/src/components/app-sidebar-nav.tsx`
 - `apps/web/src/hooks/use-opencode.ts`
 
-### 140. Rename title must update immediately in topbar + navbar (PENDING - in progress)
+### 140. Rename title must update immediately in topbar + navbar (DONE - 7f8097a)
 
 User prompt (verbatim):
 
