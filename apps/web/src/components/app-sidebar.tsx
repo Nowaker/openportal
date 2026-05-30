@@ -76,6 +76,10 @@ import {
   type BaseDirEntry,
   type ProjectTreeNode,
 } from "@/lib/project-path";
+import {
+  archivedRowIsCurrent,
+  shouldAutoExpandArchivedSection,
+} from "@/lib/sidebar-archive-visibility";
 
 import {
   newSessionDraftKey,
@@ -194,14 +198,16 @@ function ProjectGroup({
   useEffect(() => {
     if (!archivedExpanded) setArchivedLimit(sessionStep);
   }, [archivedExpanded, sessionStep]);
-  const currentSessionIsArchived = archivedSessions.some(
-    (s) => s.id === currentSessionId,
+  const currentSessionIsArchived = shouldAutoExpandArchivedSection(
+    isExpanded,
+    currentSessionId,
+    archivedSessions,
   );
   useEffect(() => {
-    if (isExpanded && currentSessionIsArchived) {
+    if (currentSessionIsArchived) {
       setArchivedExpanded(true);
     }
-  }, [isExpanded, currentSessionIsArchived]);
+  }, [currentSessionIsArchived]);
 
   // If the user is viewing a session that lives below the per-project
   // visible window, hoist it to the top of the visible slice so they can
@@ -513,7 +519,7 @@ function ProjectGroup({
         </button>
       )}
       {archivedVisible.map((session) => {
-        const isCurrent = session.id === currentSessionId;
+        const isCurrent = archivedRowIsCurrent(session.id, currentSessionId);
         return (
           <div
             key={session.id}
