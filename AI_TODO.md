@@ -3058,6 +3058,9 @@ Design notes:
 - Open question: when the parent's in-flight assistant finishes WHILE the /btw fork is still running, the user sees both updates. Order in chat log = `time.created` ordering. Synthetic-message timestamps need to come from openportal (now()), not opencode (which doesn't know about them).
 - Worktree: TBD when work starts.
 
+Follow-up commits:
+- 68a3103 - btw v2: fix wrong-answer bug (inherited-completion got picked as the answer) + inline thinking indicator (pending row via migration 0006 + _pending sentinel) + drop the success toast + hermetic e2e test (Bun.serve mock, no real opencode/LLM).
+
 ### 138. Archive/unarchive must invalidate sessions SWR cache (PENDING - in progress)
 
 User prompt (verbatim):
