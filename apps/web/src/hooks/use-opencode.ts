@@ -4,6 +4,10 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useMutationErrorStore } from "@/stores/mutation-errors-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import {
+  useUpdateStrategyStore,
+  DEFAULT_POLLING_INTERVAL_SEC,
+} from "@/stores/update-strategy-store";
+import {
   useIndicator,
   useIndicators,
   type IndicatorTodoItem,
@@ -33,9 +37,18 @@ function useServerId(): string | undefined {
 // indicator stream (chat /messages still uses SWR + event-stream
 // invalidation). The three indicator-source hooks below no longer
 // touch this - their polling is GONE, replaced by useIndicators().
+// When the user customizes pollingIntervalSec in Settings, all
+// call-site intervals are scaled proportionally to the new base
+// (e.g. user picks 6s -> base 3s becomes 6s, 5s becomes 10s, 15s
+// becomes 30s). Preserves the per-call-site relative cadence.
 export function usePollMs(intervalMs: number): number {
   const strategy = useActiveStrategy();
-  return strategy === "polling" ? intervalMs : 0;
+  const customSec = useUpdateStrategyStore((s) => s.pollingIntervalSec);
+  if (strategy !== "polling") return 0;
+  if (customSec && customSec > 0) {
+    return Math.round((intervalMs / (DEFAULT_POLLING_INTERVAL_SEC * 1000)) * customSec * 1000);
+  }
+  return intervalMs;
 }
 
 export function useInstances() {

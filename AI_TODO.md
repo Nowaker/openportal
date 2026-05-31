@@ -3219,7 +3219,9 @@ Plan order (when implementation starts; on a fresh `feat/templates-redesign-roun
 5. **Slash command integration** (Phase E + Phase G of TEMPLATES_REDESIGN.md) including `/btw` parity on new.tsx composer.
 6. Build + deploy + push between each phase. Browser-verify each phase.
 
-### 143. Templates Round 5: prompt format pivot - user prompt first, /template "Title" blocks, frontend collapse (DONE - R5-A+R5-B 58bf95a, R5-C+R5-D 006b5d0)
+### 146. Templates Round 5: prompt format pivot - user prompt first, /template "Title" blocks, frontend collapse (DONE - R5-A+R5-B 58bf95a, R5-C+R5-D 006b5d0)
+
+(Originally enqueued as #143 on feat/templates-redesign-round-4 before main shipped its own #143 - composer draft persistence - and the loser bumps to N+1 per AI_TODO.md collision rule.)
 
 User prompt (verbatim):
 
@@ -3274,7 +3276,9 @@ Design notes:
 - Old-format messages (legacy compact `/template Foo` archive rows) render unchanged - `parsePromptWithTemplates` returns null for them and the renderer falls back to its normal path.
 - Implementation order locked: R5-A + R5-B (this commit), then R5-C, then R5-D. Phase 1 (UnifiedToolList/FsTemplateRow/NewFsTemplateForm bug fix) runs concurrently in bg_4314b99a and is unaffected.
 
-### 144. Templates Round 6: per-row preview/edit chevron + ephemeral modifications + " + modifications" suffix (DONE this commit)
+### 147. Templates Round 6: per-row preview/edit chevron + ephemeral modifications + " + modifications" suffix (DONE - b6e54eb)
+
+(Originally enqueued as #144 on feat/templates-redesign-round-4 before main shipped its own #144 - configurable polling interval - and the loser bumps to N+1 per AI_TODO.md collision rule.)
 
 User prompt (verbatim):
 
@@ -3312,3 +3316,56 @@ Plan order (single commit):
 3. `new.tsx` picker row - chevron + textarea + edits state + submit-handler wiring
 
 Phase 1 (UnifiedToolList + FsTemplateRow + NewFsTemplateForm bug fix on tools-settings.tsx) is INDEPENDENT - the previous Phase 1 delegate agent (bg_4314b99a) died at compaction without committing. Will be done inline by the orchestrator after this Round 6 commit.
+### 143. Composer draft persisted after /btw and empty /agent /model submits (DONE - 526410b)
+
+User prompt (verbatim):
+
+> draft didn't disappear after using a slash command. my hypothesis is the code expected to see the full input that included `/slash-command the input` on the output but only `the input` was found? don't know, just a guess.
+>
+> remember the principle - draft/prompt field value to disappear once openportal backend got the query and saved it in 'prompt history'. but not earlier, must get a confirmation it's saved. NOTE: must NOT wait for opencode! openportal backend is all.
+
+Design notes:
+
+- Root cause: both early-return branches in `handleSubmit` at `apps/web/src/routes/_app/session/$id.tsx` — the `/btw` branch (lines ~4806-4838) and the empty-body `/agent`/`/model` override branch (lines ~4857-4866) — short-circuited BEFORE reaching the post-success cleanup block. They visually cleared the textarea via `textareaRef.current.value = ""` only. Direct DOM assignment does NOT fire React's onChange handler, so the localStorage draft at `opencode-composer-draft:<sid>` persisted. On next mount, composer-toggle, session-switch, or page reload the on-mount restore effect re-populated the textarea with the stale draft.
+
+- Symptom matches user hypothesis: nothing actually broke at smartPostSubmitClear (the substring comparator). The substring path simply never ran on these branches.
+
+- Fix: both branches now explicitly call `writeDraft(sessionId, "")` + cancel any pending mobile-debounced save timer + post the `draft-submitted` BroadcastChannel message to peer tabs, mirroring exactly what the normal-success path already does. Honors the project draft contract: cleared on openportal-backend confirmation (2xx from `/api/btw` for /btw; immediate ack-on-return for /agent /model overrides which have no remote round-trip), NEVER waits for opencode.
+
+- Worktree: `~/projekty/webapps/portal-slash-draft` on branch `fix/slash-draft-clearing`. Built + smoke-tested at `http://100.105.229.19:5201/` (bundle hash `index-CY3MERTl.js`, console clean). Fast-forward merge into `main-nowaker`. Concurrent uncommitted work on `main-nowaker` from another agent (AGENTS.md / slash-command-popover.tsx / $id.tsx / new.tsx) preserved via `git stash` + `git stash pop` around the merge.
+
+- Cross-tab BroadcastChannel safety: receivers run through `smartPostSubmitClear` which substring-checks; on `/btw what is X?` the submitted content matches their textarea exactly when the same draft is shared, and otherwise no-ops.
+
+Files:
+- `apps/web/src/routes/_app/session/$id.tsx`
+
+### 144. Configurable polling interval in Settings → Performance → Live updates (DONE - 9b8c673)
+
+User prompt (verbatim):
+
+> Settings -> ... -> update policy polling - currently it says 3 seconds.
+> make it configurable if polling selected. pre-filled with 3 as placeholder (no saved value but backend will default to it)
+> ability to modify to any number of seconds.
+
+Design notes:
+
+- The "Polling" strategy description previously hard-coded "Timer refresh every 3 seconds". Made the 3s base configurable.
+- Added `pollingIntervalSec: number | undefined` to `apps/web/src/stores/update-strategy-store.ts` (persist v2, undefined = default).
+- `usePollMs()` in `apps/web/src/hooks/use-opencode.ts` scales each call-site's natural interval proportionally to `(customSec / DEFAULT_POLLING_INTERVAL_SEC)`, preserving the relative cadence between callers (messages 3s, pinned 5s, last-viewed 5s, companion 5/15s).
+- New `PollingIntervalSetting` component in `apps/web/src/routes/_app/settings.tsx` renders an `<Input type="number">` only when either platform's strategy is "polling". Placeholder shows "3" (DEFAULT_POLLING_INTERVAL_SEC). Empty value = backend default. Commits on blur and Enter. Rejects non-positive numbers.
+- Persisted in localStorage (`openportal-update-strategy` v2), per-device — same scope as the existing per-platform strategy.
+
+### 145. Composer textarea right-padding: pr-16 -> pr-20 for visible clearance (DONE - d592f52)
+
+User prompt (verbatim):
+
+> submit button inside textarea button - text goes behind the buttons. bad experience. padding right inside prompt field, to accommodate for buttons showing on the right.
+
+(Followed by a screenshot showing text crowded against the buttons on a mobile-width viewport, with a second message: "current state: text still going behind the buttons, text should not go there. always deploy, whether someone else's work in progress or not.")
+
+Design notes:
+
+- #143's predecessor commit (`4fdf982`) bumped `pr-14` to `pr-16` and reported 10px clearance. Verified deployed (`_id-FuMXLLPP.js` + `new-Bx-5ZbEv.js` both contain `pr-16`). 10px reads as crowding on mobile — the technical gap exists but the visual reads as text-against-button. The user re-reported the issue after deploy.
+- Fix: bump both composer textareas from `pr-16` (64px, 10px gap) to `pr-20` (80px, 26px gap from the size-12 submit, 50px from the size-6 stop). 26px is the threshold where the gap reads as deliberate whitespace rather than a tight wrap point.
+- AGENTS.md "Composer layout" contract updated: example tsx line, padding minimum bullet, and the threshold rationale documenting why 10px wasn't enough.
+- Files: `apps/web/src/routes/_app/session/$id.tsx` (textarea + inline rationale comment), `apps/web/src/routes/_app/session/new.tsx`, `AGENTS.md`.
