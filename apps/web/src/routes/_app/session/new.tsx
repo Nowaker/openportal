@@ -53,6 +53,7 @@ import {
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+import { buildPromptWithTemplates } from "@/lib/prompt-template-format";
 import {
   clearPendingSubmission,
   recordFailedAttempt,
@@ -436,28 +437,13 @@ function NewSessionPage() {
         return;
       }
       const userMessage = (override ?? text).trim();
-      // Pick up checked init templates IN their drag-order. They are
-      // NOT in the textarea (auto-prefill is gone since Phase F) - we
-      // prepend them on submit. Two strings come out:
-      //   - archiveText: "/template Foo\n/template Bar\n\nUser text"
-      //     - readable history, refire-able, matches search "Foo"
-      //   - opencodeText: "<Foo body>\n\n<Bar body>\n\nUser text"
-      //     - what opencode actually executes
-      // Without any checked templates, both equal userMessage.
       const checkedTemplates = order.filter((t) => selected.has(t.id));
-      const archivePrefix =
-        checkedTemplates.length > 0
-          ? checkedTemplates
-              .map((t) => `/template ${t.name}`)
-              .join("\n") + "\n\n"
-          : "";
-      const opencodePrefix =
-        checkedTemplates.length > 0
-          ? checkedTemplates.map((t) => t.prompt).join("\n\n") + "\n\n"
-          : "";
-      const archiveText = archivePrefix + userMessage;
-      const opencodeText = opencodePrefix + userMessage;
-      if (!archiveText && pendingAttachments.length === 0) return;
+      const opencodeText = buildPromptWithTemplates(
+        userMessage,
+        checkedTemplates.map((t) => ({ name: t.name, body: t.prompt })),
+      );
+      const archiveText = opencodeText;
+      if (!opencodeText && pendingAttachments.length === 0) return;
       if (!port) {
         setError("Portal not bound to OpenCode.");
         return;
