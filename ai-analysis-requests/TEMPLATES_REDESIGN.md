@@ -336,3 +336,173 @@ behaviour as the new-session picker. This phase also lands the
 - `SLASH_COMMANDS.md` — opencode's slash command stack +
   OpenPortal's existing integration (incl. `/btw` synthetic command).
 - AI_TODO #112 — the durable queue entry for this work.
+
+## Round 4 (2026-05-30) — synthesis after live bug + rename mandate
+
+User opened a fresh analyze-mode round combining several refinements
+across multiple turns. The deliverable is this section + AI_TODO #142;
+no code changes shipped in this round. Four parallel explore agents
+(bg_16dfa57d settings-tab, bg_f38e5ad5 new-session-flow,
+bg_88a7376f data-model+fs, bg_51ff549e slash-autocomplete) produced
+supporting analysis docs in `ai-analysis-requests/`
+(`TOOLS_SETTINGS_INVENTORY.md`, `NEW_SESSION_FLOW.md`,
+`TEMPLATES_DATA_MODEL_SCHEMA.md`,
+`COMPOSER_SLASH_AUTOCOMPLETE_WIRING.md`).
+
+### Live bug on `main-nowaker` (must fix first)
+
+A partial merge from `feat/templates-redesign` to `main-nowaker` left
+`tools-settings.tsx` ReferenceErroring at runtime:
+
+| Site | Line | Defect |
+|---|---|---|
+| `ToolsSettings()` body | 748 | `<UnifiedToolList tools={tools} />` — component not defined or imported |
+| `FsTemplatesSection()` body | 681 | `<FsTemplateRow … />` — not defined |
+| `FsTemplatesSection()` body | 697 | `<NewFsTemplateForm … />` — not defined |
+| `AddCustomTool()` body | 528-544 | `burger`, `setBurger`, `init`, `setInit`, `slash`, `setSlash` referenced without `useState` declarations |
+| `AddCustomTool()` body | 548-561 | `error`, `saving`, `onClose`, `submit` referenced but not defined |
+
+User sees `ReferenceError: UnifiedToolList is not defined` on
+`/settings#templates` (asset `settings-CP94QAF_.js`). Fix lands in
+Phase D — implementing UnifiedToolList + FsTemplateRow +
+NewFsTemplateForm + completing AddCustomTool state together rather
+than hot-patching broken code in place. NO partial component is
+committed before its consumers are wired.
+
+### Design reversal — init-only filter on new-session picker
+
+User's Round 4 prompt:
+
+> On session create, currently, when I disable "init" on a stock tool,
+> it still shows on the new session list. It shouldn't. Show only
+> init tools on session create.
+
+This **reaffirms Phase A** of this document and **reverses** the
+decision recorded in AI_TODO #126 / #127 ("show all non-disabled,
+init pre-checked"). Authoritative behaviour as of Round 4:
+
+- **New-session picker** renders ONLY templates with `init: true && !isDisabled`. Non-init templates do not appear at all.
+- All shown rows are checked by default (since they're all init-flagged).
+- Per-row uncheck + drag reorder still works.
+
+**Slash autocomplete** keeps its independent visibility rule:
+templates with `slash: true && !isDisabled`, additionally filtered
+for filesystem templates by current-or-ancestor directory scope
+relative to the active session's directory. Init flag is irrelevant
+to slash visibility.
+
+A future agent that re-reads this doc should NOT silently flip back
+to "show all non-disabled" — that was a transient decision in
+Rounds 2/3 that the user has now retracted.
+
+### Rename mandate — Tools → Templates
+
+User's Round 4 prompt:
+
+> they are no longer tools. we call them templates. anywhere they are
+> mentioned, ui or code (including class names), must refer to as
+> templates.
+
+Scope:
+
+| Surface | Rename | Notes |
+|---|---|---|
+| UI labels (Settings tab, buttons, copy, tooltips) | yes | `Tools` → `Templates`, `+ Add custom tool` → `+ Add custom template`, "Your custom tools" → "Your custom templates", etc. |
+| Component names (`ToolsSettings`, `SystemToolRow`, `CustomToolRow`, `AddCustomTool`, `useResolvedTools`, etc.) | yes | Symbol renames + matching file renames |
+| File names (`tools-settings.tsx`, `tools-store.ts`, `prompt-tools.ts`) | yes | → `templates-settings.tsx`, `templates-store.ts`, `prompt-templates.ts` |
+| Type names (`SystemTool`, `CustomTool`, `ResolvedTool`, `FsTemplate`) | partial | `SystemTemplate`, `CustomTemplate`, `ResolvedTemplate`; `FsTemplate` already correctly named |
+| API routes | already done | `/api/vibekick-templates` already correctly named; no `/api/tools` route exists |
+| Settings tab id / hash | already done | `#templates` tab id already in code; `#tools` hash redirects |
+| **localStorage key `"opencode-tools"`** | **NO** | Keep stable to preserve existing user data. Renaming silently wipes every user's custom templates + init order. A code comment at the persist key declaration explains why. |
+| **Stock template ids** (`git.pull`, `git.push`, `git.create-pr`) | **NO** | Persisted by id in `disabledIds` / `projectInitOrder` / `slashCommandIds` arrays. Renaming = the user's "I disabled Pull" turns into "Pull is now visible again". |
+
+The rename is a separate phase from the bug fix; bug fix lands first
+so the broken tab is rendered immediately, rename pass lands on top
+of the working code.
+
+### FS template polish (folded in from AI_TODO #127)
+
+These four bumps land as part of Phase D and Phase E:
+
+1. **Edit FS templates.** `FsTemplateRow` gains an Edit button + inline
+   form pre-filled with the row's current name / description / burger
+   / init / slash / order / prompt. Submit overwrites the same `.md`
+   file; location is locked (move = Delete + New).
+2. **Graceful refresh.** `useAllFsTemplates` and
+   `useFsTemplatesForDirectory` switch to SWR `keepPreviousData: true`.
+   Section header shows `<Loader className="size-3" />` +
+   "Rescanning files…" pill while `isValidating && data` is truthy.
+   The row list never unmounts during revalidation; checkbox flips
+   no longer cause the visible list to blink empty.
+3. **Duplicate.** Every Custom + FS row exposes a Duplicate button.
+   Opens the create form pre-filled with the source row's fields
+   (workspace pre-selected, sub-path inherited but editable,
+   name/description/prompt/flags copied). User edits + saves; lands
+   as a new template at the chosen location, source row untouched.
+4. **Flags at create.** `NewFsTemplateForm` surfaces three
+   FlagCheckboxes (Burger / Init / Slash) inline. Same component
+   the rows use. `AddCustomTool` gains the same three checkboxes
+   (the JSX is already drawn at tools-settings.tsx:528-544 — it
+   just lacks `useState` declarations + a `submit` handler; both
+   complete in Phase D).
+
+**Form refactor**: instead of three near-duplicate components
+(`NewFsTemplateForm` / `EditFsTemplateForm` / `DuplicateFsTemplateForm`),
+parameterise as one `FsTemplateForm` with three modes:
+
+- `mode: "new"` — empty fields; workspace = first; flags default
+  (burger:true, init:false, slash:false); button "Create".
+- `mode: "duplicate", source` — workspace + sub-path + fields +
+  flags copied from `source`; button "Create copy".
+- `mode: "edit", target` — workspace + sub-path locked (read-only
+  display); fields + flags copied from `target`; button "Save"
+  rewrites `target.location`.
+
+### Prompt archive distinction (clarification, no change to code)
+
+User Round 4 clarification:
+
+> i meant prompt history, feature of openportal. NOT the chat log
+> opencode has. there, the AI must see the ENTIRE template. if it
+> gets /template, it doesn't know shit about it.
+
+Current implementation per `NEW_SESSION_FLOW.md` already does the
+right thing:
+
+| Channel | Sees | Why |
+|---|---|---|
+| OpenPortal prompt archive (`prompts.raw_text`) | `/template Full name 1\n/template Full name 2\n\nUser prompt here.` | Scannable history surface |
+| opencode chat log (`prompt_async` `parts[].text`) | `<Foo body>\n\n<Bar body>\n\nUser prompt here.` | The AI gets full instructions |
+
+Implementation lives at `new.tsx` submit handler: builds two parallel
+strings (`archivePrefix` compact, `opencodePrefix` expanded), posts
+to `/api/opencode/{port}/session/{id}/prompt` with `text` (expanded)
+and `archiveText` (compact). Re-firing an archived row re-runs the
+expansion pass against the user's CURRENT templates (the archive
+stores names, not bodies — body edits are picked up on refire, not
+frozen at archive time).
+
+### Round 4 implementation order (when authorized)
+
+The user has NOT yet authorized implementation. When they do, ship
+in this order on a fresh `feat/templates-redesign-round-4` worktree
+(the existing partial merge on `main-nowaker` is the bug surface;
+work happens in a worktree to keep diffs reviewable):
+
+1. **Bug fix (atomic).** Implement `UnifiedToolList`, `FsTemplateRow`,
+   `NewFsTemplateForm`; complete `AddCustomTool` state +
+   `submit`. Verify `/settings#templates` renders. Deploy + push.
+2. **Init-only filter on new.tsx picker** (Phase A reaffirmed).
+   Filter `t.init === true && !t.isDisabled`. Solo commit.
+3. **Tools → Templates rename pass.** Symbol + file + label + type
+   renames per scope table above. localStorage key + stock ids
+   stay stable with explanatory comments. Solo commit.
+4. **FS template polish.** Edit + Duplicate + flags-at-create +
+   graceful refresh. Combine into one `FsTemplateForm` per the
+   refactor above.
+5. **Slash command integration** (Phase E + Phase G) including
+   `/btw` parity on new.tsx composer.
+6. Build + deploy via `scripts/deploy.sh` between each phase.
+   Browser-verify each phase.
+7. Push to `origin` (GitLab canonical) + `github` (mirror) after
+   each phase lands cleanly.
