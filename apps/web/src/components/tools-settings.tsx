@@ -467,18 +467,41 @@ function CustomToolRow({
   );
 }
 
-function AddCustomTool() {
+function AddCustomTool({
+  initialValues,
+  onCreated,
+}: {
+  initialValues?: {
+    name?: string;
+    description?: string;
+    prompt?: string;
+    burger?: boolean;
+    init?: boolean;
+    slash?: boolean;
+  };
+  onCreated?: () => void;
+} = {}) {
   const upsertCustomTool = useToolsStore((s) => s.upsertCustomTool);
+  const setBurgerVisible = useToolsStore((s) => s.setBurgerVisible);
+  const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
+  const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const tools = useResolvedTools();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [open, setOpen] = useState(Boolean(initialValues));
+  const [name, setName] = useState(initialValues?.name ?? "");
+  const [description, setDescription] = useState(
+    initialValues?.description ?? "",
+  );
+  const [prompt, setPrompt] = useState(initialValues?.prompt ?? "");
+  const [burger, setBurger] = useState(initialValues?.burger ?? true);
+  const [init, setInit] = useState(initialValues?.init ?? false);
+  const [slash, setSlash] = useState(initialValues?.slash ?? false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   if (!open) {
     return (
       <Button intent="outline" size="sm" onPress={() => setOpen(true)}>
-        + Add custom tool
+        + Add custom template
       </Button>
     );
   }
@@ -488,6 +511,43 @@ function AddCustomTool() {
     setName("");
     setDescription("");
     setPrompt("");
+    setBurger(true);
+    setInit(false);
+    setSlash(false);
+    setError(null);
+  };
+  const onClose = reset;
+
+  const submit = () => {
+    setError(null);
+    if (!name.trim()) {
+      setError("Name is required");
+      return;
+    }
+    if (!prompt.trim()) {
+      setError("Prompt is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const takenIds = new Set(tools.map((t) => t.id));
+      const id = makeCustomId(name, takenIds);
+      upsertCustomTool({
+        id,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        prompt,
+      });
+      if (!burger) setBurgerVisible(id, false);
+      if (init) toggleProjectInit(id, true);
+      if (slash) toggleSlashCommand(id, true);
+      reset();
+      onCreated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create template");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -567,9 +627,470 @@ function AddCustomTool() {
   );
 }
 
+function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
+  const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const reorderProjectInit = useToolsStore((s) => s.reorderProjectInit);
+
+  const systemTools = tools.filter((t) => t.kind === "system");
+  const customTools = tools.filter((t) => t.kind === "custom");
+
+  const sortTools = (list: ResolvedTool[]): ResolvedTool[] => {
+    const initIds = new Set(projectInitOrder);
+    const initRows = projectInitOrder
+      .map((id) => list.find((t) => t.id === id))
+      .filter((t): t is ResolvedTool => Boolean(t));
+    const otherRows = list
+      .filter((t) => !initIds.has(t.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...initRows, ...otherRows];
+  };
+
+  const sortedSystem = sortTools(systemTools);
+  const sortedCustom = sortTools(customTools);
+
+  const dragSourceIdRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const handleDrop = (targetId: string) => {
+    const sourceId = dragSourceIdRef.current;
+    dragSourceIdRef.current = null;
+    setDragOverId(null);
+    if (!sourceId || sourceId === targetId) return;
+    const order = projectInitOrder.slice();
+    const fromIdx = order.indexOf(sourceId);
+    const toIdx = order.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = order.splice(fromIdx, 1);
+    order.splice(toIdx, 0, moved);
+    reorderProjectInit(order);
+  };
+
+  const renderRow = (tool: ResolvedTool) => {
+    const isInit = projectInitOrder.includes(tool.id);
+    const draggable = isInit && !tool.isDisabled;
+    const props: ToolRowProps = {
+      tool,
+      draggable,
+      isDragOver: dragOverId === tool.id,
+      onDragStart: () => {
+        if (draggable) dragSourceIdRef.current = tool.id;
+      },
+      onDragOver: (e) => {
+        if (!dragSourceIdRef.current) return;
+        if (!isInit) return;
+        e.preventDefault();
+        if (dragOverId !== tool.id) setDragOverId(tool.id);
+      },
+      onDragLeave: () => {
+        if (dragOverId === tool.id) setDragOverId(null);
+      },
+      onDrop: () => handleDrop(tool.id),
+      onDragEnd: () => {
+        dragSourceIdRef.current = null;
+        setDragOverId(null);
+      },
+    };
+    return tool.kind === "system" ? (
+      <SystemToolRow key={tool.id} {...props} />
+    ) : (
+      <CustomToolRow key={tool.id} {...props} />
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-2">
+        <div>
+          <h3 className="text-sm font-semibold">System templates</h3>
+          <p className="text-xs text-muted-fg">
+            Shipped by OpenPortal. Edit the prompt to customise -
+            your edit survives future updates; hit Reset to restore
+            the shipped version. Disable to hide everywhere.
+          </p>
+        </div>
+        <div className="space-y-1.5">{sortedSystem.map(renderRow)}</div>
+      </section>
+      <section className="space-y-2">
+        <div>
+          <h3 className="text-sm font-semibold">Your custom templates</h3>
+          <p className="text-xs text-muted-fg">
+            Templates you create live in this browser&apos;s localStorage.
+            Mark Init to drag-reorder; mark Slash to register a{" "}
+            <code>/template &lt;name&gt;</code> autocomplete entry in
+            composers.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          {sortedCustom.length === 0 ? (
+            <p className="text-xs italic text-muted-fg/70">
+              No custom templates yet. Use the &quot;+ Add custom
+              template&quot; button at the bottom.
+            </p>
+          ) : (
+            sortedCustom.map(renderRow)
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FsTemplateRow({
+  template,
+  onToggle,
+  onSaveEdit,
+  onDelete,
+  onDuplicate,
+}: {
+  template: FsTemplate;
+  onToggle: (
+    field: "enabled" | "init" | "slash",
+    next: boolean,
+  ) => Promise<void>;
+  onSaveEdit: (next: {
+    name: string;
+    description: string;
+    prompt: string;
+  }) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onDuplicate?: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(template.name);
+  const [draftDescription, setDraftDescription] = useState(
+    template.description ?? "",
+  );
+  const [draftPrompt, setDraftPrompt] = useState(template.prompt);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftName(template.name);
+      setDraftDescription(template.description ?? "");
+      setDraftPrompt(template.prompt);
+      setError(null);
+    }
+  }, [editing, template.name, template.description, template.prompt]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSaveEdit({
+        name: draftName.trim() || template.name,
+        description: draftDescription.trim(),
+        prompt: draftPrompt,
+      });
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-border bg-bg p-2 space-y-2">
+      <div className="flex items-center gap-2">
+        <FlagCheckbox
+          label="Burger"
+          title="Show in the topbar Tools menu (maps to YAML 'enabled')"
+          checked={template.enabled}
+          onChange={(v) => void onToggle("enabled", v)}
+        />
+        <FlagCheckbox
+          label="Init"
+          title="Pre-checked in the new-session picker"
+          checked={template.init}
+          onChange={(v) => void onToggle("init", v)}
+        />
+        <FlagCheckbox
+          label="Slash"
+          title="Available as /template <name> slash command in composers"
+          checked={template.slash}
+          onChange={(v) => void onToggle("slash", v)}
+        />
+        <div className="min-w-0 flex-1 px-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{template.name}</span>
+            <span className="text-[10px] text-muted-fg/70 font-mono">
+              {template.scope}
+            </span>
+          </div>
+          {template.description && (
+            <p className="text-xs text-muted-fg mt-0.5">
+              {template.description}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            size="xs"
+            intent="outline"
+            onPress={() => setEditing((v) => !v)}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+          {onDuplicate && (
+            <Button size="xs" intent="outline" onPress={onDuplicate}>
+              Duplicate
+            </Button>
+          )}
+          <Button
+            size="xs"
+            intent="danger"
+            onPress={() => {
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `Delete filesystem template "${template.name}" at ${template.location}?`,
+                )
+              ) {
+                return;
+              }
+              void onDelete();
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+      {editing && (
+        <div className="space-y-2 pt-2 border-t border-border/50">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">Name</label>
+            <Input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">
+              Description (optional)
+            </label>
+            <Input
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-fg">Prompt</label>
+            <Textarea
+              value={draftPrompt}
+              onChange={(e) => setDraftPrompt(e.target.value)}
+              rows={8}
+            />
+          </div>
+          {error && <p className="text-xs text-danger-fg">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button
+              size="xs"
+              intent="outline"
+              onPress={() => setEditing(false)}
+              isDisabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button size="xs" onPress={handleSave} isDisabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewFsTemplateForm({
+  workspaces,
+  onClose,
+  initialValues,
+}: {
+  workspaces: string[];
+  onClose: () => void;
+  initialValues?: {
+    workspace?: string;
+    subpath?: string;
+    name?: string;
+    description?: string;
+    prompt?: string;
+    enabled?: boolean;
+    init?: boolean;
+    slash?: boolean;
+  };
+}) {
+  const [workspace, setWorkspace] = useState(
+    initialValues?.workspace ?? workspaces[0] ?? "",
+  );
+  const [subpath, setSubpath] = useState(initialValues?.subpath ?? "");
+  const [name, setName] = useState(initialValues?.name ?? "");
+  const [description, setDescription] = useState(
+    initialValues?.description ?? "",
+  );
+  const [prompt, setPrompt] = useState(initialValues?.prompt ?? "");
+  const [enabled, setEnabled] = useState(initialValues?.enabled ?? true);
+  const [init, setInit] = useState(initialValues?.init ?? false);
+  const [slash, setSlash] = useState(initialValues?.slash ?? false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setError(null);
+    if (!name.trim()) {
+      setError("Name is required");
+      return;
+    }
+    if (!prompt.trim()) {
+      setError("Prompt is required");
+      return;
+    }
+    if (!workspace) {
+      setError("Pick a workspace");
+      return;
+    }
+    setSaving(true);
+    try {
+      const basename = templateBasenameForName(name);
+      const cleanSubpath = subpath.replace(/^\/+/, "").replace(/\/+$/, "");
+      const dir = cleanSubpath ? `${workspace}/${cleanSubpath}` : workspace;
+      const location = `${dir}/.vibekick/templates/${basename}`;
+      await writeFsTemplate({
+        location,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        enabled,
+        init,
+        slash,
+        order: 0,
+        prompt,
+      });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create template");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center gap-3">
+        <label className="text-xs font-medium text-muted-fg w-32 shrink-0">
+          Workspace
+        </label>
+        <Select
+          selectedKey={workspace}
+          onSelectionChange={(k) => setWorkspace(String(k))}
+          className="flex-1"
+        >
+          <SelectTrigger>
+            <span className="font-mono text-xs">{workspace || "(select)"}</span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectLabel>Configured workspace roots</SelectLabel>
+            {workspaces.map((ws) => (
+              <SelectItem key={ws} id={ws}>
+                {ws}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center gap-3">
+        <label className="text-xs font-medium text-muted-fg w-32 shrink-0">
+          Sub-path
+        </label>
+        <PathInput
+          className="flex-1"
+          value={subpath}
+          onChange={setSubpath}
+          placeholder="e.g. webapps/portal - empty for workspace root"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <label className="text-xs font-medium text-muted-fg w-32 shrink-0">
+          Name
+        </label>
+        <Input
+          className="flex-1"
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <label className="text-xs font-medium text-muted-fg w-32 shrink-0">
+          Description
+        </label>
+        <Input
+          className="flex-1"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Optional"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-fg">Prompt</label>
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={8}
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-medium text-muted-fg w-32 shrink-0">
+          Flags
+        </span>
+        <div className="flex items-center gap-2">
+          <FlagCheckbox
+            label="Burger"
+            title="Show in the topbar Tools (burger) menu (YAML enabled)"
+            checked={enabled}
+            onChange={setEnabled}
+          />
+          <FlagCheckbox
+            label="Init"
+            title="Pre-checked in the new-session picker"
+            checked={init}
+            onChange={setInit}
+          />
+          <FlagCheckbox
+            label="Slash"
+            title="Available as /template <name> in composers"
+            checked={slash}
+            onChange={setSlash}
+          />
+        </div>
+      </div>
+      {error && <p className="text-xs text-danger-fg">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button
+          intent="outline"
+          size="xs"
+          onPress={onClose}
+          isDisabled={saving}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="xs"
+          isDisabled={saving || !name.trim() || !prompt.trim() || !workspace}
+          onPress={() => void submit()}
+        >
+          {saving ? "Saving..." : "Create"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function FsTemplatesSection() {
   const { data, isLoading, isValidating, error } = useAllFsTemplates();
   const [creating, setCreating] = useState(false);
+  const [duplicateSource, setDuplicateSource] = useState<FsTemplate | null>(
+    null,
+  );
 
   const workspaces = data?.workspaces ?? [];
   const templates = data?.templates ?? [];
@@ -686,6 +1207,10 @@ function FsTemplatesSection() {
                   }
                   onSaveEdit={(next) => handleSaveEdit(tpl, next)}
                   onDelete={() => deleteFsTemplate(tpl.location)}
+                  onDuplicate={() => {
+                    setCreating(false);
+                    setDuplicateSource(tpl);
+                  }}
                 />
               ))}
             </div>
@@ -693,10 +1218,27 @@ function FsTemplatesSection() {
         );
       })}
 
-      {creating ? (
+      {creating || duplicateSource ? (
         <NewFsTemplateForm
           workspaces={workspaces}
-          onClose={() => setCreating(false)}
+          onClose={() => {
+            setCreating(false);
+            setDuplicateSource(null);
+          }}
+          initialValues={
+            duplicateSource
+              ? {
+                  workspace: duplicateSource.workspaceRoot,
+                  subpath: duplicateSource.scope,
+                  name: `${duplicateSource.name} (copy)`,
+                  description: duplicateSource.description,
+                  prompt: duplicateSource.prompt,
+                  enabled: duplicateSource.enabled,
+                  init: duplicateSource.init,
+                  slash: duplicateSource.slash,
+                }
+              : undefined
+          }
         />
       ) : (
         <Button
