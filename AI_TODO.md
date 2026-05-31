@@ -3258,7 +3258,7 @@ Design notes:
 - New `PollingIntervalSetting` component in `apps/web/src/routes/_app/settings.tsx` renders an `<Input type="number">` only when either platform's strategy is "polling". Placeholder shows "3" (DEFAULT_POLLING_INTERVAL_SEC). Empty value = backend default. Commits on blur and Enter. Rejects non-positive numbers.
 - Persisted in localStorage (`openportal-update-strategy` v2), per-device — same scope as the existing per-platform strategy.
 
-### 145. Composer textarea right-padding: pr-16 -> pr-20 for visible clearance (PENDING - in progress)
+### 145. Composer textarea right-padding: pr-16 -> pr-20 for visible clearance (DONE - d592f52)
 
 User prompt (verbatim):
 
