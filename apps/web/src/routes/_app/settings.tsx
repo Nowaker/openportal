@@ -1288,43 +1288,42 @@ function PollingIntervalSetting({
   value: number | undefined;
   onChange: (n: number | undefined) => void;
 }) {
-  const [draft, setDraft] = useState<string>(
-    value === undefined ? "" : String(value),
-  );
+  const effective = value ?? DEFAULT_POLLING_INTERVAL_SEC;
+  const [draft, setDraft] = useState<string>(String(effective));
 
   useEffect(() => {
-    setDraft(value === undefined ? "" : String(value));
-  }, [value]);
+    setDraft(String(effective));
+  }, [effective]);
 
   const commit = (raw: string) => {
     const trimmed = raw.trim();
     if (trimmed === "") {
       onChange(undefined);
+      setDraft(String(DEFAULT_POLLING_INTERVAL_SEC));
       return;
     }
     const parsed = Number(trimmed);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      setDraft(value === undefined ? "" : String(value));
+      setDraft(String(effective));
       return;
     }
-    onChange(parsed);
+    onChange(parsed === DEFAULT_POLLING_INTERVAL_SEC ? undefined : parsed);
   };
 
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">Polling interval</p>
       <p className="text-xs text-muted-fg">
-        Seconds between refreshes when Polling is the active strategy. Leave
-        empty to use the default of {DEFAULT_POLLING_INTERVAL_SEC} seconds.
-        Larger values save battery; smaller values feel more responsive.
+        Seconds between refreshes when Polling is the active strategy. Default
+        is {DEFAULT_POLLING_INTERVAL_SEC} seconds. Larger values save battery;
+        smaller values feel more responsive.
       </p>
       <Input
         type="number"
         inputMode="decimal"
-        min={0}
-        step="any"
+        min={1}
+        step={1}
         className="max-w-[8rem] font-mono"
-        placeholder={String(DEFAULT_POLLING_INTERVAL_SEC)}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={(e) => commit(e.target.value)}
