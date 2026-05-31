@@ -2618,6 +2618,7 @@ function computeMessageMeta(
   info: MessageWithParts["info"],
   isFinalAssistant: boolean,
   providersData: ProvidersData | undefined,
+  turnStartTime: number | undefined,
 ): MessageMeta | null {
   if (!isFinalAssistant) return null;
   if (info.role !== "assistant") return null;
@@ -2640,20 +2641,35 @@ function computeMessageMeta(
   const modelName = modelEntry?.name || modelID || null;
   const providerName = provider?.name || providerID || null;
 
-  let duration: string | null = null;
+  let stepDurationMs: number | null = null;
   if (
     typeof created === "number" &&
     typeof completed === "number" &&
     completed > created
   ) {
-    duration = formatDuration(completed - created);
+    stepDurationMs = completed - created;
   }
+  let totalDurationMs: number | null = null;
+  if (
+    typeof turnStartTime === "number" &&
+    typeof completed === "number" &&
+    completed > turnStartTime
+  ) {
+    totalDurationMs = completed - turnStartTime;
+  }
+  const showTotal =
+    totalDurationMs !== null &&
+    (stepDurationMs === null || totalDurationMs - stepDurationMs >= 1000);
+  const stepDuration = stepDurationMs !== null ? formatDuration(stepDurationMs) : null;
+  const totalDuration =
+    showTotal && totalDurationMs !== null ? formatDuration(totalDurationMs) : null;
 
   const parts: string[] = [];
   if (agent) parts.push(agent);
   if (modelName) parts.push(modelName);
   if (variant) parts.push(variant);
-  if (duration) parts.push(duration);
+  if (stepDuration) parts.push(stepDuration);
+  if (totalDuration) parts.push(`${totalDuration} total`);
 
   const titleSegments: string[] = [];
   if (agent) titleSegments.push(`Agent: ${agent}`);
@@ -2661,7 +2677,9 @@ function computeMessageMeta(
     titleSegments.push(`Model: ${providerName} / ${modelName}`);
   else if (modelName) titleSegments.push(`Model: ${modelName}`);
   if (variant) titleSegments.push(`Thinking effort: ${variant}`);
-  if (duration) titleSegments.push(`Turn duration: ${duration}`);
+  if (stepDuration) titleSegments.push(`Final step: ${stepDuration}`);
+  if (totalDuration)
+    titleSegments.push(`Total since user prompt: ${totalDuration}`);
 
   return { parts, title: titleSegments.join("\n") };
 }
@@ -2682,6 +2700,7 @@ const MessageItem = memo(function MessageItem({
   isLastError,
   isFinalAssistant,
   providersData,
+  turnStartTime,
 }: {
   message: MessageWithParts;
   port: number;
@@ -2698,6 +2717,7 @@ const MessageItem = memo(function MessageItem({
   isLastError: boolean;
   isFinalAssistant: boolean;
   providersData: ProvidersData | undefined;
+  turnStartTime: number | undefined;
 }) {
   const textContent = getMessageContent(message.parts);
   const isAssistant = message.info.role === "assistant";
@@ -2760,7 +2780,21 @@ const MessageItem = memo(function MessageItem({
     message.info,
     isFinalAssistant,
     providersData,
+    turnStartTime,
   );
+  const stepCreated = message.info.time?.created;
+  const stepCompleted =
+    isAssistant
+      ? (message.info as { time?: { completed?: number } }).time?.completed
+      : undefined;
+  const stepDurationLabel =
+    isAssistant &&
+    !isFinalAssistant &&
+    typeof stepCreated === "number" &&
+    typeof stepCompleted === "number" &&
+    stepCompleted > stepCreated
+      ? formatDuration(stepCompleted - stepCreated)
+      : null;
 
   const hasHeaderRow = textContent || fileParts.length > 0;
   // Detect synthetic audit messages (stuck-detector + compaction-fixer
@@ -3038,8 +3072,16 @@ const MessageItem = memo(function MessageItem({
               {showTimestamp && messageTimestamp && !isPending && (
                 <MessagePermalinkTimestamp
                   messageId={message.info.id}
-                  display={messageTimestamp}
-                  titleAt={messageTitleAt}
+                  display={
+                    stepDurationLabel
+                      ? `${stepDurationLabel} - ${messageTimestamp}`
+                      : messageTimestamp
+                  }
+                  titleAt={
+                    stepDurationLabel
+                      ? `Step duration: ${stepDurationLabel}\n${messageTitleAt ?? ""}`
+                      : messageTitleAt
+                  }
                   className="font-mono tabular-nums whitespace-nowrap"
                 />
               )}
@@ -5235,10 +5277,34 @@ function SessionPage() {
       const messageWithQueueFlag = isQueued
         ? { ...message, isQueued: true }
         : message;
-      const isFinalAssistant =
-        message.info.role === "assistant" &&
-        ((message.info as { time?: { completed?: number } }).time?.completed ??
-          0) > 0;
+      let isFinalAssistant = false;
+      let turnStartTime: number | undefined;
+      if (message.info.role === "assistant") {
+        const infoAny = message.info as {
+          time?: { completed?: number };
+          _turnStartTime?: number;
+        };
+        turnStartTime = infoAny._turnStartTime;
+        const completed = (infoAny.time?.completed ?? 0) > 0;
+        if (completed) {
+          const myIdx = ctx.baseVisible.findIndex(
+            (m) => m.info.id === message.info.id,
+          );
+          if (myIdx >= 0) {
+            let laterAssistant = false;
+            for (let j = myIdx + 1; j < ctx.baseVisible.length; j++) {
+              const next = ctx.baseVisible[j];
+              if (!next) break;
+              if (next.info.role === "user") break;
+              if (next.info.role === "assistant") {
+                laterAssistant = true;
+                break;
+              }
+            }
+            isFinalAssistant = !laterAssistant;
+          }
+        }
+      }
       return (
         <MessageItem
           key={message.info.id}
@@ -5256,6 +5322,7 @@ function SessionPage() {
           onForkRequest={handleForkRequest}
           isLastError={message.info.id === ctx.lastErrorMessageId}
           isFinalAssistant={isFinalAssistant}
+          turnStartTime={turnStartTime}
           providersData={providersData as ProvidersData | undefined}
         />
       );
