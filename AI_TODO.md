@@ -3242,7 +3242,7 @@ Design notes:
 Files:
 - `apps/web/src/routes/_app/session/$id.tsx`
 
-### 144. Configurable polling interval in Settings → Performance → Live updates (PENDING - in progress)
+### 144. Configurable polling interval in Settings → Performance → Live updates (DONE - 9b8c673)
 
 User prompt (verbatim):
 
