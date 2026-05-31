@@ -46,6 +46,8 @@ import {
   MicrophoneIcon,
   DocumentIcon,
   StopIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from "@heroicons/react/24/outline";
 import { useFsTemplatesForDirectory } from "@/hooks/use-vibekick-templates";
 import {
@@ -53,6 +55,7 @@ import {
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+import { buildPromptWithTemplates } from "@/lib/prompt-template-format";
 import {
   clearPendingSubmission,
   recordFailedAttempt,
@@ -171,33 +174,16 @@ function NewSessionPage() {
     [fsTemplatesResp],
   );
 
-  // The picker shows ALL non-disabled templates. The Init flag controls
-  // the default-checked state + ordering; non-Init templates still
-  // appear (unchecked) so the user can opt them in for this session.
-  // Per the user spec (AI_TODO #126):
-  //   "init" means it's default on on session new screen. all other
-  //   non-disabled templates are to be shown.
-  // Three sources merge into one list:
-  //   - stock + custom tools from the local tools-store
-  //     (filtered by !isDisabled - the master kill switch)
-  //   - filesystem templates from the directory-scoped
-  //     vibekick-templates API (FS has no "fully disabled" state;
-  //     delete the file to remove it, so all FS templates appear)
-  // Ordering: init-marked rows first (in projectInitOrder for
-  // stock/custom, YAML order for FS), then non-init alphabetically.
-  // Drag-reorder in this picker only persists for stock/custom in
-  // projectInitOrder; FS reorder happens via Settings -> filesystem
-  // YAML order field.
+  // Init-only filter (Round 4). Picker shows init-flagged templates
+  // ONLY; non-init templates live in the topbar burger menu + slash
+  // autocomplete, not here. REVERSES AI_TODO #126/#127 which had
+  // walked this back to "show all non-disabled" - do not re-flip.
+  // See ai-analysis-requests/TEMPLATES_REDESIGN.md § Round 4.
   const initialOrder = useMemo<InitPickerItem[]>(() => {
     const local = tools.filter((t) => !t.isDisabled);
-    const initSet = new Set(projectInitOrder);
     const localInit: InitPickerItem[] = projectInitOrder
       .map((id) => local.find((t) => t.id === id))
       .filter((t): t is ResolvedTool => Boolean(t))
-      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    const localOther: InitPickerItem[] = local
-      .filter((t) => !initSet.has(t.id))
-      .sort((a, b) => a.name.localeCompare(b.name))
       .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
     const fsInit: InitPickerItem[] = fsTemplates
       .filter((t) => t.init)
@@ -205,17 +191,9 @@ function NewSessionPage() {
         (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
       )
       .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    const fsOther: InitPickerItem[] = fsTemplates
-      .filter((t) => !t.init)
-      .sort(
-        (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
-      )
-      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    return [...localInit, ...fsInit, ...localOther, ...fsOther];
+    return [...localInit, ...fsInit];
   }, [tools, projectInitOrder, fsTemplates]);
 
-  // Default-checked set on first paint: only the init-marked templates
-  // get pre-selected. Non-init rows are visible but unchecked.
   const [order, setOrder] = useState<InitPickerItem[]>(initialOrder);
   const [selected, setSelected] = useState<Set<string>>(() => {
     const initIds = new Set<string>(projectInitOrder);
@@ -226,6 +204,8 @@ function NewSessionPage() {
   });
   const dragSourceIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [edits, setEdits] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setOrder(initialOrder);
@@ -461,28 +441,21 @@ function NewSessionPage() {
         return;
       }
       const userMessage = (override ?? text).trim();
-      // Pick up checked init templates IN their drag-order. They are
-      // NOT in the textarea (auto-prefill is gone since Phase F) - we
-      // prepend them on submit. Two strings come out:
-      //   - archiveText: "/template Foo\n/template Bar\n\nUser text"
-      //     - readable history, refire-able, matches search "Foo"
-      //   - opencodeText: "<Foo body>\n\n<Bar body>\n\nUser text"
-      //     - what opencode actually executes
-      // Without any checked templates, both equal userMessage.
       const checkedTemplates = order.filter((t) => selected.has(t.id));
-      const archivePrefix =
-        checkedTemplates.length > 0
-          ? checkedTemplates
-              .map((t) => `/template ${t.name}`)
-              .join("\n") + "\n\n"
-          : "";
-      const opencodePrefix =
-        checkedTemplates.length > 0
-          ? checkedTemplates.map((t) => t.prompt).join("\n\n") + "\n\n"
-          : "";
-      const archiveText = archivePrefix + userMessage;
-      const opencodeText = opencodePrefix + userMessage;
-      if (!archiveText && pendingAttachments.length === 0) return;
+      const opencodeText = buildPromptWithTemplates(
+        userMessage,
+        checkedTemplates.map((t) => {
+          const edited = edits[t.id];
+          const useEdited = edited !== undefined && edited !== t.prompt;
+          return {
+            name: t.name,
+            body: useEdited ? edited : t.prompt,
+            modified: useEdited,
+          };
+        }),
+      );
+      const archiveText = opencodeText;
+      if (!opencodeText && pendingAttachments.length === 0) return;
       if (!port) {
         setError("Portal not bound to OpenCode.");
         return;
@@ -867,46 +840,115 @@ function NewSessionPage() {
               {order.map((tool) => {
                 const isDragOver = dragOverId === tool.id;
                 const isSelected = selected.has(tool.id);
+                const isExpanded = expandedId === tool.id;
+                const editedBody = edits[tool.id];
+                const isModified =
+                  editedBody !== undefined && editedBody !== tool.prompt;
                 return (
                   <div
                     key={tool.id}
-                    draggable
-                    onDragStart={(e) => {
-                      dragSourceIdRef.current = tool.id;
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", tool.id);
-                    }}
-                    onDragOver={(e) => {
-                      if (!dragSourceIdRef.current) return;
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      if (dragOverId !== tool.id) setDragOverId(tool.id);
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverId === tool.id) setDragOverId(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      handleDrop(tool.id);
-                    }}
-                    onDragEnd={() => {
-                      dragSourceIdRef.current = null;
-                      setDragOverId(null);
-                    }}
-                    className={`flex items-center gap-2 rounded-md border border-border bg-bg/60 px-2 py-1.5 text-sm ${
+                    className={`rounded-md border border-border bg-bg/60 overflow-hidden ${
                       isDragOver ? "bg-primary/10 border-primary/40" : ""
                     }`}
                   >
-                    <Bars3Icon className="size-4 text-muted-fg shrink-0 cursor-grab active:cursor-grabbing" />
-                    <label className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggle(tool.id)}
-                        className="size-4 accent-primary shrink-0"
-                      />
-                      <span className="truncate">{tool.name}</span>
-                    </label>
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        dragSourceIdRef.current = tool.id;
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", tool.id);
+                      }}
+                      onDragOver={(e) => {
+                        if (!dragSourceIdRef.current) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (dragOverId !== tool.id) setDragOverId(tool.id);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverId === tool.id) setDragOverId(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDrop(tool.id);
+                      }}
+                      onDragEnd={() => {
+                        dragSourceIdRef.current = null;
+                        setDragOverId(null);
+                      }}
+                      className="flex items-center gap-2 px-2 py-1.5 text-sm"
+                    >
+                      <Bars3Icon className="size-4 text-muted-fg shrink-0 cursor-grab active:cursor-grabbing" />
+                      <label className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggle(tool.id)}
+                          className="size-4 accent-primary shrink-0"
+                        />
+                        <span className="truncate">
+                          {tool.name}
+                          {isModified && (
+                            <span className="ml-1 text-accent/80 text-xs">
+                              + modifications
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedId((prev) =>
+                            prev === tool.id ? null : tool.id,
+                          )
+                        }
+                        className="shrink-0 rounded p-0.5 text-muted-fg hover:text-fg hover:bg-muted/30"
+                        title="Preview / edit template body (one-time, not saved)"
+                        aria-label="Preview / edit template body"
+                      >
+                        {isExpanded ? (
+                          <ChevronUpIcon className="size-4" />
+                        ) : (
+                          <ChevronDownIcon className="size-4" />
+                        )}
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="border-t border-border/60 p-2 bg-muted/10 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-muted-fg/80">
+                            Edit body (one-time, not saved)
+                          </span>
+                          {isModified && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEdits((prev) => {
+                                  const next = { ...prev };
+                                  delete next[tool.id];
+                                  return next;
+                                })
+                              }
+                              className="text-[10px] text-muted-fg/70 underline hover:text-fg"
+                            >
+                              Reset to original
+                            </button>
+                          )}
+                        </div>
+                        <Textarea
+                          value={
+                            editedBody !== undefined ? editedBody : tool.prompt
+                          }
+                          onChange={(e) =>
+                            setEdits((prev) => ({
+                              ...prev,
+                              [tool.id]: e.target.value,
+                            }))
+                          }
+                          rows={8}
+                          className="text-xs"
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}

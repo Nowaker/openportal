@@ -25,6 +25,8 @@ import { MODAL_OVERLAY_CLASSES } from "@/lib/ui-classes";
 import { toast } from "@/components/ui/toast";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import { MarkdownRenderer } from "@/lib/markdown-renderer";
+import { TemplateBlockView } from "@/components/template-block-view";
+import { parsePromptWithTemplates } from "@/lib/prompt-template-format";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useSessions } from "@/hooks/use-opencode";
 import type { Session } from "@opencode-ai/sdk";
@@ -718,12 +720,35 @@ function PromptRowItem({
         <div className="whitespace-pre-wrap break-words text-sm">
           {highlightMatch(row.raw_text, query.trim())}
         </div>
-      ) : (
-        <MarkdownRenderer
-          source={row.raw_text}
-          className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]"
-        />
-      )}
+      ) : (() => {
+        const parsed = parsePromptWithTemplates(row.raw_text);
+        if (!parsed) {
+          return (
+            <MarkdownRenderer
+              source={row.raw_text}
+              className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]"
+            />
+          );
+        }
+        return (
+          <div>
+            {parsed.userText && (
+              <MarkdownRenderer
+                source={parsed.userText}
+                className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]"
+              />
+            )}
+            {parsed.templates.map((t, i) => (
+              <TemplateBlockView
+                key={`tpl-${i}`}
+                name={t.name}
+                body={t.body}
+                isFirst={i === 0}
+              />
+            ))}
+          </div>
+        );
+      })()}
       <div className="flex items-center gap-1 pt-1">
         <button
           type="button"

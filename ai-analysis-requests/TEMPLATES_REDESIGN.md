@@ -506,3 +506,204 @@ work happens in a worktree to keep diffs reviewable):
    Browser-verify each phase.
 7. Push to `origin` (GitLab canonical) + `github` (mirror) after
    each phase lands cleanly.
+
+## Round 5 (2026-05-30) — prompt format pivot + collapsible templates
+
+While Round 4 was in implementation the user described a new prompt
+format and a new render strategy. The Round 4 archive vs opencode
+split goes away; both surfaces now store/receive the same expanded
+text. The frontend layer collapses it into OMO-style pills.
+
+### Wire format (what opencode receives + what archive stores)
+
+```
+<user prompt>
+
+---
+
+User has explicitly requested these extra rules to apply in this very session - obey diligently:
+
+# /template "<Title 1>":
+
+<body 1>
+
+# /template "<Title 2>":
+
+<body 2>
+```
+
+Properties:
+- User prompt comes FIRST. Templates are appended below as
+  user-mandated rules - reframes "did the AI follow the templates?"
+  as a compliance check rather than a free-form instruction.
+- `---` separator + the preamble paragraph form the marker the
+  frontend collapse logic looks for.
+- Each block is headed by `# /template "Title":` (double-quoted
+  title, trailing colon, blank line before the body). Double-quotes
+  inside titles escape with `\"` so the parser regex doesn't get
+  confused.
+- Bodies preserve newlines verbatim; blocks are separated by a blank
+  line.
+
+When no templates are checked, the wire text is just the user's
+prompt verbatim - no separator, no preamble.
+
+### Single-source-of-truth text (no more archive/opencode split)
+
+Previously `new.tsx` built TWO strings:
+- `archiveText = "/template Foo\n/template Bar\n\nUser text"` (compact)
+- `opencodeText = "<foo body>\n\n<bar body>\n\nUser text"` (expanded)
+
+POSTed both to `/api/opencode/.../prompt` which stored archiveText
+in SQLite and forwarded opencodeText to opencode. The frontend then
+rendered TWO different things to the user during the prompt
+lifecycle - the compact form during the "Submitted to OpenCode"
+phase and the expanded form once opencode echoed back a
+`message.updated` event. The user reported this as confusing
+("two different texts in flight, neither is what i actually want").
+
+Round 5: both equal the wire format above. `new.tsx` builds one
+`opencodeText`, sets `archiveText = opencodeText`, and the existing
+`body.archiveText ?? body.text` fallback on the server stores the
+identical string. The new `apps/web/src/lib/prompt-template-format.ts`
+module exposes `buildPromptWithTemplates(userText, templates)` for
+the producer side and `parsePromptWithTemplates(text)` for the
+frontend collapse renderer.
+
+### Frontend collapse (render-time, no wire change)
+
+`parsePromptWithTemplates(text)` returns
+`{ userText, templates: [{ name, body }] } | null`. Renderers
+detect the marker and replace the templates appendix with one pill
+per block, OMO-style:
+
+```
+<user prompt>
+[ Template: <Title 1>  [+] ]
+[ Template: <Title 2>  [+] ]
+```
+
+- Pill component matches the visual style of `OmoBlockView`
+  (border, muted bg, +/- icon, expandable region) with a distinct
+  visual cue (e.g. accent-bordered border-l) so the user can tell
+  template blocks apart from OMO directives at a glance.
+- The FIRST pill's expanded body ALSO includes the `---` separator
+  + preamble paragraph - those belong conceptually to the first
+  block's introduction. Subsequent pills only show their own body.
+- Per-pill open/closed state lives in the renderer; no cross-tab
+  sync.
+
+### Surfaces that render the new format
+
+| Surface | File | Behaviour |
+|---|---|---|
+| Chat message body (user message) | message renderer (TBD - locate next) | Detect via `parsePromptWithTemplates`; render userText as normal markdown + pill list below |
+| Prompt history row preview | `apps/web/src/routes/_app/prompts.tsx` | Detect + show userText + pill list (collapsed by default) |
+| Prompt history full-view | same | Same parse + pill rendering |
+| Composer preview (new-session) | `new.tsx` | Pre-submit visual confirmation - already correct per Round 4 |
+
+Old-format messages (compact `/template Foo` archive rows, or any
+plain text) render unchanged - `parsePromptWithTemplates` returns
+null for them and the renderer falls back to its normal path.
+
+### Round 5 implementation phases
+
+| Phase | Change | Status |
+|---|---|---|
+| R5-A | `prompt-template-format.ts` + tests | DONE this commit |
+| R5-B | new.tsx submit handler emits the new format | DONE this commit |
+| R5-C | Collapse component + chat-log renderer integration | PENDING |
+| R5-D | Prompt history renderer | PENDING |
+
+### Anti-reversion notes
+
+- DO NOT route `archiveText` separately from `text` for templates -
+  the whole point of Round 5 is that they're the same.
+- DO NOT shorten the preamble paragraph - the exact string is the
+  parser's anchor. If a future reword is needed, update
+  `PROMPT_TEMPLATE_PREAMBLE` AND scan existing archive rows to
+  rewrite the old preamble (or accept both during a deprecation
+  window).
+- DO NOT change the `# /template "Title":` block header shape -
+  same parser-anchor reason.
+
+## Round 6 (2026-05-30) — per-template inline preview + ephemeral edit
+
+User extension to Round 5. Each row in the new-session template
+picker now exposes a chevron-down on the right edge that toggles an
+inline textarea preview-and-edit field. Modifications are ephemeral
+(per-tab, per-render; not persisted to the tools-store or to disk).
+When the user submits a modified template the wire format header
+gains a `+ modifications` suffix, and the frontend collapse pill
+displays the same suffix.
+
+### Wire format change
+
+The header for a modified block becomes:
+
+```
+# /template "<Title>" + modifications:
+```
+
+Body is the user's edited content verbatim. Unmodified blocks
+remain `# /template "<Title>":` exactly as Round 5 defined.
+
+### Parser + builder updates
+
+`apps/web/src/lib/prompt-template-format.ts`:
+
+- `PromptTemplateBlock` gains an optional `modified?: boolean` field.
+  Defaults to false when omitted.
+- `MODIFIED_SUFFIX = " + modifications"` exported for renderers.
+- `buildPromptWithTemplates` appends the suffix to the header when
+  `t.modified === true`.
+- `parsePromptWithTemplates` regex captures the optional `( \+ modifications)?`
+  group between the closing quote and the colon; returns
+  `modified: true` when matched, `modified: false` otherwise.
+- Tests cover round-trip of both states and mixed-modified prompts.
+
+### UI updates
+
+`apps/web/src/components/template-block-view.tsx`:
+
+- Accepts optional `modified?: boolean` prop.
+- Displays the accent-coloured " + modifications" suffix after the
+  template name in both the collapsed pill header and the expanded
+  body header.
+
+`apps/web/src/routes/_app/session/new.tsx`:
+
+- Each picker row carries a `ChevronDownIcon` button on the right.
+  Click toggles inline expansion; only one row at a time.
+- Expanded view shows the template's body in a `<Textarea>`. Edits
+  go to a component-local `edits: Record<string, string>` map keyed
+  by template id - NEVER touches `useToolsStore`, never written to
+  disk, never persisted across page reloads.
+- The row badge `+ modifications` appears next to the name when
+  `edits[id] !== undefined && edits[id] !== tool.prompt`.
+- A "Reset to original" link clears the edit. Otherwise the
+  textarea defaults to the original prompt body.
+- On submit, the builder receives one block per checked template
+  with `body = edits[id] ?? tool.prompt` and
+  `modified = edits[id] !== undefined && edits[id] !== tool.prompt`.
+
+### Why ephemeral
+
+The user's spec: "if modified by the user, it's NOT saved back to
+the system. it's a one time change for this session only." The
+modification reflects a one-off intent (e.g. "tweak the deploy
+prompt to skip the dev probe this once") that should NOT bleed
+back into the template's canonical body. Persisting to localStorage
+would conflict with that contract.
+
+### Anti-reversion notes
+
+- DO NOT persist `edits` to localStorage / tools-store / disk.
+- DO NOT change the `+ modifications` literal suffix - the parser
+  regex anchors on it. A reword would require updating
+  `MODIFIED_SUFFIX` AND the parser regex AND a migration pass on
+  existing archive rows.
+- DO NOT collapse the chevron button into the drag handle row -
+  the drag affordance and the expand affordance are distinct
+  gestures. Coupling them would steal clicks from drag-to-reorder
+  on touch surfaces.

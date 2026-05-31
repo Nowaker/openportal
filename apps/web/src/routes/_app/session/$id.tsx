@@ -24,6 +24,8 @@ import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
 import { OmoBlockView } from "@/components/omo-block-view";
+import { TemplateBlockView } from "@/components/template-block-view";
+import { parsePromptWithTemplates } from "@/lib/prompt-template-format";
 import { ThinkingSelect } from "@/components/thinking-select";
 import { MessageInfoModal } from "@/components/message-info-modal";
 import { ForkDialog } from "@/components/fork-dialog";
@@ -2716,9 +2718,16 @@ const MessageItem = memo(function MessageItem({
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
   const compactionParts = message.parts.filter(isCompactionPart);
-  const omoBlocks = useMemo(
-    () => (isAssistant ? [] : parseOmoBlocks(textContent)),
+  const parsedTemplates = useMemo(
+    () => (isAssistant ? null : parsePromptWithTemplates(textContent)),
     [isAssistant, textContent],
+  );
+  const omoBlocks = useMemo(
+    () =>
+      isAssistant
+        ? []
+        : parseOmoBlocks(parsedTemplates?.userText ?? textContent),
+    [isAssistant, parsedTemplates, textContent],
   );
   const messagePermissions = pendingPermissions.filter(
     (perm) => perm.tool?.messageID === message.info.id,
@@ -2915,33 +2924,43 @@ const MessageItem = memo(function MessageItem({
                   sessionDirectory={sessionDirectory ?? undefined}
                 />
               ) : (
-                omoBlocks.map((block, i) =>
-                  block.kind === "omo" ? (
-                    <OmoBlockView
-                      key={`omo-${i}`}
-                      header={block.header ?? "OMO block"}
-                      summary={block.summary}
-                      segments={block.segments}
-                      text={block.text}
-                      lazyFetchUrl={
-                        block.ref
-                          ? `/api/opencode/${port}/session/${encodeURIComponent(
-                              sessionId,
-                            )}/message/${encodeURIComponent(
-                              message.info.id,
-                            )}/omo/${encodeURIComponent(block.ref.blockId)}`
-                          : undefined
-                      }
+                <>
+                  {omoBlocks.map((block, i) =>
+                    block.kind === "omo" ? (
+                      <OmoBlockView
+                        key={`omo-${i}`}
+                        header={block.header ?? "OMO block"}
+                        summary={block.summary}
+                        segments={block.segments}
+                        text={block.text}
+                        lazyFetchUrl={
+                          block.ref
+                            ? `/api/opencode/${port}/session/${encodeURIComponent(
+                                sessionId,
+                              )}/message/${encodeURIComponent(
+                                message.info.id,
+                              )}/omo/${encodeURIComponent(block.ref.blockId)}`
+                            : undefined
+                        }
+                      />
+                    ) : block.text.trim() ? (
+                      <MessageMarkdown
+                        key={`user-${i}`}
+                        text={block.text}
+                        remarkPlugins={[remarkGfm, remarkBreaks]}
+                        sessionDirectory={sessionDirectory ?? undefined}
+                      />
+                    ) : null,
+                  )}
+                  {parsedTemplates?.templates.map((t, i) => (
+                    <TemplateBlockView
+                      key={`tpl-${i}`}
+                      name={t.name}
+                      body={t.body}
+                      isFirst={i === 0}
                     />
-                  ) : block.text.trim() ? (
-                    <MessageMarkdown
-                      key={`user-${i}`}
-                      text={block.text}
-                      remarkPlugins={[remarkGfm, remarkBreaks]}
-                      sessionDirectory={sessionDirectory ?? undefined}
-                    />
-                  ) : null,
-                )
+                  ))}
+                </>
               )}
             </div>
           )}
