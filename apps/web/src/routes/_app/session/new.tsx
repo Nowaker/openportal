@@ -171,33 +171,16 @@ function NewSessionPage() {
     [fsTemplatesResp],
   );
 
-  // The picker shows ALL non-disabled templates. The Init flag controls
-  // the default-checked state + ordering; non-Init templates still
-  // appear (unchecked) so the user can opt them in for this session.
-  // Per the user spec (AI_TODO #126):
-  //   "init" means it's default on on session new screen. all other
-  //   non-disabled templates are to be shown.
-  // Three sources merge into one list:
-  //   - stock + custom tools from the local tools-store
-  //     (filtered by !isDisabled - the master kill switch)
-  //   - filesystem templates from the directory-scoped
-  //     vibekick-templates API (FS has no "fully disabled" state;
-  //     delete the file to remove it, so all FS templates appear)
-  // Ordering: init-marked rows first (in projectInitOrder for
-  // stock/custom, YAML order for FS), then non-init alphabetically.
-  // Drag-reorder in this picker only persists for stock/custom in
-  // projectInitOrder; FS reorder happens via Settings -> filesystem
-  // YAML order field.
+  // Init-only filter (Round 4). Picker shows init-flagged templates
+  // ONLY; non-init templates live in the topbar burger menu + slash
+  // autocomplete, not here. REVERSES AI_TODO #126/#127 which had
+  // walked this back to "show all non-disabled" - do not re-flip.
+  // See ai-analysis-requests/TEMPLATES_REDESIGN.md § Round 4.
   const initialOrder = useMemo<InitPickerItem[]>(() => {
     const local = tools.filter((t) => !t.isDisabled);
-    const initSet = new Set(projectInitOrder);
     const localInit: InitPickerItem[] = projectInitOrder
       .map((id) => local.find((t) => t.id === id))
       .filter((t): t is ResolvedTool => Boolean(t))
-      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    const localOther: InitPickerItem[] = local
-      .filter((t) => !initSet.has(t.id))
-      .sort((a, b) => a.name.localeCompare(b.name))
       .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
     const fsInit: InitPickerItem[] = fsTemplates
       .filter((t) => t.init)
@@ -205,17 +188,9 @@ function NewSessionPage() {
         (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
       )
       .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    const fsOther: InitPickerItem[] = fsTemplates
-      .filter((t) => !t.init)
-      .sort(
-        (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
-      )
-      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
-    return [...localInit, ...fsInit, ...localOther, ...fsOther];
+    return [...localInit, ...fsInit];
   }, [tools, projectInitOrder, fsTemplates]);
 
-  // Default-checked set on first paint: only the init-marked templates
-  // get pre-selected. Non-init rows are visible but unchecked.
   const [order, setOrder] = useState<InitPickerItem[]>(initialOrder);
   const [selected, setSelected] = useState<Set<string>>(() => {
     const initIds = new Set<string>(projectInitOrder);
