@@ -3219,7 +3219,7 @@ Plan order (when implementation starts; on a fresh `feat/templates-redesign-roun
 5. **Slash command integration** (Phase E + Phase G of TEMPLATES_REDESIGN.md) including `/btw` parity on new.tsx composer.
 6. Build + deploy + push between each phase. Browser-verify each phase.
 
-### 143. Templates Round 5: prompt format pivot - user prompt first, /template "Title" blocks, frontend collapse (PENDING - R5-A+R5-B done, R5-C+R5-D in progress)
+### 143. Templates Round 5: prompt format pivot - user prompt first, /template "Title" blocks, frontend collapse (DONE - R5-A+R5-B 58bf95a, R5-C+R5-D 006b5d0)
 
 User prompt (verbatim):
 
