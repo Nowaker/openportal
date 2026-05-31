@@ -9,9 +9,13 @@ export interface PlatformStrategies {
 }
 
 interface StrategyState extends PlatformStrategies {
+  pollingIntervalSec: number | undefined;
   setDesktop: (s: UpdateStrategy) => void;
   setMobile: (s: UpdateStrategy) => void;
+  setPollingIntervalSec: (n: number | undefined) => void;
 }
+
+export const DEFAULT_POLLING_INTERVAL_SEC = 3;
 
 // Per-platform defaults: desktop favors latency over battery; mobile
 // favors battery over latency. Both can be overridden in Settings.
@@ -28,12 +32,14 @@ export const useUpdateStrategyStore = create<StrategyState>()(
     (set) => ({
       desktop: DEFAULTS.desktop,
       mobile: DEFAULTS.mobile,
+      pollingIntervalSec: undefined,
       setDesktop: (s) => set({ desktop: s }),
       setMobile: (s) => set({ mobile: s }),
+      setPollingIntervalSec: (n) => set({ pollingIntervalSec: n }),
     }),
     {
       name: "openportal-update-strategy",
-      version: 1,
+      version: 2,
       migrate: (persisted: unknown, fromVersion) => {
         // v0 -> v1 migration. The previous store ("opencode-streaming-mode")
         // was a single boolean `enabled` toggle. New users get the per-
@@ -48,10 +54,19 @@ export const useUpdateStrategyStore = create<StrategyState>()(
             return {
               desktop: s,
               mobile: s,
+              pollingIntervalSec: undefined,
               setDesktop: () => {},
               setMobile: () => {},
+              setPollingIntervalSec: () => {},
             };
           }
+        }
+        // v1 -> v2: add pollingIntervalSec field, undefined means use default.
+        if (fromVersion === 1 && persisted && typeof persisted === "object") {
+          return {
+            ...(persisted as object),
+            pollingIntervalSec: undefined,
+          } as StrategyState;
         }
         return persisted as StrategyState;
       },

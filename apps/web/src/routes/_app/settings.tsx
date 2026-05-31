@@ -49,6 +49,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
 import {
   useUpdateStrategyStore,
+  DEFAULT_POLLING_INTERVAL_SEC,
   type UpdateStrategy,
 } from "@/stores/update-strategy-store";
 import {
@@ -554,7 +555,7 @@ const updateStrategyOptions: {
     id: "polling",
     title: "Polling",
     description:
-      "Timer refresh every 3 seconds. No live event bus. Lightest possible network and battery footprint; UI catches up at the next tick.",
+      "Timer refresh on a fixed interval (3 seconds by default, configurable below). No live event bus. Lightest possible network and battery footprint; UI catches up at the next tick.",
   },
   {
     id: "snapshot",
@@ -1238,6 +1239,14 @@ function LiveUpdatesSetting() {
   const mobile = useUpdateStrategyStore((s) => s.mobile);
   const setDesktop = useUpdateStrategyStore((s) => s.setDesktop);
   const setMobile = useUpdateStrategyStore((s) => s.setMobile);
+  const pollingIntervalSec = useUpdateStrategyStore(
+    (s) => s.pollingIntervalSec,
+  );
+  const setPollingIntervalSec = useUpdateStrategyStore(
+    (s) => s.setPollingIntervalSec,
+  );
+
+  const showPollingInterval = desktop === "polling" || mobile === "polling";
 
   return (
     <div className="space-y-6">
@@ -1260,6 +1269,72 @@ function LiveUpdatesSetting() {
         label="On mobile"
         value={mobile}
         onChange={setMobile}
+      />
+
+      {showPollingInterval && (
+        <PollingIntervalSetting
+          value={pollingIntervalSec}
+          onChange={setPollingIntervalSec}
+        />
+      )}
+    </div>
+  );
+}
+
+function PollingIntervalSetting({
+  value,
+  onChange,
+}: {
+  value: number | undefined;
+  onChange: (n: number | undefined) => void;
+}) {
+  const [draft, setDraft] = useState<string>(
+    value === undefined ? "" : String(value),
+  );
+
+  useEffect(() => {
+    setDraft(value === undefined ? "" : String(value));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      onChange(undefined);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setDraft(value === undefined ? "" : String(value));
+      return;
+    }
+    onChange(parsed);
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Polling interval</p>
+      <p className="text-xs text-muted-fg">
+        Seconds between refreshes when Polling is the active strategy. Leave
+        empty to use the default of {DEFAULT_POLLING_INTERVAL_SEC} seconds.
+        Larger values save battery; smaller values feel more responsive.
+      </p>
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="any"
+        className="max-w-[8rem] font-mono"
+        placeholder={String(DEFAULT_POLLING_INTERVAL_SEC)}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit((e.target as HTMLInputElement).value);
+          }
+        }}
+        aria-label="Polling interval in seconds"
       />
     </div>
   );
