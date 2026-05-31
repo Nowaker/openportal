@@ -248,6 +248,7 @@ async function loadFullMessages(
     return [];
   }
   if (real === null) real = [];
+  stampTurnStartTimes(real);
   if (visible.length === 0) return real;
   // Dedup pass 1: text match. Drop any virtual whose raw_text
   // matches a real user message that landed AFTER the prompt was
@@ -334,6 +335,39 @@ async function loadFullMessages(
   const merged =
     filtered.length === 0 ? real : [...real, ...filtered];
   return synthMessages.length === 0 ? merged : [...merged, ...synthMessages];
+}
+
+type MutableMessage = {
+  info?: {
+    id?: string;
+    role?: string;
+    parentID?: string;
+    time?: { created?: number; completed?: number };
+    _turnStartTime?: number;
+  };
+};
+
+function stampTurnStartTimes(messages: unknown[]): void {
+  const createdById = new Map<string, number>();
+  for (const m of messages) {
+    if (!m || typeof m !== "object") continue;
+    const info = (m as MutableMessage).info;
+    if (!info) continue;
+    if (typeof info.id !== "string") continue;
+    const created = info.time?.created;
+    if (typeof created !== "number") continue;
+    createdById.set(info.id, created);
+  }
+  for (const m of messages) {
+    if (!m || typeof m !== "object") continue;
+    const info = (m as MutableMessage).info;
+    if (!info || info.role !== "assistant") continue;
+    const parentId = info.parentID;
+    if (typeof parentId !== "string") continue;
+    const parentCreated = createdById.get(parentId);
+    if (typeof parentCreated !== "number") continue;
+    info._turnStartTime = parentCreated;
+  }
 }
 
 function toSyntheticChatMessage(row: SyntheticMessageRow): unknown {
