@@ -5943,12 +5943,13 @@ function SessionPage() {
                 * IS properly capped by `flex-1 min-h-0` + the composer
                 * wrapper's `style={{ maxHeight }}`) means the buttons are
                 * always at the bottom-right of the visible composer area.
-                * The textarea's `pr-16` keeps the cursor from running under
-                * the floating button column with comfortable clearance:
-                * submit is size-12 (48px) at right-1.5 (6px) so it occupies
-                * the right 54px; pr-16 (64px) leaves a 10px gap. The prior
-                * pr-14 (56px) left only 2px and text visibly crowded the
-                * button. */}
+                * The textarea's `pr-20` keeps the cursor well clear of the
+                * floating button column: submit is size-12 (48px) at
+                * right-1.5 (6px) so it occupies the right 54px; pr-20
+                * (80px) leaves a 26px visible gap. Earlier values (pr-14
+                * = 2px, pr-16 = 10px) still felt cramped on mobile — text
+                * read as touching the button even when it technically
+                * wrapped before. 26px reads as deliberate whitespace. */}
               <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
                   <Textarea
                     ref={textareaRef}
@@ -6098,7 +6099,7 @@ function SessionPage() {
                         : "Type your message..."
                     }
                     isDisabled={sessionIsArchived}
-                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-16${
+                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-20${
                       sessionIsArchived ? " text-center placeholder:text-center" : ""
                     }`}
                   />

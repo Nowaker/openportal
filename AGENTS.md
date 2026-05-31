@@ -713,7 +713,7 @@ revert any of these without re-reproducing the bug.
   the bottom-right of a relative textarea wrapper.** Layout:
   ```tsx
   <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
-    <Textarea ... className="... pr-16" />
+    <Textarea ... className="... pr-20" />
     <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
       {/* mic + stop in a pointer-events-auto row when active */}
       <Button type="submit" className="pointer-events-auto size-12 !p-0 ..." />
@@ -730,12 +730,15 @@ revert any of these without re-reproducing the bug.
   are anchored to the relative wrapper (which IS properly bounded
   by the flex-1 cascade), so they stay at the bottom-right of the
   visible composer area regardless of textarea content height.
-  - The textarea must have `pr-16` (or wider when more buttons
-    stack) so the cursor / text content does not slide under the
-    floating button column. Math: submit is `size-12` (48px) at
-    `right-1.5` (6px) so the button column occupies the right 54px;
-    `pr-16` (64px) leaves a 10px gap. The earlier `pr-14` (56px)
-    left only 2px and visibly crowded text into the button.
+  - The textarea must have `pr-20` (or wider when more buttons
+    stack) so the cursor / text content reads as clearly separated
+    from the floating button column, not just technically wrapping
+    before it. Math: submit is `size-12` (48px) at `right-1.5`
+    (6px) so the button column occupies the right 54px; `pr-20`
+    (80px) leaves a 26px visible gap. Tighter values (pr-14 = 2px,
+    pr-16 = 10px) wrapped text correctly but read as touching the
+    button on mobile — 26px is the threshold where the gap reads
+    as deliberate whitespace.
   - The overlay wrapper is `pointer-events-none` so clicks in the
     "empty" area pass through to the textarea (focus, selection).
     Each button is `pointer-events-auto` so clicks register on the
