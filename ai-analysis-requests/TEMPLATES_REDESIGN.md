@@ -626,3 +626,84 @@ null for them and the renderer falls back to its normal path.
   window).
 - DO NOT change the `# /template "Title":` block header shape -
   same parser-anchor reason.
+
+## Round 6 (2026-05-30) — per-template inline preview + ephemeral edit
+
+User extension to Round 5. Each row in the new-session template
+picker now exposes a chevron-down on the right edge that toggles an
+inline textarea preview-and-edit field. Modifications are ephemeral
+(per-tab, per-render; not persisted to the tools-store or to disk).
+When the user submits a modified template the wire format header
+gains a `+ modifications` suffix, and the frontend collapse pill
+displays the same suffix.
+
+### Wire format change
+
+The header for a modified block becomes:
+
+```
+# /template "<Title>" + modifications:
+```
+
+Body is the user's edited content verbatim. Unmodified blocks
+remain `# /template "<Title>":` exactly as Round 5 defined.
+
+### Parser + builder updates
+
+`apps/web/src/lib/prompt-template-format.ts`:
+
+- `PromptTemplateBlock` gains an optional `modified?: boolean` field.
+  Defaults to false when omitted.
+- `MODIFIED_SUFFIX = " + modifications"` exported for renderers.
+- `buildPromptWithTemplates` appends the suffix to the header when
+  `t.modified === true`.
+- `parsePromptWithTemplates` regex captures the optional `( \+ modifications)?`
+  group between the closing quote and the colon; returns
+  `modified: true` when matched, `modified: false` otherwise.
+- Tests cover round-trip of both states and mixed-modified prompts.
+
+### UI updates
+
+`apps/web/src/components/template-block-view.tsx`:
+
+- Accepts optional `modified?: boolean` prop.
+- Displays the accent-coloured " + modifications" suffix after the
+  template name in both the collapsed pill header and the expanded
+  body header.
+
+`apps/web/src/routes/_app/session/new.tsx`:
+
+- Each picker row carries a `ChevronDownIcon` button on the right.
+  Click toggles inline expansion; only one row at a time.
+- Expanded view shows the template's body in a `<Textarea>`. Edits
+  go to a component-local `edits: Record<string, string>` map keyed
+  by template id - NEVER touches `useToolsStore`, never written to
+  disk, never persisted across page reloads.
+- The row badge `+ modifications` appears next to the name when
+  `edits[id] !== undefined && edits[id] !== tool.prompt`.
+- A "Reset to original" link clears the edit. Otherwise the
+  textarea defaults to the original prompt body.
+- On submit, the builder receives one block per checked template
+  with `body = edits[id] ?? tool.prompt` and
+  `modified = edits[id] !== undefined && edits[id] !== tool.prompt`.
+
+### Why ephemeral
+
+The user's spec: "if modified by the user, it's NOT saved back to
+the system. it's a one time change for this session only." The
+modification reflects a one-off intent (e.g. "tweak the deploy
+prompt to skip the dev probe this once") that should NOT bleed
+back into the template's canonical body. Persisting to localStorage
+would conflict with that contract.
+
+### Anti-reversion notes
+
+- DO NOT persist `edits` to localStorage / tools-store / disk.
+- DO NOT change the `+ modifications` literal suffix - the parser
+  regex anchors on it. A reword would require updating
+  `MODIFIED_SUFFIX` AND the parser regex AND a migration pass on
+  existing archive rows.
+- DO NOT collapse the chevron button into the drag handle row -
+  the drag affordance and the expand affordance are distinct
+  gestures. Coupling them would steal clicks from drag-to-reorder
+  on touch surfaces.

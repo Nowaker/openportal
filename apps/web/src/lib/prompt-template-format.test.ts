@@ -58,7 +58,7 @@ describe("parsePromptWithTemplates", () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.userText).toBe("hello world");
     expect(parsed!.templates).toEqual([
-      { name: "Pull", body: "git pull then summarize" },
+      { name: "Pull", body: "git pull then summarize", modified: false },
     ]);
   });
 
@@ -71,8 +71,31 @@ describe("parsePromptWithTemplates", () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.userText).toBe("ship it");
     expect(parsed!.templates).toEqual([
-      { name: "Pull", body: "step 1\nstep 2\n\nstep 3" },
-      { name: "Push", body: "step A\nstep B" },
+      { name: "Pull", body: "step 1\nstep 2\n\nstep 3", modified: false },
+      { name: "Push", body: "step A\nstep B", modified: false },
+    ]);
+  });
+
+  test("round-trips a modified block with + modifications suffix", () => {
+    const built = buildPromptWithTemplates("ok", [
+      { name: "Pull", body: "edited body", modified: true },
+    ]);
+    expect(built).toContain('# /template "Pull" + modifications:');
+    const parsed = parsePromptWithTemplates(built);
+    expect(parsed!.templates).toEqual([
+      { name: "Pull", body: "edited body", modified: true },
+    ]);
+  });
+
+  test("mixes modified and unmodified blocks in one prompt", () => {
+    const built = buildPromptWithTemplates("ship", [
+      { name: "Pull", body: "pull body" },
+      { name: "Push", body: "push body edited", modified: true },
+    ]);
+    const parsed = parsePromptWithTemplates(built);
+    expect(parsed!.templates).toEqual([
+      { name: "Pull", body: "pull body", modified: false },
+      { name: "Push", body: "push body edited", modified: true },
     ]);
   });
 
