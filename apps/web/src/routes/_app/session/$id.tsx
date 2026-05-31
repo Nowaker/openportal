@@ -4831,8 +4831,23 @@ function SessionPage() {
         toast.error(`/btw failed: ${msg}`);
         return;
       }
+      // Programmatic .value = "" does NOT fire onChange, so writeDraft + broadcast must run explicitly.
       if (textareaRef.current) textareaRef.current.value = "";
       setHasContent(false);
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      writeDraft(sessionId, "");
+      try {
+        composerChannelRef.current?.postMessage({
+          kind: "draft-submitted",
+          sessionId,
+          content: submittedSnapshot,
+        } satisfies ComposerSyncMessage);
+      } catch {
+        /* channel closed or unavailable - cross-tab sync is best-effort */
+      }
       void mutateSessionMessages(port, sessionId);
       return;
     }
@@ -4862,6 +4877,20 @@ function SessionPage() {
         );
         textareaRef.current!.value = "";
         setHasContent(false);
+        if (draftSaveTimerRef.current != null) {
+          window.clearTimeout(draftSaveTimerRef.current);
+          draftSaveTimerRef.current = null;
+        }
+        writeDraft(sessionId, "");
+        try {
+          composerChannelRef.current?.postMessage({
+            kind: "draft-submitted",
+            sessionId,
+            content: submittedSnapshot,
+          } satisfies ComposerSyncMessage);
+        } catch {
+          /* channel closed or unavailable - cross-tab sync is best-effort */
+        }
         return;
       }
     }
