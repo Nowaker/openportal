@@ -26,6 +26,7 @@ import { ThinkingSelect } from "@/components/thinking-select";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ComposerEditable } from "@/components/ui/composer-editable";
 import {
   FileMentionPopover,
   useFileMention,
@@ -1173,8 +1174,8 @@ function NewSessionPage() {
               * form. See the matching block in `session/$id.tsx` for the
               * full rationale. */}
             <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
-                <Textarea
-                  ref={textareaRef}
+                <ComposerEditable
+                  ref={textareaRef as unknown as React.Ref<HTMLDivElement>}
                   value={text}
                   inputMode="text"
                   autoCapitalize="sentences"
@@ -1232,10 +1233,10 @@ function NewSessionPage() {
                     onKeyDown(e);
                   }}
                   placeholder="What do you want to do?"
-                  className="resize-none overflow-y-auto text-sm min-h-[120px] pr-24"
+                  className="text-sm min-h-[120px]"
                   disabled={sending}
-                />
-              <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+                  buttonSlot={
+                    <div className="flex flex-col items-end gap-1.5">
                 {sttMode !== "off" && speechRecognition.isSupported && (
                   <div className="pointer-events-auto flex w-12 gap-0 justify-end">
                     <button
@@ -1314,6 +1315,8 @@ function NewSessionPage() {
                   )}
                 </Button>
               </div>
+                  }
+                />
             </div>
           </form>
         </div>

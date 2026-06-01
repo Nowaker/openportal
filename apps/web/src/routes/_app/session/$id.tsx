@@ -20,6 +20,7 @@ import "ldrs/react/Ripples.css";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { ComposerEditable } from "@/components/ui/composer-editable";
 import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
@@ -6037,8 +6038,8 @@ function SessionPage() {
                 * crowding on mobile, even when text technically wrapped
                 * before the buttons. 42px is unambiguous whitespace. */}
               <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
-                  <Textarea
-                    ref={textareaRef}
+                  <ComposerEditable
+                    ref={textareaRef as unknown as React.Ref<HTMLDivElement>}
                     data-test="portal-composer-textarea"
                     inputMode="text"
                     autoCapitalize="sentences"
@@ -6184,12 +6185,12 @@ function SessionPage() {
                         ? "This session is archived. Unarchive it to send new prompts."
                         : "Type your message..."
                     }
-                    isDisabled={sessionIsArchived}
-                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-24${
+                    disabled={sessionIsArchived}
+                    className={`text-sm min-h-[max(6rem,100%)]${
                       sessionIsArchived ? " text-center placeholder:text-center" : ""
                     }`}
-                  />
-                <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+                    buttonSlot={
+                      <div className="flex flex-col items-end gap-1.5">
                   {(sttMode !== "off" && speechRecognition.isSupported) ||
                   isAssistantBusy ? (
                     <div className="pointer-events-auto flex w-12 gap-0 justify-end">
@@ -6281,6 +6282,8 @@ function SessionPage() {
                     )}
                   </Button>
                 </div>
+                    }
+                  />
               </div>
             </form>
             </div>
