@@ -89,7 +89,7 @@ export default defineHandler(async (event) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const template = writeTemplate(body.location, {
+    const template = writeTemplate(body.location, validation.workspaceRoot, {
       name: body.name,
       description: body.description,
       enabled: body.enabled,
