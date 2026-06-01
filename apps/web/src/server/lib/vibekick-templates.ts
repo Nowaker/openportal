@@ -327,17 +327,24 @@ export function templatesForDirectory(
 // for validating that `location` lives under a configured workspace
 // root - the API layer does that check before calling here. mkdir -p
 // creates the `.vibekick/templates/` parent if missing.
+//
+// workspaceRoot MUST be the configured workspace root returned by
+// validateTemplateLocation, NOT derived from the file path. Deriving
+// from the path (e.g. dirname^3(expanded)) yields the `.vibekick`
+// grandparent dir, which puts the re-read template into a
+// workspaceRoot the UI does not iterate (the FsTemplatesSection
+// groups by tpl.workspaceRoot but only renders groups whose key
+// is in the configured workspaces array). Result: row disappears
+// after a flag toggle until manual Refresh re-scans from disk.
 export function writeTemplate(
   location: string,
+  workspaceRoot: string,
   input: FsTemplateInput,
 ): FsTemplate {
   const expanded = resolve(expandTilde(location));
   mkdirSync(dirname(expanded), { recursive: true });
   writeFileSync(expanded, serializeFrontmatter(input), "utf8");
-  // Re-read so the returned record reflects what we just persisted (catches
-  // any trailing-newline / order-normalization mismatches up front).
-  const parent = dirname(dirname(dirname(expanded)));
-  const reread = readTemplateFile(expanded, parent);
+  const reread = readTemplateFile(expanded, resolve(expandTilde(workspaceRoot)));
   if (!reread) {
     throw new Error(`writeTemplate: re-read failed for ${expanded}`);
   }

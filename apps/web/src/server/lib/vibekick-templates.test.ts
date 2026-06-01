@@ -33,7 +33,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
       "templates",
       "foo.md",
     );
-    const written = writeTemplate(location, {
+    const written = writeTemplate(location, workspaceRoot, {
       name: "Foo > Bar",
       description: "Round-trip test",
       enabled: true,
@@ -92,7 +92,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
   });
 
   test("scans recursively across multiple subdirectories", () => {
-    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "root.md"), {
+    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "root.md"), workspaceRoot, {
       name: "Root",
       enabled: true,
       init: false,
@@ -110,6 +110,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
         "templates",
         "deep.md",
       ),
+      workspaceRoot,
       {
         name: "Deep",
         enabled: true,
@@ -126,7 +127,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
   });
 
   test("sorts results by order then scope", () => {
-    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "a.md"), {
+    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "a.md"), workspaceRoot, {
       name: "A high order",
       enabled: true,
       init: false,
@@ -134,7 +135,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
       order: 10,
       prompt: "a",
     });
-    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "b.md"), {
+    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "b.md"), workspaceRoot, {
       name: "B low order",
       enabled: true,
       init: false,
@@ -151,7 +152,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
 describe("deleteTemplate", () => {
   test("removes the file and is idempotent", () => {
     const location = join(workspaceRoot, ".vibekick", "templates", "to-delete.md");
-    writeTemplate(location, {
+    writeTemplate(location, workspaceRoot, {
       name: "ToDelete",
       enabled: true,
       init: false,
@@ -170,7 +171,7 @@ describe("deleteTemplate", () => {
 
 describe("templatesForDirectory", () => {
   test("walks upward from a project directory to the workspace root", () => {
-    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "root.md"), {
+    writeTemplate(join(workspaceRoot, ".vibekick", "templates", "root.md"), workspaceRoot, {
       name: "Root",
       enabled: true,
       init: false,
@@ -179,7 +180,7 @@ describe("templatesForDirectory", () => {
       prompt: "r",
     });
     const projectDir = join(workspaceRoot, "webapps", "portal");
-    writeTemplate(join(projectDir, ".vibekick", "templates", "project.md"), {
+    writeTemplate(join(projectDir, ".vibekick", "templates", "project.md"), workspaceRoot, {
       name: "Project",
       enabled: true,
       init: false,
@@ -189,6 +190,7 @@ describe("templatesForDirectory", () => {
     });
     writeTemplate(
       join(workspaceRoot, "webapps", ".vibekick", "templates", "mid.md"),
+      workspaceRoot,
       {
         name: "Mid",
         enabled: true,
