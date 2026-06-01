@@ -3698,3 +3698,41 @@ Design notes:
 - Files touched: `apps/web/src/server/plugins/auto-approve-worker.ts`.
 - Branch: `fix/auto-approve-reconcile-on-connect` at `~/projekty/webapps/portal-auto-approve-reconcile`; cherry-picked file onto `main-nowaker` as `b601607`. Deployed via `scripts/deploy.sh`.
 - Validation: at 12:25:47 prod restart, log shows `[auto-approve-worker] reconcile snapshot read 0 pending for server=srv-2dy1srwz` — reconcile path executed. `ses_188220dadffeb8GepIK8xraEoj` had its pre-restart permission manually approved by the user; subsequent dispatches went through. Future restarts will drain any pending permissions for auto-approve-enabled sessions on the spot.
+- The padding-only approach (pr-14 → pr-24) cannot satisfy "text flows around buttons, not under them" because the buttons live in an absolute overlay over the textarea. With ANY pr-XX, text technically wraps before the buttons but visually reads as adjacent / behind. Even pr-24 (42px gap) was rejected on mobile.
+- True text-flow-around (CSS `float` + `shape-outside`) requires a contenteditable div, not a `<textarea>` — a heavy refactor with mobile risk (STT, draft persistence, paste, slash-command, file-mention all depend on textarea semantics).
+- Chosen fix: lift buttons OUT of the textarea entirely. Textarea on top (flex-1), button row below (shrink-0), both inside the existing `relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden` wrapper. Mic, stop, submit are inline siblings in the same horizontal row, right-aligned. Text simply cannot reach the buttons because they are below, not beside.
+- AGENTS.md "Composer layout" section rewritten: marked floating-button overlay as a forbidden regression alongside the old flex-row regression. Documented why the flex-COL approach doesn't trip the flex-ROW mobile bugs (main-axis layout, no items-stretch cross-axis interaction).
+- Both composers updated:
+  - `apps/web/src/routes/_app/session/$id.tsx`: textarea className becomes `flex-1 min-h-[96px]` (was `min-h-[max(6rem,100%)] pr-24`); overlay div becomes `shrink-0 flex justify-end items-center gap-1.5 px-1.5 py-1.5`; conditional wrapper around mic+stop flattened; `pointer-events-auto` removed from buttons.
+  - `apps/web/src/routes/_app/session/new.tsx`: same treatment, textarea className becomes `flex-1 min-h-[120px]` (was `min-h-[120px] pr-24`); overlay restructure same shape.
+- Files: `apps/web/src/routes/_app/session/$id.tsx`, `apps/web/src/routes/_app/session/new.tsx`, `AGENTS.md` "Composer layout" section.
+
+### 159. Chat log: sticky overlay of the most-recently-scrolled-past user prompt (DONE - inline)
+
+User prompt (verbatim):
+
+> main chat log / session log: when scrolled down past user prompt, make that user prompt sticky. only a single one, one that is "above". say:
+>
+> prompt1
+> response1
+> prompt2
+> response2
+>
+> when i scroll somewhere to response1 where prompt1 would already be out of sight, it won't be - a small sticky element will be there with prompt1. limited to 2 lines only. can expand using ^ symbol (but pointing to the bottom) - but never to get more than 40% window height. viertical scroll okay when prompt was very long.
+>
+> likewise, when i scroll somewhere to response2 where prompt2 would already be out of sight, same story.
+
+Design notes:
+
+- New component `apps/web/src/components/sticky-user-prompt.tsx` (`StickyUserPromptOverlay`). Rendered inside the existing `relative flex-1 min-h-0` chat shell in `apps/web/src/routes/_app/session/$id.tsx` as a sibling of `chatContainerRef`, positioned `absolute top-0 left-0 right-0 z-20 pointer-events-none` so the overlay sits visually above the scroll area without intercepting scroll/select gestures except on the chip itself (`pointer-events-auto`).
+- Detection: walks `chatContainerRef.current.querySelectorAll('[data-role="user"]')` on every scroll/resize (rAF-throttled). For each user-message DOM node, compares `getBoundingClientRect().bottom` against the container's top edge; remembers the LAST one whose bottom has scrolled above the top. `break` on the first not-yet-off-screen entry (DOM order is chronological - safe to bail early). The remembered node's `dataset.messageId` is the sticky target.
+- Text extraction: builds `Map<messageId, text>` from `messages` prop (filter `info.role === "user"`, join text parts). OMO bodies are already stripped server-side so the preview is clean. Re-runs on `messages` change so live-arriving prompts re-evaluate the sticky immediately.
+- Collapsed: `line-clamp-2 whitespace-pre-wrap break-words` (2 lines max).
+- Expanded: `overflow-y-auto` with `style={{ maxHeight: "40vh" }}` so very long prompts internally scroll, capped at 40% of viewport height per spec.
+- Chevron toggle: `ChevronDownIcon` (collapsed → expand) / `ChevronUpIcon` (expanded → collapse). Lives in a right-aligned column with a tiny "jump" button below it that calls `scrollIntoView({ block: "start", behavior: "smooth" })` on the matching `[data-message-id="..."]` element - convenient when you want to navigate back to the prompt without manual scroll.
+- Auto-collapse on prompt change: an effect resets `expanded=false` whenever `currentId` flips, so scrolling past prompt2 starts fresh in collapsed mode (the user expanded prompt1 doesn't carry over).
+- Text-selection: the body is rendered in a plain `<div>` (not a `<button>`) so the AGENTS.md "Text selection (mandatory)" rule is honoured - users can highlight and copy prompt text out of the sticky overlay.
+- Styling matches the in-chat user-message tint (`bg-primary/15 border border-primary/30`) with `backdrop-blur-sm` so the chat behind shows through faintly when the page background isn't fully opaque.
+- ResizeObserver on the scroll container catches viewport changes (mobile address-bar collapse, soft keyboard, etc.) and re-evaluates. `requestAnimationFrame` debounces back-to-back scroll fires.
+- Files: `apps/web/src/components/sticky-user-prompt.tsx` (new), `apps/web/src/routes/_app/session/$id.tsx` (import + render).
+- Branch: `feat/sticky-user-prompt` off `main-nowaker` (at the time, 9cc6f79). Merged + deployed + pushed per the user's "git worktree -> main -> deploy -> push" template.

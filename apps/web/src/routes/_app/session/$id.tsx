@@ -94,6 +94,7 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { StarMessageButton } from "@/components/star-message-button";
+import { StickyUserPromptOverlay } from "@/components/sticky-user-prompt";
 import { TextSelectionMenu } from "@/components/text-selection-menu";
 import { speakText, useTtsStore } from "@/stores/tts-store";
 import { useChatDisplayStore } from "@/stores/chat-display-store";
@@ -5565,6 +5566,10 @@ function SessionPage() {
         containerRef={messagesListRef}
         textareaRef={textareaRef}
         setHasContent={setHasContent}
+      />
+      <StickyUserPromptOverlay
+        containerRef={chatContainerRef}
+        messages={messages}
       />
       <div
         className="absolute inset-0 overflow-auto overflow-x-hidden"
