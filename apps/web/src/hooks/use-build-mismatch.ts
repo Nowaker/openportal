@@ -4,8 +4,16 @@ import { logSystemMessage } from "@/stores/system-messages-store";
 declare const __OPENPORTAL_BUILD_ID__: string;
 
 const HEADER = "X-OpenPortal-Build";
+const COMMIT_SUBJECT_HEADER = "X-OpenPortal-Commit-Subject";
+const COMMIT_URL_HEADER = "X-OpenPortal-Commit-Url";
 const POLL_URL = "/api/instance/self";
 const POLL_INTERVAL_MS = 60_000;
+
+export interface BuildMismatchState {
+  mismatched: boolean;
+  incomingCommitSubject: string | null;
+  incomingCommitUrl: string | null;
+}
 
 // Detects when the running Portal backend has been upgraded to a build
 // different from the one this browser tab loaded its bundle from. We piggy-
@@ -18,11 +26,15 @@ const POLL_INTERVAL_MS = 60_000;
 //
 // Side-effect-free: we do NOT auto-reload. Surfacing an explicit banner
 // per user spec lets the user finish whatever they're typing first.
-export function useBuildMismatch(): boolean {
-  const [mismatched, setMismatched] = useState(false);
+export function useBuildMismatch(): BuildMismatchState {
+  const [state, setState] = useState<BuildMismatchState>({
+    mismatched: false,
+    incomingCommitSubject: null,
+    incomingCommitUrl: null,
+  });
 
   useEffect(() => {
-    if (mismatched) return;
+    if (state.mismatched) return;
     if (typeof __OPENPORTAL_BUILD_ID__ !== "string") return;
     const ours = __OPENPORTAL_BUILD_ID__;
     let cancelled = false;
@@ -32,7 +44,14 @@ export function useBuildMismatch(): boolean {
         if (cancelled) return;
         const theirs = res.headers.get(HEADER);
         if (theirs && theirs !== ours) {
-          setMismatched(true);
+          const incomingCommitSubject =
+            res.headers.get(COMMIT_SUBJECT_HEADER)?.trim() || null;
+          const incomingCommitUrl = res.headers.get(COMMIT_URL_HEADER)?.trim() || null;
+          setState({
+            mismatched: true,
+            incomingCommitSubject,
+            incomingCommitUrl,
+          });
           logSystemMessage(
             "version",
             "info",
@@ -53,7 +72,7 @@ export function useBuildMismatch(): boolean {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
     };
-  }, [mismatched]);
+  }, [state.mismatched]);
 
-  return mismatched;
+  return state;
 }

@@ -174,9 +174,9 @@ function ConnectionStatesSection() {
           desc="/api/instance/self itself stopped answering. Likely cause: portal restarted to ship code, transient network blip. Drafts and pasted images are safe in localStorage."
         />
         <BannerEntry
-          headline="OpenPortal updated - reload to upgrade"
+          headline="OpenPortal updated - reload to upgrade. Incoming: <commit subject>"
           intent="warning"
-          desc="The backend has shipped a newer build than the one this browser tab loaded. Click Reload to pick it up. The old tab keeps working via the asset-fallback layer until you reload."
+          desc="The backend has shipped a newer build than the one this browser tab loaded. The banner also links to the incoming GitLab commit. Click Reload to pick it up. The old tab keeps working via the asset-fallback layer until you reload."
         />
         <BannerEntry
           headline="Notifications blocked"

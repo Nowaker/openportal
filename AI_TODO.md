@@ -3553,6 +3553,23 @@ Design notes:
 - Push to both `origin` (gitlab) and `github`.
 - Worktree: NONE - working directly on `main-nowaker` per user direction ("always deploy, whether someone else's work in progress or not"). Other agents' WIP in `apps/web/src/lib/session-status.ts`, `apps/web/src/routes/_app/live-messages.tsx`, `apps/web/src/server/lib/messages-refresh.ts`, plus untracked files like `apps/web/src/server/lib/live-messages-state.ts` and `apps/web/src/server/live-messages/`, left strictly untouched in the working tree (not staged, not committed by this revert).
 
+### 155. Build-mismatch banner: show incoming commit subject + GitLab link (DONE - this commit)
+
+User prompt (verbatim):
+
+> OpenPortal updated - reload to upgrade
+>
+> should be instead:
+>
+> OpenPortal updated - reload to upgrade. Incoming: [first line of git commit message, capped at X characters](link to that commit message on gitlab)
+
+Design notes:
+
+- Extend build metadata injected at Vite build time to include commit SHA, commit subject (first line), and GitLab commit URL.
+- Expose metadata via response headers on `/api/instance/self` probe (`X-OpenPortal-Commit-*`) so an old frontend bundle can read the newer backend commit details.
+- Update `useBuildMismatch()` to return structured state (`mismatched`, `incomingCommitSubject`, `incomingCommitUrl`) and update the banner UI to render `Incoming: ...` as a clickable link.
+- Cap commit subject length at build time (`COMMIT_SUBJECT_MAX_CHARS`) so the banner stays compact.
+
 ### 155. Tool call rows: link spawned subsession ids in task/subsession-management labels (DONE - this commit)
 
 User prompt (verbatim):
@@ -3580,3 +3597,32 @@ Design notes:
 - Investigate `ToolCallItem` + `formatToolCall` path in `apps/web/src/routes/_app/session/$id.tsx` and confirm whether spawned `ses_*` IDs are available in `part.state.output` for `task` and other sub-session tools.
 - If available, render the description segment as a clickable in-app session link (`/session/<id>?server=<activeServerId>`) in the compact tool row, matching the user's requested `task explore - [description](...)` behavior.
 - Extend to other sub-session management tools (create/fork/fire/reply/continue style calls) when their outputs expose a canonical spawned `ses_*` field; keep non-spawn tools unchanged.
+
+### 156. Fix runtime crash `Cannot read properties of undefined (reading 'toLocaleString')` (PENDING - reported 2026-06-01)
+
+User prompt (verbatim):
+
+> Something went wrong!
+> Cannot read properties of undefined (reading 'toLocaleString')
+>
+> TypeError: Cannot read properties of undefined (reading 'toLocaleString')
+>     at Pr (https://portal.desktop.ts.nowaker.net:8443/assets/_id-B11Y8V-S.js:16:28475)
+>     at bo (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:47538)
+>     at pc (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:70092)
+>     at Ac (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:80365)
+>     at Fu (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:115868)
+>     at Mu (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:114929)
+>     at ju (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:114765)
+>     at yu (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:111613)
+>     at pd (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:123326)
+>     at cd (https://portal.desktop.ts.nowaker.net:8443/assets/index-aoXZegCN.js:9:121882)
+>
+>
+> something broke openportal. fix it asap.
+
+Design notes:
+
+- Reproduce on current prod/dev build and map the minified stack to source using current code search around `toLocaleString` callsites.
+- Patch the failing render path so undefined values never call `.toLocaleString` (use explicit null-safe fallback and preserve existing date/time formatting settings).
+- Verify manually in browser (no console crash) and run diagnostics/build gates.
+- Land via worktree branch, merge into `main-nowaker`, deploy with `scripts/deploy.sh`, and push to both remotes.

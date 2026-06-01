@@ -300,29 +300,48 @@ function RestartOpencodeButton() {
 }
 
 function BuildMismatchBanner() {
-  const mismatched = useBuildMismatch();
+  const mismatch = useBuildMismatch();
   const [reloading, setReloading] = useState(false);
-  if (!mismatched) return null;
+  if (!mismatch.mismatched) return null;
+  const incomingSubject = mismatch.incomingCommitSubject;
+  const incomingUrl = mismatch.incomingCommitUrl;
   return (
     <CompactBanner
       intent="warning"
       icon={<ArrowPathIcon className="size-3.5" aria-hidden />}
-      message="OpenPortal updated - reload to upgrade"
+      message={
+        incomingSubject
+          ? "OpenPortal updated - reload to upgrade."
+          : "OpenPortal updated - reload to upgrade"
+      }
       actions={
-        <button
-          type="button"
-          disabled={reloading}
-          onClick={() => {
-            setReloading(true);
-            window.location.reload();
-          }}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted disabled:opacity-70"
-        >
-          <ArrowPathIcon
-            className={`size-3.5 shrink-0 ${reloading ? "animate-spin" : ""}`}
-          />
-          {reloading ? "Reloading…" : "Reload"}
-        </button>
+        <>
+          {incomingSubject && incomingUrl && (
+            <a
+              href={incomingUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="max-w-[40vw] truncate rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted"
+              title={incomingSubject}
+            >
+              Incoming: {incomingSubject}
+            </a>
+          )}
+          <button
+            type="button"
+            disabled={reloading}
+            onClick={() => {
+              setReloading(true);
+              window.location.reload();
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs font-medium text-fg hover:bg-muted disabled:opacity-70"
+          >
+            <ArrowPathIcon
+              className={`size-3.5 shrink-0 ${reloading ? "animate-spin" : ""}`}
+            />
+            {reloading ? "Reloading…" : "Reload"}
+          </button>
+        </>
       }
     />
   );
