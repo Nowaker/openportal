@@ -1232,12 +1232,11 @@ function NewSessionPage() {
                     onKeyDown(e);
                   }}
                   placeholder="What do you want to do?"
-                  className="resize-none overflow-y-auto text-sm min-h-[120px] pr-24"
+                  className="resize-none overflow-y-auto text-sm flex-1 min-h-[120px]"
                   disabled={sending}
                 />
-              <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+              <div className="shrink-0 flex justify-end items-center gap-1.5 px-1.5 py-1.5">
                 {sttMode !== "off" && speechRecognition.isSupported && (
-                  <div className="pointer-events-auto flex w-12 gap-0 justify-end">
                     <button
                       type="button"
                       onPointerDown={(e) => {
@@ -1281,7 +1280,6 @@ function NewSessionPage() {
                       )}
                       <MicrophoneIcon className="size-3" />
                     </button>
-                  </div>
                 )}
                 <Button
                   type="submit"
@@ -1289,7 +1287,7 @@ function NewSessionPage() {
                     sending ||
                     (!hasContent && pendingAttachments.length === 0)
                   }
-                  className={`pointer-events-auto size-12 !p-0 ${
+                  className={`size-12 !p-0 ${
                     sttCountdownDigit !== null ? "animate-pulse" : ""
                   }`}
                   aria-label={

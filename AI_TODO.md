@@ -3463,3 +3463,21 @@ Design notes:
   - Inline error display below the description if the rescan POST fails.
   - Description paragraph updated to explain the caching model + when to hit Refresh ("flag toggles update the cache in place (no rescan). Hit Refresh to force a fresh disk scan now.").
 - Branch: `fix/fs-templates-backend-cache` off `main-nowaker` (at the time, ecb06dc).
+
+### 151. Composer: restructure absolute-overlay buttons into a stacked flex-col row below textarea (PENDING - in progress)
+
+User prompt (verbatim, after iterations on pr-14 / pr-16 / pr-20 / pr-24 all left the visual reading as crowded):
+
+> JESUS. the text still goes behind the buttons!!!
+> for fucks sake, can't you not understand? make the submit / mic / stop buttons behave like they're images xxxx between text. text to flow around them. not under them!
+
+Design notes:
+
+- The padding-only approach (pr-14 → pr-24) cannot satisfy "text flows around buttons, not under them" because the buttons live in an absolute overlay over the textarea. With ANY pr-XX, text technically wraps before the buttons but visually reads as adjacent / behind. Even pr-24 (42px gap) was rejected on mobile.
+- True text-flow-around (CSS `float` + `shape-outside`) requires a contenteditable div, not a `<textarea>` — a heavy refactor with mobile risk (STT, draft persistence, paste, slash-command, file-mention all depend on textarea semantics).
+- Chosen fix: lift buttons OUT of the textarea entirely. Textarea on top (flex-1), button row below (shrink-0), both inside the existing `relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden` wrapper. Mic, stop, submit are inline siblings in the same horizontal row, right-aligned. Text simply cannot reach the buttons because they are below, not beside.
+- AGENTS.md "Composer layout" section rewritten: marked floating-button overlay as a forbidden regression alongside the old flex-row regression. Documented why the flex-COL approach doesn't trip the flex-ROW mobile bugs (main-axis layout, no items-stretch cross-axis interaction).
+- Both composers updated:
+  - `apps/web/src/routes/_app/session/$id.tsx`: textarea className becomes `flex-1 min-h-[96px]` (was `min-h-[max(6rem,100%)] pr-24`); overlay div becomes `shrink-0 flex justify-end items-center gap-1.5 px-1.5 py-1.5`; conditional wrapper around mic+stop flattened; `pointer-events-auto` removed from buttons.
+  - `apps/web/src/routes/_app/session/new.tsx`: same treatment, textarea className becomes `flex-1 min-h-[120px]` (was `min-h-[120px] pr-24`); overlay restructure same shape.
+- Files: `apps/web/src/routes/_app/session/$id.tsx`, `apps/web/src/routes/_app/session/new.tsx`, `AGENTS.md` "Composer layout" section.
