@@ -2669,7 +2669,7 @@ function computeMessageMeta(
   if (modelName) parts.push(modelName);
   if (variant) parts.push(variant);
   if (stepDuration) parts.push(stepDuration);
-  if (totalDuration) parts.push(`${totalDuration} total`);
+  if (totalDuration) parts.push(totalDuration);
 
   const titleSegments: string[] = [];
   if (agent) titleSegments.push(`Agent: ${agent}`);
