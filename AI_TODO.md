@@ -3464,7 +3464,7 @@ Design notes:
   - Description paragraph updated to explain the caching model + when to hit Refresh ("flag toggles update the cache in place (no rescan). Hit Refresh to force a fresh disk scan now.").
 - Branch: `fix/fs-templates-backend-cache` off `main-nowaker` (at the time, ecb06dc).
 
-### 151. Composer: restructure absolute-overlay buttons into a stacked flex-col row below textarea (PENDING - in progress)
+### 151. Composer: restructure absolute-overlay buttons into a stacked flex-col row below textarea (DONE - 7cee93b)
 
 User prompt (verbatim, after iterations on pr-14 / pr-16 / pr-20 / pr-24 all left the visual reading as crowded):
 
