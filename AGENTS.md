@@ -709,40 +709,43 @@ revert any of these without re-reproducing the bug.
   the cascade; new.tsx needed `flex-1 min-h-0` added to two
   intermediate containers.
 
-- **Submit button + STT mic + abort stop button float absolutely at
-  the bottom-right of a relative textarea wrapper.** Layout:
+- **Buttons live INSIDE `<ComposerEditable>` (contenteditable div), floated.**
+  Layout:
   ```tsx
   <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
-    <Textarea ... className="... pr-24" />
-    <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
-      {/* mic + stop in a pointer-events-auto row when active */}
-      <Button type="submit" className="pointer-events-auto size-12 !p-0 ..." />
-    </div>
+    <ComposerEditable
+      ref={textareaRef as unknown as React.Ref<HTMLDivElement>}
+      ... textarea-shape props ...
+      buttonSlot={
+        <div className="flex flex-col items-end gap-1.5">
+          {/* mic + stop row + submit Button */}
+        </div>
+      }
+    />
   </div>
   ```
-  Why not the old flex-row + `items-stretch` + `shrink-0` button
-  column: the combination of `field-sizing: content` on the
-  textarea + `items-stretch` on the row + `shrink-0` on the button
-  column let some Android Chrome layout paths push the textarea
-  past the composer's `maxHeight` cap, and the wrapper's
-  `overflow-hidden` clipped the BOTTOM of the row — which is where
-  the submit button lived. With absolute positioning, the buttons
-  are anchored to the relative wrapper (which IS properly bounded
-  by the flex-1 cascade), so they stay at the bottom-right of the
-  visible composer area regardless of textarea content height.
-  - The textarea must have `pr-24` (or wider when more buttons
-    stack) so the cursor / text content reads as clearly separated
-    from the floating button column, not just technically wrapping
-    before it. Math: submit is `size-12` (48px) at `right-1.5`
-    (6px) so the button column occupies the right 54px; `pr-24`
-    (96px) leaves a 42px visible gap. Tighter values (pr-14 = 2px,
-    pr-16 = 10px, pr-20 = 26px) wrapped text correctly but all read
-    as touching the button on mobile — 42px is unambiguous
-    whitespace.
-  - The overlay wrapper is `pointer-events-none` so clicks in the
-    "empty" area pass through to the textarea (focus, selection).
-    Each button is `pointer-events-auto` so clicks register on the
-    button itself.
+  The slot is a `contenteditable={false}` first child carrying CSS
+  `float-right`, so user text WRAPS AROUND the button cluster (the
+  way text wraps around a floated `<img>`) instead of crowding
+  against a fixed `pr-24` boundary on a rectangular text region.
+  Component lives at `apps/web/src/components/ui/composer-editable.tsx`.
+
+  Why a `<div contenteditable>` instead of a `<textarea>`: a
+  `<textarea>` is a replaced element. Its internal text is opaque to
+  CSS, so `float` / `shape-outside` on any child cannot affect text
+  wrap inside it. The contenteditable swap is the ONLY way to achieve
+  true flow-around. The component augments the underlying div with
+  `value` / `selectionStart` / `selectionEnd` / `setSelectionRange` /
+  `setRangeText` via `Object.defineProperty` so existing consumer
+  code typed against `HTMLTextAreaElement` (STT append, slash-command
+  popover, file-mention popover, draft restore, BroadcastChannel
+  sync, post-submit clear) compiles via an `as unknown as` cast at
+  the ref boundary and runs unchanged at runtime.
+
+  The shared `getCaretCoordinates` helper in both popovers branches
+  on element type: textareas use the legacy clone-the-styles trick
+  (their text is opaque to CSS); contenteditable elements use the
+  live Selection/Range API directly.
 
 - **`touch-pan-y` + `overscroll-contain` on the Textarea component.**
   Set in the base class list at

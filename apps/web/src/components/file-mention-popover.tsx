@@ -15,7 +15,20 @@ interface CaretPosition {
 }
 
 function getCaretCoordinates(
-  element: HTMLTextAreaElement,
+  element: HTMLElement,
+  position: number,
+): CaretPosition {
+  if (
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLInputElement
+  ) {
+    return getCaretCoordinatesTextarea(element, position);
+  }
+  return getCaretCoordinatesContentEditable(element);
+}
+
+function getCaretCoordinatesTextarea(
+  element: HTMLTextAreaElement | HTMLInputElement,
   position: number,
 ): CaretPosition {
   const div = document.createElement("div");
@@ -89,6 +102,61 @@ function getCaretCoordinates(
         8;
     }
 
+    left = Math.max(16, Math.min(left, viewportWidth - 320));
+  }
+
+  return { top, left };
+}
+
+function getCaretCoordinatesContentEditable(
+  element: HTMLElement,
+): CaretPosition {
+  const win = element.ownerDocument.defaultView;
+  const sel = win?.getSelection();
+  let rect: DOMRect | null = null;
+
+  if (sel && sel.rangeCount > 0) {
+    const range = sel.getRangeAt(0);
+    if (
+      element.contains(range.startContainer) ||
+      range.startContainer === element
+    ) {
+      const rects = range.getClientRects();
+      if (rects.length > 0) {
+        rect = rects[0];
+      } else {
+        const span = element.ownerDocument.createElement("span");
+        span.appendChild(element.ownerDocument.createTextNode("​"));
+        const probe = range.cloneRange();
+        try {
+          probe.insertNode(span);
+          rect = span.getBoundingClientRect();
+        } catch {
+          rect = null;
+        } finally {
+          span.parentNode?.removeChild(span);
+        }
+      }
+    }
+  }
+
+  if (!rect) {
+    rect = element.getBoundingClientRect();
+  }
+
+  const viewportHeight = window.innerHeight;
+  const viewportWidth = window.innerWidth;
+  let top = rect.top;
+  let left = rect.left;
+
+  const isMobileDevice = viewportWidth < 768;
+  if (isMobileDevice) {
+    const elementRect = element.getBoundingClientRect();
+    const keyboardHeight = viewportHeight * 0.4;
+    const availableSpace = elementRect.top - keyboardHeight;
+    if (availableSpace < 200) {
+      top = rect.bottom + 8;
+    }
     left = Math.max(16, Math.min(left, viewportWidth - 320));
   }
 
