@@ -3,7 +3,11 @@ import { defineHandler, getMethod, getQuery } from "nitro/h3";
 import { parseBody } from "./lib/validation";
 import { readPortalConfig } from "./lib/portal-config";
 import {
+  applyTemplateDelete,
+  applyTemplateUpdate,
   deleteTemplate,
+  forceRebuildSnapshot,
+  getCachedSnapshot,
   resolveWorkspaceRoot,
   scanWorkspaceTemplates,
   templatesForDirectory,
@@ -11,6 +15,8 @@ import {
   writeTemplate,
   type FsTemplate,
 } from "./lib/vibekick-templates";
+import { dirname, resolve, sep } from "path";
+import { homedir } from "os";
 
 const writeBodySchema = z.object({
   location: z.string().min(1),
@@ -27,13 +33,16 @@ function listWorkspaces(): string[] {
   return readPortalConfig().directories;
 }
 
-function listAcrossWorkspaces(): FsTemplate[] {
-  const roots = listWorkspaces();
-  const all: FsTemplate[] = [];
-  for (const root of roots) {
-    all.push(...scanWorkspaceTemplates(root));
-  }
-  return all;
+function expandTilde(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/")) return resolve(homedir(), p.slice(2));
+  return p;
+}
+
+function sortedTemplates(list: Iterable<FsTemplate>): FsTemplate[] {
+  return Array.from(list).sort(
+    (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
+  );
 }
 
 export default defineHandler(async (event) => {
@@ -43,6 +52,7 @@ export default defineHandler(async (event) => {
     const query = getQuery(event);
     const directory = typeof query.directory === "string" ? query.directory : null;
     const workspace = typeof query.workspace === "string" ? query.workspace : null;
+    const rescan = query.rescan === "1" || query.rescan === "true";
 
     if (directory) {
       const roots = listWorkspaces();
@@ -59,9 +69,14 @@ export default defineHandler(async (event) => {
         templates: scanWorkspaceTemplates(workspace),
       };
     }
+    const workspaces = listWorkspaces();
+    const snapshot = rescan
+      ? await forceRebuildSnapshot(workspaces)
+      : await getCachedSnapshot(workspaces);
     return {
-      workspaces: listWorkspaces(),
-      templates: listAcrossWorkspaces(),
+      workspaces: snapshot.workspaces,
+      templates: sortedTemplates(snapshot.templatesByLocation.values()),
+      builtAt: snapshot.builtAt,
     };
   }
 
@@ -83,6 +98,7 @@ export default defineHandler(async (event) => {
       order: body.order,
       prompt: body.prompt,
     });
+    applyTemplateUpdate(template);
     return { template };
   }
 
@@ -103,6 +119,9 @@ export default defineHandler(async (event) => {
       });
     }
     deleteTemplate(location);
+    const expanded = resolve(expandTilde(location));
+    applyTemplateDelete(expanded);
+    applyTemplateDelete(location);
     return { ok: true };
   }
 

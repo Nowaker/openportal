@@ -55,11 +55,11 @@ export function useFsTemplatesForDirectory(directory?: string | null) {
   });
 }
 
-// Mutator: create or update a template on disk. POSTs to the
-// server which validates the location is inside a configured
-// workspace root before writing. Invalidates both the all-templates
-// SWR cache (settings) and any directory-scoped cache (new-session
-// picker) so changes show up immediately everywhere.
+// Patches the SWR cache in place with the returned template -
+// NO revalidate. Re-enabling revalidate here triggers a backend
+// rescan on every flag toggle and blocks the UI mid-rescan
+// (the bug AI_TODO #150 was reported about). Backend snapshot
+// stays consistent via applyTemplateUpdate inside the POST handler.
 export async function writeFsTemplate(input: {
   location: string;
   name: string;
@@ -89,8 +89,8 @@ export async function writeFsTemplate(input: {
   await globalMutate(
     (key) =>
       typeof key === "string" && key.startsWith("/api/vibekick-templates"),
-    undefined,
-    { revalidate: true },
+    (current: unknown) => patchTemplateInPlace(current, data.template),
+    { revalidate: false },
   );
   return data.template;
 }
@@ -111,9 +111,52 @@ export async function deleteFsTemplate(location: string): Promise<void> {
   await globalMutate(
     (key) =>
       typeof key === "string" && key.startsWith("/api/vibekick-templates"),
-    undefined,
-    { revalidate: true },
+    (current: unknown) => removeTemplateInPlace(current, location),
+    { revalidate: false },
   );
+}
+
+// Force-rescan: explicit user gesture (Refresh button in Settings).
+// Tells the backend to rebuild the in-memory snapshot from disk;
+// the new snapshot replaces the SWR all-templates cache. Directory-
+// scoped caches revalidate on their own next-poll - they hit a
+// separate code path on the backend that isn't snapshot-cached.
+export async function forceRescanFsTemplates(): Promise<AllFsTemplatesResponse> {
+  const res = await fetch("/api/vibekick-templates?rescan=1");
+  if (!res.ok) {
+    let detail = `Request failed: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.error) detail = body.error;
+    } catch {
+      /* swallow */
+    }
+    throw new Error(detail);
+  }
+  const data = (await res.json()) as AllFsTemplatesResponse;
+  await globalMutate(ALL_KEY, data, { revalidate: false });
+  return data;
+}
+
+function patchTemplateInPlace(current: unknown, template: FsTemplate): unknown {
+  if (!current || typeof current !== "object") return current;
+  const obj = current as { templates?: FsTemplate[] };
+  if (!Array.isArray(obj.templates)) return current;
+  const next = obj.templates.slice();
+  const idx = next.findIndex((t) => t.location === template.location);
+  if (idx === -1) next.push(template);
+  else next[idx] = template;
+  return { ...obj, templates: next };
+}
+
+function removeTemplateInPlace(current: unknown, location: string): unknown {
+  if (!current || typeof current !== "object") return current;
+  const obj = current as { templates?: FsTemplate[] };
+  if (!Array.isArray(obj.templates)) return current;
+  return {
+    ...obj,
+    templates: obj.templates.filter((t) => t.location !== location),
+  };
 }
 
 // Slugify a name into a filesystem-safe basename for new templates.
