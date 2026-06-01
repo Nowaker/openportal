@@ -3412,7 +3412,7 @@ Verification (worktree dev on `:5200`):
 - `ses_18cd90b4effeWgohIGbJD9tVkE` (130-msg templates session): API `_turnStartTime` stamp confirmed via `curl /api/opencode/4096/session/.../messages?limit=0` for `msg_e7bf77dbd001EciBkAFF9wcLSw` → step=76.5s, total=1380.0s (≈23min).
 - Pre-existing `gapCount.toLocaleString()` crash on permalink-hash navigation (commit `aa93056`) was observed but is NOT introduced by this change — it triggers any time the smart-window loader's gap UI receives an undefined `gapCount`, independent of timing display.
 
-### 149. Composer textarea right-padding: pr-20 -> pr-24 (further bump for visible clearance) (PENDING - in progress)
+### 149. Composer textarea right-padding: pr-20 -> pr-24 (further bump for visible clearance) (DONE - 46450b7)
 
 User prompt (verbatim, second iteration on the same complaint after #145 deployed):
 
