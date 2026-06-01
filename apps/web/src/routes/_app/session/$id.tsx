@@ -20,7 +20,6 @@ import "ldrs/react/Ripples.css";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { ComposerEditable } from "@/components/ui/composer-editable";
 import { Loader } from "@/components/ui/loader";
 import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
@@ -3381,73 +3380,6 @@ function SessionLevelErrorBox({
   );
 }
 
-function RateLimitBanner({
-  retry,
-}: {
-  retry: NonNullable<
-    NonNullable<ReturnType<typeof useIndicator>>["opencode_retry"]
-  >;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(t);
-  }, []);
-  const remainingMs = retry.next > 0 ? Math.max(0, retry.next - now) : 0;
-  const sec = Math.ceil(remainingMs / 1000);
-  const countdown =
-    sec >= 60
-      ? `${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, "0")}s`
-      : `${sec}s`;
-  const isRetryingNow = retry.next > 0 && remainingMs <= 0;
-  const a = retry.action;
-  const headline = a?.title ?? "Provider asked to slow down";
-  const body = a?.message ?? retry.message ?? null;
-  const labelLine = a?.label ?? null;
-  return (
-    <div className="mx-3 my-3 rounded-md border border-warning/40 bg-warning-subtle/40 text-warning-fg p-3 text-xs">
-      <div className="flex items-center gap-2 font-semibold">
-        <span
-          className={`inline-block size-2 rounded-full bg-warning ${
-            isRetryingNow ? "animate-pulse" : ""
-          }`}
-          aria-hidden
-        />
-        <span>{headline}</span>
-        {retry.attempt > 0 && (
-          <span className="font-mono text-[11px] text-muted-fg">
-            attempt {retry.attempt}
-          </span>
-        )}
-        <span className="ml-auto font-mono text-[11px] text-muted-fg">
-          {isRetryingNow ? "retrying now..." : `next attempt in ${countdown}`}
-        </span>
-      </div>
-      {body && (
-        <div className="mt-1 whitespace-pre-wrap break-words leading-snug">
-          {body}
-        </div>
-      )}
-      {(labelLine || a?.link) && (
-        <div className="mt-1 text-[11px] text-muted-fg">
-          {a?.link ? (
-            <a
-              href={a.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-warning-fg"
-            >
-              {labelLine ?? a.link}
-            </a>
-          ) : (
-            <span>{labelLine}</span>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ModelOverrideControl({
   sessionId,
   instanceId,
@@ -5653,9 +5585,6 @@ function SessionPage() {
               lastError={sessionIndicatorForErrors.lastError}
             />
           )}
-          {sessionIndicatorForErrors?.opencode_retry && (
-            <RateLimitBanner retry={sessionIndicatorForErrors.opencode_retry} />
-          )}
           {permalinkMode && permalinkWindow.loading.after && (
             <div className="px-3 py-2 flex items-center justify-center gap-2 text-xs text-muted-fg">
               <Loader className="size-4" />
@@ -6108,8 +6037,8 @@ function SessionPage() {
                 * crowding on mobile, even when text technically wrapped
                 * before the buttons. 42px is unambiguous whitespace. */}
               <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
-                  <ComposerEditable
-                    ref={textareaRef as unknown as React.Ref<HTMLDivElement>}
+                  <Textarea
+                    ref={textareaRef}
                     data-test="portal-composer-textarea"
                     inputMode="text"
                     autoCapitalize="sentences"
@@ -6255,12 +6184,12 @@ function SessionPage() {
                         ? "This session is archived. Unarchive it to send new prompts."
                         : "Type your message..."
                     }
-                    disabled={sessionIsArchived}
-                    className={`text-sm min-h-[max(6rem,100%)]${
+                    isDisabled={sessionIsArchived}
+                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-24${
                       sessionIsArchived ? " text-center placeholder:text-center" : ""
                     }`}
-                    buttonSlot={
-                      <div className="flex flex-col items-end gap-1.5">
+                  />
+                <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
                   {(sttMode !== "off" && speechRecognition.isSupported) ||
                   isAssistantBusy ? (
                     <div className="pointer-events-auto flex w-12 gap-0 justify-end">
@@ -6352,8 +6281,6 @@ function SessionPage() {
                     )}
                   </Button>
                 </div>
-                    }
-                  />
               </div>
             </form>
             </div>
