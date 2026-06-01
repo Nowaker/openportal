@@ -26,6 +26,7 @@ import { resolveLiveEndpointById } from "../lib/server-resolver";
 import { basicAuthHeader } from "../lib/server-discovery";
 import { getEffectiveAutoApprove } from "../lib/auto-approve-state";
 import { replyToPermission } from "../lib/permission-reply";
+import { getOpencodeClient } from "../lib/opencode-client";
 
 const RECONCILE_INTERVAL_MS = 30_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -42,10 +43,64 @@ interface PermissionAskedFrame {
   properties?: { id?: unknown; sessionID?: unknown };
 }
 
+interface PendingPermission {
+  id?: unknown;
+  sessionID?: unknown;
+}
+
+// Drain any permission asks that already arrived in opencode before our SSE
+// stream went live. SSE only delivers events fired AFTER subscription, so
+// without this every openportal restart leaves prior `permission.asked`
+// frames unanswered until the next restart of opencode itself. Caller
+// passes a dedup set shared with processStream so a race-window double
+// fire (request in both the list snapshot AND the SSE buffer) only sends
+// one reply.
+async function reconcilePendingPermissions(
+  port: number,
+  signal: AbortSignal,
+  alreadyFired: Set<string>,
+): Promise<void> {
+  if (signal.aborted) return;
+  let pending: PendingPermission[];
+  try {
+    const v1 = await getOpencodeClient(port);
+    const list = await v1.permission.list();
+    pending = (list.data ?? []) as PendingPermission[];
+  } catch (err) {
+    console.warn(
+      `[auto-approve-worker] reconcile list failed (port=${port}):`,
+      err instanceof Error ? err.message : err,
+    );
+    return;
+  }
+  if (signal.aborted) return;
+  let fired = 0;
+  for (const p of pending) {
+    if (signal.aborted) return;
+    if (typeof p.id !== "string" || typeof p.sessionID !== "string") continue;
+    if (alreadyFired.has(p.id)) continue;
+    if (!getEffectiveAutoApprove(p.sessionID)) continue;
+    alreadyFired.add(p.id);
+    fired++;
+    void replyToPermission(port, p.id, "once", { auto: true }).catch((err) =>
+      console.warn(
+        `[auto-approve-worker] reconcile reply failed (port=${port} req=${p.id}):`,
+        err instanceof Error ? err.message : err,
+      ),
+    );
+  }
+  if (fired > 0) {
+    console.log(
+      `[auto-approve-worker] reconciled ${fired} pending permission(s) on port=${port}`,
+    );
+  }
+}
+
 async function processStream(
   port: number,
   body: ReadableStream<Uint8Array>,
   signal: AbortSignal,
+  alreadyFired: Set<string>,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -72,7 +127,9 @@ async function processStream(
           ) {
             const sessionId = ev.properties.sessionID;
             const requestId = ev.properties.id;
+            if (alreadyFired.has(requestId)) continue;
             if (getEffectiveAutoApprove(sessionId)) {
+              alreadyFired.add(requestId);
               void replyToPermission(port, requestId, "once", {
                 auto: true,
               }).catch((err) =>
@@ -124,7 +181,9 @@ async function runConnection(
         throw new Error(`SSE upstream returned ${res.status}`);
       }
       retry = 0;
-      await processStream(port, res.body, signal);
+      const alreadyFired = new Set<string>();
+      await reconcilePendingPermissions(port, signal, alreadyFired);
+      await processStream(port, res.body, signal, alreadyFired);
       if (signal.aborted) return;
       throw new Error("SSE stream ended");
     } catch (err) {
