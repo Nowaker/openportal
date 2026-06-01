@@ -2444,6 +2444,7 @@ function PermalinkGapBanner({
   onLoadBottom: () => void;
   onLoadAll: () => void;
 }) {
+  const safeGapCount = Number.isFinite(gapCount) && gapCount > 0 ? gapCount : 0;
   return (
     <div className="my-3 mx-3 rounded-md border border-dashed border-border bg-muted/20 px-3 py-3 flex flex-col gap-2 items-center text-center">
       {loading ? (
@@ -2474,8 +2475,8 @@ function PermalinkGapBanner({
             </button>
           </div>
           <div className="text-xs text-muted-fg">
-            Gap of {gapCount.toLocaleString()} message
-            {gapCount === 1 ? "" : "s"} between target window and latest
+            Gap of {safeGapCount.toLocaleString()} message
+            {safeGapCount === 1 ? "" : "s"} between target window and latest
             messages.
           </div>
           <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -5473,7 +5474,7 @@ function SessionPage() {
       <>
         {aroundPart.map((message, idx) => renderMessage(message, idx, ctx))}
         <PermalinkGapBanner
-          gapCount={permalinkWindow.gapCount}
+          gapCount={permalinkWindow.gap?.count ?? 0}
           loading={permalinkWindow.loading.fillGap}
           onLoadTop={() => permalinkWindow.fillGap("next50")}
           onLoadBottom={() => permalinkWindow.fillGap("prev50")}

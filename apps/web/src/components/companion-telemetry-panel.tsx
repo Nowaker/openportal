@@ -223,6 +223,11 @@ function fmtAge(ms: number | null | undefined): string {
   return `${Math.floor(d / 3_600_000)}h ago`;
 }
 
+function fmtCount(n: number | null | undefined): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "0";
+  return n.toLocaleString();
+}
+
 export function CompanionTelemetryPanel() {
   const port = useInstanceStore((s) => s.instance?.port ?? null);
   const statePollMs = usePollMs(5000);
@@ -409,15 +414,15 @@ export function CompanionTelemetryPanel() {
         <dt className="text-muted-fg">Heartbeat</dt>
         <dd>{fmtAge(s.heartbeat.lastWriteAt)}</dd>
         <dt className="text-muted-fg">Events seen</dt>
-        <dd className="tabular-nums">{s.events.totalSeen.toLocaleString()}</dd>
+        <dd className="tabular-nums">{fmtCount(s.events.totalSeen)}</dd>
         <dt className="text-muted-fg">Sessions tracked</dt>
         <dd className="tabular-nums">{sessionCount}</dd>
         <dt className="text-muted-fg">Permissions asked</dt>
         <dd className="tabular-nums">
-          {s.permissions.totalAsked.toLocaleString()}
+          {fmtCount(s.permissions.totalAsked)}
         </dd>
         <dt className="text-muted-fg">Compactions</dt>
-        <dd className="tabular-nums">{s.compactions.total.toLocaleString()}</dd>
+        <dd className="tabular-nums">{fmtCount(s.compactions.total)}</dd>
         <dt className="text-muted-fg">Tools observed</dt>
         <dd className="tabular-nums">{s.toolDefinitionsSeen.length}</dd>
         {s.identity.initError && (
@@ -456,7 +461,7 @@ export function CompanionTelemetryPanel() {
               <li key={type} className="flex items-center justify-between gap-2">
                 <span className="truncate">{type}</span>
                 <span className="text-muted-fg tabular-nums shrink-0">
-                  {count.toLocaleString()}
+                  {fmtCount(count)}
                 </span>
               </li>
             ))}

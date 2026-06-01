@@ -3613,7 +3613,7 @@ Design notes:
 - If available, render the description segment as a clickable in-app session link (`/session/<id>?server=<activeServerId>`) in the compact tool row, matching the user's requested `task explore - [description](...)` behavior.
 - Extend to other sub-session management tools (create/fork/fire/reply/continue style calls) when their outputs expose a canonical spawned `ses_*` field; keep non-spawn tools unchanged.
 
-### 156. Fix runtime crash `Cannot read properties of undefined (reading 'toLocaleString')` (PENDING - reported 2026-06-01)
+### 156. Fix runtime crash `Cannot read properties of undefined (reading 'toLocaleString')` (DONE - this commit)
 
 User prompt (verbatim):
 
