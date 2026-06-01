@@ -639,6 +639,8 @@ function spawnedSubsessionId(part: ToolPart): string | null {
     tool.includes("opencode_fire") ||
     tool.includes("session_resume");
   if (!isSubsessionTool) return null;
+  const fromMetadata = extractSessionIdCandidate(part.state?.metadata ?? null);
+  if (fromMetadata) return fromMetadata;
   return extractSessionIdCandidate(part.state?.output ?? null);
 }
 
