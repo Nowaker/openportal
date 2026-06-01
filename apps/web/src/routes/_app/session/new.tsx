@@ -819,7 +819,7 @@ function NewSessionPage() {
               </div>
             </div>
             {hasContent && (
-              <div className="rounded border border-border bg-bg/60 p-2 text-xs text-muted-fg max-h-32 overflow-y-auto whitespace-pre-wrap break-words">
+              <div className="rounded border border-border bg-bg/60 p-2 text-xs text-muted-fg whitespace-pre-wrap break-words">
                 {text.trim()}
               </div>
             )}
