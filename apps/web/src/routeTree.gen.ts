@@ -19,6 +19,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppPromptsRouteImport } from './routes/_app/prompts'
 import { Route as AppPinnedRouteImport } from './routes/_app/pinned'
 import { Route as AppPerformanceRouteImport } from './routes/_app/performance'
+import { Route as AppLiveMessagesRouteImport } from './routes/_app/live-messages'
 import { Route as AppDocsRouteImport } from './routes/_app/docs'
 import { Route as AppDiffRouteImport } from './routes/_app/diff'
 import { Route as AppSessionNewRouteImport } from './routes/_app/session/new'
@@ -73,6 +74,11 @@ const AppPerformanceRoute = AppPerformanceRouteImport.update({
   path: '/performance',
   getParentRoute: () => AppRoute,
 } as any)
+const AppLiveMessagesRoute = AppLiveMessagesRouteImport.update({
+  id: '/live-messages',
+  path: '/live-messages',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDocsRoute = AppDocsRouteImport.update({
   id: '/docs',
   path: '/docs',
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/servers': typeof ServersRoute
   '/diff': typeof AppDiffRoute
   '/docs': typeof AppDocsRoute
+  '/live-messages': typeof AppLiveMessagesRoute
   '/performance': typeof AppPerformanceRoute
   '/pinned': typeof AppPinnedRoute
   '/prompts': typeof AppPromptsRoute
@@ -116,6 +123,7 @@ export interface FileRoutesByTo {
   '/servers': typeof ServersRoute
   '/diff': typeof AppDiffRoute
   '/docs': typeof AppDocsRoute
+  '/live-messages': typeof AppLiveMessagesRoute
   '/performance': typeof AppPerformanceRoute
   '/pinned': typeof AppPinnedRoute
   '/prompts': typeof AppPromptsRoute
@@ -133,6 +141,7 @@ export interface FileRoutesById {
   '/servers': typeof ServersRoute
   '/_app/diff': typeof AppDiffRoute
   '/_app/docs': typeof AppDocsRoute
+  '/_app/live-messages': typeof AppLiveMessagesRoute
   '/_app/performance': typeof AppPerformanceRoute
   '/_app/pinned': typeof AppPinnedRoute
   '/_app/prompts': typeof AppPromptsRoute
@@ -150,6 +159,7 @@ export interface FileRouteTypes {
     | '/servers'
     | '/diff'
     | '/docs'
+    | '/live-messages'
     | '/performance'
     | '/pinned'
     | '/prompts'
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
     | '/servers'
     | '/diff'
     | '/docs'
+    | '/live-messages'
     | '/performance'
     | '/pinned'
     | '/prompts'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/servers'
     | '/_app/diff'
     | '/_app/docs'
+    | '/_app/live-messages'
     | '/_app/performance'
     | '/_app/pinned'
     | '/_app/prompts'
@@ -270,6 +282,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPerformanceRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/live-messages': {
+      id: '/_app/live-messages'
+      path: '/live-messages'
+      fullPath: '/live-messages'
+      preLoaderRoute: typeof AppLiveMessagesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/docs': {
       id: '/_app/docs'
       path: '/docs'
@@ -304,6 +323,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppDiffRoute: typeof AppDiffRoute
   AppDocsRoute: typeof AppDocsRoute
+  AppLiveMessagesRoute: typeof AppLiveMessagesRoute
   AppPerformanceRoute: typeof AppPerformanceRoute
   AppPinnedRoute: typeof AppPinnedRoute
   AppPromptsRoute: typeof AppPromptsRoute
@@ -316,6 +336,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppDiffRoute: AppDiffRoute,
   AppDocsRoute: AppDocsRoute,
+  AppLiveMessagesRoute: AppLiveMessagesRoute,
   AppPerformanceRoute: AppPerformanceRoute,
   AppPinnedRoute: AppPinnedRoute,
   AppPromptsRoute: AppPromptsRoute,

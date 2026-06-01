@@ -1583,6 +1583,20 @@ export default function AppSidebar(
                 </SidebarLabel>
               </SidebarItem>
               <SidebarItem
+                tooltip="Live messages"
+                onPress={() => {
+                  setIsOpenOnMobile(false);
+                  navigate({ to: "/live-messages", search: (prev) => prev });
+                }}
+                className="cursor-pointer gap-x-2"
+                data-test="portal-sidebar-live-messages"
+              >
+                <CodeBracketIcon className="size-4 shrink-0" data-slot="icon" />
+                <SidebarLabel className="text-xs sm:text-sm">
+                  Live messages
+                </SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
                 tooltip="Open session (Ctrl/Cmd+K)"
                 onPress={() => {
                   setIsOpenOnMobile(false);
