@@ -6017,31 +6017,25 @@ function SessionPage() {
                   })}
                 </div>
               )}
-              {/* Stacked composer layout. Textarea on top (flex-1),
-                * button row (mic / stop / submit) below (shrink-0).
-                * Buttons are NOT an absolute overlay over the textarea
-                * — they live in a dedicated row below it, so text and
-                * buttons never share screen real estate. No `pr-*`
-                * padding-right-hack needed on the textarea.
+              {/* Floating-button composer layout. The submit button (and any
+                * STT mic / abort stop buttons) sit in an absolute-positioned
+                * overlay at the bottom-right corner of this relative wrapper.
                 *
-                * Why not an absolute overlay: padding-based clearance
-                * (pr-14 / pr-16 / pr-20 / pr-24) wrapped text correctly
-                * but the visual still read as "text behind the button"
-                * on mobile because the wrap point was right at the
-                * button's left edge. Lifting buttons out of the
-                * textarea's footprint resolves the visual entirely.
-                *
-                * Why this doesn't trigger the old flex-row mobile bugs:
-                * those bugs (textarea pushed past maxHeight + items-
-                * stretch + shrink-0 button column clipped by overflow-
-                * hidden) were cross-axis issues in a flex-ROW layout.
-                * This is flex-COL, so the textarea (flex-1 min-h-0)
-                * and the button row (shrink-0) live on opposite ends
-                * of the main axis. The wrapper's `overflow-hidden` +
-                * composer maxHeight cap still bounds the whole
-                * composer; the button row stays visible (shrink-0),
-                * the textarea scrolls internally if its content
-                * overflows. */}
+                * Why: the previous flex-row + items-stretch layout let
+                * `field-sizing: content` push the textarea (and thus the
+                * submit button in the right column) past the composer's
+                * maxHeight cap on some Android Chrome layouts, clipping the
+                * submit button. Anchoring the buttons to the wrapper (which
+                * IS properly capped by `flex-1 min-h-0` + the composer
+                * wrapper's `style={{ maxHeight }}`) means the buttons are
+                * always at the bottom-right of the visible composer area.
+                * The textarea's `pr-24` keeps the cursor well clear of the
+                * floating button column: submit is size-12 (48px) at
+                * right-1.5 (6px) so it occupies the right 54px; pr-24
+                * (96px) leaves a 42px visible gap. Tighter values (pr-14
+                * = 2px, pr-16 = 10px, pr-20 = 26px) all still read as
+                * crowding on mobile, even when text technically wrapped
+                * before the buttons. 42px is unambiguous whitespace. */}
               <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
                   <Textarea
                     ref={textareaRef}
@@ -6191,11 +6185,14 @@ function SessionPage() {
                         : "Type your message..."
                     }
                     isDisabled={sessionIsArchived}
-                    className={`resize-none overflow-y-auto text-sm flex-1 min-h-[96px]${
+                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] pr-24${
                       sessionIsArchived ? " text-center placeholder:text-center" : ""
                     }`}
                   />
-                <div className="shrink-0 flex justify-end items-center gap-1.5 px-1.5 py-1.5">
+                <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+                  {(sttMode !== "off" && speechRecognition.isSupported) ||
+                  isAssistantBusy ? (
+                    <div className="pointer-events-auto flex w-12 gap-0 justify-end">
                       {sttMode !== "off" && speechRecognition.isSupported && (
                         <button
                           type="button"
@@ -6251,13 +6248,15 @@ function SessionPage() {
                           <StopIcon className="size-3" />
                         </button>
                       )}
+                    </div>
+                  ) : null}
                   <Button
                     type="submit"
                     data-test="portal-composer-submit"
                     isDisabled={
                       !hasContent && pendingAttachments.length === 0
                     }
-                    className={`size-12 !p-0 ${
+                    className={`pointer-events-auto size-12 !p-0 ${
                       sttCountdownDigit !== null ? "animate-pulse" : ""
                     }`}
                     aria-label={

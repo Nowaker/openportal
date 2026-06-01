@@ -709,40 +709,40 @@ revert any of these without re-reproducing the bug.
   the cascade; new.tsx needed `flex-1 min-h-0` added to two
   intermediate containers.
 
-- **Stacked layout: textarea on top, button row below.** The
-  textarea, the STT mic / abort stop buttons, and the submit
-  button live on the main axis of a flex-col wrapper. Buttons
-  do NOT overlay or float over the textarea — they live in a
-  dedicated row below it, so text and buttons never share screen
-  real estate. Layout:
+- **Submit button + STT mic + abort stop button float absolutely at
+  the bottom-right of a relative textarea wrapper.** Layout:
   ```tsx
   <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
-    <Textarea ... className="resize-none overflow-y-auto text-sm flex-1 min-h-[96px]" />
-    <div className="shrink-0 flex justify-end items-center gap-1.5 px-1.5 py-1.5">
-      {/* mic (size-6) + stop (size-6) + submit (size-12) inline */}
-      <Button type="submit" className="size-12 !p-0 ..." />
+    <Textarea ... className="... pr-24" />
+    <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+      {/* mic + stop in a pointer-events-auto row when active */}
+      <Button type="submit" className="pointer-events-auto size-12 !p-0 ..." />
     </div>
   </div>
   ```
-  - The textarea is `flex-1` so it grows to fill the wrapper's
-    available height; the button row is `shrink-0` so it always
-    renders at its natural height. The wrapper's
-    `overflow-hidden` + composer maxHeight cap (from the
-    `useComposerMaxHeight` hook) bounds the whole composer; when
-    content exceeds the cap, the textarea scrolls internally via
-    `overflow-y-auto` while the button row stays visible.
-  - **No `pr-*` padding-right hack on the textarea.** Earlier
-    iterations used an absolute-overlay button column over the
-    textarea and tried `pr-14` (2px gap) → `pr-16` (10px) →
-    `pr-20` (26px) → `pr-24` (42px) to push text away from the
-    buttons. Text wrapped correctly at every step but the visual
-    still read as "text behind the button" on mobile because the
-    wrap point was right at the button's left edge. Lifting
-    buttons out of the textarea's footprint resolves the visual
-    entirely; padding is no longer needed.
-  - No `pointer-events-none` / `pointer-events-auto` plumbing on
-    the button row — pointer events flow normally because the
-    buttons are no longer overlapping the textarea.
+  Why not the old flex-row + `items-stretch` + `shrink-0` button
+  column: the combination of `field-sizing: content` on the
+  textarea + `items-stretch` on the row + `shrink-0` on the button
+  column let some Android Chrome layout paths push the textarea
+  past the composer's `maxHeight` cap, and the wrapper's
+  `overflow-hidden` clipped the BOTTOM of the row — which is where
+  the submit button lived. With absolute positioning, the buttons
+  are anchored to the relative wrapper (which IS properly bounded
+  by the flex-1 cascade), so they stay at the bottom-right of the
+  visible composer area regardless of textarea content height.
+  - The textarea must have `pr-24` (or wider when more buttons
+    stack) so the cursor / text content reads as clearly separated
+    from the floating button column, not just technically wrapping
+    before it. Math: submit is `size-12` (48px) at `right-1.5`
+    (6px) so the button column occupies the right 54px; `pr-24`
+    (96px) leaves a 42px visible gap. Tighter values (pr-14 = 2px,
+    pr-16 = 10px, pr-20 = 26px) wrapped text correctly but all read
+    as touching the button on mobile — 42px is unambiguous
+    whitespace.
+  - The overlay wrapper is `pointer-events-none` so clicks in the
+    "empty" area pass through to the textarea (focus, selection).
+    Each button is `pointer-events-auto` so clicks register on the
+    button itself.
 
 - **`touch-pan-y` + `overscroll-contain` on the Textarea component.**
   Set in the base class list at
@@ -754,39 +754,29 @@ revert any of these without re-reproducing the bug.
   prevents fall-through to the page once the textarea hits its
   scroll limit.
 
-- **NEVER restore the old `flex items-stretch gap-2` row layout
-  (textarea + button column as siblings in a flex-ROW).** That
-  layout had three coupled failure modes on mobile (`field-
-  sizing: content` + `items-stretch` + `shrink-0` button column
-  let the textarea push past the composer's `maxHeight` cap, the
-  wrapper's `overflow-hidden` clipped the BOTTOM of the row where
-  the submit button lived, and touch-scroll bubbled to the wrong
-  surface) plus the new-session composer covering the templates.
-  The current flex-COL layout avoids all four because the
-  textarea and button row live on the MAIN AXIS — there is no
-  cross-axis interaction. Reviewers reverting to flex-row MUST
-  first reproduce the mobile bugs on a real phone or a Chrome
-  DevTools mobile-emulation viewport.
+- **NEVER restore the old `flex items-stretch gap-2` row layout.**
+  The flex row felt cleaner in code but had three coupled failure
+  modes on mobile (textarea unbounded growth, submit button clip,
+  touch-scroll bubbling) plus the new-session covering the
+  templates. The floating-button refactor (commit landing this
+  rule) closes all four. Reviewers reverting any part of this
+  layout MUST first reproduce the mobile bugs on a real phone or a
+  Chrome DevTools mobile-emulation viewport.
 
-- **NEVER restore the floating-button absolute overlay either.**
-  An earlier iteration positioned the button cluster absolutely
-  over the bottom-right of the textarea (`absolute bottom-1.5
-  right-1.5`). It avoided the flex-row mobile bugs but visually
-  put buttons OVER the text. No amount of right-padding (pr-14
-  → pr-16 → pr-20 → pr-24) made the visual feel uncrowded on
-  narrow viewports — text wrapped right at the button's left
-  edge and looked adjacent to the button even with 42px of
-  computed gap. The current stacked layout puts buttons in their
-  own row where text simply cannot reach them.
-
-- **Textarea `min-h` floors.** `min-h-[96px]` (6rem) on
-  `session/$id.tsx`, `min-h-[120px]` on `session/new.tsx`. These
-  are minimum heights for the idle (empty) composer; with `flex-1`
-  the textarea grows beyond the floor as the wrapper allows.
-  Floors below 60px feel cramped on mobile (single-line composer
-  with too-tight tap target); higher floors waste space when the
-  keyboard is up. The current floors are tuned by feel — bump or
-  shrink only with a screenshot demonstrating the tighter fit.
+- **Textarea `min-h` floor MUST accommodate the floating button
+  column.** The column height is `mic-row h-6 (24px) + gap-1.5
+  (6px) + submit size-12 (48px) = 78px`. Add the `bottom-1.5`
+  offset (6px) where the column anchors, plus a matching 6px top
+  inset for symmetric breathing room, and the textarea wrapper
+  needs to be at least 90px tall before the column starts
+  poking out of the top. Current floor is `min-h-[max(6rem,100%)]`
+  (96px) on `session/$id.tsx`, `min-h-[120px]` on `session/new.tsx`
+  — both above the 90px threshold. If you ever shrink either,
+  empty composer + STT-enabled mic button = mic clipped by the
+  textarea's top border ("poked in half"). The 4.5rem (72px) the
+  refactor inherited from the pre-floating-button era was below
+  the threshold and shipped the bug; #94 / `<commit>` raised it
+  to 6rem.
 
 ### Sidebar
 
