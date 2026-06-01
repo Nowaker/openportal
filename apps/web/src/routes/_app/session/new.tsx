@@ -1232,7 +1232,7 @@ function NewSessionPage() {
                     onKeyDown(e);
                   }}
                   placeholder="What do you want to do?"
-                  className="resize-none overflow-y-auto text-sm min-h-[120px] pr-20"
+                  className="resize-none overflow-y-auto text-sm min-h-[120px] pr-24"
                   disabled={sending}
                 />
               <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">

@@ -3411,3 +3411,18 @@ Verification (worktree dev on `:5200`):
 - `ses_18430cadeffezfBPPuNNuMqiox` (mid-turn session): intermediate timestamps render `24s - 5/30, 10:17 PM`, `56s - 5/30, 10:17 PM`, `1m 2s - 5/30, 10:18 PM` and no meta line on intermediates (correct).
 - `ses_18cd90b4effeWgohIGbJD9tVkE` (130-msg templates session): API `_turnStartTime` stamp confirmed via `curl /api/opencode/4096/session/.../messages?limit=0` for `msg_e7bf77dbd001EciBkAFF9wcLSw` → step=76.5s, total=1380.0s (≈23min).
 - Pre-existing `gapCount.toLocaleString()` crash on permalink-hash navigation (commit `aa93056`) was observed but is NOT introduced by this change — it triggers any time the smart-window loader's gap UI receives an undefined `gapCount`, independent of timing display.
+
+### 149. Composer textarea right-padding: pr-20 -> pr-24 (further bump for visible clearance) (PENDING - in progress)
+
+User prompt (verbatim, second iteration on the same complaint after #145 deployed):
+
+> still wrong
+
+(Screenshot showed text wrapping right next to the mic + submit cluster. Earlier iterations: #145 bumped pr-16 -> pr-20, deployed cleanly to prod with `_id-DofPU_y7.js` / `new-DMwEdA0E.js` serving `pr-20`, but the user still reads the visual as crowding even with 26px clearance from the size-12 submit / 50px from the size-6 stop.)
+
+Design notes:
+
+- Bump `pr-20` -> `pr-24` (80px -> 96px), giving a 42px gap from the submit's left edge and 66px from the stop button. 42px reads as unambiguous whitespace — text never visually neighbours the button.
+- Updated AGENTS.md "Composer layout" contract + the inline rationale comment in `apps/web/src/routes/_app/session/$id.tsx` to document the 42px threshold so future shrinks are intentional.
+- The `pr-20` -> `pr-16` -> `pr-14` history is preserved in the rationale so reviewers can see why 26px wasn't sufficient.
+- Files: `apps/web/src/routes/_app/session/$id.tsx`, `apps/web/src/routes/_app/session/new.tsx`, `AGENTS.md` "Composer layout" section.
