@@ -3380,6 +3380,73 @@ function SessionLevelErrorBox({
   );
 }
 
+function RateLimitBanner({
+  retry,
+}: {
+  retry: NonNullable<
+    NonNullable<ReturnType<typeof useIndicator>>["opencode_retry"]
+  >;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const remainingMs = retry.next > 0 ? Math.max(0, retry.next - now) : 0;
+  const sec = Math.ceil(remainingMs / 1000);
+  const countdown =
+    sec >= 60
+      ? `${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, "0")}s`
+      : `${sec}s`;
+  const isRetryingNow = retry.next > 0 && remainingMs <= 0;
+  const a = retry.action;
+  const headline = a?.title ?? "Provider asked to slow down";
+  const body = a?.message ?? retry.message ?? null;
+  const labelLine = a?.label ?? null;
+  return (
+    <div className="mx-3 my-3 rounded-md border border-warning/40 bg-warning-subtle/40 text-warning-fg p-3 text-xs">
+      <div className="flex items-center gap-2 font-semibold">
+        <span
+          className={`inline-block size-2 rounded-full bg-warning ${
+            isRetryingNow ? "animate-pulse" : ""
+          }`}
+          aria-hidden
+        />
+        <span>{headline}</span>
+        {retry.attempt > 0 && (
+          <span className="font-mono text-[11px] text-muted-fg">
+            attempt {retry.attempt}
+          </span>
+        )}
+        <span className="ml-auto font-mono text-[11px] text-muted-fg">
+          {isRetryingNow ? "retrying now..." : `next attempt in ${countdown}`}
+        </span>
+      </div>
+      {body && (
+        <div className="mt-1 whitespace-pre-wrap break-words leading-snug">
+          {body}
+        </div>
+      )}
+      {(labelLine || a?.link) && (
+        <div className="mt-1 text-[11px] text-muted-fg">
+          {a?.link ? (
+            <a
+              href={a.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-warning-fg"
+            >
+              {labelLine ?? a.link}
+            </a>
+          ) : (
+            <span>{labelLine}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModelOverrideControl({
   sessionId,
   instanceId,
@@ -5584,6 +5651,9 @@ function SessionPage() {
               sessionId={sessionId}
               lastError={sessionIndicatorForErrors.lastError}
             />
+          )}
+          {sessionIndicatorForErrors?.opencode_retry && (
+            <RateLimitBanner retry={sessionIndicatorForErrors.opencode_retry} />
           )}
           {permalinkMode && permalinkWindow.loading.after && (
             <div className="px-3 py-2 flex items-center justify-center gap-2 text-xs text-muted-fg">
