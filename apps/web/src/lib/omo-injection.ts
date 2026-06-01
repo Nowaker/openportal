@@ -44,6 +44,12 @@ export interface OmoBlock {
   ref?: { blockId: string; bytes: number };
 }
 
+interface ExtractedUserMessage {
+  wrapperText: string;
+  userText: string;
+  summary: string;
+}
+
 interface InitiatorCatcher {
   headerRegex: RegExp;
   extractSummary?: (body: string) => string | undefined;
@@ -73,8 +79,8 @@ const USER_TASK_REGEX = /<user-task>\s*([\s\S]*?)\s*<\/user-task>/g;
 const AUTO_SLASH_REGEX = /<auto-slash-command>[\s\S]*?<\/auto-slash-command>/g;
 const ULTRAWORK_REGEX = /<ultrawork-mode>[\s\S]*?<\/ultrawork-mode>/g;
 const COMMAND_INSTR_REGEX = /<command-instruction>[\s\S]*?<\/command-instruction>/g;
-const SYSTEM_REMINDER_REGEX =
-  /<system-reminder>[\s\S]*?<\/system-reminder>(?:\s*<!-- OMO_INTERNAL_INITIATOR -->)?/g;
+const ORPHAN_SYSTEM_REMINDER_TAIL_REGEX =
+  /\n+\s*Please address this message and continue with your tasks\.\s*<\/system-reminder>/g;
 const SEARCH_MODE_REGEX =
   /^\[search-mode\][\s\S]*?(?:\n---(?:\n|$)|$(?![\s\S]))/gm;
 const ANALYZE_MODE_REGEX =
@@ -116,6 +122,8 @@ interface Range {
   // inline text. The renderer pulls the full body from the dedicated
   // /omo/{blockId} endpoint on expand.
   ref?: { blockId: string; bytes: number };
+  exposedText?: string;
+  textOverride?: string;
 }
 
 interface UserTaskRange {
@@ -301,6 +309,23 @@ function collectStrippedMarkerRanges(text: string): Range[] {
   return out;
 }
 
+function collectOrphanSystemReminderTailRanges(text: string): Range[] {
+  const out: Range[] = [];
+  for (const m of text.matchAll(ORPHAN_SYSTEM_REMINDER_TAIL_REGEX)) {
+    if (m.index === undefined) continue;
+    const summary = "Please address this message and continue with your tasks.";
+    out.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      header: "<system-reminder>",
+      summary,
+      priority: 1,
+      segments: [{ header: "<system-reminder>", summary }],
+    });
+  }
+  return out;
+}
+
 function collectAllOmoRanges(text: string): Range[] {
   const stripped = collectStrippedMarkerRanges(text);
   const initiator = collectInitiatorRanges(text);
@@ -331,15 +356,8 @@ function collectAllOmoRanges(text: string): Range[] {
     (body) => firstLine(body.replace(/^<command-instruction>\s*/, "").trim()).slice(0, 120),
     2,
   );
-  const systemReminder = collectXmlRanges(
-    text,
-    SYSTEM_REMINDER_REGEX,
-    "<system-reminder>",
-    (body) =>
-      body.match(/\[[A-Z][^\]\n]+\]/)?.[0] ??
-      firstLine(body.replace(/^<system-reminder>\s*/, "").trim()).slice(0, 120),
-    4,
-  );
+  const systemReminder = collectSystemReminderRanges(text);
+  const orphanSystemReminderTail = collectOrphanSystemReminderTailRanges(text);
   const searchMode = collectLineRanges(
     text,
     SEARCH_MODE_REGEX,
@@ -381,12 +399,120 @@ function collectAllOmoRanges(text: string): Range[] {
     ...autoSlash,
     ...commandInstr,
     ...systemReminder,
+    ...orphanSystemReminderTail,
     ...searchMode,
     ...analyzeMode,
     ...mandatoryParams,
     ...catReminder,
     ...agentUsage,
   ].sort((a, b) => a.start - b.start);
+}
+
+function collectSystemReminderRanges(text: string): Range[] {
+  const out: Range[] = [];
+  const openTag = "<system-reminder>";
+  const closeTag = "</system-reminder>";
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const start = text.indexOf(openTag, cursor);
+    if (start < 0) break;
+
+    let depth = 1;
+    let scan = start + openTag.length;
+    let coreEnd = -1;
+
+    while (depth > 0) {
+      const nextOpen = text.indexOf(openTag, scan);
+      const nextClose = text.indexOf(closeTag, scan);
+      if (nextClose < 0) break;
+
+      if (nextOpen >= 0 && nextOpen < nextClose) {
+        depth += 1;
+        scan = nextOpen + openTag.length;
+        continue;
+      }
+
+      depth -= 1;
+      scan = nextClose + closeTag.length;
+      if (depth === 0) {
+        coreEnd = scan;
+      }
+    }
+
+    if (coreEnd < 0) {
+      cursor = start + openTag.length;
+      continue;
+    }
+
+    let end = coreEnd;
+    const trailing = text.slice(end);
+    const initiatorMatch = trailing.match(/^\s*<!-- OMO_INTERNAL_INITIATOR -->/);
+    if (initiatorMatch) {
+      end += initiatorMatch[0].length;
+    }
+
+    const coreBody = text.slice(start, coreEnd);
+    const fullBody = text.slice(start, end);
+    const extracted = extractUserMessageFromSystemReminder(coreBody);
+    const blockText = extracted
+      ? extracted.wrapperText + text.slice(coreEnd, end)
+      : fullBody;
+    const summary =
+      extracted?.summary ??
+      blockText.match(/\[[A-Z][^\]\n]+\]/)?.[0] ??
+      firstLine(blockText.replace(/^<system-reminder>\s*/, "").trim()).slice(0, 120);
+
+    out.push({
+      start,
+      end,
+      header: "<system-reminder>",
+      summary,
+      priority: 4,
+      segments: [{ header: "<system-reminder>", summary }],
+      exposedText: extracted?.userText,
+      textOverride: extracted ? blockText : undefined,
+    });
+
+    cursor = end;
+  }
+
+  return out;
+}
+
+function extractUserMessageFromSystemReminder(coreBody: string): ExtractedUserMessage | undefined {
+  const openTag = "<system-reminder>";
+  const closeTag = "</system-reminder>";
+  if (!coreBody.startsWith(openTag) || !coreBody.endsWith(closeTag)) {
+    return undefined;
+  }
+
+  const inner = coreBody.slice(openTag.length, -closeTag.length);
+  const match = inner.match(
+    /^(\s*)The user sent the following message:\s*\n([\s\S]*?)\n\s*\n(Please address this message and continue with your tasks\.)\s*$/,
+  );
+  if (!match) return undefined;
+
+  const leading = match[1] ?? "";
+  const userText = match[2] ?? "";
+  const summary = match[3] ?? "Please address this message and continue with your tasks.";
+  if (!userText.trim() || isStandaloneOmoPayload(userText)) {
+    return undefined;
+  }
+
+  return {
+    wrapperText: `${openTag}${leading}The user sent the following message:\n\n${summary}\n${closeTag}`,
+    userText,
+    summary,
+  };
+}
+
+function isStandaloneOmoPayload(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("<system-reminder>")) return false;
+  const ranges = collectSystemReminderRanges(trimmed);
+  if (ranges.length !== 1) return false;
+  return ranges[0]!.start === 0 && ranges[0]!.end === trimmed.length;
 }
 
 function dedupeOverlapping(ranges: Range[]): Range[] {
@@ -520,12 +646,15 @@ export function parseOmoBlocks(text: string): OmoBlock[] {
     }
     blocks.push({
       kind: "omo",
-      text: r.ref ? "" : text.slice(r.start, r.end),
+      text: r.ref ? "" : r.textOverride ?? text.slice(r.start, r.end),
       header: r.header,
       summary: r.summary,
       segments: r.segments,
       ref: r.ref,
     });
+    if (r.exposedText) {
+      blocks.push({ kind: "user", text: r.exposedText });
+    }
     cursor = r.end;
   }
   if (cursor < text.length) {
