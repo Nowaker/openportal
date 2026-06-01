@@ -3525,3 +3525,43 @@ Design notes:
 - The outer chat-log container at line 797 already carries `flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 flex flex-col items-center gap-4`. That IS the right scroll surface - the preview should expand to its natural height and let the outer container handle overflow.
 - Fix: drop `max-h-32 overflow-y-auto` from the preview div. Other classes (`rounded border border-border bg-bg/60 p-2 text-xs text-muted-fg whitespace-pre-wrap break-words`) preserved.
 - Worktree: `~/projekty/webapps/portal-loading-banner-noscroll` on branch `fix/loading-banner-noscroll`.
+
+### 154. Question reply: split selected option + freeform note into promptAsync + question.reply (PENDING - in flight on fix/question-replies-split)
+
+User prompt (verbatim):
+
+> https://portal.desktop.ts.nowaker.net:8443/session/ses_17c8c220fffe7xdvRgBhOasCvm?server=srv-2dy1srwz
+>
+> answering AI questions (set as native opencode questions) didn't work here. opencode still blocks it, and wants the answer.
+> should respond using opencode api for todos/continuation.
+>
+> i think this is because we have fancy mechanism for radio selections, that we allow ourselves to always pick existing option + give a comment.
+> i think this treatment of questions results in openportal sending a message (promptAsync) instead of questions/answers api.
+>
+> whenever we're trying to submit something that wasn't technically allowed as an option (e.g. can't submit free form if only radios were given), we should, first send promptAsync for the custom parts, and then submit responses via opencode q/a api. this way session wakes up, and it sees both the answers and your extra comments.
+>
+> once implemented, and openportal restarted, unblock session https://portal.desktop.ts.nowaker.net:8443/session/ses_17c8c220fffe7xdvRgBhOasCvm?server=srv-2dy1srwz so it continues
+
+Design notes:
+
+- Root cause: `apps/web/src/routes/_app/session/$id.tsx` `QuestionAnswerForm.handleSubmit` concatenated the user's freeform note onto the selected option string (single-select: `"Label\n\nfreeform"`; multi-select: `[...selected, freeform]`). When opencode's question registry validates the reply against `q.options[].label`, the concatenated string does not match any allowed label and the question stays pending. Session blocks until opencode is restarted or someone forces a continuation via promptAsync.
+- Architecture: split the user's submission per question into two disjoint surfaces:
+  - **`cleanAnswers`**: ONLY strings that are valid for `question.reply` (option labels for options-questions; the freeform IS the answer for options-less questions). Sent via `POST /api/opencode/<port>/question/<requestId>/reply` so opencode resolves the pending tool call cleanly.
+  - **`customNotes`**: freeform per question, captured separately when options are present. Sent as a **single promptAsync FIRST** so the user's note becomes a real user message in the session, BEFORE the question is resolved. Then resolving the question triggers the next assistant turn which sees both the structured answer AND the note in context. Order matters: user spec says "first send promptAsync ..., then submit responses via opencode q/a api. this way session wakes up, and it sees both the answers and your extra comments."
+- New module `apps/web/src/lib/question-answers.ts`:
+  - `partitionQuestionAnswers(questions, selections, freeforms)` returns `{ cleanAnswers, customNotes }`.
+  - Decision tree per question:
+    - `q.options.length === 0` → freeform IS the answer → `cleanAnswers[i] = [freeform]`, no note.
+    - `q.options.length > 0 && selected.length > 0` → `cleanAnswers[i] = [...selected]`; if freeform present, push `customNotes` entry for this question.
+    - `q.options.length > 0 && selected.length === 0 && freeform` → textarea was shown so `q.custom` is true → `cleanAnswers[i] = [freeform]`, no note (opencode's custom-answer path accepts it).
+    - Otherwise → `cleanAnswers[i] = []`.
+  - `formatCustomNotesAsPrompt(notes)` renders a blockquoted "Adding a note alongside my answer(s):" prompt that quotes each question header+text and lists the user's note underneath. Becomes the body of the promptAsync.
+- Sibling test `apps/web/src/lib/question-answers.test.ts` (bun:test) covers: radio + freeform split, multi-select + freeform split, freeform-only question, freeform-only with options + `q.custom=true` (no split), only option selected (no notes), no-selection-no-freeform (empty answer), header-less question (omits leading `header:` in the note prompt), multiple notes preserve question order.
+- handleSubmit rewrite preserves all existing safety nets: pending-question lookup with `?includeStale=1`, fallback path when `match` is missing, error surface via `setSubmitError`. Order:
+  1. Partition into `cleanAnswers` + `customNotes`.
+  2. If `customNotes.length > 0`: fire promptAsync. On non-2xx, throw + abort before touching reply API. Notes go through `recordPendingSubmission` / `clearPendingSubmission` so a refresh during the call doesn't lose them.
+  3. Look up the matching `QuestionRequest` via `/questions?includeStale=1` (same as before).
+  4. If match: POST `cleanAnswers` to `question/<id>/reply`. If reply fails, surface the error but the promptAsync note is already on the wire (intentional — the note is valuable even if reply 404s because opencode dropped the registry).
+  5. If no match: fall through to the original `formatAnswersAsPrompt` prompt fallback so the session at least gets the formatted summary. Skip if `customNotes` already fired (the note effectively replaces the fallback summary).
+- Stuck session `ses_17c8c220fffe7xdvRgBhOasCvm` (srv-2dy1srwz, port 4096) has an empty in-memory question registry (`/questions` returns `[]`) so the fixed UI will fall through to the prompt fallback for that specific session. To unblock NOW, send a promptAsync continuation directly via the API after deploy.
+- Files touched: `apps/web/src/lib/question-answers.ts` (new), `apps/web/src/lib/question-answers.test.ts` (new), `apps/web/src/routes/_app/session/$id.tsx` (handleSubmit body), `AI_TODO.md` (this entry).
