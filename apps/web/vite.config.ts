@@ -26,17 +26,12 @@ const COMMIT_SHA = readGitValue("git rev-parse --short=12 HEAD", "unknown");
 const COMMIT_SUBJECT = capCommitSubject(
   readGitValue("git log -1 --pretty=%s", "unknown commit"),
 );
-const COMMIT_URL =
-  COMMIT_SHA === "unknown"
-    ? ""
-    : `https://gitlab.com/Nowaker/openportal/-/commit/${COMMIT_SHA}`;
 
 export default defineConfig({
   define: {
     __OPENPORTAL_BUILD_ID__: JSON.stringify(BUILD_ID),
     __OPENPORTAL_COMMIT_SHA__: JSON.stringify(COMMIT_SHA),
     __OPENPORTAL_COMMIT_SUBJECT__: JSON.stringify(COMMIT_SUBJECT),
-    __OPENPORTAL_COMMIT_URL__: JSON.stringify(COMMIT_URL),
   },
   plugins: [
     tanstackRouter({

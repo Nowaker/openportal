@@ -5,7 +5,8 @@ declare const __OPENPORTAL_BUILD_ID__: string;
 
 const HEADER = "X-OpenPortal-Build";
 const COMMIT_SUBJECT_HEADER = "X-OpenPortal-Commit-Subject";
-const COMMIT_URL_HEADER = "X-OpenPortal-Commit-Url";
+const COMMIT_SHA_HEADER = "X-OpenPortal-Commit-Sha";
+const GITLAB_COMMIT_BASE_URL = "https://gitlab.com/Nowaker/openportal/-/commit/";
 const POLL_URL = "/api/instance/self";
 const POLL_INTERVAL_MS = 60_000;
 
@@ -46,7 +47,10 @@ export function useBuildMismatch(): BuildMismatchState {
         if (theirs && theirs !== ours) {
           const incomingCommitSubject =
             res.headers.get(COMMIT_SUBJECT_HEADER)?.trim() || null;
-          const incomingCommitUrl = res.headers.get(COMMIT_URL_HEADER)?.trim() || null;
+          const incomingCommitSha = res.headers.get(COMMIT_SHA_HEADER)?.trim() || "";
+          const incomingCommitUrl = incomingCommitSha
+            ? `${GITLAB_COMMIT_BASE_URL}${incomingCommitSha}`
+            : null;
           setState({
             mismatched: true,
             incomingCommitSubject,

@@ -4,7 +4,6 @@ import { useNitroHooks } from "nitro/app";
 declare const __OPENPORTAL_BUILD_ID__: string;
 declare const __OPENPORTAL_COMMIT_SHA__: string;
 declare const __OPENPORTAL_COMMIT_SUBJECT__: string;
-declare const __OPENPORTAL_COMMIT_URL__: string;
 
 // Stamp every API response with X-OpenPortal-Build so the browser can
 // detect a server upgrade (the bundle that issued its outstanding fetches
@@ -23,9 +22,6 @@ export default definePlugin((_nitroApp) => {
     }
     if (typeof __OPENPORTAL_COMMIT_SUBJECT__ === "string") {
       event.headers.set("X-OpenPortal-Commit-Subject", __OPENPORTAL_COMMIT_SUBJECT__);
-    }
-    if (typeof __OPENPORTAL_COMMIT_URL__ === "string") {
-      event.headers.set("X-OpenPortal-Commit-Url", __OPENPORTAL_COMMIT_URL__);
     }
   });
 });
