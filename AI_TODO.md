@@ -3552,3 +3552,31 @@ Design notes:
 - Deploy: `scripts/deploy.sh` builds + dev probe (5001) + prod probe (5000).
 - Push to both `origin` (gitlab) and `github`.
 - Worktree: NONE - working directly on `main-nowaker` per user direction ("always deploy, whether someone else's work in progress or not"). Other agents' WIP in `apps/web/src/lib/session-status.ts`, `apps/web/src/routes/_app/live-messages.tsx`, `apps/web/src/server/lib/messages-refresh.ts`, plus untracked files like `apps/web/src/server/lib/live-messages-state.ts` and `apps/web/src/server/live-messages/`, left strictly untouched in the working tree (not staged, not committed by this revert).
+
+### 155. Tool call rows: link spawned subsession ids in task/subsession-management labels (DONE - this commit)
+
+User prompt (verbatim):
+
+> i'd like these tool calls to have a link to session id spawned.
+>
+> instead of this:
+>
+> task explore- trace unknown stop source
+> task explore- find session status sources
+>
+> have it like:
+>
+> task explore- [trace unknown stop source](url to session id)
+> task explore- [find session status sources](url to session id)
+>
+> also screen this instance for other tools that are used for the purpose of spawning/managing subsessions, and these should have it too.
+>
+> ...i only hope that we're able to actually get the subsession id at that point to make those links happen?
+>
+> investigate. if doable, implement.
+
+Design notes:
+
+- Investigate `ToolCallItem` + `formatToolCall` path in `apps/web/src/routes/_app/session/$id.tsx` and confirm whether spawned `ses_*` IDs are available in `part.state.output` for `task` and other sub-session tools.
+- If available, render the description segment as a clickable in-app session link (`/session/<id>?server=<activeServerId>`) in the compact tool row, matching the user's requested `task explore - [description](...)` behavior.
+- Extend to other sub-session management tools (create/fork/fire/reply/continue style calls) when their outputs expose a canonical spawned `ses_*` field; keep non-spawn tools unchanged.

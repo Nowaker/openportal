@@ -589,6 +589,59 @@ function formatToolCall(part: ToolPart): {
   }
 }
 
+const SES_ID_REGEX = /ses_[A-Za-z0-9]{9,32}/;
+
+function extractSessionIdCandidate(value: unknown): string | null {
+  if (typeof value === "string") {
+    const m = value.match(SES_ID_REGEX);
+    return m ? m[0] : null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractSessionIdCandidate(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const preferredKeys = [
+      "session_id",
+      "sessionId",
+      "fork_session_id",
+      "forkSessionId",
+      "child_session_id",
+      "childSessionId",
+      "id",
+    ];
+    for (const key of preferredKeys) {
+      if (key in obj) {
+        const found = extractSessionIdCandidate(obj[key]);
+        if (found) return found;
+      }
+    }
+    for (const v of Object.values(obj)) {
+      const found = extractSessionIdCandidate(v);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function spawnedSubsessionId(part: ToolPart): string | null {
+  const tool = (part.tool || "").toLowerCase();
+  const isSubsessionTool =
+    tool === "task" ||
+    tool.includes("session_create") ||
+    tool.includes("session_fork") ||
+    tool.includes("session_children") ||
+    tool.includes("message_send_async") ||
+    tool.includes("opencode_fire") ||
+    tool.includes("session_resume");
+  if (!isSubsessionTool) return null;
+  return extractSessionIdCandidate(part.state?.output ?? null);
+}
+
 function QuestionDisplay({
   questions,
   partKey,
@@ -1416,6 +1469,7 @@ const ToolCallItem = memo(function ToolCallItem({
   messageId: string;
 }) {
   const { icon, label, details } = formatToolCall(part);
+  const spawnedSessionId = spawnedSubsessionId(part);
   const isQuestionTool = (part.tool || "").toLowerCase() === "question";
   const questions = isQuestionTool ? parseToolQuestions(part) : [];
   const hasQuestions = questions.length > 0;
@@ -1460,6 +1514,20 @@ const ToolCallItem = memo(function ToolCallItem({
     !canInlineExpand &&
     toolInput !== null &&
     Object.keys(toolInput).length > 0;
+  const taskDetailText =
+    (part.tool || "").toLowerCase() === "task" &&
+    typeof details === "string" &&
+    details.startsWith("- ")
+      ? details.slice(2)
+      : null;
+  const spawnedSessionHref = spawnedSessionId
+    ? `/session/${spawnedSessionId}`
+    : null;
+  const spawnedSessionLink = spawnedSessionHref ? (
+    <a href={spawnedSessionHref} className="text-primary hover:underline">
+      {spawnedSessionId}
+    </a>
+  ) : null;
 
   if (hasQuestions) {
     return (
@@ -1560,8 +1628,28 @@ const ToolCallItem = memo(function ToolCallItem({
   return (
     <div data-test={`portal-toolcall-${part.tool ?? "unknown"}`} className={`font-mono text-xs flex items-center gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
       <span className="opacity-60 shrink-0">{icon}</span>
-      <span className="truncate">{label}</span>
-      {details && <span className="opacity-60 shrink-0">{details}</span>}
+      <span className="truncate">
+        {typeof label === "string"
+          ? linkifySessionIds(label, { resolveSessionId: (id) => id })
+          : label}
+      </span>
+      {details && (
+        <span className="opacity-60 shrink-0">
+          {taskDetailText && spawnedSessionHref ? (
+            <>
+              -{" "}
+              <a href={spawnedSessionHref} className="text-primary hover:underline">
+                {taskDetailText}
+              </a>
+            </>
+          ) : (
+            linkifySessionIds(details, { resolveSessionId: (id) => id })
+          )}
+        </span>
+      )}
+      {!taskDetailText && spawnedSessionLink && (
+        <span className="opacity-60 shrink-0">- {spawnedSessionLink}</span>
+      )}
       {isPending && <span className="animate-pulse shrink-0">...</span>}
       {showCopyIcon && canInlineExpand && (
         <span className="ml-auto shrink-0 text-muted-fg/60 hover:text-fg">
