@@ -24,6 +24,7 @@ import {
 } from "@/stores/tools-store";
 import {
   deleteFsTemplate,
+  forceRescanFsTemplates,
   templateBasenameForName,
   useAllFsTemplates,
   writeFsTemplate,
@@ -1091,6 +1092,22 @@ function FsTemplatesSection() {
   const [duplicateSource, setDuplicateSource] = useState<FsTemplate | null>(
     null,
   );
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanError, setRescanError] = useState<string | null>(null);
+
+  const handleRescan = async () => {
+    setRescanning(true);
+    setRescanError(null);
+    try {
+      await forceRescanFsTemplates();
+    } catch (e) {
+      setRescanError(
+        e instanceof Error ? e.message : "Failed to rescan filesystem",
+      );
+    } finally {
+      setRescanning(false);
+    }
+  };
 
   const workspaces = data?.workspaces ?? [];
   const templates = data?.templates ?? [];
@@ -1149,24 +1166,38 @@ function FsTemplatesSection() {
   return (
     <section className="space-y-3">
       <div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-sm font-semibold">Your templates - filesystem</h3>
-          {isValidating && (
+          {(rescanning || isValidating) && (
             <span className="inline-flex items-center gap-1 text-[10px] text-muted-fg/80">
               <Loader className="size-3" />
-              Rescanning files…
+              {rescanning ? "Rescanning filesystem…" : "Refreshing…"}
             </span>
           )}
+          <div className="ml-auto">
+            <Button
+              size="xs"
+              intent="outline"
+              isDisabled={rescanning}
+              onPress={() => void handleRescan()}
+              title="Force a fresh filesystem scan. Toggling flags does not need this - they update instantly via the in-memory snapshot. Use this if you edited a .md file on disk and want the change picked up before the 5-min periodic refresh."
+            >
+              {rescanning ? "Rescanning…" : "Refresh"}
+            </Button>
+          </div>
         </div>
         <p className="text-xs text-muted-fg">
           Templates stored next to your code at{" "}
           <code>&lt;workspace&gt;/&lt;…&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
           Each file&apos;s YAML frontmatter carries its flags (burger /
-          init / slash) and ordering. Toggle a checkbox to rewrite the
-          YAML. New-session pickers and the slash autocomplete show
-          templates whose directory is current or a parent of the
-          active project, up to the workspace root.
+          init / slash) and ordering. The backend caches the scan in
+          memory and rebuilds it every 5 minutes; flag toggles update
+          the cache in place (no rescan). Hit Refresh to force a fresh
+          disk scan now.
         </p>
+        {rescanError && (
+          <p className="text-xs text-danger-fg mt-1">{rescanError}</p>
+        )}
       </div>
 
       {isLoading && (

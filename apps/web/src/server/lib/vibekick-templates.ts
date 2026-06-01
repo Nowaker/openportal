@@ -383,3 +383,73 @@ export function validateTemplateLocation(
     reason: "Template path is not inside any configured workspace root",
   };
 }
+
+
+interface CachedSnapshot {
+  workspaces: string[];
+  templatesByLocation: Map<string, FsTemplate>;
+  builtAt: number;
+}
+
+let cache: CachedSnapshot | null = null;
+let rebuilding: Promise<CachedSnapshot> | null = null;
+
+const PERIODIC_REFRESH_MS = 5 * 60 * 1000;
+
+function buildSnapshot(workspaces: string[]): CachedSnapshot {
+  const map = new Map<string, FsTemplate>();
+  for (const root of workspaces) {
+    for (const t of scanWorkspaceTemplates(root)) {
+      map.set(t.location, t);
+    }
+  }
+  return { workspaces, templatesByLocation: map, builtAt: Date.now() };
+}
+
+function workspacesEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+export async function getCachedSnapshot(
+  workspaces: string[],
+): Promise<CachedSnapshot> {
+  if (cache && workspacesEqual(cache.workspaces, workspaces)) return cache;
+  if (!rebuilding) {
+    rebuilding = Promise.resolve().then(() => buildSnapshot(workspaces));
+    rebuilding.finally(() => {
+      rebuilding = null;
+    });
+  }
+  cache = await rebuilding;
+  return cache;
+}
+
+export async function forceRebuildSnapshot(
+  workspaces: string[],
+): Promise<CachedSnapshot> {
+  cache = buildSnapshot(workspaces);
+  return cache;
+}
+
+export function applyTemplateUpdate(template: FsTemplate): void {
+  if (!cache) return;
+  cache.templatesByLocation.set(template.location, template);
+}
+
+export function applyTemplateDelete(location: string): void {
+  if (!cache) return;
+  cache.templatesByLocation.delete(location);
+}
+
+if (typeof setInterval === "function") {
+  setInterval(() => {
+    if (!cache) return;
+    try {
+      cache = buildSnapshot(cache.workspaces);
+    } catch {
+      /* swallow - next read rebuilds */
+    }
+  }, PERIODIC_REFRESH_MS);
+}
