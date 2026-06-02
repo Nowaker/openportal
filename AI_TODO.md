@@ -3642,7 +3642,7 @@ Design notes:
 - Verify manually in browser (no console crash) and run diagnostics/build gates.
 - Land via worktree branch, merge into `main-nowaker`, deploy with `scripts/deploy.sh`, and push to both remotes.
 
-### 157. Auto-revive sessions stopped with unexpected finish='unknown' (PENDING - requested 2026-06-01)
+### 157. Auto-revive sessions stopped with unexpected finish='unknown' (DONE - this commit)
 
 User prompt (verbatim):
 
