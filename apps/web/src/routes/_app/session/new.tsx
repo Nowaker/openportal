@@ -991,7 +991,7 @@ function NewSessionPage() {
             <PaperClipIcon className="size-4" />
           </button>
         </div>
-        <div className="px-1 pt-0.5 pb-0.5 flex-1 min-h-0 flex flex-col">
+        <div className="pt-0.5 flex-1 min-h-0 flex flex-col">
           <input
             ref={fileAttachInputRef}
             type="file"
@@ -1232,10 +1232,10 @@ function NewSessionPage() {
                     onKeyDown(e);
                   }}
                   placeholder="What do you want to do?"
-                  className="resize-none overflow-y-auto text-sm min-h-[120px] px-1.5 py-1.5 pr-[60px]"
+                  className="resize-none overflow-y-auto text-sm min-h-[120px] rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0 pl-[5px] pt-[3px] pb-[3px] pr-[46px]"
                   disabled={sending}
                 />
-              <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+              <div className="pointer-events-none absolute bottom-1 right-1 flex flex-col items-end gap-1.5">
                 {sttMode !== "off" && speechRecognition.isSupported && (
                   <div className="pointer-events-auto flex w-12 gap-0 justify-end">
                     <button

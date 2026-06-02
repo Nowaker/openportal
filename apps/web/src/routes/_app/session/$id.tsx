@@ -5701,7 +5701,7 @@ function SessionPage() {
                 <ChevronDownIcon className="size-4" />
               </button>
             </div>
-            <div className="px-1 pt-0.5 pb-0.5 relative flex-1 min-h-0 flex flex-col">
+            <div className="pt-0.5 relative flex-1 min-h-0 flex flex-col">
             <FileMentionPopover
               isOpen={fileMention.isOpen}
               searchQuery={fileMention.searchQuery}
@@ -5882,11 +5882,15 @@ function SessionPage() {
                 * IS properly capped by `flex-1 min-h-0` + the composer
                 * wrapper's `style={{ maxHeight }}`) means the buttons are
                 * always at the bottom-right of the visible composer area.
-                * The textarea uses the same 6px internal inset as the
-                * floating button column's right/bottom offset. The submit
-                * button is 48px wide and sits 6px from the border, so
-                * pr-[60px] leaves only the matching 6px text-to-button gap
-                * while still preventing text from sliding under the button. */}
+                * Textarea inset: pl-[5px], pt/pb-[3px] for tight typing
+                * margin; pr-[46px] reserves space for the 44px-wide submit
+                * column anchored at bottom-1 right-1 (4px) so text never
+                * slides under the floating button. The textarea drops its
+                * left/right/bottom borders (border-x-0 border-b-0) and
+                * keeps only the top hairline; on focus it lights up the
+                * other three sides at 1px (focus:border-x focus:border-b)
+                * with no ring halo (focus:ring-0). rounded-none kills the
+                * default rounded-lg corners. */}
               <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
                   <Textarea
                     ref={textareaRef}
@@ -6036,11 +6040,11 @@ function SessionPage() {
                         : "Type your message..."
                     }
                     isDisabled={sessionIsArchived}
-                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] px-1.5 py-1.5 pr-[60px]${
+                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0 pl-[5px] pt-[3px] pb-[3px] pr-[46px]${
                       sessionIsArchived ? " text-center placeholder:text-center" : ""
                     }`}
                   />
-                <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+                <div className="pointer-events-none absolute bottom-1 right-1 flex flex-col items-end gap-1.5">
                   {(sttMode !== "off" && speechRecognition.isSupported) ||
                   isAssistantBusy ? (
                     <div className="pointer-events-auto flex w-12 gap-0 justify-end">

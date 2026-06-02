@@ -700,7 +700,7 @@ revert any of these without re-reproducing the bug.
   textarea wrapper.** The maxHeight cap is only effective if every
   intermediate container propagates the bounded height. In
   `session/new.tsx` specifically: the inner padding container
-  (`px-1 pt-0.5 pb-0.5 ...`) AND the form AND the textarea wrapper
+  (`pt-0.5 ...`) AND the form AND the textarea wrapper
   ALL need `flex-1 min-h-0 flex flex-col`. Skipping any one of them
   lets the textarea grow with content past the cap, push the wrapper
   past the cap, and (because of `shrink-0` on the composer in the
@@ -713,8 +713,8 @@ revert any of these without re-reproducing the bug.
   the bottom-right of a relative textarea wrapper.** Layout:
   ```tsx
   <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
-    <Textarea ... className="... px-1.5 py-1.5 pr-[60px]" />
-    <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex flex-col items-end gap-1.5">
+    <Textarea ... className="... rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0 pl-[5px] pt-[3px] pb-[3px] pr-[46px]" />
+    <div className="pointer-events-none absolute bottom-1 right-1 flex flex-col items-end gap-1.5">
       {/* mic + stop in a pointer-events-auto row when active */}
       <Button type="submit" className="pointer-events-auto size-12 !p-0 ..." />
     </div>
@@ -730,12 +730,18 @@ revert any of these without re-reproducing the bug.
   are anchored to the relative wrapper (which IS properly bounded
   by the flex-1 cascade), so they stay at the bottom-right of the
   visible composer area regardless of textarea content height.
-  - The textarea must use the same compact inset as the floating
-    button column: `px-1.5 py-1.5` for a 6px left/top/bottom inset,
-    matching `right-1.5 bottom-1.5`. Right padding is `pr-[60px]`:
-    submit button width (48px) + border-to-button inset (6px) + the
-    same 6px text-to-button gap. This preserves the no-underlap
-    guarantee without the old wasted `pr-24` whitespace.
+  - Textarea padding: `pl-[5px] pt-[3px] pb-[3px] pr-[46px]`.
+    The 46px right inset reserves space for the 44px-wide submit
+    column anchored at `bottom-1 right-1` (4px from edge) so text
+    never slides under the floating button. The 5px / 3px insets
+    on the other three sides are intentionally minimal.
+  - Textarea borders: `rounded-none border-x-0 border-b-0`. The
+    base `border border-input rounded-lg` is overridden so only
+    the top hairline remains in the rest state. On focus the
+    other three sides return as 1px hairlines via
+    `focus:border-x focus:border-b`; the default focus ring is
+    suppressed (`focus:ring-0`) so the focused look is just
+    "all four sides at 1px", nothing more.
   - The overlay wrapper is `pointer-events-none` so clicks in the
     "empty" area pass through to the textarea (focus, selection).
     Each button is `pointer-events-auto` so clicks register on the
