@@ -17,6 +17,7 @@ import {
 } from "react-aria-components";
 import useSWR from "swr";
 
+import { AppPage, AppPageBody, AppPageHeader } from "@/components/app-page";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
 import { StaleDataBanner } from "@/components/stale-data-banner";
@@ -212,12 +213,12 @@ function PromptsPage() {
   };
 
   return (
-    <div className="-m-4 flex flex-1 flex-col min-h-0">
+    <AppPage>
       <StaleDataBanner
         headline="Showing cached prompt history - OpenCode is unreachable."
         hint="The archive is served from OpenPortal's local SQLite. Re-firing a prompt into a session will fail until OpenCode is back."
       />
-      <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:gap-2 sm:px-4">
+      <AppPageHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
         <div className="relative flex flex-1 items-center min-w-0">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-2 size-4 text-muted-fg" />
           <input
@@ -306,9 +307,9 @@ function PromptsPage() {
             <span className="hidden sm:inline">Export</span>
           </a>
         </div>
-      </div>
+      </AppPageHeader>
 
-      <div className="flex-1 overflow-auto px-2 py-2 sm:px-4">
+      <AppPageBody className="px-2 py-2 sm:px-4">
         <PendingSubmissionsBanner />
         {isLoading && (
           <div className="flex flex-1 min-h-0 items-center justify-center">
@@ -384,13 +385,13 @@ function PromptsPage() {
             )}
           </>
         )}
-      </div>
+      </AppPageBody>
 
       <RefireModal
         promptId={refireTargetId}
         onClose={() => setRefireTargetId(null)}
       />
-    </div>
+    </AppPage>
   );
 }
 

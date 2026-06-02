@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
 import { FileDiff } from "@pierre/diffs/react";
 import { parsePatchFiles } from "@pierre/diffs";
+import { AppPage, AppPageBody, AppPageHeader } from "@/components/app-page";
 import { Loader } from "@/components/ui/loader";
 import { Button } from "@/components/ui/button";
 import { PageTitle } from "@/components/ui/typography";
@@ -66,16 +67,16 @@ function DiffPage() {
   }
 
   return (
-    <div className="-m-4 flex flex-1 flex-col min-h-0">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+    <AppPage>
+      <AppPageHeader className="flex items-center justify-between py-3">
         <PageTitle>Git Diff</PageTitle>
         <Button intent="secondary" size="sm" onPress={() => mutate()}>
           <ArrowPathIcon className="size-4" />
           Refresh
         </Button>
-      </div>
+      </AppPageHeader>
 
-      <div className="flex-1 overflow-auto">
+      <AppPageBody padded={false}>
         {files.map((file, index) => (
           <FileDiff
             key={file.name || file.prevName || index}
@@ -86,7 +87,7 @@ function DiffPage() {
             }}
           />
         ))}
-      </div>
-    </div>
+      </AppPageBody>
+    </AppPage>
   );
 }

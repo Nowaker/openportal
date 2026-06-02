@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { AppPage, AppPageContainer } from "@/components/app-page";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 
 export const Route = createFileRoute("/_app/docs")({
@@ -14,8 +15,8 @@ function DocsPage() {
   }, [setPageTitle]);
 
   return (
-    <div className="-m-4 flex flex-1 flex-col min-h-0 overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-4 py-6 space-y-8 text-sm">
+    <AppPage>
+      <AppPageContainer maxWidth="3xl" className="space-y-8 text-sm">
         <header className="space-y-2 border-b border-border pb-4">
           <h1 className="text-2xl font-semibold">OpenPortal documentation</h1>
           <p className="text-muted-fg">
@@ -27,8 +28,8 @@ function DocsPage() {
         <BadgesSection />
         <DotsSection />
         <ConnectionStatesSection />
-      </div>
-    </div>
+      </AppPageContainer>
+    </AppPage>
   );
 }
 
