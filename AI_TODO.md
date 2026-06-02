@@ -3678,3 +3678,56 @@ Design notes:
 - Add strict idempotency keying per terminal-event signature + guarded retry/backoff so one unknown terminal event triggers at most one revive in the backoff window.
 - Keep revive prompt concise and wrapper-styled; include explicit OpenPortal origin marker for observability.
 - Add focused server tests for detection (positive + negative) and trigger behavior (single fire, no spam, skip complete sessions).
+
+### 158. Chat errors/events must render message metadata consistently (PENDING - in progress)
+
+User prompt (verbatim):
+
+> https://portal.desktop.ts.nowaker.net:8443/session/ses_1ad6a8e07ffeUN4nLbC0vax6d0?server=srv-2dy1srwz
+> at the end of this session, i see in portal:
+>
+> Unknown error
+> Session too large to compact - context exceeds model limit even after stripping media
+> continue
+>
+> Unknown error
+> Session too large to compact - context exceeds model limit even after stripping media
+>
+> Auto-compaction
+>
+> Unknown error
+> Session too large to compact - context exceeds model limit even after stripping media
+>
+> Auto-compaction
+>
+> Unknown error
+> Session too large to compact - context exceeds model limit even after stripping media
+>
+>
+> these events are missing information that other events have - like, the datetime they happened. a permalink to them. etc.
+>
+> fix it.
+
+User clarification (verbatim):
+
+> not on session compacting errors. on ANY errors, and any events that are missing the metadata!
+
+Design notes:
+
+- Patch the shared session chat renderer, not a compaction-specific branch.
+- Any visible message-shaped row with only tool calls, compaction events, errors, permission decisions, or other non-text event parts must still expose the normal metadata surface: timestamp, permalink, info button, and applicable message actions.
+- Session-level indicator errors should also include authoritative time metadata when the event stream provides it.
+- Verify on the reported session URL and with a synthetic event/error surface so the fix covers the broad class.
+
+**Status Update**: Analysis completed (2026-06-01). See `ai-analysis-requests/EVENT_METADATA_DISCREPANCY.md` for full investigation.
+
+Summary:
+- Root cause identified: `ErrorBox`, `CompactionEventRow`, and `SessionLevelErrorBox` components do not receive timestamp/permalink data despite having access to parent message time in the render path.
+- Main renderer: `renderMessage()` at line 5314 extracts `message.info.time.created` for normal messages (lines 2867–2869) but never passes it to error/event delegates (lines 248, 3255–3261, 3463–3471).
+- Patches required:
+  1. `ErrorBox` (lines 2649–2693): add `createdMs?: number` parameter, render timestamp in header
+  2. `CompactionEventRow` (lines 3410–3447): add `createdMs?: number` and `messageId?: string` parameters
+  3. Call sites (lines 248, 3255–3261, 3463–3471): pass `message.info.time?.created` and `message.info.id` to renderers
+- Session-level errors: require decision on whether `session.lastError` should include timestamp in upstream schema, or use synthetic timestamp on render.
+
+Downstream implementation deferred pending design review of metadata row density and session-error timestamp sourcing.
