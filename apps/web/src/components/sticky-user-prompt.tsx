@@ -5,10 +5,20 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
 import { ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline";
 import type { MessageWithParts, Part } from "@/hooks/use-session-messages";
+import { parseOmoBlocks } from "@/lib/omo-injection";
+import { OmoBlockCompact } from "@/components/omo-block-compact";
+import { MessageMetaStack } from "@/components/message-meta-stack";
+import { computeMessageMeta, type ProvidersData } from "@/lib/message-meta";
+import { useDateFormatStore } from "@/stores/date-format-store";
+import {
+  formatMessageTime,
+  formatAbsoluteAndRelative,
+} from "@/lib/format-time";
 
 function extractText(parts: Part[]): string {
   const chunks: string[] = [];
@@ -26,23 +36,29 @@ const TOP_EPSILON_PX = 4;
 export function StickyUserPromptOverlay({
   containerRef,
   messages,
+  providersData,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   messages: MessageWithParts[];
+  providersData: ProvidersData | undefined;
 }) {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
   const rafRef = useRef(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const dateFormat = useDateFormatStore((s) => s.format);
 
-  const textById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const msg of messages) {
-      if (msg.info.role === "user") {
-        const txt = extractText(msg.parts);
-        if (txt) m.set(msg.info.id, txt);
-      }
+  const messageById = useMemo(() => {
+    const m = new Map<string, MessageWithParts>();
+    for (const msg of messages) m.set(msg.info.id, msg);
+    return m;
+  }, [messages]);
+
+  const userMessageIndexById = useMemo(() => {
+    const m = new Map<string, number>();
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].info.role === "user") m.set(messages[i].info.id, i);
     }
     return m;
   }, [messages]);
@@ -67,9 +83,6 @@ export function StickyUserPromptOverlay({
         continue;
       }
       if (relTop <= TOP_EPSILON_PX) {
-        // A user prompt is sitting at the very top of the viewport
-        // (jumped here, or natural scroll-stop). The user can already
-        // see this prompt - the previous one is irrelevant.
         setCurrentId(null);
         return;
       }
@@ -109,9 +122,6 @@ export function StickyUserPromptOverlay({
     setIsTruncated(false);
   }, [currentId]);
 
-  // Detect whether collapsed body is being truncated by line-clamp.
-  // When the full text fits in 2 lines the chevron is useless and just
-  // adds noise - the user's feedback was to hide it in that case.
   useLayoutEffect(() => {
     if (expanded) return;
     const el = bodyRef.current;
@@ -138,15 +148,65 @@ export function StickyUserPromptOverlay({
     }
   }, [containerRef, currentId]);
 
+  const handleBoxClick = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      const sel = typeof window !== "undefined" ? window.getSelection() : null;
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) return;
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest("button, a, input, textarea")) return;
+      handleJump();
+    },
+    [handleJump],
+  );
+
   if (!currentId) return null;
-  const text = textById.get(currentId);
-  if (!text) return null;
+  const message = messageById.get(currentId);
+  if (!message || message.info.role !== "user") return null;
+  const text = extractText(message.parts);
+
+  const myIdx = userMessageIndexById.get(currentId) ?? -1;
+  let nextAssistantInfo: MessageWithParts["info"] | null = null;
+  if (myIdx >= 0) {
+    for (let j = myIdx + 1; j < messages.length; j++) {
+      if (messages[j].info.role === "assistant") {
+        nextAssistantInfo = messages[j].info;
+        break;
+      }
+    }
+  }
+  const meta = computeMessageMeta(
+    message.info,
+    nextAssistantInfo,
+    false,
+    providersData,
+    undefined,
+  );
+
+  const created = message.info.time?.created;
+  const timestamp = created ? formatMessageTime(created, dateFormat) : "";
+  const titleAt = formatAbsoluteAndRelative(created) ?? "";
+
+  const blocks = text ? parseOmoBlocks(text) : [];
 
   const showChevron = expanded || isTruncated;
+  const copyText = text || null;
 
   return (
     <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 px-3 pt-2">
-      <div className="pointer-events-auto rounded-md border border-primary/30 bg-primary/15 shadow-sm backdrop-blur-sm">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleBoxClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleJump();
+          }
+        }}
+        className="pointer-events-auto cursor-pointer rounded-md border border-primary/30 bg-primary/15 shadow-sm backdrop-blur-sm hover:bg-primary/20"
+        title="Click to jump to this prompt"
+        aria-label="Jump to this prompt"
+      >
         <div className="flex items-start gap-1.5 px-3 py-2">
           <div className="flex-1 min-w-0 text-sm text-fg">
             <div
@@ -158,35 +218,49 @@ export function StickyUserPromptOverlay({
               }
               style={expanded ? { maxHeight: "40vh" } : undefined}
             >
-              {text}
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-center gap-0.5">
-            {showChevron && (
-              <button
-                type="button"
-                onClick={() => setExpanded((e) => !e)}
-                className="rounded p-1 text-muted-fg hover:bg-primary/20 hover:text-fg"
-                aria-label={expanded ? "Collapse prompt" : "Expand prompt"}
-                title={expanded ? "Collapse" : "Expand"}
-              >
-                {expanded ? (
-                  <ChevronUpIcon className="size-4" />
+              {blocks.length === 0 && text}
+              {blocks.map((b, i) =>
+                b.kind === "omo" ? (
+                  <OmoBlockCompact
+                    key={i}
+                    header={b.header ?? ""}
+                    summary={b.summary}
+                    segments={b.segments}
+                  />
                 ) : (
-                  <ChevronDownIcon className="size-4" />
-                )}
-              </button>
-            )}
+                  <span key={i}>{b.text}</span>
+                ),
+              )}
+            </div>
+            <MessageMetaStack
+              messageId={currentId}
+              className="mt-1 text-[10px] text-muted-fg/70"
+              align="left"
+              copyText={copyText}
+              timestamp={
+                timestamp ? { display: timestamp, title: titleAt } : null
+              }
+              meta={meta}
+            />
+          </div>
+          {showChevron && (
             <button
               type="button"
-              onClick={handleJump}
-              className="rounded px-1 py-0.5 text-[10px] uppercase tracking-wide text-muted-fg hover:bg-primary/20 hover:text-fg"
-              title="Jump to this prompt"
-              aria-label="Jump to this prompt"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+              className="rounded p-1 text-muted-fg hover:bg-primary/20 hover:text-fg"
+              aria-label={expanded ? "Collapse prompt" : "Expand prompt"}
+              title={expanded ? "Collapse" : "Expand"}
             >
-              jump
+              {expanded ? (
+                <ChevronUpIcon className="size-4" />
+              ) : (
+                <ChevronDownIcon className="size-4" />
+              )}
             </button>
-          </div>
+          )}
         </div>
       </div>
     </div>

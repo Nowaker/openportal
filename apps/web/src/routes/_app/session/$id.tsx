@@ -95,6 +95,17 @@ import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { StarMessageButton } from "@/components/star-message-button";
 import { StickyUserPromptOverlay } from "@/components/sticky-user-prompt";
+import { CopyMarkdownButton } from "@/components/copy-markdown-button";
+import {
+  MessagePermalinkTimestamp,
+  flashMessageHighlight,
+} from "@/components/message-permalink-timestamp";
+import { MessageMetaStack } from "@/components/message-meta-stack";
+import {
+  computeMessageMeta,
+  type ProvidersData,
+} from "@/lib/message-meta";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import { TextSelectionMenu } from "@/components/text-selection-menu";
 import { speakText, useTtsStore } from "@/stores/tts-store";
 import { useChatDisplayStore } from "@/stores/chat-display-store";
@@ -1969,184 +1980,7 @@ const rehypeMarkLastParagraph = () => (tree: any) => {
   }
 };
 
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
-function CopyMarkdownButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handle = async () => {
-    if (await copyTextToClipboard(text)) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    }
-  };
-  return (
-    <button
-      type="button"
-      onClick={handle}
-      data-test="portal-msg-copy"
-      title={copied ? "Copied!" : "Copy message markdown"}
-      aria-label="Copy message markdown"
-      className="inline-flex items-center hover:text-fg transition-colors"
-    >
-      {copied ? (
-        <CheckIcon className="size-3 text-emerald-500" />
-      ) : (
-        <ClipboardDocumentIcon className="size-3" />
-      )}
-    </button>
-  );
-}
-
-// Per-message timestamp rendered as a permalink anchor. Per the user
-// spec: 'click is open, not copy. right click copy, or on phone hold
-// and copy, is how you copy. click to copy is nonsense.'
-//
-// Click semantics:
-//   - In-page (message is already rendered in the current window):
-//     scroll-into-view + flashMessageHighlight, NO navigation. Per
-//     user spec: 'you see that message, you click on it, you open it,
-//     but it is in front of you anyway, so just highlight it and that
-//     is it.' The hash IS updated via history.replaceState so the URL
-//     stays shareable.
-//   - Not in page (different session / outside the current window):
-//     default <a> navigation runs - same tab, hash kicks the route
-//     into permalink-window mode.
-// Copy semantics:
-//   - Right-click on desktop -> contextmenu handler copies + toasts.
-//   - Long-press on mobile (>=600ms) -> same.
-//   - Native browser 'Copy link address' still works because href is
-//     a real URL.
-// Highlight a message in the current document by flashing a CSS class
-// on its container for a brief window. Works for both in-page jumps
-// (click on a permalink whose target is already in the rendered chat)
-// and fresh permalink-landing (the route entered with #msg-<id>).
-function flashMessageHighlight(messageId: string): void {
-  if (typeof document === "undefined") return;
-  const el = document.getElementById(`msg-${messageId}`);
-  if (!el) return;
-  el.classList.add("permalink-highlight");
-  window.setTimeout(() => {
-    el.classList.remove("permalink-highlight");
-  }, 2400);
-}
-
-function MessagePermalinkTimestamp({
-  messageId,
-  display,
-  titleAt,
-  className,
-}: {
-  messageId: string;
-  display: string;
-  titleAt: string;
-  className: string;
-}) {
-  const [copied, setCopied] = useState(false);
-  const buildAbsoluteUrl = (): string => {
-    const hash = `#msg-${encodeURIComponent(messageId)}`;
-    if (typeof window === "undefined") return hash;
-    const url = new URL(window.location.href);
-    url.hash = hash;
-    return url.toString();
-  };
-  // Left click: open + scroll to the target in the same tab. If the
-  // target is already in the rendered chat (same session, message in
-  // current window), just highlight + scroll without navigation. The
-  // user wanted clicking on a permalink in chat to NOT navigate away -
-  // they already see the message, the click is just an emphasis gesture.
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    const inPage =
-      typeof document !== "undefined" &&
-      document.getElementById(`msg-${messageId}`) !== null;
-    if (inPage) {
-      e.preventDefault();
-      const el = document.getElementById(`msg-${messageId}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        if (typeof window !== "undefined") {
-          const hash = `#msg-${encodeURIComponent(messageId)}`;
-          window.history.replaceState(
-            null,
-            "",
-            `${window.location.pathname}${window.location.search}${hash}`,
-          );
-        }
-        flashMessageHighlight(messageId);
-      }
-    }
-    // not in page: let the browser navigate to the href (same tab,
-    // the route detects the #msg-<id> hash and switches into
-    // permalink-window mode).
-  };
-  // Right-click / long-press: copy the absolute URL. Native browser
-  // copy-link-address still works too, but this gives a friendlier
-  // path with toast confirmation.
-  const handleContextMenu = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    void copyTextToClipboard(buildAbsoluteUrl()).then((ok) => {
-      if (!ok) return;
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    });
-  };
-  const longPressTimerRef = useRef<number | null>(null);
-  const handleTouchStart = () => {
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-    }
-    longPressTimerRef.current = window.setTimeout(() => {
-      longPressTimerRef.current = null;
-      void copyTextToClipboard(buildAbsoluteUrl()).then((ok) => {
-        if (!ok) return;
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
-      });
-    }, 600);
-  };
-  const handleTouchEnd = () => {
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-  const titleSuffix = copied
-    ? " - link copied!"
-    : " - click to jump, right-click / long-press to copy permalink";
-  return (
-    <a
-      href={`#msg-${encodeURIComponent(messageId)}`}
-      onClick={handleClick}
-      onContextMenu={handleContextMenu}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
-      title={`${titleAt}${titleSuffix}`}
-      aria-label="Jump to message (right-click / long-press copies permalink)"
-      className={`${className} cursor-pointer hover:text-fg hover:underline decoration-dotted underline-offset-2 transition-colors`}
-    >
-      {copied ? "copied!" : display}
-    </a>
-  );
-}
 
 interface HastNode {
   type?: string;
@@ -2693,88 +2527,7 @@ function ErrorBox({
   );
 }
 
-interface ProvidersData {
-  providers?: Array<{
-    id: string;
-    name?: string;
-    models?: Record<string, { id?: string; name?: string }>;
-  }>;
-}
 
-interface MessageMeta {
-  parts: string[];
-  title: string;
-}
-
-function computeMessageMeta(
-  info: MessageWithParts["info"],
-  isFinalAssistant: boolean,
-  providersData: ProvidersData | undefined,
-  turnStartTime: number | undefined,
-): MessageMeta | null {
-  if (!isFinalAssistant) return null;
-  if (info.role !== "assistant") return null;
-  const a = info as unknown as {
-    agent?: string;
-    modelID?: string;
-    providerID?: string;
-    variant?: string;
-    time?: { created?: number; completed?: number };
-  };
-  const agent = typeof a.agent === "string" && a.agent ? a.agent : null;
-  const modelID = a.modelID;
-  const providerID = a.providerID;
-  const variant = typeof a.variant === "string" && a.variant ? a.variant : null;
-  const created = a.time?.created;
-  const completed = a.time?.completed;
-
-  const provider = providersData?.providers?.find((p) => p.id === providerID);
-  const modelEntry = provider?.models?.[modelID ?? ""];
-  const modelName = modelEntry?.name || modelID || null;
-  const providerName = provider?.name || providerID || null;
-
-  let stepDurationMs: number | null = null;
-  if (
-    typeof created === "number" &&
-    typeof completed === "number" &&
-    completed > created
-  ) {
-    stepDurationMs = completed - created;
-  }
-  let totalDurationMs: number | null = null;
-  if (
-    typeof turnStartTime === "number" &&
-    typeof completed === "number" &&
-    completed > turnStartTime
-  ) {
-    totalDurationMs = completed - turnStartTime;
-  }
-  const showTotal =
-    totalDurationMs !== null &&
-    (stepDurationMs === null || totalDurationMs - stepDurationMs >= 1000);
-  const stepDuration = stepDurationMs !== null ? formatDuration(stepDurationMs) : null;
-  const totalDuration =
-    showTotal && totalDurationMs !== null ? formatDuration(totalDurationMs) : null;
-
-  const parts: string[] = [];
-  if (agent) parts.push(agent);
-  if (modelName) parts.push(modelName);
-  if (variant) parts.push(variant);
-  if (stepDuration) parts.push(stepDuration);
-  if (totalDuration) parts.push(totalDuration);
-
-  const titleSegments: string[] = [];
-  if (agent) titleSegments.push(`Agent: ${agent}`);
-  if (providerName && modelName)
-    titleSegments.push(`Model: ${providerName} / ${modelName}`);
-  else if (modelName) titleSegments.push(`Model: ${modelName}`);
-  if (variant) titleSegments.push(`Thinking effort: ${variant}`);
-  if (stepDuration) titleSegments.push(`Final step: ${stepDuration}`);
-  if (totalDuration)
-    titleSegments.push(`Total since user prompt: ${totalDuration}`);
-
-  return { parts, title: titleSegments.join("\n") };
-}
 
 const MessageItem = memo(function MessageItem({
   message,
@@ -2791,6 +2544,7 @@ const MessageItem = memo(function MessageItem({
   onForkRequest,
   isLastError,
   isFinalAssistant,
+  nextAssistantInfo,
   providersData,
   turnStartTime,
 }: {
@@ -2808,6 +2562,7 @@ const MessageItem = memo(function MessageItem({
   onForkRequest: (message: MessageWithParts) => void;
   isLastError: boolean;
   isFinalAssistant: boolean;
+  nextAssistantInfo: MessageWithParts["info"] | null;
   providersData: ProvidersData | undefined;
   turnStartTime: number | undefined;
 }) {
@@ -2870,6 +2625,7 @@ const MessageItem = memo(function MessageItem({
   const messageTitleAt = formatAbsoluteAndRelative(message.info.time?.created);
   const messageMeta = computeMessageMeta(
     message.info,
+    nextAssistantInfo,
     isFinalAssistant,
     providersData,
     turnStartTime,
@@ -3099,12 +2855,12 @@ const MessageItem = memo(function MessageItem({
               ))}
             </div>
           )}
-          <div
-            className="absolute bottom-1 right-2 flex flex-col items-end gap-0.5 text-[10px] text-muted-fg/70"
-            data-test={messageMeta ? "portal-msg-meta-stack" : undefined}
-          >
-            <div className="flex items-center gap-1.5">
-              {!isPending && (
+          <MessageMetaStack
+            messageId={message.info.id}
+            className="absolute bottom-1 right-2 text-[10px] text-muted-fg/70"
+            dataTest={messageMeta ? "portal-msg-meta-stack" : undefined}
+            leading={
+              !isPending && (showStar || showFork || showRevert) ? (
                 <>
                   {showStar && (
                     <StarMessageButton
@@ -3147,9 +2903,11 @@ const MessageItem = memo(function MessageItem({
                     </button>
                   )}
                 </>
-              )}
-              {showCopy && textContent && <CopyMarkdownButton text={textContent} />}
-              {showInfoIconRow && !isPending && (
+              ) : null
+            }
+            copyText={showCopy && textContent ? textContent : null}
+            trailing={
+              showInfoIconRow && !isPending ? (
                 <button
                   type="button"
                   onClick={() => setShowInfoModal(true)}
@@ -3160,42 +2918,24 @@ const MessageItem = memo(function MessageItem({
                 >
                   <InformationCircleIcon className="size-3.5" />
                 </button>
-              )}
-              {showTimestamp && messageTimestamp && !isPending && (
-                <MessagePermalinkTimestamp
-                  messageId={message.info.id}
-                  display={
-                    stepDurationLabel
-                      ? `${stepDurationLabel} - ${messageTimestamp}`
-                      : messageTimestamp
+              ) : null
+            }
+            timestamp={
+              showTimestamp && messageTimestamp && !isPending
+                ? {
+                    display: messageTimestamp,
+                    title: messageTitleAt ?? "",
+                    stepDurationLabel,
                   }
-                  titleAt={
-                    stepDurationLabel
-                      ? `Step duration: ${stepDurationLabel}\n${messageTitleAt ?? ""}`
-                      : messageTitleAt
-                  }
-                  className="font-mono tabular-nums whitespace-nowrap"
-                />
-              )}
-              {messageTimestamp && isPending && (
-                <span
-                  className="font-mono tabular-nums whitespace-nowrap"
-                  title={messageTitleAt}
-                >
-                  {messageTimestamp}
-                </span>
-              )}
-            </div>
-            {messageMeta && messageMeta.parts.length > 0 && (
-              <span
-                className="font-mono tabular-nums whitespace-nowrap"
-                data-test="portal-msg-meta-line"
-                title={messageMeta.title}
-              >
-                {messageMeta.parts.join(" · ")}
-              </span>
-            )}
-          </div>
+                : null
+            }
+            timestampPlain={
+              messageTimestamp && isPending
+                ? { display: messageTimestamp, title: messageTitleAt ?? "" }
+                : null
+            }
+            meta={messageMeta}
+          />
         </div>
       )}
       {toolCalls.length > 0 && (
@@ -5371,6 +5111,7 @@ function SessionPage() {
         : message;
       let isFinalAssistant = false;
       let turnStartTime: number | undefined;
+      let nextAssistantInfo: MessageWithParts["info"] | null = null;
       if (message.info.role === "assistant") {
         const infoAny = message.info as {
           time?: { completed?: number };
@@ -5396,6 +5137,20 @@ function SessionPage() {
             isFinalAssistant = !laterAssistant;
           }
         }
+      } else if (message.info.role === "user") {
+        const myIdx = ctx.baseVisible.findIndex(
+          (m) => m.info.id === message.info.id,
+        );
+        if (myIdx >= 0) {
+          for (let j = myIdx + 1; j < ctx.baseVisible.length; j++) {
+            const next = ctx.baseVisible[j];
+            if (!next) break;
+            if (next.info.role === "assistant") {
+              nextAssistantInfo = next.info;
+              break;
+            }
+          }
+        }
       }
       return (
         <MessageItem
@@ -5414,6 +5169,7 @@ function SessionPage() {
           onForkRequest={handleForkRequest}
           isLastError={message.info.id === ctx.lastErrorMessageId}
           isFinalAssistant={isFinalAssistant}
+          nextAssistantInfo={nextAssistantInfo}
           turnStartTime={turnStartTime}
           providersData={providersData as ProvidersData | undefined}
         />
@@ -5570,6 +5326,7 @@ function SessionPage() {
       <StickyUserPromptOverlay
         containerRef={chatContainerRef}
         messages={messages}
+        providersData={providersData as ProvidersData | undefined}
       />
       <div
         className="absolute inset-0 overflow-auto overflow-x-hidden"
