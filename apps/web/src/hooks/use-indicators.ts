@@ -49,6 +49,7 @@ export interface SessionIndicatorState {
   idle: boolean;
   lastEventAt: number;
   lastError: string | null;
+  lastErrorAt: number | null;
   pendingQuestionIds: string[];
   pendingPermissionIds: string[];
   todoState: { pending: number; in_progress: number; completed: number } | null;

@@ -2646,6 +2646,32 @@ function ErrorAcknowledgeControl({
 // the user clicks Acknowledge. Without the acknowledged check the outer
 // box stayed red after acknowledgement, contradicting the 'was a problem
 // but isn\u2019t any more' visual the user asked for.
+function EventMetadataTimestamp({
+  messageId,
+  createdAt,
+  className,
+}: {
+  messageId: string;
+  createdAt: number | undefined;
+  className?: string;
+}) {
+  const dateFormat = useDateFormatStore((s) => s.format);
+  const iconVisibility = useChatDisplayStore((s) => s.iconVisibility);
+  const { isMobile } = useMediaQuery();
+  const visibilityKey = isMobile ? "mobile" : "desktop";
+  if (!iconVisibility[visibilityKey].timestamp || !createdAt) return null;
+  const timestamp = formatMessageTime(createdAt, dateFormat);
+  if (!timestamp) return null;
+  return (
+    <MessagePermalinkTimestamp
+      messageId={messageId}
+      display={timestamp}
+      titleAt={formatAbsoluteAndRelative(createdAt) ?? timestamp}
+      className={`font-mono tabular-nums whitespace-nowrap ${className ?? ""}`}
+    />
+  );
+}
+
 function ErrorBox({
   sessionId,
   messageId,
@@ -2653,6 +2679,9 @@ function ErrorBox({
   gutter,
   title,
   detail,
+  createdAt,
+  showMetadata = false,
+  anchorSelf = false,
 }: {
   sessionId: string;
   messageId: string;
@@ -2660,6 +2689,9 @@ function ErrorBox({
   gutter: string;
   title: string;
   detail?: string;
+  createdAt?: number;
+  showMetadata?: boolean;
+  anchorSelf?: boolean;
 }) {
   const acknowledgedId = useSessionErrorStore(
     (s) => s.acknowledged[sessionId],
@@ -2670,18 +2702,28 @@ function ErrorBox({
     : "border-danger/40 bg-danger-subtle/30 text-danger-subtle-fg";
   return (
     <div
+      id={anchorSelf ? `msg-${messageId}` : undefined}
       className={`${gutter} rounded-md border ${palette} p-3 text-xs`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className={`font-semibold ${isAcknowledged ? "text-muted-fg" : ""}`}>
           {title}
         </div>
-        {isLastError && (
-          <ErrorAcknowledgeControl
-            sessionId={sessionId}
-            messageId={messageId}
-          />
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {showMetadata && (
+            <EventMetadataTimestamp
+              messageId={messageId}
+              createdAt={createdAt}
+              className="text-[10px] text-muted-fg/70"
+            />
+          )}
+          {isLastError && (
+            <ErrorAcknowledgeControl
+              sessionId={sessionId}
+              messageId={messageId}
+            />
+          )}
+        </div>
       </div>
       {detail && (
         <div className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug">
@@ -2888,6 +2930,133 @@ const MessageItem = memo(function MessageItem({
       : null;
 
   const hasHeaderRow = textContent || fileParts.length > 0;
+  const pastPermissionDecisions =
+    ((message.info as { _permissionDecisions?: PastPermissionDecision[] })
+      ._permissionDecisions ?? []).filter(
+      (d) => !messagePermissions.some((p) => p.id === d.requestId),
+    );
+  const hasEventOnlyRows =
+    !hasHeaderRow &&
+    (toolCalls.length > 0 ||
+      messagePermissions.length > 0 ||
+      pastPermissionDecisions.length > 0 ||
+      compactionParts.length > 0 ||
+      !!errorDescription);
+  const showTimestampAnchor = showTimestamp && messageTimestamp && !isPending;
+  const showPendingTimestamp = messageTimestamp && isPending;
+  const showCopyButton = showCopy && textContent;
+  const showInfoButton = showInfoIconRow && !isPending;
+  const showActionRow =
+    (!isPending &&
+      (showStar ||
+        showFork ||
+        showRevert ||
+        showCopyButton ||
+        showInfoButton ||
+        showTimestampAnchor)) ||
+    showPendingTimestamp;
+  const messageMetadataStack =
+    showActionRow || (messageMeta && messageMeta.parts.length > 0) ? (
+      <div
+        className="flex flex-col items-end gap-0.5 text-[10px] text-muted-fg/70"
+        data-test={messageMeta ? "portal-msg-meta-stack" : undefined}
+      >
+        {showActionRow && (
+          <div className="flex items-center gap-1.5">
+            {!isPending && (
+              <>
+                {showStar && (
+                  <StarMessageButton
+                    sessionId={sessionId}
+                    messageId={message.info.id}
+                    role={isAssistant ? "assistant" : "user"}
+                    snippet={textContent}
+                  />
+                )}
+                {showFork && (
+                  <button
+                    type="button"
+                    onClick={() => onForkRequest(message)}
+                    data-test="portal-msg-fork"
+                    className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                    aria-label="Fork to a new session from this message"
+                    title="Fork to a new session from this message"
+                  >
+                    <ForkIcon className="size-3.5" />
+                  </button>
+                )}
+                {showRevert && (
+                  <button
+                    type="button"
+                    onClick={() => onRevertRequest(message, textContent)}
+                    data-test="portal-msg-revert"
+                    className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                    aria-label={
+                      isAssistant
+                        ? "Revert to right after this message"
+                        : "Revert to before this message"
+                    }
+                    title={
+                      isAssistant
+                        ? "Revert to right after this message"
+                        : "Revert to before this message"
+                    }
+                  >
+                    <RevertIcon className="size-3.5" />
+                  </button>
+                )}
+              </>
+            )}
+            {showCopyButton && <CopyMarkdownButton text={textContent} />}
+            {showInfoButton && (
+              <button
+                type="button"
+                onClick={() => setShowInfoModal(true)}
+                data-test="portal-msg-info"
+                className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                aria-label="Open message metadata modal"
+                title={`Open message metadata modal (id, parts, raw payload). Message id: ${message.info.id}`}
+              >
+                <InformationCircleIcon className="size-3.5" />
+              </button>
+            )}
+            {showTimestampAnchor && (
+              <MessagePermalinkTimestamp
+                messageId={message.info.id}
+                display={
+                  stepDurationLabel
+                    ? `${stepDurationLabel} - ${messageTimestamp}`
+                    : messageTimestamp
+                }
+                titleAt={
+                  stepDurationLabel
+                    ? `Step duration: ${stepDurationLabel}\n${messageTitleAt ?? ""}`
+                    : messageTitleAt
+                }
+                className="font-mono tabular-nums whitespace-nowrap"
+              />
+            )}
+            {showPendingTimestamp && (
+              <span
+                className="font-mono tabular-nums whitespace-nowrap"
+                title={messageTitleAt}
+              >
+                {messageTimestamp}
+              </span>
+            )}
+          </div>
+        )}
+        {messageMeta && messageMeta.parts.length > 0 && (
+          <span
+            className="font-mono tabular-nums whitespace-nowrap"
+            data-test="portal-msg-meta-line"
+            title={messageMeta.title}
+          >
+            {messageMeta.parts.join(" · ")}
+          </span>
+        )}
+      </div>
+    ) : null;
   // Detect synthetic audit messages (stuck-detector + compaction-fixer
   // SQL-inject these on every recovery dispatch). Shape: message.synthetic
   // === true AND the text part has ignored === true. opencode's
@@ -3098,103 +3267,11 @@ const MessageItem = memo(function MessageItem({
               ))}
             </div>
           )}
-          <div
-            className="absolute bottom-1 right-2 flex flex-col items-end gap-0.5 text-[10px] text-muted-fg/70"
-            data-test={messageMeta ? "portal-msg-meta-stack" : undefined}
-          >
-            <div className="flex items-center gap-1.5">
-              {!isPending && (
-                <>
-                  {showStar && (
-                    <StarMessageButton
-                      sessionId={sessionId}
-                      messageId={message.info.id}
-                      role={isAssistant ? "assistant" : "user"}
-                      snippet={textContent}
-                    />
-                  )}
-                  {showFork && (
-                    <button
-                      type="button"
-                      onClick={() => onForkRequest(message)}
-                      data-test="portal-msg-fork"
-                      className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                      aria-label="Fork to a new session from this message"
-                      title="Fork to a new session from this message"
-                    >
-                      <ForkIcon className="size-3.5" />
-                    </button>
-                  )}
-                  {showRevert && (
-                    <button
-                      type="button"
-                      onClick={() => onRevertRequest(message, textContent)}
-                      data-test="portal-msg-revert"
-                      className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                      aria-label={
-                        isAssistant
-                          ? "Revert to right after this message"
-                          : "Revert to before this message"
-                      }
-                      title={
-                        isAssistant
-                          ? "Revert to right after this message"
-                          : "Revert to before this message"
-                      }
-                    >
-                      <RevertIcon className="size-3.5" />
-                    </button>
-                  )}
-                </>
-              )}
-              {showCopy && textContent && <CopyMarkdownButton text={textContent} />}
-              {showInfoIconRow && !isPending && (
-                <button
-                  type="button"
-                  onClick={() => setShowInfoModal(true)}
-                  data-test="portal-msg-info"
-                  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                  aria-label="Open message metadata modal"
-                  title={`Open message metadata modal (id, parts, raw payload). Message id: ${message.info.id}`}
-                >
-                  <InformationCircleIcon className="size-3.5" />
-                </button>
-              )}
-              {showTimestamp && messageTimestamp && !isPending && (
-                <MessagePermalinkTimestamp
-                  messageId={message.info.id}
-                  display={
-                    stepDurationLabel
-                      ? `${stepDurationLabel} - ${messageTimestamp}`
-                      : messageTimestamp
-                  }
-                  titleAt={
-                    stepDurationLabel
-                      ? `Step duration: ${stepDurationLabel}\n${messageTitleAt ?? ""}`
-                      : messageTitleAt
-                  }
-                  className="font-mono tabular-nums whitespace-nowrap"
-                />
-              )}
-              {messageTimestamp && isPending && (
-                <span
-                  className="font-mono tabular-nums whitespace-nowrap"
-                  title={messageTitleAt}
-                >
-                  {messageTimestamp}
-                </span>
-              )}
+          {messageMetadataStack && (
+            <div className="absolute bottom-1 right-2">
+              {messageMetadataStack}
             </div>
-            {messageMeta && messageMeta.parts.length > 0 && (
-              <span
-                className="font-mono tabular-nums whitespace-nowrap"
-                data-test="portal-msg-meta-line"
-                title={messageMeta.title}
-              >
-                {messageMeta.parts.join(" · ")}
-              </span>
-            )}
-          </div>
+          )}
         </div>
       )}
       {toolCalls.length > 0 && (
@@ -3225,22 +3302,13 @@ const MessageItem = memo(function MessageItem({
           ))}
         </div>
       )}
-      {(() => {
-        const decisions =
-          ((message.info as { _permissionDecisions?: PastPermissionDecision[] })
-            ._permissionDecisions ?? []).filter(
-            (d) =>
-              !messagePermissions.some((p) => p.id === d.requestId),
-          );
-        if (decisions.length === 0) return null;
-        return (
-          <div className={`${textContent ? "mt-2 ml-6" : ""} space-y-1.5`}>
-            {decisions.map((d) => (
-              <PastPermissionDecisionPill key={d.requestId} decision={d} />
-            ))}
-          </div>
-        );
-      })()}
+      {pastPermissionDecisions.length > 0 && (
+        <div className={`${textContent ? "mt-2 ml-6" : ""} space-y-1.5`}>
+          {pastPermissionDecisions.map((d) => (
+            <PastPermissionDecisionPill key={d.requestId} decision={d} />
+          ))}
+        </div>
+      )}
       {compactionParts.length > 0 && (
         <div className="space-y-1">
           {compactionParts.map((part) => (
@@ -3257,6 +3325,11 @@ const MessageItem = memo(function MessageItem({
           title={errorDescription.title}
           detail={errorDescription.detail}
         />
+      )}
+      {hasEventOnlyRows && messageMetadataStack && (
+        <div className="mt-1 flex justify-end pr-1">
+          {messageMetadataStack}
+        </div>
       )}
       <MessageInfoModal
         isOpen={showInfoModal}
@@ -3409,6 +3482,9 @@ function hashSessionError(raw: string): string {
 
 function CompactionEventRow({
   part,
+  messageId,
+  createdAt,
+  showMetadata = false,
 }: {
   part: Part & {
     id: string;
@@ -3417,6 +3493,9 @@ function CompactionEventRow({
     overflow?: boolean;
     tail_start_id?: string;
   };
+  messageId?: string;
+  createdAt?: number;
+  showMetadata?: boolean;
 }) {
   const label = part.auto ? "Auto-compaction" : "Manual compaction";
   const titleLines = [
@@ -3440,6 +3519,13 @@ function CompactionEventRow({
             overflow
           </span>
         )}
+        {showMetadata && (
+          <EventMetadataTimestamp
+            messageId={messageId ?? part.id}
+            createdAt={createdAt}
+            className="ml-1 border-l border-border/80 pl-1.5 text-[10px] text-muted-fg/70"
+          />
+        )}
       </span>
       <div className="flex-1 border-t border-dashed border-border" />
     </div>
@@ -3449,25 +3535,48 @@ function CompactionEventRow({
 function SessionLevelErrorBox({
   sessionId,
   lastError,
+  lastErrorAt,
 }: {
   sessionId: string;
   lastError: string;
+  lastErrorAt: number | null | undefined;
 }) {
   const errorId = useMemo(() => hashSessionError(lastError), [lastError]);
   const acknowledgedId = useSessionErrorStore(
     (s) => s.acknowledged[sessionId],
   );
   const parsed = useMemo(() => parseSessionLevelError(lastError), [lastError]);
+  const dateFormat = useDateFormatStore((s) => s.format);
+  const errorTimestamp = lastErrorAt
+    ? formatMessageTime(lastErrorAt, dateFormat)
+    : "";
+  const errorTitleAt = formatAbsoluteAndRelative(lastErrorAt ?? undefined);
   if (acknowledgedId === errorId) return null;
   return (
-    <ErrorBox
-      sessionId={sessionId}
-      messageId={errorId}
-      isLastError={true}
-      gutter="mx-3 my-3"
-      title={parsed.title}
-      detail={parsed.detail}
-    />
+    <div
+      id={`msg-${errorId}`}
+      data-message-id={errorId}
+      data-test={`portal-msg-${errorId}`}
+    >
+      <ErrorBox
+        sessionId={sessionId}
+        messageId={errorId}
+        isLastError={true}
+        gutter={errorTimestamp ? "mx-3 mt-3 mb-1" : "mx-3 my-3"}
+        title={parsed.title}
+        detail={parsed.detail}
+      />
+      {errorTimestamp && (
+        <div className="mx-3 mb-3 flex justify-end pr-1 text-[10px] text-muted-fg/70">
+          <MessagePermalinkTimestamp
+            messageId={errorId}
+            display={errorTimestamp}
+            titleAt={errorTitleAt}
+            className="font-mono tabular-nums whitespace-nowrap"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -5674,6 +5783,7 @@ function SessionPage() {
             <SessionLevelErrorBox
               sessionId={sessionId}
               lastError={sessionIndicatorForErrors.lastError}
+              lastErrorAt={sessionIndicatorForErrors.lastErrorAt}
             />
           )}
           {permalinkMode && permalinkWindow.loading.after && (

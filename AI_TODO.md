@@ -3679,7 +3679,7 @@ Design notes:
 - Keep revive prompt concise and wrapper-styled; include explicit OpenPortal origin marker for observability.
 - Add focused server tests for detection (positive + negative) and trigger behavior (single fire, no spam, skip complete sessions).
 
-### 158. Chat errors/events must render message metadata consistently (PENDING - in progress)
+### 158. Chat errors/events must render message metadata consistently (DONE - this commit)
 
 User prompt (verbatim):
 
