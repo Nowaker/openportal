@@ -3678,3 +3678,23 @@ Design notes:
 - Add strict idempotency keying per terminal-event signature + guarded retry/backoff so one unknown terminal event triggers at most one revive in the backoff window.
 - Keep revive prompt concise and wrapper-styled; include explicit OpenPortal origin marker for observability.
 - Add focused server tests for detection (positive + negative) and trigger behavior (single fire, no spam, skip complete sessions).
+
+### 158. Auto-approve worker: reconcile pending permissions on (re)connect (DONE - b601607)
+
+User prompt (verbatim):
+
+> this session is stuck because openportal doesn't show permission request, or doesn't auto reply yes (autoapprove is enabledd)
+>
+> something is utterly broken. fix it.
+>
+> once fixed, validate that ses_188220dadffeb8GepIK8xraEoj goes through since it has auto approve on!
+
+Design notes:
+
+- Root cause: `auto-approve-worker.ts` only fired on NEW `permission.asked` SSE frames. The `/event` stream is "events from now on" — any permission asked BEFORE openportal connects (process restart, network drop, opencode restart) leaves a stale pending request in opencode that the worker never sees, so the session hangs forever until the user manually clicks Allow in opencode UI.
+- Fix: added `reconcilePendingPermissions(serverId, port, dedup)` that runs immediately after every successful SSE connect. It calls `permission.list()`, filters to requests whose session has `getEffectiveAutoApprove(sessionId) === true`, and fires `replyToPermission` with `auto: true` for each — recording each request id in a per-connection-cycle dedup set shared with `processStream` so a race-window double fire (request present in both list snapshot and SSE buffer) only sends one reply.
+- Dedup set is reset on every new connection cycle (after retry / reconnect), so a permission still pending across a reconnect gets one fresh attempt — never an indefinite suppression.
+- Pre-existing fetch-URL bug for `srv-9myqtdk1` (host `192.168.10.10` not currently reachable) surfaces in logs as `fetch() URL is invalid`. Out of scope for this fix; the secondary server's broken loop does not block the active one.
+- Files touched: `apps/web/src/server/plugins/auto-approve-worker.ts`.
+- Branch: `fix/auto-approve-reconcile-on-connect` at `~/projekty/webapps/portal-auto-approve-reconcile`; cherry-picked file onto `main-nowaker` as `b601607`. Deployed via `scripts/deploy.sh`.
+- Validation: at 12:25:47 prod restart, log shows `[auto-approve-worker] reconcile snapshot read 0 pending for server=srv-2dy1srwz` — reconcile path executed. `ses_188220dadffeb8GepIK8xraEoj` had its pre-restart permission manually approved by the user; subsequent dispatches went through. Future restarts will drain any pending permissions for auto-approve-enabled sessions on the spot.
