@@ -515,6 +515,26 @@ function isStandaloneOmoPayload(text: string): boolean {
   return ranges[0]!.start === 0 && ranges[0]!.end === trimmed.length;
 }
 
+function collectFencedCodeBlockRanges(text: string): Array<{ start: number; end: number }> {
+  const out: Array<{ start: number; end: number }> = [];
+  const fenceRegex = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*$/gm;
+  let open: { start: number; marker: string } | null = null;
+  for (const m of text.matchAll(fenceRegex)) {
+    if (m.index === undefined) continue;
+    const marker = (m[1] ?? "").slice(0, 1).repeat(3);
+    if (!open) {
+      open = { start: m.index, marker };
+      continue;
+    }
+    if ((m[1] ?? "").startsWith(open.marker)) {
+      out.push({ start: open.start, end: m.index + m[0].length });
+      open = null;
+    }
+  }
+  if (open) out.push({ start: open.start, end: text.length });
+  return out;
+}
+
 function dedupeOverlapping(ranges: Range[]): Range[] {
   const sorted = [...ranges].sort((a, b) => a.start - b.start);
   const out: Range[] = [];
@@ -613,7 +633,10 @@ export function parseOmoBlocks(text: string): OmoBlock[] {
     });
   }
 
-  const rawOmo = collectAllOmoRanges(text);
+  const codeBlockRanges = collectFencedCodeBlockRanges(text);
+  const rawOmo = collectAllOmoRanges(text).filter(
+    (r) => !codeBlockRanges.some((cr) => r.start >= cr.start && r.end <= cr.end),
+  );
 
   // <user-task> instances INSIDE another OMO wrapper (e.g. inside
   // <auto-slash-command>) stay collapsed with their wrapper. Only the

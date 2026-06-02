@@ -3783,3 +3783,27 @@ Design notes:
 - Add targeted extraction: move embedded user message out of wrapper body into normal visible message text, while preserving condensed wrapper summary + expandable sanitized boilerplate body.
 - Keep behavior narrow to specific boilerplate forms (do not alter unrelated `<system-reminder>` payloads).
 - Validate with manual QA on chat surface and ensure no regression for existing wrapper collapse behavior.
+
+### 161. OMO wrappers must not collapse content inside fenced markdown code blocks (DONE - this commit)
+
+User prompt (verbatim):
+
+> do not show a wrapper if it's inside multiline code block, like this:
+>
+> ```
+> <system-reminder>
+> [BACKGROUND TASK RESULT READY]
+> some content here
+> </system-reminder>
+>
+> ```
+>
+> reason: https://portal.desktop.ts.nowaker.net/session/ses_17ad702d4ffeM1JhOURJen44xa?server=srv-2dy1srwz#msg-msg_e854d0673001pH8LE23fus1jad
+>
+> when i cite some code, it shouldn't be omo-wrapped.
+
+Design notes:
+
+- Add `collectFencedCodeBlockRanges(text)` to `apps/web/src/lib/omo-injection.ts` that scans for paired triple-backtick (`` ``` ``) or triple-tilde (`~~~`) fences via a single multiline regex, pairing opens to closes and treating an unclosed open as fenced through end-of-text.
+- In `parseOmoBlocks`, filter the `collectAllOmoRanges` output to drop any range whose start+end falls entirely inside a code-block range. This handles every detector at once (system-reminder, ultrawork-mode, auto-slash-command, command-instruction, initiator-terminated, orphan tail, stripped marker) without touching their individual scanners.
+- Tests cover: cited reminder inside fenced block stays as user prose; real reminder outside the fence still collapses; orphan-like tail inside a fence is also ignored.

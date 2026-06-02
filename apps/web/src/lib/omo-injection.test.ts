@@ -55,6 +55,37 @@ Please address this message and continue with your tasks.
     expect(blocks[1]).toEqual({ kind: "user", text: userText });
   });
 
+  test("does not collapse a system-reminder cited inside a fenced code block", () => {
+    const text = "when i cite some code, it shouldn't be omo-wrapped:\n\n```\n<system-reminder>\n[BACKGROUND TASK RESULT READY]\nsome content here\n</system-reminder>\n\n```\n\nthat's the citation.";
+
+    const blocks = parseOmoBlocks(text);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.kind).toBe("user");
+    expect(blocks[0]?.text).toBe(text);
+  });
+
+  test("still detects a real system-reminder outside the fenced code block", () => {
+    const text = "```\n<system-reminder>\ncited example\n</system-reminder>\n```\n\n<system-reminder>\n[BACKGROUND TASK RESULT READY]\nreal one\n</system-reminder>";
+
+    const blocks = parseOmoBlocks(text);
+
+    expect(blocks.some((b) => b.kind === "omo")).toBe(true);
+    const omoBlocks = blocks.filter((b) => b.kind === "omo");
+    expect(omoBlocks).toHaveLength(1);
+    expect(omoBlocks[0]?.summary).toBe("[BACKGROUND TASK RESULT READY]");
+  });
+
+  test("ignores orphan reminder tail inside fenced code blocks", () => {
+    const text = "```\n<system-reminder>\nfoo\n</system-reminder>\n```\n\nnormal user prose continues here.";
+
+    const blocks = parseOmoBlocks(text);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.kind).toBe("user");
+    expect(blocks[0]?.text).toBe(text);
+  });
+
   test("folds a stale stripped orphan tail back into the omo block", () => {
     const meta = encodeURIComponent(
       JSON.stringify({
