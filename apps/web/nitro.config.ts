@@ -11,6 +11,7 @@ export default defineConfig({
     "./src/server/plugins/auto-approve-worker.ts",
     "./src/server/plugins/pending-prompt-worker.ts",
     "./src/server/plugins/indicator-broadcaster.ts",
+    "./src/server/plugins/unknown-finish-reviver.ts",
     "./src/server/plugins/session-prefetcher.ts",
     "./src/server/plugins/stuck-detector-client.ts",
     "./src/server/plugins/stuck-detector-journal-client.ts",
