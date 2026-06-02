@@ -64,6 +64,50 @@ export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
         });
         return index + 1;
       }
+      if (node.type === "html" && parent && typeof index === "number") {
+        // mdast `html` nodes carry raw markup as `value`, not parsed
+        // children, so the text-node branch below never sees IDs inside
+        // blocks like <task_metadata>...</task_metadata>.
+        const value = node.value ?? "";
+        if (value.indexOf("ses_") < 0 && value.indexOf("msg_") < 0) {
+          return undefined;
+        }
+        let m;
+        let last = 0;
+        const out: MdastNode[] = [];
+        ID_REGEX.lastIndex = 0;
+        while ((m = ID_REGEX.exec(value)) !== null) {
+          const id = m[2];
+          const ms = m.index + m[1].length;
+          const me = ms + id.length;
+          let target: string | null = id;
+          if (id.startsWith("ses_")) {
+            const charCount = id.length - "ses_".length;
+            if (charCount < FULL_SES_MIN_CHARS) {
+              target = options?.resolveSessionId?.(id) ?? null;
+            }
+          }
+          if (target === null) continue;
+          if (ms > last) {
+            out.push({ type: "html", value: value.slice(last, ms) });
+          }
+          const href = id.startsWith("ses_")
+            ? `/session/${target}`
+            : `#msg-${id}`;
+          out.push({
+            type: "link",
+            url: href,
+            children: [{ type: "text", value: id }],
+          });
+          last = me;
+        }
+        if (out.length === 0) return undefined;
+        if (last < value.length) {
+          out.push({ type: "html", value: value.slice(last) });
+        }
+        parent.children!.splice(index, 1, ...(out as MdastNode[]));
+        return index + out.length;
+      }
       if (node.type !== "text" || !parent || typeof index !== "number") return;
       const text = node.value ?? "";
       let match;
