@@ -3807,3 +3807,20 @@ Design notes:
 - Add `collectFencedCodeBlockRanges(text)` to `apps/web/src/lib/omo-injection.ts` that scans for paired triple-backtick (`` ``` ``) or triple-tilde (`~~~`) fences via a single multiline regex, pairing opens to closes and treating an unclosed open as fenced through end-of-text.
 - In `parseOmoBlocks`, filter the `collectAllOmoRanges` output to drop any range whose start+end falls entirely inside a code-block range. This handles every detector at once (system-reminder, ultrawork-mode, auto-slash-command, command-instruction, initiator-terminated, orphan tail, stripped marker) without touching their individual scanners.
 - Tests cover: cited reminder inside fenced block stays as user prose; real reminder outside the fence still collapses; orphan-like tail inside a fence is also ignored.
+
+### 162. Composer textarea padding: compact symmetric inset around floating buttons (DONE - this commit) [loser-bump: originally #160; bumped to #162 because OMO wrapper unwrapping (#160) and OMO fenced-code (#161) landed on origin/main-nowaker concurrently with this work]
+
+User prompt (verbatim):
+
+> Too much space wasted. Margin/padding  between submit button and text should be  minimal, similar to the distance from textarea border to the   button.
+>
+> Also, padding left on the textarea is too big. Must be Same as. Between submit button and fight border. Same goes for top and bottom.
+>
+> Please address this message and continue with your tasks.
+
+Design notes:
+
+- Keep the restored textarea + floating bottom-right button overlay. Do not reintroduce the rejected contenteditable or row-below layouts.
+- The overlay keeps `right-1.5 bottom-1.5` (6px). Composer textarea call sites now override the base field padding with `px-1.5 py-1.5` so left/top/bottom internal padding match that same 6px inset.
+- Submit button is `size-12` (48px) and sits 6px from the right border, so the text needs 48px + 6px + 6px = 60px of right padding: button width + border-to-button inset + matching text-to-button gap. `pr-[60px]` replaces `pr-24` to remove the old 42px extra whitespace while preventing text from going under the floating button column.
+- Files: `apps/web/src/routes/_app/session/$id.tsx`, `apps/web/src/routes/_app/session/new.tsx`.
