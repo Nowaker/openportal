@@ -1,69 +1,36 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import {
-  clearNativeResumeSupportCache,
-  pickNativeResumeSupport,
   reviveUnknownFinishSession,
-  setNativeResumeSupportForTest,
 } from "./unknown-finish-reviver";
+import { UNKNOWN_FINISH_REVIVE_PROMPT } from "../lib/unknown-finish-reviver";
 
 describe("unknown-finish plugin revive strategy", () => {
-  beforeEach(() => {
-    clearNativeResumeSupportCache();
-  });
-
-  test("uses native resume when supported", async () => {
-    let nativeCalls = 0;
+  test("uses prompt_async because the HTTP API has no input-free resume", async () => {
     let promptCalls = 0;
     const strategy = await reviveUnknownFinishSession(4096, "ses_1", {
-      nativeResume: async () => {
-        nativeCalls += 1;
-        return true;
-      },
-      promptAsync: async () => {
-        promptCalls += 1;
-      },
-    });
-    expect(strategy).toBe("native");
-    expect(nativeCalls).toBe(1);
-    expect(promptCalls).toBe(0);
-  });
-
-  test("falls back to prompt_async when native resume not supported", async () => {
-    let nativeCalls = 0;
-    let promptCalls = 0;
-    const strategy = await reviveUnknownFinishSession(4096, "ses_2", {
-      nativeResume: async () => {
-        nativeCalls += 1;
-        return false;
-      },
       promptAsync: async () => {
         promptCalls += 1;
       },
     });
     expect(strategy).toBe("prompt_async");
-    expect(nativeCalls).toBe(1);
     expect(promptCalls).toBe(1);
   });
 
-  test("skips native probe when cached as unsupported", async () => {
-    setNativeResumeSupportForTest(5001, false);
-    expect(pickNativeResumeSupport(5001)).toBe(false);
-
-    let nativeCalls = 0;
-    let promptCalls = 0;
-    const strategy = await reviveUnknownFinishSession(5001, "ses_b", {
-      nativeResume: async () => {
-        nativeCalls += 1;
-        return true;
-      },
-      promptAsync: async () => {
-        promptCalls += 1;
+  test("passes fallback port and session id to the prompt_async transport", async () => {
+    const calls: Array<{ port: number; sessionId: string }> = [];
+    await reviveUnknownFinishSession(5001, "ses_b", {
+      promptAsync: async (port, sessionId) => {
+        calls.push({ port, sessionId });
       },
     });
 
-    expect(strategy).toBe("prompt_async");
-    expect(nativeCalls).toBe(0);
-    expect(promptCalls).toBe(1);
+    expect(calls).toEqual([{ port: 5001, sessionId: "ses_b" }]);
+  });
+
+  test("uses the minimal OpenPortal wrapper prompt", () => {
+    expect(UNKNOWN_FINISH_REVIVE_PROMPT).toBe(
+      "[ openportal: unknown error: Continue working diligently to fulfill all user's tasks. ]",
+    );
   });
 });
