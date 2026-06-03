@@ -3896,3 +3896,119 @@ Design notes:
 - AGENTS.md "Composer layout (mobile-safe)" section rewritten to document the new contract (Textarea padding + border + focus rules) and the bottom-1 right-1 overlay anchor; the old `pr-24` and `px-1.5 py-1.5` math is gone.
 - Source comment in `apps/web/src/routes/_app/session/$id.tsx` next to the wrapper updated to spell out the same contract inline so a future reader doesn't have to bounce to AGENTS.md.
 - Files: `AGENTS.md`, `apps/web/src/routes/_app/session/$id.tsx`, `apps/web/src/routes/_app/session/new.tsx`.
+
+### 168. Ctrl+K open-session search must match full or partial session IDs (PENDING - queued for current ^K worktree)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> ^K open session should also match by full or partial session ids eg. ses_17c1a0ca2ffeaPN0KlIVzLNIpL or ses_17c1a0ca2f
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+
+Design notes:
+
+- Work in a feature worktree and integrate back to `main-nowaker` without dropping concurrent main commits.
+- Locate the Ctrl+K / command-palette open-session search path and extend matching so full `ses_...` IDs and partial prefixes/substrings match sessions.
+- Preserve existing title/path fuzzy matching and result ranking unless code inspection shows ranking is the root cause.
+- Verify with the real UI surface and deploy/push after merge.
+
+### 169. Ctrl+K search remembers previous query and selects it on reopen (PENDING - queued after #168)
+
+User prompt (verbatim):
+
+> add to todo now, execute afterwards: ^K remembers previous search on subsequent ^K hit. on subsequent open, select all content in the search field (like browsers do on ^L), so when i start typing i overwrite current content. and if press right arrow, i concatenate.
+
+Design notes:
+
+- Do not clear the palette query on close/reopen.
+- On subsequent Ctrl+K open, focus the search field and select the entire existing query so normal typing replaces it.
+- Preserve browser-like caret behavior: pressing ArrowRight should collapse selection at the end so typed text concatenates to the remembered query.
+- Implement in the shared Ctrl+K search component if both sidebar button and keyboard shortcut use it.
+
+### 170. Ctrl+K session results show preferred-format datetime in an aligned right column (PENDING - queued after #169)
+
+User prompt (verbatim):
+
+> add to todo now, execute afterwards: on the very right of ^K list, include datetime in preferred user format (the exact same as in chat log. DRY - code reuse - refactor if needed to introduce shared clean code).
+> even though the dates can be 9/25 18:23, or 12:18, they all should be like a column. flexible column, no longer than the longest match.
+>
+> execute all todos in order, don't stop in between.
+
+Design notes:
+
+- Reuse the chat log date/time formatter; refactor to a shared helper if the formatter is currently local to chat code.
+- Add a right-aligned datetime field to Ctrl+K session rows using the user's preferred format.
+- Keep the timestamp column flexible and aligned across rows; it should size to the longest visible timestamp, not consume excessive width.
+- Preserve mobile usability and existing row content truncation.
+
+### 171. Ctrl+K open-session search must include all sessions in open workspaces (PENDING - queued after #170)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> also enqueue: filter through ALL sessions in open workspaces. i don't know why but ^K doesn't show me ses_1d159bb7bffeBYnvWNAsL0c4Si when i search by 
+>
+> also enqueue: escape in ^K clears input. that's weird. just close the modal. you hit ^K, previous input is there (but selected, as per one of my requests), no issue.
+>
+> continue
+
+Design notes:
+
+- Investigate how Ctrl+K sources candidate sessions versus sidebar/open-workspace session data.
+- Expand the candidate set to all sessions in open workspaces so known sessions such as `ses_1d159bb7bffeBYnvWNAsL0c4Si` appear when searched.
+- Preserve any intentional exclusions for archived/deleted sessions unless the current code proves they are unrelated to this bug.
+- Verify with a session ID outside the currently focused workspace if possible.
+
+### 172. Escape in Ctrl+K closes the modal instead of clearing the query (PENDING - queued after #171)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> also enqueue: filter through ALL sessions in open workspaces. i don't know why but ^K doesn't show me ses_1d159bb7bffeBYnvWNAsL0c4Si when i search by 
+>
+> also enqueue: escape in ^K clears input. that's weird. just close the modal. you hit ^K, previous input is there (but selected, as per one of my requests), no issue.
+>
+> continue
+
+Design notes:
+
+- Override or remove the current Escape-to-clear behavior in the Ctrl+K search field.
+- Escape should close the palette without mutating the remembered query.
+- On the next Ctrl+K open, the previous query should still be present and selected per #169.
+- Verify keyboard behavior: Ctrl+K open, type, Escape close, Ctrl+K reopen, type-to-replace, ArrowRight-to-append.
