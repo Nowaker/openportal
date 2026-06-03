@@ -6,6 +6,7 @@ import { ContentVisibilityTable } from "@/components/content-visibility-table";
 import { ModelAutoSwitchSettings } from "@/components/model-auto-switch-settings";
 import { DiagnosticsPanel } from "@/components/diagnostics-panel";
 import { NotificationsSettings } from "@/components/notifications-settings";
+import { StuckDetectorScanningSettings } from "@/components/stuck-detector-scanning-settings";
 import { StuckRecoverySettings } from "@/components/stuck-recovery-settings";
 import { ToolsSettings } from "@/components/tools-settings";
 import { useTheme } from "@/providers/theme-provider";
@@ -2201,6 +2202,7 @@ function SettingsPage() {
         <TabPanel id="diagnostics" className="pt-6">
           <div className="space-y-10">
             <DiagnosticsPanel />
+            <StuckDetectorScanningSettings />
             <StuckRecoverySettings />
           </div>
         </TabPanel>
