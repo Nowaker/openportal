@@ -1,4 +1,6 @@
 import { formatDuration } from "@/lib/format-time";
+import { shortenModelName } from "@/lib/model-name";
+import { shortenOmoAgentName } from "@/lib/agent-name";
 import type { MessageWithParts } from "@/hooks/use-session-messages";
 
 export interface ProvidersData {
@@ -14,12 +16,17 @@ export interface MessageMeta {
   title: string;
 }
 
+export interface MessageMetaOptions {
+  shortenOmoAgent?: boolean;
+}
+
 export function computeMessageMeta(
   info: MessageWithParts["info"],
   nextAssistantInfo: MessageWithParts["info"] | null,
   isFinalAssistant: boolean,
   providersData: ProvidersData | undefined,
   turnStartTime: number | undefined,
+  options: MessageMetaOptions = {},
 ): MessageMeta | null {
   type SourceShape = {
     agent?: string;
@@ -77,9 +84,16 @@ export function computeMessageMeta(
       showTotal && totalDurationMs !== null ? formatDuration(totalDurationMs) : null;
   }
 
+  const displayAgent = agent
+    ? options.shortenOmoAgent
+      ? shortenOmoAgentName(agent)
+      : agent
+    : null;
+  const displayModel = modelName ? shortenModelName(modelName) || modelName : null;
+
   const parts: string[] = [];
-  if (agent) parts.push(agent);
-  if (modelName) parts.push(modelName);
+  if (displayAgent) parts.push(displayAgent);
+  if (displayModel) parts.push(displayModel);
   if (variant) parts.push(variant);
   if (stepDuration) parts.push(stepDuration);
   if (totalDuration) parts.push(totalDuration);

@@ -344,6 +344,19 @@ function ShowInfoIconSetting() {
   );
 }
 
+function ShortenOmoAgentNamesSetting() {
+  const shorten = useChatDisplayStore((s) => s.shortenOmoAgentNames);
+  const setShorten = useChatDisplayStore((s) => s.setShortenOmoAgentNames);
+
+  return (
+    <Checkbox isSelected={shorten} onChange={setShorten}>
+      Shorten OMO agent names (e.g. "Atlas - Plan Executor" → "Atlas")
+      in the composer dropdown, chat log meta line, and sticky prompt
+      overlay
+    </Checkbox>
+  );
+}
+
 function FontSizeSetting() {
   const scale = useFontSizeStore((s) => s.scale);
   const setScale = useFontSizeStore((s) => s.setScale);
@@ -2089,6 +2102,21 @@ function SettingsPage() {
                 </p>
               </div>
               <ShowInfoIconSetting />
+            </section>
+
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Agent name shortening</h3>
+                <p className="text-xs text-muted-fg">
+                  OMO agents use a "Family - Mode" naming convention
+                  (Sisyphus - ultraworker, Atlas - Plan Executor). With
+                  this on, only the family name shows in the composer
+                  dropdown, chat log meta line, and sticky prompt
+                  overlay. Non-OMO agents (build, plan, general) pass
+                  through unchanged.
+                </p>
+              </div>
+              <ShortenOmoAgentNamesSetting />
             </section>
 
             <section>

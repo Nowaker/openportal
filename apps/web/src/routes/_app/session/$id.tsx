@@ -2572,6 +2572,7 @@ const MessageItem = memo(function MessageItem({
   const isPending = pendingMeta !== null;
   const showInfoIcon = useChatDisplayStore((s) => s.showInfoIcon);
   const iconVisibility = useChatDisplayStore((s) => s.iconVisibility);
+  const shortenOmoAgent = useChatDisplayStore((s) => s.shortenOmoAgentNames);
   const { isMobile } = useMediaQuery();
   const visibilityKey = isMobile ? "mobile" : "desktop";
   const showFork = iconVisibility[visibilityKey].fork;
@@ -2629,6 +2630,7 @@ const MessageItem = memo(function MessageItem({
     isFinalAssistant,
     providersData,
     turnStartTime,
+    { shortenOmoAgent },
   );
   const stepCreated = message.info.time?.created;
   const stepCompleted =

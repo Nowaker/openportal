@@ -36,6 +36,7 @@ interface ChatDisplayState {
   iconVisibility: Record<ChatPlatform, Record<ChatIconId, boolean>>;
   hoverInfoEnabled: boolean;
   showInfoIcon: boolean;
+  shortenOmoAgentNames: boolean;
   setIconVisibility: (
     platform: ChatPlatform,
     icon: ChatIconId,
@@ -43,6 +44,7 @@ interface ChatDisplayState {
   ) => void;
   setHoverInfoEnabled: (enabled: boolean) => void;
   setShowInfoIcon: (show: boolean) => void;
+  setShortenOmoAgentNames: (shorten: boolean) => void;
 }
 
 const defaultVisibility = (): Record<ChatPlatform, Record<ChatIconId, boolean>> => ({
@@ -72,6 +74,7 @@ export const useChatDisplayStore = create<ChatDisplayState>()(
       iconVisibility: defaultVisibility(),
       hoverInfoEnabled: true,
       showInfoIcon: false,
+      shortenOmoAgentNames: true,
       setIconVisibility: (platform, icon, visible) =>
         set((s) => ({
           iconVisibility: {
@@ -84,10 +87,12 @@ export const useChatDisplayStore = create<ChatDisplayState>()(
         })),
       setHoverInfoEnabled: (hoverInfoEnabled) => set({ hoverInfoEnabled }),
       setShowInfoIcon: (showInfoIcon) => set({ showInfoIcon }),
+      setShortenOmoAgentNames: (shortenOmoAgentNames) =>
+        set({ shortenOmoAgentNames }),
     }),
     {
       name: "openportal-chat-display",
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
         const obj =
           persisted && typeof persisted === "object"
@@ -104,6 +109,9 @@ export const useChatDisplayStore = create<ChatDisplayState>()(
               ...(existing ?? {}),
             };
           }
+        }
+        if (version < 3 && obj && obj.shortenOmoAgentNames === undefined) {
+          obj.shortenOmoAgentNames = true;
         }
         return obj as ChatDisplayState;
       },

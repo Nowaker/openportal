@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { Autocomplete, ListBox, Popover } from "react-aria-components";
+import { Autocomplete, ListBox, Popover, SelectValue } from "react-aria-components";
+import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import { Dialog } from "@/components/ui/dialog";
 import {
   Select,
@@ -9,7 +10,9 @@ import {
 } from "@/components/ui/select";
 import { useAgents } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
+import { useChatDisplayStore } from "@/stores/chat-display-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { shortenOmoAgentName } from "@/lib/agent-name";
 import type { Agent } from "@opencode-ai/sdk";
 
 interface AgentSelectProps {
@@ -46,6 +49,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
   const instanceId = instance?.id ?? null;
 
   const selectedAgent = useAgentStore((s) => s.getSelectedAgent(sessionId));
+  const shortenOmoAgent = useChatDisplayStore((s) => s.shortenOmoAgentNames);
   const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
   const setLastUsedAgentForInstance = useAgentStore(
     (s) => s.setLastUsedAgentForInstance,
@@ -108,7 +112,22 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
       <SelectTrigger
         className="w-full min-w-0 text-xs sm:text-sm"
         title={selectedAgent ? `Agent: ${selectedAgent}` : "Select agent"}
-      />
+      >
+        <SelectValue
+          data-slot="select-value"
+          className="truncate text-start text-sm/6 data-placeholder:text-muted-fg [&_[slot=description]]:hidden"
+        >
+          {({ defaultChildren, selectedText, isPlaceholder }) => {
+            if (isPlaceholder) return defaultChildren;
+            const text = String(selectedText ?? "");
+            return shortenOmoAgent ? shortenOmoAgentName(text) || text : text;
+          }}
+        </SelectValue>
+        <ChevronUpDownIcon
+          data-slot="chevron"
+          className="-mr-1 ml-auto size-5 text-muted-fg sm:size-4"
+        />
+      </SelectTrigger>
       <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(50vh,24rem)] min-w-(--trigger-width) w-screen max-w-[calc(100vw-1.5rem)] sm:max-w-md entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
         <Dialog aria-label="Agent">
           <Autocomplete>

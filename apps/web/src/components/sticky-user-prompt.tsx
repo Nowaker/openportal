@@ -14,6 +14,7 @@ import { parseOmoBlocks } from "@/lib/omo-injection";
 import { OmoBlockCompact } from "@/components/omo-block-compact";
 import { MessageMetaStack } from "@/components/message-meta-stack";
 import { computeMessageMeta, type ProvidersData } from "@/lib/message-meta";
+import { useChatDisplayStore } from "@/stores/chat-display-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import {
   formatMessageTime,
@@ -48,6 +49,7 @@ export function StickyUserPromptOverlay({
   const rafRef = useRef(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const dateFormat = useDateFormatStore((s) => s.format);
+  const shortenOmoAgent = useChatDisplayStore((s) => s.shortenOmoAgentNames);
 
   const messageById = useMemo(() => {
     const m = new Map<string, MessageWithParts>();
@@ -176,6 +178,7 @@ export function StickyUserPromptOverlay({
     false,
     providersData,
     undefined,
+    { shortenOmoAgent },
   );
 
   const created = message.info.time?.created;
