@@ -8,11 +8,14 @@ import {
   SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
-import { useAgents } from "@/hooks/use-opencode";
+import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useChatDisplayStore } from "@/stores/chat-display-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useModelStore } from "@/stores/model-store";
+import { useThinkingStore } from "@/stores/thinking-store";
 import { shortenOmoAgentName } from "@/lib/agent-name";
+import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 import type { Agent } from "@opencode-ai/sdk";
 
 interface AgentSelectProps {
@@ -44,6 +47,8 @@ function resolveDefaultAgentName(
 export function AgentSelect({ sessionId }: AgentSelectProps) {
   const { data, isLoading } = useAgents();
   const agents = (data ?? []) as Agent[];
+  const { data: providersData } = useProviders();
+  const currentVariant = useThinkingStore((s) => s.resolve(sessionId ?? null));
 
   const instance = useInstanceStore((s) => s.instance);
   const instanceId = instance?.id ?? null;
@@ -55,6 +60,10 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
     (s) => s.setLastUsedAgentForInstance,
   );
   const setLastUsedAgentGlobal = useAgentStore((s) => s.setLastUsedAgentGlobal);
+  const setModelForSession = useModelStore((s) => s.setModelForSession);
+  const setInstanceDefaultModel = useModelStore((s) => s.setInstanceDefaultModel);
+  const setVariantForSession = useThinkingStore((s) => s.setForSession);
+  const setVariantDefault = useThinkingStore((s) => s.setDefault);
   const lastUsedAgentGlobal = useAgentStore((s) => s.lastUsedAgentGlobal);
   const lastUsedAgentForInstance = useAgentStore((s) =>
     s.getLastUsedAgentForInstance(instanceId),
@@ -106,6 +115,32 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
           // the display stays consistent with what the user clicked.
           setLastUsedAgentForInstance(instanceId, name);
           setLastUsedAgentGlobal(name);
+        }
+        const picked = agents.find((a) => a.name === name) as
+          | (Agent & {
+              model?: { providerID?: string; modelID?: string } | null;
+              variant?: string | null;
+            })
+          | undefined;
+        if (picked?.model?.providerID && picked.model.modelID) {
+          const key = `${picked.model.providerID}/${picked.model.modelID}`;
+          if (sessionId) setModelForSession(sessionId, key, instanceId);
+          else setInstanceDefaultModel(key, instanceId);
+          let nextVariant: string | undefined;
+          if (typeof picked.variant === "string") {
+            nextVariant = picked.variant;
+          } else {
+            const available = variantsForModel(
+              (providersData ?? undefined) as Parameters<typeof variantsForModel>[0],
+              picked.model.providerID,
+              picked.model.modelID,
+            );
+            nextVariant = pickClosestVariant(currentVariant, available);
+          }
+          if (nextVariant !== undefined && nextVariant !== currentVariant) {
+            if (sessionId) setVariantForSession(sessionId, nextVariant);
+            else setVariantDefault(nextVariant);
+          }
         }
       }}
     >

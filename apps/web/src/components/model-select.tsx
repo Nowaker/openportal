@@ -18,9 +18,12 @@ import {
 } from "@/components/ui/select";
 import { shortenModelName } from "@/lib/model-name";
 import { useModelStore } from "@/stores/model-store";
-import { useProviders } from "@/hooks/use-opencode";
+import { useThinkingStore } from "@/stores/thinking-store";
+import { useAgents, useProviders } from "@/hooks/use-opencode";
+import { useAgentStore } from "@/stores/agent-store";
 import useMediaQuery from "@/hooks/use-media-query";
 import { compareModels } from "@/lib/model-sort";
+import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 
 interface ModelItem {
   id: string;
@@ -115,6 +118,18 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
   );
   const setModelForSession = useModelStore((s) => s.setModelForSession);
   const clearSessionModel = useModelStore((s) => s.clearSessionModel);
+  const currentVariant = useThinkingStore((s) => s.resolve(sessionId ?? null));
+  const setVariantForSession = useThinkingStore((s) => s.setForSession);
+  const setVariantDefault = useThinkingStore((s) => s.setDefault);
+  const { data: agentsData } = useAgents();
+  const currentAgentName = useAgentStore((s) =>
+    sessionId ? s.getSelectedAgent(sessionId) : null,
+  );
+  const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
+  const setLastUsedAgentForInstance = useAgentStore(
+    (s) => s.setLastUsedAgentForInstance,
+  );
+  const setLastUsedAgentGlobal = useAgentStore((s) => s.setLastUsedAgentGlobal);
   const setInstanceDefaultModel = useModelStore(
     (s) => s.setInstanceDefaultModel,
   );
@@ -173,6 +188,37 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
           // is what resolveModelKey returns at submit time AND
           // becomes the default for future new-session screens.
           setInstanceDefaultModel(value, instanceId ?? null);
+        }
+        const [pid, ...rest] = value.split("/");
+        const mid = rest.join("/");
+        const available = variantsForModel(rawData ?? undefined, pid, mid);
+        const next = pickClosestVariant(currentVariant, available);
+        if (next !== currentVariant) {
+          if (sessionId) setVariantForSession(sessionId, next);
+          else setVariantDefault(next);
+        }
+        if (currentAgentName?.includes(" - ") && agentsData) {
+          const list = agentsData as Array<{
+            name: string;
+            model?: { providerID?: string; modelID?: string } | null;
+          }>;
+          const current = list.find((a) => a.name === currentAgentName);
+          const currentProvider = current?.model?.providerID;
+          if (currentProvider && pid && currentProvider !== pid) {
+            const target = list.find(
+              (a) =>
+                a.name.includes(" - ") &&
+                a.model?.providerID === pid &&
+                a.name !== currentAgentName,
+            );
+            if (target) {
+              if (sessionId) setSelectedAgent(sessionId, target.name, instanceId ?? null);
+              else {
+                setLastUsedAgentForInstance(instanceId ?? null, target.name);
+                setLastUsedAgentGlobal(target.name);
+              }
+            }
+          }
         }
       }}
     >
