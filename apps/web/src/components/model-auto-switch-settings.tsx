@@ -147,11 +147,15 @@ function AgentRowEditor({
     midForVariants,
   );
 
+  const isOmoAgent = row.representative.name.includes(" - ");
+  const modelResolution = resolveModelPreview(pref, row, providersData);
+  const variantResolution = resolveVariantPreview(pref, row);
+
   return (
     <div className="rounded-md border border-border bg-bg/40 p-3 space-y-2">
-      <div className="text-sm font-medium">{row.family}</div>
+      <div className="text-sm font-medium">{row.representative.name}</div>
       <div className="text-[10px] text-muted-fg">
-        Opencode's default: {modelLabel(row.representative.model)}
+        Agent's preferred: {modelLabel(row.representative.model)}
         {row.representative.variant ? ` · ${row.representative.variant}` : ""}
       </div>
 
@@ -166,6 +170,15 @@ function AgentRowEditor({
         familyOptions={allFamilies}
         familyValue={pref.modelFamilyKey}
       />
+      <ResolutionHint
+        text={modelResolution}
+        warn={pref.modelRule === "no-change" && isOmoAgent}
+        warnText={
+          pref.modelRule === "no-change" && isOmoAgent
+            ? "Not recommended for OMO agents — opencode's own hook may force-switch the model after submission anyway."
+            : null
+        }
+      />
 
       <RuleRow
         label="Variant"
@@ -175,6 +188,15 @@ function AgentRowEditor({
         options={availableVariants.map((v) => ({ key: v, label: v || "(none)" }))}
         ruleField="variantRule"
         valueField="variant"
+      />
+      <ResolutionHint
+        text={variantResolution}
+        warn={pref.variantRule === "no-change" && isOmoAgent}
+        warnText={
+          pref.variantRule === "no-change" && isOmoAgent
+            ? "Not recommended for OMO agents — variant won't track the agent's preferred thinking effort."
+            : null
+        }
       />
 
       <ResetButton family={row.representative.name} pref={pref} />
@@ -242,6 +264,79 @@ function modelLabel(
 ): string {
   if (!model?.modelID) return "(none)";
   return `${model.providerID}/${model.modelID}`;
+}
+
+function ResolutionHint({
+  text,
+  warn,
+  warnText,
+}: {
+  text: string | null;
+  warn?: boolean;
+  warnText?: string | null;
+}) {
+  if (warn && warnText) {
+    return (
+      <div className="text-[10px] text-warning pl-[5.5rem]">{warnText}</div>
+    );
+  }
+  if (!text) return null;
+  return (
+    <div className="text-[10px] text-muted-fg/70 pl-[5.5rem]">{text}</div>
+  );
+}
+
+function resolveModelPreview(
+  pref: AgentPref,
+  row: AgentRow,
+  providersData: unknown,
+): string | null {
+  switch (pref.modelRule) {
+    case "agent-default":
+      return `Resolves to: ${modelLabel(row.representative.model)}`;
+    case "specific":
+      return pref.modelKey ? `Resolves to: ${pref.modelKey}` : "Pick a model on the right.";
+    case "family-latest": {
+      if (!pref.modelFamilyKey) return "Pick a family on the right.";
+      const groups = groupByFamily(
+        providersData as Parameters<typeof groupByFamily>[0],
+      );
+      const list = groups.get(pref.modelFamilyKey);
+      if (!list || list.length === 0) return "(no models in this family)";
+      const m = list[0];
+      return `Resolves to: ${m.providerID}/${m.modelID} (${m.family} ${m.versionDisplay})`;
+    }
+    case "family-previously-used-session":
+    case "family-previously-used-global":
+      return pref.modelFamilyKey
+        ? "Resolves to: the last model you picked in this family with this agent (no-op until you've picked one)."
+        : "Pick a family on the right.";
+    case "previously-used-session":
+    case "previously-used-global":
+      return "Resolves to: the last model you picked with this agent (no-op until you've picked one).";
+    case "no-change":
+      return "Model won't change when this agent is picked.";
+    default:
+      return null;
+  }
+}
+
+function resolveVariantPreview(pref: AgentPref, row: AgentRow): string | null {
+  switch (pref.variantRule) {
+    case "agent-default":
+      return `Resolves to: ${row.representative.variant ?? "(closest available)"}`;
+    case "specific":
+      return pref.variant !== undefined
+        ? `Resolves to: ${pref.variant || "(none)"}`
+        : "Pick a variant on the right.";
+    case "previously-used-session":
+    case "previously-used-global":
+      return "Resolves to: the last variant you picked with this agent (no-op until you've picked one).";
+    case "no-change":
+      return "Variant won't change when this agent is picked.";
+    default:
+      return null;
+  }
 }
 
 function RuleRow({

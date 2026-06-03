@@ -108,6 +108,50 @@ describe("parseModelId", () => {
     expect(p.family).toBe("GPT Nano");
     expect(p.versionDisplay).toBe("5.0");
   });
+
+  test("anthropic claude-opus-4-20250514 (8-digit YYYYMMDD stripped)", () => {
+    const p = parseModelId("anthropic", "claude-opus-4-20250514");
+    expect(p.family).toBe("Opus");
+    expect(p.versionDisplay).toBe("4.0");
+    expect(p.versionNumeric).toEqual([4]);
+  });
+
+  test("anthropic claude-opus-4-1-20250805 (8-digit YYYYMMDD stripped from minor)", () => {
+    const p = parseModelId("anthropic", "claude-opus-4-1-20250805");
+    expect(p.family).toBe("Opus");
+    expect(p.versionDisplay).toBe("4.1");
+  });
+
+  test("anthropic claude-opus-4-7-fast (fast as family suffix)", () => {
+    const p = parseModelId("anthropic", "claude-opus-4-7-fast");
+    expect(p.family).toBe("Opus Fast");
+    expect(p.familyKey).toBe("anthropic:opus-fast");
+    expect(p.versionDisplay).toBe("4.7");
+  });
+
+  test("anthropic claude-3-opus-20240229 (old-style version-first + 8-digit date)", () => {
+    const p = parseModelId("anthropic", "claude-3-opus-20240229");
+    expect(p.family).toBe("Opus");
+    expect(p.versionDisplay).toBe("3.0");
+  });
+
+  test("anthropic claude-3-5-haiku-latest (latest alias stripped)", () => {
+    const p = parseModelId("anthropic", "claude-3-5-haiku-latest");
+    expect(p.family).toBe("Haiku");
+    expect(p.versionDisplay).toBe("3.5");
+  });
+
+  test("anthropic claude-3-5-sonnet-20241022 (old-style with hyphenated maj-min + date)", () => {
+    const p = parseModelId("anthropic", "claude-3-5-sonnet-20241022");
+    expect(p.family).toBe("Sonnet");
+    expect(p.versionDisplay).toBe("3.5");
+  });
+
+  test("anthropic claude-opus-4-8 sorts ABOVE claude-opus-4-20250514", () => {
+    const a = parseModelId("anthropic", "claude-opus-4-8");
+    const b = parseModelId("anthropic", "claude-opus-4-20250514");
+    expect(compareModelVersion(a, b)).toBeLessThan(0);
+  });
 });
 
 describe("compareModelVersion", () => {

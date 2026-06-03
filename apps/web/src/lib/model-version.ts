@@ -38,6 +38,7 @@ export interface ParsedModel {
 
 const NUMERIC_TOKEN = /^\d+(\.\d+)?$/;
 const DATE_SUFFIX = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_8DIGIT = /^20\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
 
 function isNumeric(token: string): boolean {
   return NUMERIC_TOKEN.test(token);
@@ -81,14 +82,26 @@ function parseNumericVersion(tokens: string[]): {
   return { numeric, display };
 }
 
-// Strip a trailing `YYYY-MM-DD` date suffix from token list. opencode
-// sometimes carries model IDs like `gpt-5-nano-2025-08-07` where the
-// last three tokens are a date stamp that's not part of the family
-// or version semantics. Returns a new token list with the date dropped.
+// Strip trailing date / alias suffixes that aren't part of the family
+// or version semantics. Three shapes handled:
+//   YYYY-MM-DD (3 dash-separated tokens, e.g. gpt-5-nano-2025-08-07)
+//   YYYYMMDD   (single 8-digit token, e.g. claude-opus-4-20250514)
+//   "latest"   (alias suffix, e.g. claude-3-5-haiku-latest)
 function stripDateSuffix(tokens: string[]): string[] {
-  if (tokens.length < 3) return tokens;
-  const last3 = tokens.slice(-3).join("-");
-  if (DATE_SUFFIX.test(last3)) return tokens.slice(0, -3);
+  if (tokens.length === 0) return tokens;
+  if (tokens[tokens.length - 1].toLowerCase() === "latest") {
+    return stripDateSuffix(tokens.slice(0, -1));
+  }
+  if (
+    tokens.length >= 1 &&
+    DATE_8DIGIT.test(tokens[tokens.length - 1])
+  ) {
+    return stripDateSuffix(tokens.slice(0, -1));
+  }
+  if (tokens.length >= 3) {
+    const last3 = tokens.slice(-3).join("-");
+    if (DATE_SUFFIX.test(last3)) return stripDateSuffix(tokens.slice(0, -3));
+  }
   return tokens;
 }
 
