@@ -14,6 +14,10 @@ import { useChatDisplayStore } from "@/stores/chat-display-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
+import {
+  getAgentPref,
+  useModelAutoSwitchConfig,
+} from "@/stores/model-auto-switch-store";
 import { shortenOmoAgentName } from "@/lib/agent-name";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 import type { Agent } from "@opencode-ai/sdk";
@@ -49,6 +53,7 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
   const agents = (data ?? []) as Agent[];
   const { data: providersData } = useProviders();
   const currentVariant = useThinkingStore((s) => s.resolve(sessionId ?? null));
+  const { config: autoSwitchConfig } = useModelAutoSwitchConfig();
 
   const instance = useInstanceStore((s) => s.instance);
   const instanceId = instance?.id ?? null;
@@ -122,20 +127,38 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
               variant?: string | null;
             })
           | undefined;
-        if (picked?.model?.providerID && picked.model.modelID) {
-          const key = `${picked.model.providerID}/${picked.model.modelID}`;
-          if (sessionId) setModelForSession(sessionId, key, instanceId);
-          else setInstanceDefaultModel(key, instanceId);
+        if (autoSwitchConfig.enabled && picked) {
+          const pref = getAgentPref(autoSwitchConfig, picked.name);
+          let nextModelKey: string | null = null;
+          if (pref.modelRule === "specific" && pref.modelKey) {
+            nextModelKey = pref.modelKey;
+          } else if (
+            pref.modelRule === "agent-default" &&
+            picked.model?.providerID &&
+            picked.model.modelID
+          ) {
+            nextModelKey = `${picked.model.providerID}/${picked.model.modelID}`;
+          }
+          if (nextModelKey) {
+            if (sessionId) setModelForSession(sessionId, nextModelKey, instanceId);
+            else setInstanceDefaultModel(nextModelKey, instanceId);
+          }
+          const [pidForVariant, ...rest] = (nextModelKey ?? "").split("/");
+          const midForVariant = rest.join("/");
           let nextVariant: string | undefined;
-          if (typeof picked.variant === "string") {
-            nextVariant = picked.variant;
-          } else {
-            const available = variantsForModel(
-              (providersData ?? undefined) as Parameters<typeof variantsForModel>[0],
-              picked.model.providerID,
-              picked.model.modelID,
-            );
-            nextVariant = pickClosestVariant(currentVariant, available);
+          if (pref.variantRule === "specific" && pref.variant !== undefined) {
+            nextVariant = pref.variant;
+          } else if (pref.variantRule === "agent-default") {
+            if (typeof picked.variant === "string") {
+              nextVariant = picked.variant;
+            } else if (pidForVariant && midForVariant) {
+              const available = variantsForModel(
+                (providersData ?? undefined) as Parameters<typeof variantsForModel>[0],
+                pidForVariant,
+                midForVariant,
+              );
+              nextVariant = pickClosestVariant(currentVariant, available);
+            }
           }
           if (nextVariant !== undefined && nextVariant !== currentVariant) {
             if (sessionId) setVariantForSession(sessionId, nextVariant);

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AccentSelector } from "@/components/accent-selector";
 import { ContentVisibilityTable } from "@/components/content-visibility-table";
+import { ModelAutoSwitchSettings } from "@/components/model-auto-switch-settings";
 import { DiagnosticsPanel } from "@/components/diagnostics-panel";
 import { NotificationsSettings } from "@/components/notifications-settings";
 import { StuckRecoverySettings } from "@/components/stuck-recovery-settings";
@@ -2009,6 +2010,23 @@ function SettingsPage() {
 
             <section>
               <AgentSettings />
+            </section>
+
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">
+                  Model + variant auto-switch on agent change
+                </h3>
+                <p className="text-xs text-muted-fg">
+                  When an agent is picked in the composer, OpenPortal can
+                  auto-apply that agent's preferred model + variant (as
+                  reported by opencode's /agent endpoint). Per-agent rules
+                  below let you override: pin a specific model/variant for
+                  an agent, or keep the current pick unchanged when that
+                  agent is selected.
+                </p>
+              </div>
+              <ModelAutoSwitchSettings />
             </section>
 
             <section>
