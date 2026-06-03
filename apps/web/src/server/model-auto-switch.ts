@@ -12,6 +12,8 @@ const ruleSchema = z.enum([
   "agent-default",
   "specific",
   "family-latest",
+  "family-previously-used-session",
+  "family-previously-used-global",
   "previously-used-session",
   "previously-used-global",
   "no-change",

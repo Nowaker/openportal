@@ -12,6 +12,8 @@ export type Rule =
   | "agent-default"
   | "specific"
   | "family-latest"
+  | "family-previously-used-session"
+  | "family-previously-used-global"
   | "previously-used-session"
   | "previously-used-global"
   | "no-change";
@@ -44,6 +46,8 @@ const RULE_VALUES: Rule[] = [
   "agent-default",
   "specific",
   "family-latest",
+  "family-previously-used-session",
+  "family-previously-used-global",
   "previously-used-session",
   "previously-used-global",
   "no-change",

@@ -300,6 +300,22 @@ function RuleRow({
               Latest in family
             </SelectItem>
           )}
+          {showFamilyLatest && (
+            <SelectItem
+              id="family-previously-used-session"
+              textValue="Previously used in family (this session)"
+            >
+              Previously used in family (this session)
+            </SelectItem>
+          )}
+          {showFamilyLatest && (
+            <SelectItem
+              id="family-previously-used-global"
+              textValue="Previously used in family (global)"
+            >
+              Previously used in family (global)
+            </SelectItem>
+          )}
           <SelectItem
             id="previously-used-session"
             textValue="Previously used in this session"
@@ -336,7 +352,10 @@ function RuleRow({
             ))}
           </SelectContent>
         </Select>
-      ) : currentRule === "family-latest" && familyOptions ? (
+      ) : (currentRule === "family-latest" ||
+          currentRule === "family-previously-used-session" ||
+          currentRule === "family-previously-used-global") &&
+        familyOptions ? (
         <Select
           aria-label={`${label} family for ${family}`}
           selectedKey={familyValue ?? ""}

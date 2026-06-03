@@ -58,6 +58,12 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
   const { config: autoSwitchConfig } = useModelAutoSwitchConfig();
   const trackerGetSession = useLastPickedTracker((s) => s.getSession);
   const trackerGetGlobal = useLastPickedTracker((s) => s.getGlobal);
+  const trackerGetSessionForFamily = useLastPickedTracker(
+    (s) => s.getSessionForFamily,
+  );
+  const trackerGetGlobalForFamily = useLastPickedTracker(
+    (s) => s.getGlobalForFamily,
+  );
 
   const instance = useInstanceStore((s) => s.instance);
   const instanceId = instance?.id ?? null;
@@ -151,6 +157,22 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
               "latest",
             );
             if (resolved) nextModelKey = `${resolved.providerID}/${resolved.modelID}`;
+          } else if (
+            pref.modelRule === "family-previously-used-session" &&
+            pref.modelFamilyKey
+          ) {
+            const fp = trackerGetSessionForFamily(
+              sessionId ?? null,
+              picked.name,
+              pref.modelFamilyKey,
+            );
+            if (fp.modelKey) nextModelKey = fp.modelKey;
+          } else if (
+            pref.modelRule === "family-previously-used-global" &&
+            pref.modelFamilyKey
+          ) {
+            const fp = trackerGetGlobalForFamily(picked.name, pref.modelFamilyKey);
+            if (fp.modelKey) nextModelKey = fp.modelKey;
           } else if (
             pref.modelRule === "previously-used-session" &&
             sessionPick.modelKey
