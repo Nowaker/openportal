@@ -1,29 +1,14 @@
 import { useEffect, useMemo } from "react";
-import {
-  Autocomplete,
-  ListBox,
-  Popover,
-  SelectValue,
-  useFilter,
-} from "react-aria-components";
+import { SelectValue } from "react-aria-components";
 import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
-import { Dialog } from "@/components/ui/dialog";
-import { SearchField, SearchInput } from "@/components/ui/search-field";
-import {
-  Select,
-  SelectItem,
-  SelectLabel,
-  SelectSection,
-  SelectTrigger,
-} from "@/components/ui/select";
+import { Select, SelectTrigger } from "@/components/ui/select";
+import { ModelPickerContent } from "@/components/model-picker-content";
 import { shortenModelName } from "@/lib/model-name";
 import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
-import useMediaQuery from "@/hooks/use-media-query";
-import { compareModelVersion, parseModelId } from "@/lib/model-version";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 
 interface ModelItem {
@@ -255,54 +240,22 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
           className="-mr-1 ml-auto size-5 text-muted-fg sm:size-4"
         />
       </SelectTrigger>
-      <Popover className="entering:fade-in exiting:fade-out flex max-h-[min(80vh,32rem)] min-w-(--trigger-width) w-screen max-w-[calc(100vw-1.5rem)] sm:max-w-md entering:animate-in exiting:animate-out flex-col overflow-hidden rounded-lg border bg-overlay">
-        <Dialog aria-label="Model">
-          <Autocomplete filter={contains}>
-            <div className="border-b bg-muted p-2">
-              <SearchField
-                className="rounded-lg bg-bg [&_input]:!text-sm"
-                autoFocus={!isMobile}
-              >
-                <SearchInput placeholder="Search models..." />
-              </SearchField>
-            </div>
-            <ListBox
-              className="grid max-h-[min(70vh,28rem)] w-full grid-cols-[auto_1fr] flex-col gap-y-0.5 overflow-y-auto p-1 text-xs outline-hidden sm:text-sm *:[[role='group']+[role=group]]:mt-3 *:[[role='group']+[role=separator]]:mt-1 [&_[role=option]]:!text-xs sm:[&_[role=option]]:!text-sm [&_[role=option]]:!py-1 sm:[&_[role=option]]:!py-1 [&_[role=group]>[role=presentation]]:!text-xs"
-            >
-              {defaultModelName && (
-                <SelectItem
-                  id={USE_DEFAULT_KEY}
-                  textValue={`${defaultModelName} (default)`}
-                  className="font-medium"
-                >
-                  <SelectLabel>
-                    {defaultModelName}
-                    <span className="ml-1 text-muted-fg">(default)</span>
-                  </SelectLabel>
-                </SelectItem>
-              )}
-              {providers.map((provider) => (
-                <SelectSection
-                  key={provider.id}
-                  title={provider.name}
-                  items={provider.models}
-                >
-                  {(model) => (
-                    <SelectItem id={model.id} textValue={model.name}>
-                      <SelectLabel>
-                        {model.name}
-                        {model.id === effectiveDefaultKey && (
-                          <span className="ml-1 text-muted-fg">(default)</span>
-                        )}
-                      </SelectLabel>
-                    </SelectItem>
-                  )}
-                </SelectSection>
-              ))}
-            </ListBox>
-          </Autocomplete>
-        </Dialog>
-      </Popover>
+      <ModelPickerContent
+        providersData={rawData}
+        defaultKey={effectiveDefaultKey}
+        extraEntries={
+          defaultModelName
+            ? [
+                {
+                  id: USE_DEFAULT_KEY,
+                  label: defaultModelName,
+                  trailing: "(default)",
+                },
+              ]
+            : undefined
+        }
+        ariaLabel="Model"
+      />
     </Select>
   );
 }

@@ -141,54 +141,52 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
           const pref = getAgentPref(autoSwitchConfig, picked.name);
           const sessionPick = trackerGetSession(sessionId ?? null, picked.name);
           const globalPick = trackerGetGlobal(picked.name);
-          let nextModelKey: string | null = null;
-          if (pref.modelRule === "specific" && pref.modelKey) {
-            nextModelKey = pref.modelKey;
-          } else if (
-            pref.modelRule === "family-latest" &&
-            pref.modelFamilyKey
-          ) {
+          const agentDefaultModelKey =
+            picked.model?.providerID && picked.model.modelID
+              ? `${picked.model.providerID}/${picked.model.modelID}`
+              : null;
+          const resolveFamilyLatest = (familyKey: string): string | null => {
             const groups = groupByFamily(
               (providersData ?? undefined) as Parameters<typeof groupByFamily>[0],
             );
-            const resolved = resolveModelInFamily(
-              groups,
-              pref.modelFamilyKey,
-              "latest",
-            );
-            if (resolved) nextModelKey = `${resolved.providerID}/${resolved.modelID}`;
+            const r = resolveModelInFamily(groups, familyKey, "latest");
+            return r ? `${r.providerID}/${r.modelID}` : null;
+          };
+          let nextModelKey: string | null = null;
+          if (pref.modelRule === "specific" && pref.modelKey) {
+            nextModelKey = pref.modelKey;
+          } else if (pref.modelRule === "family-latest" && pref.modelFamilyKey) {
+            nextModelKey = resolveFamilyLatest(pref.modelFamilyKey);
           } else if (
             pref.modelRule === "family-previously-used-session" &&
             pref.modelFamilyKey
           ) {
-            const fp = trackerGetSessionForFamily(
-              sessionId ?? null,
-              picked.name,
-              pref.modelFamilyKey,
-            );
-            if (fp.modelKey) nextModelKey = fp.modelKey;
+            nextModelKey =
+              trackerGetSessionForFamily(
+                sessionId ?? null,
+                picked.name,
+                pref.modelFamilyKey,
+              ).modelKey ??
+              trackerGetGlobalForFamily(picked.name, pref.modelFamilyKey)
+                .modelKey ??
+              resolveFamilyLatest(pref.modelFamilyKey) ??
+              agentDefaultModelKey;
           } else if (
             pref.modelRule === "family-previously-used-global" &&
             pref.modelFamilyKey
           ) {
-            const fp = trackerGetGlobalForFamily(picked.name, pref.modelFamilyKey);
-            if (fp.modelKey) nextModelKey = fp.modelKey;
-          } else if (
-            pref.modelRule === "previously-used-session" &&
-            sessionPick.modelKey
-          ) {
-            nextModelKey = sessionPick.modelKey;
-          } else if (
-            pref.modelRule === "previously-used-global" &&
-            globalPick.modelKey
-          ) {
-            nextModelKey = globalPick.modelKey;
-          } else if (
-            pref.modelRule === "agent-default" &&
-            picked.model?.providerID &&
-            picked.model.modelID
-          ) {
-            nextModelKey = `${picked.model.providerID}/${picked.model.modelID}`;
+            nextModelKey =
+              trackerGetGlobalForFamily(picked.name, pref.modelFamilyKey)
+                .modelKey ??
+              resolveFamilyLatest(pref.modelFamilyKey) ??
+              agentDefaultModelKey;
+          } else if (pref.modelRule === "previously-used-session") {
+            nextModelKey =
+              sessionPick.modelKey ?? globalPick.modelKey ?? agentDefaultModelKey;
+          } else if (pref.modelRule === "previously-used-global") {
+            nextModelKey = globalPick.modelKey ?? agentDefaultModelKey;
+          } else if (pref.modelRule === "agent-default") {
+            nextModelKey = agentDefaultModelKey;
           }
           if (nextModelKey) {
             if (sessionId) setModelForSession(sessionId, nextModelKey, instanceId);
@@ -196,30 +194,28 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
           }
           const [pidForVariant, ...rest] = (nextModelKey ?? "").split("/");
           const midForVariant = rest.join("/");
-          let nextVariant: string | undefined;
-          if (pref.variantRule === "specific" && pref.variant !== undefined) {
-            nextVariant = pref.variant;
-          } else if (
-            pref.variantRule === "previously-used-session" &&
-            sessionPick.variant !== undefined
-          ) {
-            nextVariant = sessionPick.variant;
-          } else if (
-            pref.variantRule === "previously-used-global" &&
-            globalPick.variant !== undefined
-          ) {
-            nextVariant = globalPick.variant;
-          } else if (pref.variantRule === "agent-default") {
-            if (typeof picked.variant === "string") {
-              nextVariant = picked.variant;
-            } else if (pidForVariant && midForVariant) {
+          const agentDefaultVariant = (): string | undefined => {
+            if (typeof picked.variant === "string") return picked.variant;
+            if (pidForVariant && midForVariant) {
               const available = variantsForModel(
                 (providersData ?? undefined) as Parameters<typeof variantsForModel>[0],
                 pidForVariant,
                 midForVariant,
               );
-              nextVariant = pickClosestVariant(currentVariant, available);
+              return pickClosestVariant(currentVariant, available);
             }
+            return undefined;
+          };
+          let nextVariant: string | undefined;
+          if (pref.variantRule === "specific" && pref.variant !== undefined) {
+            nextVariant = pref.variant;
+          } else if (pref.variantRule === "previously-used-session") {
+            nextVariant =
+              sessionPick.variant ?? globalPick.variant ?? agentDefaultVariant();
+          } else if (pref.variantRule === "previously-used-global") {
+            nextVariant = globalPick.variant ?? agentDefaultVariant();
+          } else if (pref.variantRule === "agent-default") {
+            nextVariant = agentDefaultVariant();
           }
           if (nextVariant !== undefined && nextVariant !== currentVariant) {
             if (sessionId) setVariantForSession(sessionId, nextVariant);

@@ -6,6 +6,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import { ModelPickerContent } from "@/components/model-picker-content";
 import { Loader } from "@/components/ui/loader";
 import { useAgents, useProviders } from "@/hooks/use-opencode";
 import {
@@ -169,6 +170,8 @@ function AgentRowEditor({
         valueField="modelKey"
         familyOptions={allFamilies}
         familyValue={pref.modelFamilyKey}
+        providersDataForSpecific={providersData}
+        vendorFilterForSpecific={agentVendor}
       />
       <ResolutionHint
         text={modelResolution}
@@ -307,13 +310,17 @@ function resolveModelPreview(
       return `Resolves to: ${m.providerID}/${m.modelID} (${m.family} ${m.versionDisplay})`;
     }
     case "family-previously-used-session":
+      return pref.modelFamilyKey
+        ? "Resolves to: last pick in this family in this session → last pick in this family globally → latest in this family → agent's default."
+        : "Pick a family on the right.";
     case "family-previously-used-global":
       return pref.modelFamilyKey
-        ? "Resolves to: the last model you picked in this family with this agent (no-op until you've picked one)."
+        ? "Resolves to: last pick in this family globally → latest in this family → agent's default."
         : "Pick a family on the right.";
     case "previously-used-session":
+      return "Resolves to: last pick in this session → last pick globally → agent's default.";
     case "previously-used-global":
-      return "Resolves to: the last model you picked with this agent (no-op until you've picked one).";
+      return "Resolves to: last pick globally → agent's default.";
     case "no-change":
       return "Model won't change when this agent is picked.";
     default:
@@ -330,8 +337,9 @@ function resolveVariantPreview(pref: AgentPref, row: AgentRow): string | null {
         ? `Resolves to: ${pref.variant || "(none)"}`
         : "Pick a variant on the right.";
     case "previously-used-session":
+      return "Resolves to: last variant pick in this session → last variant pick globally → agent's default.";
     case "previously-used-global":
-      return "Resolves to: the last variant you picked with this agent (no-op until you've picked one).";
+      return "Resolves to: last variant pick globally → agent's default.";
     case "no-change":
       return "Variant won't change when this agent is picked.";
     default:
@@ -349,6 +357,8 @@ function RuleRow({
   valueField,
   familyOptions,
   familyValue,
+  providersDataForSpecific,
+  vendorFilterForSpecific,
 }: {
   label: string;
   family: string;
@@ -359,6 +369,8 @@ function RuleRow({
   valueField: "modelKey" | "variant";
   familyOptions?: ModelOption[];
   familyValue?: string;
+  providersDataForSpecific?: unknown;
+  vendorFilterForSpecific?: string | null;
 }) {
   const [saving, setSaving] = useState(false);
   const apply = async (pref: Partial<AgentPref>) => {
@@ -428,7 +440,24 @@ function RuleRow({
           </SelectItem>
         </SelectContent>
       </Select>
-      {currentRule === "specific" ? (
+      {currentRule === "specific" && providersDataForSpecific !== undefined ? (
+        <Select
+          aria-label={`${label} value for ${family}`}
+          selectedKey={currentValue ?? ""}
+          isDisabled={saving}
+          onSelectionChange={(k) => {
+            if (k === null || k === undefined) return;
+            void apply({ [valueField]: String(k) });
+          }}
+        >
+          <SelectTrigger />
+          <ModelPickerContent
+            providersData={providersDataForSpecific}
+            vendorFilter={vendorFilterForSpecific ?? null}
+            ariaLabel={`${label} model for ${family}`}
+          />
+        </Select>
+      ) : currentRule === "specific" ? (
         <Select
           aria-label={`${label} value for ${family}`}
           selectedKey={currentValue ?? ""}
@@ -469,6 +498,14 @@ function RuleRow({
             ))}
           </SelectContent>
         </Select>
+      ) : currentRule === "previously-used-session" ? (
+        <span className="text-[10px] leading-tight text-muted-fg/80">
+          Fallback to previously used globally, or agent's default.
+        </span>
+      ) : currentRule === "previously-used-global" ? (
+        <span className="text-[10px] leading-tight text-muted-fg/80">
+          Fallback to agent's default.
+        </span>
       ) : (
         <span className="text-muted-fg/70">—</span>
       )}
