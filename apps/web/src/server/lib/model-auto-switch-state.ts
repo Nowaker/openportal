@@ -11,6 +11,7 @@ const NAMESPACE = "modelAutoSwitch";
 export type Rule =
   | "agent-default"
   | "specific"
+  | "family-latest"
   | "previously-used-session"
   | "previously-used-global"
   | "no-change";
@@ -18,6 +19,7 @@ export type Rule =
 export interface AgentPref {
   modelRule: Rule;
   modelKey?: string;
+  modelFamilyKey?: string;
   variantRule: Rule;
   variant?: string;
 }
@@ -41,6 +43,7 @@ const DEFAULTS: ModelAutoSwitchConfig = {
 const RULE_VALUES: Rule[] = [
   "agent-default",
   "specific",
+  "family-latest",
   "previously-used-session",
   "previously-used-global",
   "no-change",
@@ -56,6 +59,8 @@ function validatePref(raw: unknown): AgentPref {
   const r = raw as Partial<AgentPref>;
   if (isRule(r.modelRule)) out.modelRule = r.modelRule;
   if (typeof r.modelKey === "string" && r.modelKey) out.modelKey = r.modelKey;
+  if (typeof r.modelFamilyKey === "string" && r.modelFamilyKey)
+    out.modelFamilyKey = r.modelFamilyKey;
   if (isRule(r.variantRule)) out.variantRule = r.variantRule;
   if (typeof r.variant === "string") out.variant = r.variant;
   return out;
@@ -108,7 +113,7 @@ export function setAgentPref(
   // make "follow opencode's defaults" the same as "no pref saved".
   const p = config.perAgent[family];
   const dropModel =
-    p.modelRule === "agent-default" && !p.modelKey;
+    p.modelRule === "agent-default" && !p.modelKey && !p.modelFamilyKey;
   const dropVariant =
     p.variantRule === "agent-default" && p.variant === undefined;
   if (dropModel && dropVariant) {

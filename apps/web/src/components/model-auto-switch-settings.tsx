@@ -21,7 +21,7 @@ import {
 } from "@/stores/model-auto-switch-store";
 import { shortenModelName } from "@/lib/model-name";
 import { variantsForModel } from "@/lib/variant-fallback";
-import { compareModelVersion, parseModelId } from "@/lib/model-version";
+import { compareModelVersion, groupByFamily, parseModelId } from "@/lib/model-version";
 
 interface AgentRow {
   family: string;
@@ -128,6 +128,10 @@ function AgentRowEditor({
     () => collectModels(providersData, agentVendor),
     [providersData, agentVendor],
   );
+  const allFamilies = useMemo(
+    () => collectFamilies(providersData, agentVendor),
+    [providersData, agentVendor],
+  );
 
   const selectedModelKey =
     pref.modelKey ??
@@ -159,6 +163,8 @@ function AgentRowEditor({
         options={allModels}
         ruleField="modelRule"
         valueField="modelKey"
+        familyOptions={allFamilies}
+        familyValue={pref.modelFamilyKey}
       />
 
       <RuleRow
@@ -211,6 +217,26 @@ function collectModels(
   });
 }
 
+function collectFamilies(
+  providersData: unknown,
+  vendorFilter: string | null,
+): ModelOption[] {
+  const groups = groupByFamily(
+    providersData as Parameters<typeof groupByFamily>[0],
+  );
+  const out: ModelOption[] = [];
+  for (const [familyKey, list] of groups) {
+    if (list.length === 0) continue;
+    const rep = list[0];
+    if (vendorFilter && rep.providerID !== vendorFilter) continue;
+    const latest = rep.versionDisplay
+      ? ` (latest: ${rep.versionDisplay})`
+      : "";
+    out.push({ key: familyKey, label: `${rep.family}${latest}` });
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+
 function modelLabel(
   model: { providerID?: string; modelID?: string } | null | undefined,
 ): string {
@@ -226,6 +252,8 @@ function RuleRow({
   options,
   ruleField,
   valueField,
+  familyOptions,
+  familyValue,
 }: {
   label: string;
   family: string;
@@ -234,6 +262,8 @@ function RuleRow({
   options: ModelOption[] | Array<{ key: string; label: string }>;
   ruleField: "modelRule" | "variantRule";
   valueField: "modelKey" | "variant";
+  familyOptions?: ModelOption[];
+  familyValue?: string;
 }) {
   const [saving, setSaving] = useState(false);
   const apply = async (pref: Partial<AgentPref>) => {
@@ -244,6 +274,7 @@ function RuleRow({
       setSaving(false);
     }
   };
+  const showFamilyLatest = familyOptions !== undefined;
   return (
     <div className="grid grid-cols-[5rem_1fr_1fr] items-center gap-2 text-xs">
       <span className="text-muted-fg">{label}</span>
@@ -264,6 +295,11 @@ function RuleRow({
           <SelectItem id="specific" textValue="Specific">
             Specific
           </SelectItem>
+          {showFamilyLatest && (
+            <SelectItem id="family-latest" textValue="Latest in family">
+              Latest in family
+            </SelectItem>
+          )}
           <SelectItem
             id="previously-used-session"
             textValue="Previously used in this session"
@@ -294,6 +330,25 @@ function RuleRow({
           <SelectTrigger />
           <SelectContent>
             {options.map((opt) => (
+              <SelectItem key={opt.key} id={opt.key} textValue={opt.label}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : currentRule === "family-latest" && familyOptions ? (
+        <Select
+          aria-label={`${label} family for ${family}`}
+          selectedKey={familyValue ?? ""}
+          isDisabled={saving || familyOptions.length === 0}
+          onSelectionChange={(k) => {
+            if (k === null || k === undefined) return;
+            void apply({ modelFamilyKey: String(k) });
+          }}
+        >
+          <SelectTrigger />
+          <SelectContent>
+            {familyOptions.map((opt) => (
               <SelectItem key={opt.key} id={opt.key} textValue={opt.label}>
                 {opt.label}
               </SelectItem>

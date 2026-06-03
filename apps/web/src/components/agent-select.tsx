@@ -21,6 +21,7 @@ import {
 import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 import { shortenOmoAgentName } from "@/lib/agent-name";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
+import { groupByFamily, resolveModelInFamily } from "@/lib/model-version";
 import type { Agent } from "@opencode-ai/sdk";
 
 interface AgentSelectProps {
@@ -137,6 +138,19 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
           let nextModelKey: string | null = null;
           if (pref.modelRule === "specific" && pref.modelKey) {
             nextModelKey = pref.modelKey;
+          } else if (
+            pref.modelRule === "family-latest" &&
+            pref.modelFamilyKey
+          ) {
+            const groups = groupByFamily(
+              (providersData ?? undefined) as Parameters<typeof groupByFamily>[0],
+            );
+            const resolved = resolveModelInFamily(
+              groups,
+              pref.modelFamilyKey,
+              "latest",
+            );
+            if (resolved) nextModelKey = `${resolved.providerID}/${resolved.modelID}`;
           } else if (
             pref.modelRule === "previously-used-session" &&
             sessionPick.modelKey

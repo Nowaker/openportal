@@ -5,6 +5,7 @@ const KEY = "/api/model-auto-switch";
 export type Rule =
   | "agent-default"
   | "specific"
+  | "family-latest"
   | "previously-used-session"
   | "previously-used-global"
   | "no-change";
@@ -12,6 +13,7 @@ export type Rule =
 export interface AgentPref {
   modelRule: Rule;
   modelKey?: string;
+  modelFamilyKey?: string;
   variantRule: Rule;
   variant?: string;
 }
@@ -101,6 +103,7 @@ export async function setAgentPref(
   const body: Record<string, unknown> = { family: fam };
   if (pref.modelRule !== undefined) body.modelRule = pref.modelRule;
   if (pref.modelKey !== undefined) body.modelKey = pref.modelKey;
+  if (pref.modelFamilyKey !== undefined) body.modelFamilyKey = pref.modelFamilyKey;
   if (pref.variantRule !== undefined) body.variantRule = pref.variantRule;
   if (pref.variant !== undefined) body.variant = pref.variant;
   const r = await fetch(KEY, {

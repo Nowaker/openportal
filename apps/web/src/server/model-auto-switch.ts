@@ -11,6 +11,7 @@ import { parseBody } from "./lib/validation";
 const ruleSchema = z.enum([
   "agent-default",
   "specific",
+  "family-latest",
   "previously-used-session",
   "previously-used-global",
   "no-change",
@@ -24,6 +25,7 @@ const putBodySchema = z.union([
     family: z.string().min(1),
     modelRule: ruleSchema.optional(),
     modelKey: z.string().nullable().optional(),
+    modelFamilyKey: z.string().nullable().optional(),
     variantRule: ruleSchema.optional(),
     variant: z.string().nullable().optional(),
   }),
@@ -48,6 +50,8 @@ export default defineHandler(async (event) => {
     if (body.modelRule !== undefined) pref.modelRule = body.modelRule;
     if (body.modelKey !== undefined && body.modelKey !== null)
       pref.modelKey = body.modelKey;
+    if (body.modelFamilyKey !== undefined && body.modelFamilyKey !== null)
+      pref.modelFamilyKey = body.modelFamilyKey;
     if (body.variantRule !== undefined) pref.variantRule = body.variantRule;
     if (body.variant !== undefined && body.variant !== null)
       pref.variant = body.variant;
