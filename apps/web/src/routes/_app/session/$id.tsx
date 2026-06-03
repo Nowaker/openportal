@@ -6042,7 +6042,8 @@ function SessionPage() {
                         : "Type your message..."
                     }
                     isDisabled={sessionIsArchived}
-                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0 pl-[5px] pt-[3px] pb-[3px] pr-[46px]${
+                    style={{ paddingLeft: 5, paddingTop: 3, paddingBottom: 3, paddingRight: 46 }}
+                    className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0${
                       sessionIsArchived ? " text-center placeholder:text-center" : ""
                     }`}
                   />

@@ -1232,7 +1232,8 @@ function NewSessionPage() {
                     onKeyDown(e);
                   }}
                   placeholder="What do you want to do?"
-                  className="resize-none overflow-y-auto text-sm min-h-[120px] rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0 pl-[5px] pt-[3px] pb-[3px] pr-[46px]"
+                  style={{ paddingLeft: 5, paddingTop: 3, paddingBottom: 3, paddingRight: 46 }}
+                  className="resize-none overflow-y-auto text-sm min-h-[120px] rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0"
                   disabled={sending}
                 />
               <div className="pointer-events-none absolute bottom-1 right-1 flex flex-col items-end gap-1.5">
