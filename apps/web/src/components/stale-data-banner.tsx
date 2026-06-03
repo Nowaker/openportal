@@ -36,7 +36,7 @@ export function StaleDataBanner({ headline, hint }: StaleDataBannerProps) {
     hint ??
     "OpenPortal-owned views (prompts, settings, server list) keep working. Live OpenCode reads will resume automatically once it's back.";
   return (
-    <div className="flex items-start gap-2 border-b border-warning/40 bg-warning-subtle px-3 py-2 text-sm">
+    <div className="openportal-alert-banner flex items-start gap-2 border-b border-warning/40 bg-warning-subtle px-3 py-2 text-sm">
       <ExclamationTriangleIcon
         className="size-4 shrink-0 text-warning-subtle-fg mt-0.5"
         aria-hidden="true"

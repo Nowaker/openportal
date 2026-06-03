@@ -48,7 +48,7 @@ export function CompactBanner({
   const expandable = Boolean(details);
   return (
     <div
-      className={`flex flex-col gap-0.5 border-b px-3 py-1.5 text-xs ${p.wrap}`}
+      className={`openportal-alert-banner flex flex-col gap-0.5 border-b px-3 py-1.5 text-xs ${p.wrap}`}
       data-test={dataTest}
     >
       <div className="flex items-center gap-2">
