@@ -200,6 +200,42 @@ systemd owns the registry race - it kills the previous process group
 cleanly before exec'ing the new one. The `~/.portal.json` registry
 self-heals on each start because runner.sh is the only writer.
 
+### Type-checking before commit (mandatory for .ts / .tsx changes)
+
+Vite uses esbuild for transpile-only — it NEVER type-checks. `bash
+scripts/build.sh` and `bash scripts/deploy.sh` both produce green
+output even when the source has undefined identifiers, wrong arity
+calls, or other TS errors. Those bugs surface only at runtime in
+the browser, often as `ReferenceError: <name> is not defined`. This
+is exactly how commit `12ac206` shipped a broken model picker — a
+refactor dropped imports but left a dead-code call site, and the
+build / deploy didn't notice.
+
+MANDATORY: after every commit-worthy edit that touches a `.ts` or
+`.tsx` file under `apps/web/src/`, run from the repo root:
+
+```bash
+cd apps/web && bunx tsc --noEmit 2>&1 | grep -E "<file-you-touched>" | grep -E "error TS"
+```
+
+Confirm the output is EMPTY for every file you modified. The
+codebase has ~30 pre-existing tsc errors in unrelated files
+(`app-sidebar-nav.tsx`, `app-sidebar.tsx`, `cmd.tsx`,
+`companion-telemetry-panel.tsx`, etc.); driving them all to zero is
+out of scope. The contract is "your changes introduced NO new
+errors mentioning your files" — not "zero errors overall".
+
+If the grep returns lines, you broke something. Fix or revert
+BEFORE running `scripts/deploy.sh` — never deploy code whose tsc
+errors are your own.
+
+LSP-only `lsp_diagnostics` checks are NOT sufficient on their own.
+The LSP runs against a per-file editor view; cross-file refactor
+holes can pass LSP (because the IDE tsserver session caches the
+old symbol table) yet fail `tsc --noEmit` from a fresh process.
+Always run `bunx tsc --noEmit` from `apps/web/` for the final
+gate, not just the LSP.
+
 ### Build -> restart -> commit cycle
 
 The canonical full cycle is one command: `bash scripts/deploy.sh`.
