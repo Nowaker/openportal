@@ -21,6 +21,7 @@ import {
 } from "@/stores/model-auto-switch-store";
 import { shortenModelName } from "@/lib/model-name";
 import { variantsForModel } from "@/lib/variant-fallback";
+import { compareModelVersion, parseModelId } from "@/lib/model-version";
 
 interface AgentRow {
   family: string;
@@ -198,7 +199,16 @@ function collectModels(
       out.push({ key, label: shortenModelName(m.name ?? m.id) || m.id });
     }
   }
-  return out.sort((a, b) => a.label.localeCompare(b.label));
+  return out.sort((a, b) => {
+    const [aPid, ...aRest] = a.key.split("/");
+    const [bPid, ...bRest] = b.key.split("/");
+    const aParsed = parseModelId(aPid, aRest.join("/"));
+    const bParsed = parseModelId(bPid, bRest.join("/"));
+    if (aParsed.familyKey === bParsed.familyKey) {
+      return compareModelVersion(aParsed, bParsed);
+    }
+    return aParsed.family.localeCompare(bParsed.family);
+  });
 }
 
 function modelLabel(

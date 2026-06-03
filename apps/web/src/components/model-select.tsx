@@ -23,7 +23,7 @@ import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 import useMediaQuery from "@/hooks/use-media-query";
-import { compareModels } from "@/lib/model-sort";
+import { compareModelVersion, parseModelId } from "@/lib/model-version";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 
 interface ModelItem {
@@ -88,7 +88,16 @@ function transformProviders(data: {
           id: `${provider.id}/${model.id}`,
           name: model.name,
         }))
-        .sort(compareModels),
+        .sort((a, b) => {
+          const [aPid, ...aRest] = a.id.split("/");
+          const [bPid, ...bRest] = b.id.split("/");
+          const aParsed = parseModelId(aPid, aRest.join("/"));
+          const bParsed = parseModelId(bPid, bRest.join("/"));
+          if (aParsed.familyKey === bParsed.familyKey) {
+            return compareModelVersion(aParsed, bParsed);
+          }
+          return aParsed.family.localeCompare(bParsed.family);
+        }),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
