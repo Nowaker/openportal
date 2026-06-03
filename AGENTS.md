@@ -186,6 +186,64 @@ worktree has it without sibling-runtime-dir setup. It:
   `existsSync(WEB_SERVER_PATH)` startup gate passes. The symlink is
   per-worktree and not committed.
 
+### Worktree integration cycle (rebase, then FF merge)
+
+When a worktree feature branch is ready to land on `main-nowaker`,
+ALWAYS rebase the feature branch onto current `origin/main-nowaker`
+before merging. Cherry-pick is NOT a substitute: it produces a new
+SHA on `main-nowaker` and orphans the feature branch's commit, so
+the feature branch and its eventual merge SHA no longer share
+identity. `main-nowaker` moves fast (multiple commits/hour during
+active days from parallel worktree sessions), so by the time a
+worktree is ready the feature branch is almost always stale.
+
+Canonical sequence, run from the worktree:
+
+```bash
+# 1. Pick up upstream tip
+git fetch origin main-nowaker
+
+# 2. Rebase feature branch onto current main
+git rebase origin/main-nowaker
+# Resolve any conflicts here, in the worktree where the dev server
+# is running and you can smoke-test the resolution before merging.
+
+# 3. Force-push the rebased feature branch (lease-protected)
+git push --force-with-lease origin <feature-branch>
+git push --force-with-lease github <feature-branch>
+
+# 4. Switch to the main repo, FF the now-current feature branch into main
+cd ~/projekty/webapps/portal
+[ "$(git symbolic-ref --short HEAD)" = "main-nowaker" ] && \
+  git fetch origin main-nowaker && \
+  git pull --ff-only && \
+  git merge --ff-only <feature-branch>
+
+# 5. Deploy + push main
+bash scripts/deploy.sh
+git push origin main-nowaker
+git push github main-nowaker
+```
+
+Why FF-only on step 4: `--ff-only` rejects the merge if the feature
+branch isn't a descendant of `main-nowaker`, which is exactly the
+condition the rebase in step 2 guarantees. If FF fails at step 4,
+something raced (another commit landed on main between step 2 and
+step 4) - re-run from step 1.
+
+Conflicts during rebase: resolve them ONLY in the worktree, never
+in the main repo. The worktree has the running dev server, isolated
+state, and the same shell history that built the change - you can
+re-test the rebased version end-to-end before committing.
+Aborting (`git rebase --abort`) is the right move if conflicts touch
+code you don't understand; ask before plowing through.
+
+NEVER cherry-pick to work around a non-FF state on main-nowaker.
+The orphaned feature-branch SHA is recoverable via reflog but the
+linear history invariant is not - main ends up with a different
+commit message author/date than the feature branch the user
+reviewed, and the dual-remote push pattern loses its meaning.
+
 ### Portal restart cycle (I do this, not the user)
 
 ```bash
