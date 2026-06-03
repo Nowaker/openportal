@@ -215,19 +215,27 @@ MANDATORY: after every commit-worthy edit that touches a `.ts` or
 `.tsx` file under `apps/web/src/`, run from the repo root:
 
 ```bash
-cd apps/web && bunx tsc --noEmit 2>&1 | grep -E "<file-you-touched>" | grep -E "error TS"
+cd apps/web && bunx tsc --noEmit 2>&1
 ```
 
-Confirm the output is EMPTY for every file you modified. The
-codebase has ~30 pre-existing tsc errors in unrelated files
-(`app-sidebar-nav.tsx`, `app-sidebar.tsx`, `cmd.tsx`,
-`companion-telemetry-panel.tsx`, etc.); driving them all to zero is
-out of scope. The contract is "your changes introduced NO new
-errors mentioning your files" — not "zero errors overall".
+ALWAYS run the FULL check, not a file-narrowed grep. The codebase has
+~30 pre-existing tsc errors in unrelated files (`app-sidebar-nav.tsx`,
+`app-sidebar.tsx`, `cmd.tsx`, `companion-telemetry-panel.tsx`, etc.);
+driving them all to zero is out of scope. The contract is "your
+changes introduced NO new errors mentioning files you edited" — not
+"zero errors overall". Read the full output, identify any error
+mentioning a file in your diff, fix those before commit. Pre-existing
+errors in untouched files are ignored.
 
-If the grep returns lines, you broke something. Fix or revert
-BEFORE running `scripts/deploy.sh` — never deploy code whose tsc
-errors are your own.
+NEVER reduce scope to "just my files" by piping through `grep` — the
+full output is what the human runs in their terminal, and it's how
+mismatches between "I think my changes are clean" and reality surface.
+A narrowed grep can miss a knock-on TS2304 in a file you forgot you
+edited.
+
+If any error in the full output mentions a file you touched, you
+broke something. Fix or revert BEFORE running `scripts/deploy.sh` —
+never deploy code whose tsc errors are your own.
 
 LSP-only `lsp_diagnostics` checks are NOT sufficient on their own.
 The LSP runs against a per-file editor view; cross-file refactor
