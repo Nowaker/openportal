@@ -51,23 +51,60 @@ projects), follow this protocol:
    reference - update it in place rather than re-writing the
    explanation inline. Treat the directory as the canonical record.
 
-## AI_TODO.md is the canonical task queue (binding)
+## `ai-todo/` is the canonical task queue (binding)
 
-`AI_TODO.md` at the repo root is the durable cross-session task
-queue for this project. The user's personal
-`~/.config/opencode/AGENTS.md` defines the schema; this section is
-the project-specific enforcement contract.
+The `ai-todo/` directory at the repo root is the durable
+cross-session task queue. One entry = one file. No shared write
+target = no merge conflicts between agents working in parallel.
+
+(Legacy `AI_TODO.md` at the repo root is frozen as-is through
+entry #190 for historical references like `// per AI_TODO #138`
+that exist in code comments. New entries go in `ai-todo/`.)
 
 **Every user prompt that maps to a queueable task MUST land in
-`AI_TODO.md` in the same turn it's accepted.** Skipping the sync
+`ai-todo/` in the same turn it's accepted.** Skipping the sync
 because "I'll batch later" is a contract violation. Compaction
-wipes the in-memory todo list; `AI_TODO.md` is the only thing that
+wipes the in-memory todo list; `ai-todo/` is the only thing that
 survives.
 
-Required format per entry (matches the existing #1-#72 entries):
+### Filename format
 
 ```
-### N. <Short title> (<status: PENDING | DONE - <commit> | Q-DEFERRED>)
+ai-todo/<YYYY-MM-DD>_<HH-MM-SS>_<sessionid>_<title-in-dash-case>.md
+```
+
+Example:
+
+```
+ai-todo/2026-06-03_08-18-12_ses_18572f9a8ffecB57FPahdTEZ4Y_load-first-and-last.md
+```
+
+- `YYYY-MM-DD_HH-MM-SS` — wall-clock timestamp at the moment the
+  entry is created. Use underscores (not colons) so the path is
+  safe on every filesystem. Natural chronological sort: `ls
+  ai-todo/` shows oldest first, `ls ai-todo/ | tail -10` shows the
+  most recent ten.
+- `sessionid` — your own opencode session ID (`ses_...`), injected
+  into your context via the user's custom-instructions hook. Use
+  the value provided; do NOT introspect or guess it. If for some
+  reason the hook hasn't run, use `ses_unknown` and the user can
+  rename later.
+- `title-in-dash-case` — short kebab-case summary. Mirrors the
+  legacy `### N. Title` heading.
+
+### File contents
+
+YAML frontmatter for machine-readable status, then the body:
+
+```markdown
+---
+status: DONE
+commit: 3adcbb3
+session: ses_18572f9a8ffecB57FPahdTEZ4Y
+queued_at: 2026-06-03T08:18:12-05:00
+---
+
+# Always render original prompt + last N messages
 
 User prompt (verbatim):
 
@@ -79,82 +116,51 @@ Design notes:
 - <deferred follow-ups, file paths, dependencies>
 ```
 
-Operational rules:
+Status vocabulary (in frontmatter): `PENDING`, `IN_PROGRESS`,
+`DONE`, `Q-DEFERRED`, `CANCELLED`. Same meanings as the legacy
+parenthesized statuses.
 
-- **Append-only by number.** Pick the next integer after the highest
-  existing entry (currently #72). Never re-use numbers. Never edit
-  shipped entries except to flip `PENDING` to `DONE - <commit>` or
-  add a follow-up commit reference.
-- **Batch sync for the same turn.** When a single user prompt
-  enqueues multiple items, each item gets its own numbered entry.
-  When you fall behind (multiple prompts arrived without a sync),
-  catch up in the next AI_TODO sync commit and reference the
-  prompts that triggered them.
-- **Status discipline.** New work starts `(PENDING - <reason>)`.
-  In-flight work flips to `(IN PROGRESS - <reason>)` only if the
-  user is watching a long task; otherwise jump straight to
-  `(DONE - <commit>)` on landing. `Q-DEFERRED` for open user
-  questions whose decision is awaited.
-- **Dedicated AI_TODO commit.** When the only change is the
-  AI_TODO entry (no code), the commit subject MUST start with
-  `AI_TODO.md:` so the user can scan history for queue mutations.
-  Code commits that ship the work and update AI_TODO at the same
-  time fold both into one atomic commit; mention the AI_TODO
-  update in the body.
-- **Position keywords.** Honour the user's queue-position words:
-  `enqueue at end` (default), `enqueue as next` (right after the
-  in-progress item), `next`, `before X`, `after X`, `now`,
-  `immediately`. The numbered order in the file reflects
-  chronological order of acceptance; the actual work order is
-  whatever the in-memory todo list says. Re-ordering across
-  entries is fine; renumbering is not.
+### Operational rules
 
-- **Safe diffs (binding when AI_TODO has concurrent writers).**
-  Multiple agents writing to `AI_TODO.md` from sibling worktrees /
-  sessions is the norm here. To keep the file mergeable:
-  - **Append-only**: never touch existing numbered entries except
-    to flip `PENDING` → `DONE - <commit>` in place. No edits to
-    historical entries, no reformatting, no reordering.
-  - **Anchor every diff at the END of the file**, after the most
-    recent numbered entry but before the trailing meta sections
-    (Q-DEFERRED, ARCHITECTURE REFERENCE, etc.). Parallel agents
-    appending the same way land on neighbouring lines and git's
-    three-way merge resolves cleanly.
-  - **No renumbering, ever.** Pick the next unused integer at
-    insert time. If a race produced a duplicate number, the loser
-    bumps to N+1 in the next sync turn, never by rewriting
-    history.
-  - **One numbered entry per commit** for AI_TODO-only changes -
-    the smaller the patch, the less surface for conflict. Code
-    commits that already update AI_TODO inline are allowed to
-    ship 1-3 entries together.
+- **One file per entry, never edit shipped files** except to flip
+  `status:` (e.g. `PENDING` → `DONE`) and fill in `commit:`. No
+  edits to body content of historical entries, no reformatting, no
+  renames after commit.
+- **Append-only by file creation.** Pick the current timestamp and
+  your own sessionid; collisions are impossible because two
+  sessions cannot share the same session ID.
+- **Status flip = one-line frontmatter edit.** Trivial single-file
+  diff, cannot conflict with another agent's entry.
+- **Dedicated commit subject for entry-only changes.** Use
+  `ai-todo: <subject>` so the user can scan history for queue
+  mutations. Code commits that ship the work and add the entry
+  fold both into one atomic commit; mention the entry path in the
+  body.
+- **Position keywords.** Honour the user's queue-position words
+  (`enqueue at end`, `enqueue as next`, `now`, etc.). The actual
+  work order is the in-memory todo list; filename timestamps just
+  reflect acceptance order.
+- **Cross-references in code comments.** New references go by slug:
+  `// per ai-todo "btw side question"` or
+  `// see ai-todo/...load-first-and-last.md`. Legacy `// per
+  AI_TODO #138` references stay valid against the frozen
+  `AI_TODO.md`.
 
-- **Temp-file fallback when AI_TODO.md is unmergeable.** If
-  `AI_TODO.md` shows up in `git ls-files --unmerged`, or another
-  agent's mid-flight edit is visible (raw `<<<<<<<` markers,
-  partial reformatting, etc.), do NOT add your entry directly -
-  editing now will mangle their merge. Instead:
-  1. Write the intended entry into
-     `AI_TODO_<yyyymmdd>_<hhmmss>_<short_title>_<ses_id>.md` at
-     the repo root, using the same numbered-entry format as a
-     real entry. Example filename:
-     `AI_TODO_20260527_2030_settings_polish_ses_b7c2fa.md`.
-  2. These temp files are `.gitignore`d under the
-     `AI_TODO_*_ses_*.md` pattern, so they sit safely in the
-     working tree without polluting commits.
-  3. Re-check `AI_TODO.md` periodically. As soon as it returns to
-     a clean mergeable state, append the entry from your temp
-     file to the END of `AI_TODO.md` (still respecting the
-     safe-diff rules above), then delete the temp file - either
-     in the same commit that ships your work, or in a dedicated
-     post-merge `AI_TODO.md: sync ...` commit.
-  4. If a session ends with the temp file still on disk, the
-     next session reading the repo root MUST scoop it up before
-     starting new work. The filename's timestamp + session id
-     makes ownership unambiguous.
+### What this design eliminates
 
-If the user reminds you to sync (as in 2026-05-26
-msg_e6580ef5b...), you're already late. Stop, sync, then resume.
+- No more "Safe diffs" subsection. No shared write target = no
+  append-point conflicts.
+- No more "Temp-file fallback when AI_TODO.md is unmergeable"
+  subsection. Each agent writes its own file directly; there's
+  nothing to be unmergeable with.
+- No more "loser bumps to N+1" race resolution. No number to
+  collide on.
+- No more risk of clobbering another agent's uncommitted entry
+  via stash-pop or branch-switch. Their entry is a different
+  filename you'll never touch.
+
+If the user reminds you to sync, you're already late. Stop,
+write the file, commit, then resume.
 
 ## Operational patterns
 

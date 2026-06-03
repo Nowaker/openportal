@@ -45,15 +45,6 @@ tmp/
 .omo/
 .sisyphus/
 
-# Per-session AI_TODO temp files (safe-diff fallback when AI_TODO.md is
-# in unmerged state from a parallel agent). See AGENTS.md "Temp-file
-# fallback when AI_TODO.md is unmergeable". Filename format:
-#   AI_TODO_<yyyymmdd>_<hhmmss>_<short_title>_ses_<id>.md
-# Reincorporated into AI_TODO.md once the conflict resolves; the file
-# is deleted at that point. Anything still on disk between sessions
-# must be picked up by the next session before new work.
-AI_TODO_*_ses_*.md
-
 # Whisper STT model binaries (downloaded on demand, multi-GB)
 apps/voice-stt/models/
 .output-released
