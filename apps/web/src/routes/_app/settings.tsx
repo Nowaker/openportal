@@ -927,52 +927,55 @@ function SoundCategoryRow({
   const setEnabled = useNotificationSoundStore((s) => s.setCategoryEnabled);
   const setSound = useNotificationSoundStore((s) => s.setCategorySound);
   return (
-    <div className="flex flex-wrap items-center gap-3 p-3 sm:flex-nowrap">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-sm font-medium">{title}</span>
-        <span className="text-xs text-muted-fg">{description}</span>
+    <div className="grid gap-3 p-3 sm:grid-cols-[minmax(16rem,1fr)_auto] sm:items-center">
+      <div className="min-w-0 space-y-0.5">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs text-muted-fg">{description}</span>
       </div>
-      <Checkbox
-        isSelected={cfg.enabled}
-        onChange={(v) => setEnabled(category, Boolean(v))}
-        data-test={`portal-settings-sound-${category}-enabled`}
-        aria-label={`Enable ${title} sound`}
-      >
-        Enabled
-      </Checkbox>
-      <Select
-        aria-label={`${title} sound`}
-        selectedKey={cfg.soundId}
-        onSelectionChange={(key) => {
-          if (!key) return;
-          const id = String(key) as SoundId;
-          setSound(category, id);
-          playSoundById(id);
-        }}
-        className="shrink-0"
-      >
-        <SelectTrigger className="w-40" />
-        <SelectContent
-          className="max-h-[min(60vh,20rem)]"
-          popover={{
-            className: "max-h-[min(60vh,20rem)] flex flex-col overflow-hidden",
-          }}
+      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+        <Checkbox
+          isSelected={cfg.enabled}
+          onChange={(v) => setEnabled(category, Boolean(v))}
+          data-test={`portal-settings-sound-${category}-enabled`}
+          aria-label={`Enable ${title} sound`}
+          className="shrink-0"
         >
-          {SOUND_OPTIONS.map((opt) => (
-            <SelectItem key={opt.id} id={opt.id} textValue={opt.label}>
-              <SelectLabel>{opt.label}</SelectLabel>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <button
-        type="button"
-        onClick={() => playSoundById(cfg.soundId)}
-        className="rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
-        data-test={`portal-settings-sound-${category}-test`}
-      >
-        Test
-      </button>
+          Enabled
+        </Checkbox>
+        <Select
+          aria-label={`${title} sound`}
+          selectedKey={cfg.soundId}
+          onSelectionChange={(key) => {
+            if (!key) return;
+            const id = String(key) as SoundId;
+            setSound(category, id);
+            playSoundById(id);
+          }}
+          className="w-40 shrink-0"
+        >
+          <SelectTrigger />
+          <SelectContent
+            className="max-h-[min(60vh,20rem)]"
+            popover={{
+              className: "max-h-[min(60vh,20rem)] flex flex-col overflow-hidden",
+            }}
+          >
+            {SOUND_OPTIONS.map((opt) => (
+              <SelectItem key={opt.id} id={opt.id} textValue={opt.label}>
+                <SelectLabel>{opt.label}</SelectLabel>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          type="button"
+          onClick={() => playSoundById(cfg.soundId)}
+          className="shrink-0 rounded-md border border-border bg-bg px-2 py-1 text-xs hover:bg-muted"
+          data-test={`portal-settings-sound-${category}-test`}
+        >
+          Test
+        </button>
+      </div>
     </div>
   );
 }
@@ -1224,7 +1227,7 @@ function ToolOutputCapSetting() {
           value={draftKb}
           onChange={(e) => setDraftKb(e.target.value)}
           className="max-w-[10rem]"
-          isDisabled={isLoading || busy}
+          disabled={isLoading || busy}
           aria-label="Tool output cap in kilobytes"
         />
         <span className="text-xs text-muted-fg">KB</span>
