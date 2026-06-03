@@ -127,6 +127,7 @@ import { useComposerMaxHeight } from "@/hooks/use-composer-max-height";
 import { usePullState } from "@/hooks/use-pull-to-refresh";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
+  useFirstSessionMessage,
   useSessionMessages,
   useSessionMessagesAround,
   addOptimisticMessage,
@@ -2272,14 +2273,21 @@ function PermalinkGapBanner({
   onLoadTop,
   onLoadBottom,
   onLoadAll,
+  gapLabel,
 }: {
   gapCount: number;
   loading: boolean;
-  onLoadTop: () => void;
-  onLoadBottom: () => void;
+  onLoadTop?: () => void;
+  onLoadBottom?: () => void;
   onLoadAll: () => void;
+  gapLabel?: string;
 }) {
   const safeGapCount = Number.isFinite(gapCount) && gapCount > 0 ? gapCount : 0;
+  const label =
+    gapLabel ??
+    `Gap of ${safeGapCount.toLocaleString()} message${
+      safeGapCount === 1 ? "" : "s"
+    } between target window and latest messages.`;
   return (
     <div className="my-3 mx-3 rounded-md border border-dashed border-border bg-muted/20 px-3 py-3 flex flex-col gap-2 items-center text-center">
       {loading ? (
@@ -2289,41 +2297,41 @@ function PermalinkGapBanner({
         </div>
       ) : (
         <>
+          {onLoadTop && (
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={onLoadTop}
+                disabled={loading}
+                title="Extend the target window downward into the gap"
+                className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
+              >
+                Load top 50 more
+              </button>
+              <button
+                type="button"
+                onClick={onLoadAll}
+                disabled={loading}
+                title="Loading the entire history can take long on big sessions"
+                className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
+              >
+                Load all (slow)
+              </button>
+            </div>
+          )}
+          <div className="text-xs text-muted-fg">{label}</div>
           <div className="flex items-center justify-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={onLoadTop}
-              disabled={loading}
-              title="Extend the target window downward into the gap"
-              className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
-            >
-              Load top 50 more
-            </button>
-            <button
-              type="button"
-              onClick={onLoadAll}
-              disabled={loading}
-              title="Loading the entire history can take long on big sessions"
-              className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
-            >
-              Load all (slow)
-            </button>
-          </div>
-          <div className="text-xs text-muted-fg">
-            Gap of {safeGapCount.toLocaleString()} message
-            {safeGapCount === 1 ? "" : "s"} between target window and latest
-            messages.
-          </div>
-          <div className="flex items-center justify-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={onLoadBottom}
-              disabled={loading}
-              title="Extend the latest window upward into the gap"
-              className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
-            >
-              Load bottom 50 more
-            </button>
+            {onLoadBottom && (
+              <button
+                type="button"
+                onClick={onLoadBottom}
+                disabled={loading}
+                title="Extend the latest window upward into the gap"
+                className="rounded-md border border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
+              >
+                Load bottom 50 more
+              </button>
+            )}
             <button
               type="button"
               onClick={onLoadAll}
@@ -3390,6 +3398,14 @@ function SessionPage() {
     permalinkTarget,
     { enabled: permalinkMode, onlyUser: onlyUserMessages },
   );
+
+  const firstSession = useFirstSessionMessage(sessionId, {
+    enabled: !permalinkMode,
+  });
+  const firstMessage = firstSession.message;
+  const firstTotal = onlyUserMessages
+    ? firstSession.totalUserCount
+    : firstSession.totalCount;
 
   const messages: MessageWithParts[] = permalinkMode
     ? permalinkWindow.messages
@@ -5195,11 +5211,6 @@ function SessionPage() {
   );
 
   const messageNodes = useMemo(() => {
-    // No filter against session.revert.messageID here: that pointer is
-    // transient and gets cleared by opencode the moment a new prompt is
-    // appended. Permanent truncation is now done by hard-deleting messages
-    // through the message-DELETE route in handleSubmit, so the message list
-    // returned by /session/{id}/message is already authoritative.
     const baseVisible = messages.filter((message) => hasVisibleContent(message));
     const visible = onlyUserMessages
       ? baseVisible.filter((m) => m.info.role === "user")
@@ -5217,8 +5228,36 @@ function SessionPage() {
     }
     const ctx = { baseVisible, revertIndex, lastErrorMessageId };
 
+    const firstId = firstMessage?.info.id;
+    const firstIsLoaded =
+      firstId !== undefined && visible.some((m) => m.info.id === firstId);
+    const showFirstHeader =
+      firstMessage !== null &&
+      !permalinkMode &&
+      !loadAllMessages &&
+      !firstIsLoaded;
+    const firstHeader = showFirstHeader ? (
+      <>
+        {renderMessage(firstMessage, -1, {
+          baseVisible: [firstMessage],
+          revertIndex: -1,
+          lastErrorMessageId: undefined,
+        })}
+        <PermalinkGapBanner
+          gapCount={Math.max(0, (firstTotal ?? messages.length + 1) - messages.length - 1)}
+          loading={false}
+          onLoadAll={() => setLoadAllMessages(true)}
+        />
+      </>
+    ) : null;
+
     if (!permalinkMode || !permalinkWindow.gap) {
-      return visible.map((message, idx) => renderMessage(message, idx, ctx));
+      return (
+        <>
+          {firstHeader}
+          {visible.map((message, idx) => renderMessage(message, idx, ctx))}
+        </>
+      );
     }
 
     const aroundIds = new Set(permalinkWindow.around.map((m) => m.info.id));
@@ -5254,6 +5293,9 @@ function SessionPage() {
     permalinkWindow.loading.fillGap,
     permalinkWindow.fillGap,
     renderMessage,
+    firstMessage,
+    firstTotal,
+    loadAllMessages,
   ]);
 
   // Size cap is conservative because the prompt body is sent inline as a

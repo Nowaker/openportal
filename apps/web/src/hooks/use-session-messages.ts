@@ -122,6 +122,61 @@ export function getMessagesKey(
   return parts.length > 0 ? `${base}?${parts.join("&")}` : base;
 }
 
+export interface FirstSessionMessageState {
+  message: MessageWithParts | null;
+  totalCount: number | null;
+  totalUserCount: number | null;
+  isLoading: boolean;
+  error: Error | null;
+}
+
+const firstMessageFetcher = async (
+  url: string,
+): Promise<{
+  messages: MessageWithParts[];
+  total: number | null;
+  totalUser: number | null;
+}> => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  const data = ((await res.json()) as MessageWithParts[] | null) ?? [];
+  const totalHdr = res.headers.get("X-Messages-Total");
+  const totalUserHdr = res.headers.get("X-Messages-Total-User");
+  const total = totalHdr !== null ? Number(totalHdr) : null;
+  const totalUser = totalUserHdr !== null ? Number(totalUserHdr) : null;
+  return {
+    messages: data,
+    total: Number.isFinite(total) ? total : null,
+    totalUser: Number.isFinite(totalUser) ? totalUser : null,
+  };
+};
+
+export function useFirstSessionMessage(
+  sessionId: string | undefined,
+  options: { enabled?: boolean } = {},
+): FirstSessionMessageState {
+  const port = usePort();
+  const enabled = options.enabled !== false;
+  const key =
+    enabled && port && sessionId
+      ? `/api/opencode/${port}/session/${sessionId}/messages?first=1`
+      : null;
+  const { data, error, isLoading } = useSWR(key, firstMessageFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    refreshInterval: 0,
+    dedupingInterval: 60_000,
+    keepPreviousData: true,
+  });
+  return {
+    message: data?.messages[0] ?? null,
+    totalCount: data?.total ?? null,
+    totalUserCount: data?.totalUser ?? null,
+    isLoading,
+    error: error instanceof Error ? error : null,
+  };
+}
+
 export function mutateSessionMessages(port: number, sessionId: string) {
   // Revalidate any cached variant of this session's messages key, so callers
   // that loaded the full history still get refreshed without us having to

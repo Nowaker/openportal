@@ -36,6 +36,11 @@ const MAX_LIMIT = 1000;
 //   ?after=<msgId>&limit  - up to `limit` messages strictly AFTER
 //                           msgId (chronological order). Same target
 //                           headers.
+//   ?first=1              - single-element array with the very first
+//                           user message in the session. Always
+//                           role-user-filtered regardless of onlyUser.
+//                           Drives the "always show first prompt + last
+//                           N" rendering at the top of the chat log.
 //   ?since=<msgId>        - all messages strictly newer than msgId
 //                           (incremental polling). If msgId not in
 //                           cached list, force a fresh full fetch and
@@ -80,6 +85,15 @@ export default defineHandler(async (event) => {
     typeof query.after === "string" && query.after.length > 0
       ? query.after
       : null;
+  // ?first=1 returns a single-element array with the first user message
+  // of the session (the original prompt). Always filters to role=user
+  // regardless of the onlyUser flag - the "first prompt" feature wants
+  // the user prompt specifically. Sets X-Messages-Total (full session)
+  // and X-Messages-Total-User (user-only count) headers so the client
+  // can compute the gap size between this first message and the
+  // recent-N window. Used by the route's "always show first prompt +
+  // last N" rendering at the top of the chat log.
+  const wantFirst = query.first === "1" || query.first === "true";
   // ?onlyUser=1 filters the response to role==="user" messages BEFORE
   // applying limit/before/after/id slicing. The full session is still
   // cached unfiltered (so untoggling the flag is a free cache hit), but
@@ -105,6 +119,13 @@ export default defineHandler(async (event) => {
   }
   let view = onlyUser ? full.filter(isUserMessage) : full;
   setResponseHeader(event, "X-Messages-Total-Raw", String(full.length));
+
+  if (wantFirst) {
+    const userMessages = full.filter(isUserMessage);
+    setResponseHeader(event, "X-Messages-Total", String(view.length));
+    setResponseHeader(event, "X-Messages-Total-User", String(userMessages.length));
+    return userMessages.length > 0 ? [userMessages[0]] : [];
+  }
 
   const permalinkAnchor = targetId ?? beforeId ?? afterId;
   if (permalinkAnchor !== null) {
