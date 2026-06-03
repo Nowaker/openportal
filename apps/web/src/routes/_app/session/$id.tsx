@@ -2717,6 +2717,101 @@ const MessageItem = memo(function MessageItem({
       : null;
 
   const hasHeaderRow = textContent || fileParts.length > 0;
+  const pastPermissionDecisionsForBelow =
+    ((message.info as { _permissionDecisions?: PastPermissionDecision[] })
+      ._permissionDecisions ?? []).filter(
+      (d) => !messagePermissions.some((p) => p.id === d.requestId),
+    );
+  const hasEventOnlyRows =
+    !hasHeaderRow &&
+    (toolCalls.length > 0 ||
+      messagePermissions.length > 0 ||
+      pastPermissionDecisionsForBelow.length > 0 ||
+      compactionParts.length > 0 ||
+      !!errorDescription);
+  const renderMetaStack = (className: string) => (
+    <MessageMetaStack
+      messageId={message.info.id}
+      className={className}
+      dataTest={messageMeta ? "portal-msg-meta-stack" : undefined}
+      leading={
+        !isPending && (showStar || showFork || showRevert) ? (
+          <>
+            {showStar && (
+              <StarMessageButton
+                sessionId={sessionId}
+                messageId={message.info.id}
+                role={isAssistant ? "assistant" : "user"}
+                snippet={textContent}
+              />
+            )}
+            {showFork && (
+              <button
+                type="button"
+                onClick={() => onForkRequest(message)}
+                data-test="portal-msg-fork"
+                className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                aria-label="Fork to a new session from this message"
+                title="Fork to a new session from this message"
+              >
+                <ForkIcon className="size-3.5" />
+              </button>
+            )}
+            {showRevert && (
+              <button
+                type="button"
+                onClick={() => onRevertRequest(message, textContent)}
+                data-test="portal-msg-revert"
+                className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+                aria-label={
+                  isAssistant
+                    ? "Revert to right after this message"
+                    : "Revert to before this message"
+                }
+                title={
+                  isAssistant
+                    ? "Revert to right after this message"
+                    : "Revert to before this message"
+                }
+              >
+                <RevertIcon className="size-3.5" />
+              </button>
+            )}
+          </>
+        ) : null
+      }
+      copyText={showCopy && textContent ? textContent : null}
+      trailing={
+        showInfoIconRow && !isPending ? (
+          <button
+            type="button"
+            onClick={() => setShowInfoModal(true)}
+            data-test="portal-msg-info"
+            className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
+            aria-label="Open message metadata modal"
+            title={`Open message metadata modal (id, parts, raw payload). Message id: ${message.info.id}`}
+          >
+            <InformationCircleIcon className="size-3.5" />
+          </button>
+        ) : null
+      }
+      timestamp={
+        showTimestamp && messageTimestamp && !isPending
+          ? {
+              display: messageTimestamp,
+              title: messageTitleAt ?? "",
+              stepDurationLabel,
+            }
+          : null
+      }
+      timestampPlain={
+        messageTimestamp && isPending
+          ? { display: messageTimestamp, title: messageTitleAt ?? "" }
+          : null
+      }
+      meta={messageMeta}
+    />
+  );
   // Detect synthetic audit messages (stuck-detector + compaction-fixer
   // SQL-inject these on every recovery dispatch). Shape: message.synthetic
   // === true AND the text part has ignored === true. opencode's
@@ -2927,87 +3022,7 @@ const MessageItem = memo(function MessageItem({
               ))}
             </div>
           )}
-          <MessageMetaStack
-            messageId={message.info.id}
-            className="absolute bottom-1 right-2 text-[10px] text-muted-fg/70"
-            dataTest={messageMeta ? "portal-msg-meta-stack" : undefined}
-            leading={
-              !isPending && (showStar || showFork || showRevert) ? (
-                <>
-                  {showStar && (
-                    <StarMessageButton
-                      sessionId={sessionId}
-                      messageId={message.info.id}
-                      role={isAssistant ? "assistant" : "user"}
-                      snippet={textContent}
-                    />
-                  )}
-                  {showFork && (
-                    <button
-                      type="button"
-                      onClick={() => onForkRequest(message)}
-                      data-test="portal-msg-fork"
-                      className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                      aria-label="Fork to a new session from this message"
-                      title="Fork to a new session from this message"
-                    >
-                      <ForkIcon className="size-3.5" />
-                    </button>
-                  )}
-                  {showRevert && (
-                    <button
-                      type="button"
-                      onClick={() => onRevertRequest(message, textContent)}
-                      data-test="portal-msg-revert"
-                      className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                      aria-label={
-                        isAssistant
-                          ? "Revert to right after this message"
-                          : "Revert to before this message"
-                      }
-                      title={
-                        isAssistant
-                          ? "Revert to right after this message"
-                          : "Revert to before this message"
-                      }
-                    >
-                      <RevertIcon className="size-3.5" />
-                    </button>
-                  )}
-                </>
-              ) : null
-            }
-            copyText={showCopy && textContent ? textContent : null}
-            trailing={
-              showInfoIconRow && !isPending ? (
-                <button
-                  type="button"
-                  onClick={() => setShowInfoModal(true)}
-                  data-test="portal-msg-info"
-                  className="rounded p-0.5 text-muted-fg/70 hover:bg-muted/40 hover:text-fg transition-colors"
-                  aria-label="Open message metadata modal"
-                  title={`Open message metadata modal (id, parts, raw payload). Message id: ${message.info.id}`}
-                >
-                  <InformationCircleIcon className="size-3.5" />
-                </button>
-              ) : null
-            }
-            timestamp={
-              showTimestamp && messageTimestamp && !isPending
-                ? {
-                    display: messageTimestamp,
-                    title: messageTitleAt ?? "",
-                    stepDurationLabel,
-                  }
-                : null
-            }
-            timestampPlain={
-              messageTimestamp && isPending
-                ? { display: messageTimestamp, title: messageTitleAt ?? "" }
-                : null
-            }
-            meta={messageMeta}
-          />
+          {renderMetaStack("absolute bottom-1 right-2 text-[10px] text-muted-fg/70")}
         </div>
       )}
       {toolCalls.length > 0 && (
@@ -3038,22 +3053,13 @@ const MessageItem = memo(function MessageItem({
           ))}
         </div>
       )}
-      {(() => {
-        const decisions =
-          ((message.info as { _permissionDecisions?: PastPermissionDecision[] })
-            ._permissionDecisions ?? []).filter(
-            (d) =>
-              !messagePermissions.some((p) => p.id === d.requestId),
-          );
-        if (decisions.length === 0) return null;
-        return (
-          <div className={`${textContent ? "mt-2 ml-6" : ""} space-y-1.5`}>
-            {decisions.map((d) => (
-              <PastPermissionDecisionPill key={d.requestId} decision={d} />
-            ))}
-          </div>
-        );
-      })()}
+      {pastPermissionDecisionsForBelow.length > 0 && (
+        <div className={`${textContent ? "mt-2 ml-6" : ""} space-y-1.5`}>
+          {pastPermissionDecisionsForBelow.map((d) => (
+            <PastPermissionDecisionPill key={d.requestId} decision={d} />
+          ))}
+        </div>
+      )}
       {compactionParts.length > 0 && (
         <div className="space-y-1">
           {compactionParts.map((part) => (
@@ -3070,6 +3076,11 @@ const MessageItem = memo(function MessageItem({
           title={errorDescription.title}
           detail={errorDescription.detail}
         />
+      )}
+      {hasEventOnlyRows && (
+        <div className="mt-1 flex justify-end pr-1 text-[10px] text-muted-fg/70">
+          {renderMetaStack("")}
+        </div>
       )}
       <MessageInfoModal
         isOpen={showInfoModal}
@@ -3262,25 +3273,44 @@ function CompactionEventRow({
 function SessionLevelErrorBox({
   sessionId,
   lastError,
+  lastErrorAt,
 }: {
   sessionId: string;
   lastError: string;
+  lastErrorAt: number | null | undefined;
 }) {
   const errorId = useMemo(() => hashSessionError(lastError), [lastError]);
   const acknowledgedId = useSessionErrorStore(
     (s) => s.acknowledged[sessionId],
   );
   const parsed = useMemo(() => parseSessionLevelError(lastError), [lastError]);
+  const dateFormat = useDateFormatStore((s) => s.format);
+  const errorTimestamp = lastErrorAt
+    ? formatMessageTime(lastErrorAt, dateFormat)
+    : "";
+  const errorTitleAt = formatAbsoluteAndRelative(lastErrorAt ?? undefined);
   if (acknowledgedId === errorId) return null;
   return (
-    <ErrorBox
-      sessionId={sessionId}
-      messageId={errorId}
-      isLastError={true}
-      gutter="mx-3 my-3"
-      title={parsed.title}
-      detail={parsed.detail}
-    />
+    <div id={`msg-${errorId}`} data-test={`portal-msg-${errorId}`}>
+      <ErrorBox
+        sessionId={sessionId}
+        messageId={errorId}
+        isLastError={true}
+        gutter={errorTimestamp ? "mx-3 mt-3 mb-1" : "mx-3 my-3"}
+        title={parsed.title}
+        detail={parsed.detail}
+      />
+      {errorTimestamp && (
+        <div className="mx-3 mb-3 flex justify-end pr-1 text-[10px] text-muted-fg/70">
+          <MessagePermalinkTimestamp
+            messageId={errorId}
+            display={errorTimestamp}
+            titleAt={errorTitleAt}
+            className="font-mono tabular-nums whitespace-nowrap"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -5660,6 +5690,7 @@ function SessionPage() {
             <SessionLevelErrorBox
               sessionId={sessionId}
               lastError={sessionIndicatorForErrors.lastError}
+              lastErrorAt={sessionIndicatorForErrors.lastErrorAt}
             />
           )}
           {sessionIndicatorForErrors?.opencode_retry && (

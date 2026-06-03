@@ -4271,3 +4271,21 @@ Verification:
 - Browser QA (visual subagent, desktop 1280x900) on the worktree build: first pass caught a 4px overlap (contentRect vs border-box); after the border-box fix both `/` and `/session/<id>` PASS - banner content right edge (1204px / 1136px) clears the cluster left edge (1232px), no console errors.
 
 Pre-existing bug noticed (NOT in scope, present on main-nowaker independently): app-sidebar-nav `runTool` calls `recordPendingSubmission`/`recordFailedAttempt`/`clearPendingSubmission` without importing them from `apps/web/src/lib/pending-prompts.ts` - the hamburger "Prompt templates" path would ReferenceError at runtime. Left untouched.
+### 181. Chat errors and event-only message rows must show metadata (timestamp + permalink) (DONE - this commit) [loser-bump: originally #174; bumped to #181 because entries #174-#180 landed on origin/main-nowaker while this work was on its feature branch]
+
+User prompt (verbatim):
+
+> no metadata on compacction errors. only on compaction success, and on my 'continue' message. [...rendered HTML showing data-role="assistant" compaction-error row with NO metadata stack, data-role="user" auto-compaction-only rows with NO metadata, vs working "continue" message + success-compaction message both with full meta-stack...] double check compaction metadata code is on nowaker-main. fix the issue.
+
+Design notes:
+
+- Root cause: previous attempt (commit `7b1a218`, branch `feat/event-metadata`) was history-rewritten off `main-nowaker` by a parallel session's force-push (`2b673af` shipped a shared `MessageMetaStack` extraction on user msgs only). My event-only-row fallback was lost.
+- Re-applied on `feat/event-metadata-v2` off current `origin/main-nowaker` (`79646ad`):
+  1. `apps/web/src/server/lib/indicator-state.ts`: added `lastErrorAt: number | null` to `SessionIndicatorState`; default null in `emptyState`; set to `now` in the `session.error` case so the timestamp footer reflects the authoritative SSE frame time, not render time.
+  2. `apps/web/src/hooks/use-indicators.ts`: mirrored `lastErrorAt: number | null` onto the client `SessionIndicatorState` interface so `SessionLevelErrorBox` can read it.
+  3. `apps/web/src/routes/_app/session/$id.tsx`:
+     - `MessageItem`: extracted the `MessageMetaStack` invocation into a `renderMetaStack(className)` callback. Computed `hasEventOnlyRows` from `!hasHeaderRow && (toolCalls || messagePermissions || pastPermissionDecisions || compactionParts || errorDescription)`. Inside the `hasHeaderRow` branch it still renders absolute-positioned bottom-right (unchanged behavior); when `hasEventOnlyRows` it now renders as a normal-flow `flex justify-end` row at the bottom of the message div. Side effect: collapsed the inline IIFE that filtered past permission decisions into a top-of-MessageItem const so both the renderer and `hasEventOnlyRows` see the same list.
+     - `SessionLevelErrorBox`: takes `lastErrorAt`, anchors itself as `#msg-<hash>` so the in-app permalink lands on it, renders a `MessagePermalinkTimestamp` footer below the `ErrorBox` when `lastErrorAt` is set. Acknowledge button + acknowledged-fades-to-muted behavior unchanged.
+     - Call site at the chat-tail passes `sessionIndicatorForErrors.lastErrorAt`.
+- Verified: `bunx tsc --noEmit` clean on touched files (pre-existing errors in untouched files documented in the typecheck pass); 181/181 tests pass; `scripts/build.sh` green; new bundle `/assets/index-ByQNKyST.js`.
+- Net effect: every visible chat message — text, tool-only, compaction-only, error-only, past-permission-only — now exposes the timestamp + permalink in the same right-aligned meta stack the text messages use. Session-level error box gets the same treatment from the authoritative `event.time` field.

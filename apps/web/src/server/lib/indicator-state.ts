@@ -36,6 +36,7 @@ export interface SessionIndicatorState {
   idle: boolean;
   lastEventAt: number;
   lastError: string | null;
+  lastErrorAt: number | null;
   pendingQuestionIds: string[];
   pendingPermissionIds: string[];
   todoState: { pending: number; in_progress: number; completed: number } | null;
@@ -126,6 +127,7 @@ function emptyState(
     idle: true,
     lastEventAt: 0,
     lastError: null,
+    lastErrorAt: null,
     pendingQuestionIds: [],
     pendingPermissionIds: [],
     todoState: null,
@@ -307,6 +309,7 @@ export function applyOpencodeEvent(
           : err && typeof err === "object"
             ? JSON.stringify(err).slice(0, 500)
             : "unknown error";
+      next.lastErrorAt = now;
       next.busy = false;
       next.idle = true;
       break;
