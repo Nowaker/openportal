@@ -177,6 +177,38 @@ export function useFirstSessionMessage(
   };
 }
 
+// Drives the "Load top 50 more" button in first-prompt + last-N mode:
+// extends the first-prompt window downward via ?after=<id>&limit=N.
+export function useMessagesAfter(
+  sessionId: string | undefined,
+  afterId: string | null,
+  limit: number,
+  options: { enabled?: boolean; onlyUser?: boolean } = {},
+): { messages: MessageWithParts[]; isLoading: boolean; error: Error | null } {
+  const port = usePort();
+  const enabled = options.enabled !== false;
+  const key =
+    enabled && port && sessionId && afterId && limit > 0
+      ? `/api/opencode/${port}/session/${sessionId}/messages?after=${encodeURIComponent(afterId)}&limit=${limit}${options.onlyUser ? "&onlyUser=1" : ""}`
+      : null;
+  const { data, error, isLoading } = useSWR<MessageWithParts[]>(
+    key,
+    fetcher,
+    {
+      refreshInterval: 0,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 60_000,
+      keepPreviousData: true,
+    },
+  );
+  return {
+    messages: data ?? [],
+    isLoading,
+    error: error instanceof Error ? error : null,
+  };
+}
+
 export function mutateSessionMessages(port: number, sessionId: string) {
   // Revalidate any cached variant of this session's messages key, so callers
   // that loaded the full history still get refreshed without us having to

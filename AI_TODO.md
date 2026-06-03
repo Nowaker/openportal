@@ -4090,3 +4090,48 @@ Design notes:
   - Worktree rebuild + restart on port 5310 succeeds. `?first=1` against `ses_17a4357eaffeBCOC4pX5u4HXKI` returns the correct user message id with `x-messages-total: 163` / `x-messages-total-user: 10`.
   - Manual API verification: in normal mode (last 50 of 163 messages), the first message id is NOT present in the window → gap banner WILL render. In `?onlyUser=1` mode (10 of 10 user messages), the first id IS present → my `firstIsLoaded` guard correctly suppresses the banner.
 - Integration: developed on worktree `~/projekty/webapps/portal-load-first-and-last` / `feat/load-first-and-last`. Rebased on `main-nowaker` post-implementation to absorb commits `9a1c45a / 9b75da4 / 11bcb77`. At session end, if main worktree (`~/projekty/webapps/portal`) is clean, merge this branch into `main-nowaker` and run `bash scripts/deploy.sh`; if it's still dirty from concurrent work, defer the merge and just push the feature branch.
+
+### 176. Fix first-prompt gap banner (missing buttons + duplicated "Load 50 more" above first prompt) (DONE - this commit)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> after done, 
+>
+> [original prompt here]
+>
+> Gap of 111 messages between target window and latest messages.
+> Load all (slow)
+>
+> [latest messages here]
+>
+> this is not how gap was originally imlemented when navigating somewehre with #msg. look up, replicate it exactly.
+>
+> moreover, above the original prompt, i see:
+>
+> Load 50 more  Load all (slow)
+>
+> it goes without daying this is broken.
+
+Design notes:
+
+- Bug from #175. The first-prompt+last-N renderer used `<PermalinkGapBanner>` but passed only `onLoadAll`, so the banner showed just one button instead of the full 3-button set the permalink-mode banner shows. Separately, the outer "Load 50 more / Load all" affordance kept rendering ABOVE the first-prompt header, where it makes no sense (the first message IS the first message; nothing older to load).
+- Fix wires all three gap-banner buttons, matching the existing permalink-mode UX exactly:
+  - "Load top 50 more" extends the first-prompt window DOWN by 50 (new `useMessagesAfter` hook against `?after=<firstId>&limit=N`).
+  - "Load bottom 50 more" extends the latest window UP by 50 (bumps `messageLimit`, same as the now-hidden outer button).
+  - "Load all (slow)" sets `loadAllMessages=true` (same as before).
+- New state: `firstExtraLimit: number` (starts at 0; grows by 50 per top-button click). New hook `useMessagesAfter(sessionId, afterId, limit, { enabled, onlyUser })` in `apps/web/src/hooks/use-session-messages.ts`. Hook uses SWR with `refreshInterval: 0` + `dedupingInterval: 60_000` because the "messages after first prompt" set never changes for a given limit.
+- `firstHeaderShown` lifted from inside `messageNodes` useMemo to component scope so the outer "Load 50 more" condition can suppress itself when the header is shown.
+- Gap count recomputed as `totalCount - 1 (first) - firstExtra.length - visible.length`. Banner hides when gap reaches 0 (all bridged).
+- Dedup: messages from `firstExtra` that overlap with the latest window (`visible`) are filtered out so each message renders exactly once.
+- `PermalinkGapBanner` component unchanged from its #175-era shape (already accepts `onLoadTop` / `onLoadBottom` as optional). My fix just passes all 3 instead of only `onLoadAll`.
+- Verification: `bunx tsc --noEmit` clean for my touched files (`use-session-messages.ts`, `session/$id.tsx`). API probe against the user-reported session `ses_1bda04b07ffeIidF4TI76qQdI2` (162 messages total): `?first=1` returns user-role msg `msg_e425fb54a001BY4QYgqpr58hda`; `?after=msg_e425fb54a001BY4QYgqpr58hda&limit=50` returns 50 messages — both endpoints feed the new wiring correctly. Worktree on port 5410 served the new bundle (`index-DlYMBc1C.js`) which contains the `?after=` URL literal.
+- Integration: developed on worktree `~/projekty/webapps/portal-load-first-fix` / `feat/load-first-and-last-fix`. Per the fork-branch policy in personal AGENTS.md, fixes to already-merged features land on a new branch off main, not on the original (already-merged) feature branch. Rebased onto current `main-nowaker` post-implementation; FF-merged + deployed + pushed.

@@ -128,6 +128,7 @@ import { usePullState } from "@/hooks/use-pull-to-refresh";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useFirstSessionMessage,
+  useMessagesAfter,
   useSessionMessages,
   useSessionMessagesAround,
   addOptimisticMessage,
@@ -3407,9 +3408,26 @@ function SessionPage() {
     ? firstSession.totalUserCount
     : firstSession.totalCount;
 
+  const [firstExtraLimit, setFirstExtraLimit] = useState(0);
+  useEffect(() => {
+    setFirstExtraLimit(0);
+  }, [sessionId, onlyUserMessages]);
+  const firstExtra = useMessagesAfter(
+    sessionId,
+    firstMessage?.info.id ?? null,
+    firstExtraLimit,
+    { enabled: !permalinkMode && firstExtraLimit > 0, onlyUser: onlyUserMessages },
+  );
+
   const messages: MessageWithParts[] = permalinkMode
     ? permalinkWindow.messages
     : normal.messages;
+
+  const firstHeaderShown =
+    firstMessage !== null &&
+    !permalinkMode &&
+    !loadAllMessages &&
+    !messages.some((m) => m.info.id === firstMessage.info.id);
 
   const lastSpokenAssistantIdRef = useRef<string | null>(null);
   const ttsEnabled = useTtsStore((s) => s.enabled);
@@ -5229,25 +5247,46 @@ function SessionPage() {
     const ctx = { baseVisible, revertIndex, lastErrorMessageId };
 
     const firstId = firstMessage?.info.id;
-    const firstIsLoaded =
-      firstId !== undefined && visible.some((m) => m.info.id === firstId);
-    const showFirstHeader =
-      firstMessage !== null &&
-      !permalinkMode &&
-      !loadAllMessages &&
-      !firstIsLoaded;
-    const firstHeader = showFirstHeader ? (
+    const visibleIds = new Set(visible.map((m) => m.info.id));
+    const firstExtraToShow = firstHeaderShown
+      ? firstExtra.messages.filter(
+          (m) => m.info.id !== firstId && !visibleIds.has(m.info.id),
+        )
+      : [];
+    const gapCount = firstHeaderShown
+      ? Math.max(
+          0,
+          (firstTotal ?? messages.length + 1) -
+            1 -
+            firstExtraToShow.length -
+            messages.length,
+        )
+      : 0;
+    const firstHeader = firstHeaderShown ? (
       <>
         {renderMessage(firstMessage, -1, {
           baseVisible: [firstMessage],
           revertIndex: -1,
           lastErrorMessageId: undefined,
         })}
-        <PermalinkGapBanner
-          gapCount={Math.max(0, (firstTotal ?? messages.length + 1) - messages.length - 1)}
-          loading={false}
-          onLoadAll={() => setLoadAllMessages(true)}
-        />
+        {firstExtraToShow.map((m, idx) =>
+          renderMessage(m, -2 - idx, {
+            baseVisible: firstExtraToShow,
+            revertIndex: -1,
+            lastErrorMessageId: undefined,
+          }),
+        )}
+        {gapCount > 0 && (
+          <PermalinkGapBanner
+            gapCount={gapCount}
+            loading={firstExtra.isLoading}
+            onLoadTop={() => setFirstExtraLimit((n) => n + 50)}
+            onLoadBottom={() =>
+              setMessageLimit((n) => n + INITIAL_MESSAGE_LIMIT)
+            }
+            onLoadAll={() => setLoadAllMessages(true)}
+          />
+        )}
       </>
     ) : null;
 
@@ -5296,6 +5335,9 @@ function SessionPage() {
     firstMessage,
     firstTotal,
     loadAllMessages,
+    firstHeaderShown,
+    firstExtra.messages,
+    firstExtra.isLoading,
   ]);
 
   // Size cap is conservative because the prompt body is sent inline as a
@@ -5425,6 +5467,7 @@ function SessionPage() {
             <>
               {!permalinkMode &&
                 !loadAllMessages &&
+                !firstHeaderShown &&
                 messages.length >= messageLimit && (
                   <div className="px-3 py-3 flex items-center justify-center gap-2">
                     <button
