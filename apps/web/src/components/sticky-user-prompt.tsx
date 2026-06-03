@@ -77,14 +77,10 @@ export function StickyUserPromptOverlay({
     const containerTop = c.getBoundingClientRect().top;
     let lastAbove: HTMLElement | null = null;
     for (const el of userEls) {
-      const relTop = el.getBoundingClientRect().top - containerTop;
-      if (relTop < -TOP_EPSILON_PX) {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom <= containerTop + TOP_EPSILON_PX) {
         lastAbove = el;
         continue;
-      }
-      if (relTop <= TOP_EPSILON_PX) {
-        setCurrentId(null);
-        return;
       }
       break;
     }
