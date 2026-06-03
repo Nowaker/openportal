@@ -8,7 +8,13 @@ import {
 } from "./lib/model-auto-switch-state";
 import { parseBody } from "./lib/validation";
 
-const ruleSchema = z.enum(["agent-default", "specific", "no-change"]);
+const ruleSchema = z.enum([
+  "agent-default",
+  "specific",
+  "previously-used-session",
+  "previously-used-global",
+  "no-change",
+]);
 
 const putBodySchema = z.union([
   // Master switch

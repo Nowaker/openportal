@@ -254,6 +254,18 @@ function RuleRow({
           <SelectItem id="specific" textValue="Specific">
             Specific
           </SelectItem>
+          <SelectItem
+            id="previously-used-session"
+            textValue="Previously used in this session"
+          >
+            Previously used (this session)
+          </SelectItem>
+          <SelectItem
+            id="previously-used-global"
+            textValue="Previously used globally"
+          >
+            Previously used (global)
+          </SelectItem>
           <SelectItem id="no-change" textValue="No change">
             No change
           </SelectItem>

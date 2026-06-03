@@ -21,6 +21,7 @@ import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useAgents, useProviders } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
+import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 import useMediaQuery from "@/hooks/use-media-query";
 import { compareModels } from "@/lib/model-sort";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
@@ -130,6 +131,7 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
     (s) => s.setLastUsedAgentForInstance,
   );
   const setLastUsedAgentGlobal = useAgentStore((s) => s.setLastUsedAgentGlobal);
+  const recordModelPick = useLastPickedTracker((s) => s.recordModelPick);
   const setInstanceDefaultModel = useModelStore(
     (s) => s.setInstanceDefaultModel,
   );
@@ -188,6 +190,9 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
           // is what resolveModelKey returns at submit time AND
           // becomes the default for future new-session screens.
           setInstanceDefaultModel(value, instanceId ?? null);
+        }
+        if (currentAgentName) {
+          recordModelPick(sessionId ?? null, currentAgentName, value);
         }
         const [pid, ...rest] = value.split("/");
         const mid = rest.join("/");

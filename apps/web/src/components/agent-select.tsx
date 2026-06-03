@@ -18,6 +18,7 @@ import {
   getAgentPref,
   useModelAutoSwitchConfig,
 } from "@/stores/model-auto-switch-store";
+import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 import { shortenOmoAgentName } from "@/lib/agent-name";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 import type { Agent } from "@opencode-ai/sdk";
@@ -54,6 +55,8 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
   const { data: providersData } = useProviders();
   const currentVariant = useThinkingStore((s) => s.resolve(sessionId ?? null));
   const { config: autoSwitchConfig } = useModelAutoSwitchConfig();
+  const trackerGetSession = useLastPickedTracker((s) => s.getSession);
+  const trackerGetGlobal = useLastPickedTracker((s) => s.getGlobal);
 
   const instance = useInstanceStore((s) => s.instance);
   const instanceId = instance?.id ?? null;
@@ -129,9 +132,21 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
           | undefined;
         if (autoSwitchConfig.enabled && picked) {
           const pref = getAgentPref(autoSwitchConfig, picked.name);
+          const sessionPick = trackerGetSession(sessionId ?? null, picked.name);
+          const globalPick = trackerGetGlobal(picked.name);
           let nextModelKey: string | null = null;
           if (pref.modelRule === "specific" && pref.modelKey) {
             nextModelKey = pref.modelKey;
+          } else if (
+            pref.modelRule === "previously-used-session" &&
+            sessionPick.modelKey
+          ) {
+            nextModelKey = sessionPick.modelKey;
+          } else if (
+            pref.modelRule === "previously-used-global" &&
+            globalPick.modelKey
+          ) {
+            nextModelKey = globalPick.modelKey;
           } else if (
             pref.modelRule === "agent-default" &&
             picked.model?.providerID &&
@@ -148,6 +163,16 @@ export function AgentSelect({ sessionId }: AgentSelectProps) {
           let nextVariant: string | undefined;
           if (pref.variantRule === "specific" && pref.variant !== undefined) {
             nextVariant = pref.variant;
+          } else if (
+            pref.variantRule === "previously-used-session" &&
+            sessionPick.variant !== undefined
+          ) {
+            nextVariant = sessionPick.variant;
+          } else if (
+            pref.variantRule === "previously-used-global" &&
+            globalPick.variant !== undefined
+          ) {
+            nextVariant = globalPick.variant;
           } else if (pref.variantRule === "agent-default") {
             if (typeof picked.variant === "string") {
               nextVariant = picked.variant;

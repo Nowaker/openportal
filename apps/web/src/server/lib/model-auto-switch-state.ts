@@ -8,7 +8,12 @@ const NAMESPACE = "modelAutoSwitch";
 // opencode's /agent response. "specific" pins an explicit value
 // (modelKey / variant) regardless of what the agent says.
 // "no-change" leaves the current model / variant alone.
-export type Rule = "agent-default" | "specific" | "no-change";
+export type Rule =
+  | "agent-default"
+  | "specific"
+  | "previously-used-session"
+  | "previously-used-global"
+  | "no-change";
 
 export interface AgentPref {
   modelRule: Rule;
@@ -33,7 +38,13 @@ const DEFAULTS: ModelAutoSwitchConfig = {
   perAgent: {},
 };
 
-const RULE_VALUES: Rule[] = ["agent-default", "specific", "no-change"];
+const RULE_VALUES: Rule[] = [
+  "agent-default",
+  "specific",
+  "previously-used-session",
+  "previously-used-global",
+  "no-change",
+];
 
 function isRule(value: unknown): value is Rule {
   return typeof value === "string" && RULE_VALUES.includes(value as Rule);

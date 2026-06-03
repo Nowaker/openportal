@@ -12,6 +12,8 @@ import { useProviders } from "@/hooks/use-opencode";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useModelStore } from "@/stores/model-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useAgentStore } from "@/stores/agent-store";
+import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 
 interface ThinkingSelectProps {
   sessionId: string | null;
@@ -75,12 +77,19 @@ export function ThinkingSelect({ sessionId }: ThinkingSelectProps) {
   const current = useThinkingStore((s) => s.resolve(sessionId));
   const setForSession = useThinkingStore((s) => s.setForSession);
   const setDefault = useThinkingStore((s) => s.setDefault);
+  const currentAgentName = useAgentStore((s) =>
+    sessionId ? s.getSelectedAgent(sessionId) : null,
+  );
+  const recordVariantPick = useLastPickedTracker((s) => s.recordVariantPick);
 
   const applyEffort = (effort: string) => {
     if (sessionId) {
       setForSession(sessionId, effort);
     } else {
       setDefault(effort);
+    }
+    if (currentAgentName) {
+      recordVariantPick(sessionId ?? null, currentAgentName, effort);
     }
   };
 

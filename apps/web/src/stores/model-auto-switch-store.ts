@@ -2,7 +2,12 @@ import useSWR, { mutate as globalMutate } from "swr";
 
 const KEY = "/api/model-auto-switch";
 
-export type Rule = "agent-default" | "specific" | "no-change";
+export type Rule =
+  | "agent-default"
+  | "specific"
+  | "previously-used-session"
+  | "previously-used-global"
+  | "no-change";
 
 export interface AgentPref {
   modelRule: Rule;
