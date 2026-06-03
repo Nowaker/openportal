@@ -105,8 +105,6 @@ interface ModelSelectProps {
 
 export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
   const { data: rawData, isLoading } = useProviders();
-  const { contains } = useFilter({ sensitivity: "base" });
-  const { isMobile } = useMediaQuery();
 
   const resolvedKey = useModelStore((s) =>
     s.resolveModelKey(sessionId ?? null, instanceId ?? null),

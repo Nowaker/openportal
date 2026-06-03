@@ -28,6 +28,8 @@ const COMMIT_SUBJECT = capCommitSubject(
 );
 
 export default defineConfig({
+  // "hidden" emits .map files but omits the //# sourceMappingURL comment, so DevTools must opt in.
+  build: { sourcemap: "hidden" },
   define: {
     __OPENPORTAL_BUILD_ID__: JSON.stringify(BUILD_ID),
     __OPENPORTAL_COMMIT_SHA__: JSON.stringify(COMMIT_SHA),
