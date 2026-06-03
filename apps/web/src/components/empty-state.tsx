@@ -65,12 +65,6 @@ function groupSessionsByDirectory(sessions: Session[]): MobileBin[] {
   return arr;
 }
 
-function truncateTitle(title: string, maxLength = 40): string {
-  if (title.length <= maxLength) return title;
-  const halfLength = Math.floor((maxLength - 3) / 2);
-  return `${title.slice(0, halfLength)}...${title.slice(-halfLength)}`;
-}
-
 export default function EmptyState() {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
@@ -323,9 +317,7 @@ function ProjectGroupMobile({
             href={`/session/${session.id}`}
             className="flex-1 py-2 px-3 text-sm truncate"
           >
-            {truncateTitle(
-              session.title || `Session ${session.id.slice(0, 8)}`,
-            )}
+            {session.title || `Session ${session.id.slice(0, 8)}`}
           </Link>
           <button
             type="button"
@@ -369,9 +361,7 @@ function ProjectGroupMobile({
             href={`/session/${session.id}`}
             className="flex-1 py-2 px-3 text-sm italic truncate"
           >
-            {truncateTitle(
-              session.title || `Session ${session.id.slice(0, 8)}`,
-            )}
+            {session.title || `Session ${session.id.slice(0, 8)}`}
           </Link>
           <button
             type="button"

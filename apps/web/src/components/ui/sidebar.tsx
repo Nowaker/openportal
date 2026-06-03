@@ -38,7 +38,17 @@ import { Tooltip, TooltipContent } from "./tooltip";
 
 const SIDEBAR_WIDTH_DEFAULT_PX = 352;
 const SIDEBAR_WIDTH_MIN_PX = 240;
-const SIDEBAR_WIDTH_MAX_PX = 480;
+const SIDEBAR_WIDTH_MAX_VIEWPORT_FRACTION = 0.5;
+const SIDEBAR_WIDTH_MAX_SSR_FALLBACK_PX = SIDEBAR_WIDTH_DEFAULT_PX * 2;
+function getMaxSidebarWidthPx(): number {
+  if (typeof document === "undefined") return SIDEBAR_WIDTH_MAX_SSR_FALLBACK_PX;
+  const viewportWidth =
+    document.documentElement.clientWidth || window.innerWidth;
+  return Math.max(
+    SIDEBAR_WIDTH_MIN_PX,
+    Math.round(viewportWidth * SIDEBAR_WIDTH_MAX_VIEWPORT_FRACTION),
+  );
+}
 const SIDEBAR_RAIL_THRESHOLD_PX = 40;
 const SIDEBAR_FULL_THRESHOLD_PX = 200;
 const SIDEBAR_WIDTH_DOCK = "3.25rem";
@@ -58,7 +68,7 @@ function clampSidebarWidth(px: number): number {
   if (!Number.isFinite(px)) return SIDEBAR_WIDTH_DEFAULT_PX;
   return Math.max(
     SIDEBAR_WIDTH_MIN_PX,
-    Math.min(SIDEBAR_WIDTH_MAX_PX, Math.round(px)),
+    Math.min(getMaxSidebarWidthPx(), Math.round(px)),
   );
 }
 
@@ -956,7 +966,7 @@ const SidebarRail = ({
       const dx = event.clientX - drag.startX;
       if (Math.abs(dx) > SIDEBAR_DRAG_CLICK_THRESHOLD_PX) drag.moved = true;
       const raw = drag.startWidth + dx;
-      const previewWidth = Math.max(0, Math.min(SIDEBAR_WIDTH_MAX_PX, raw));
+      const previewWidth = Math.max(0, Math.min(getMaxSidebarWidthPx(), raw));
       const root = drag.rootEl;
       const sidebar = drag.sidebarEl;
       if (sidebar) {
@@ -997,7 +1007,7 @@ const SidebarRail = ({
       const dx = event.clientX - drag.startX;
       const final = Math.max(
         0,
-        Math.min(SIDEBAR_WIDTH_MAX_PX, drag.startWidth + dx),
+        Math.min(getMaxSidebarWidthPx(), drag.startWidth + dx),
       );
       let nextMode: DesktopSidebarMode;
       if (final < SIDEBAR_RAIL_THRESHOLD_PX) nextMode = "hidden";

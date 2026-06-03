@@ -112,12 +112,6 @@ import {
   requestNotificationPermission,
 } from "@/hooks/use-status-notifications";
 
-function truncateTitle(title: string, maxLength = 40): string {
-  if (title.length <= maxLength) return title;
-  const halfLength = Math.floor((maxLength - 3) / 2);
-  return `${title.slice(0, halfLength)}...${title.slice(-halfLength)}`;
-}
-
 function projectBasename(directory: string): string {
   const trimmed = directory.replace(/\/+$/g, "");
   const last = trimmed.split("/").pop();
@@ -447,9 +441,7 @@ function ProjectGroup({
                 className="flex-1 min-w-0 py-1 text-xs sm:text-sm font-normal text-sidebar-fg hover:text-fg truncate block"
               >
                 {highlightMatch(
-                  truncateTitle(
-                    effectiveTitle(session as SessionWithOverlay) ?? "",
-                  ),
+                  effectiveTitle(session as SessionWithOverlay) ?? "",
                   searchQuery,
                 )}
               </UILink>
@@ -506,7 +498,7 @@ function ProjectGroup({
                       className="flex-1 min-w-0 py-0.5 text-xs text-sidebar-fg hover:text-fg truncate block"
                     >
                       {highlightMatch(
-                        truncateTitle(child.title || "(untitled)"),
+                        child.title || "(untitled)",
                         searchQuery,
                       )}
                     </UILink>
@@ -555,9 +547,7 @@ function ProjectGroup({
               }`}
             >
               {highlightMatch(
-                truncateTitle(
-                  effectiveTitle(session as SessionWithOverlay) ?? "",
-                ),
+                effectiveTitle(session as SessionWithOverlay) ?? "",
                 searchQuery,
               )}
             </UILink>
