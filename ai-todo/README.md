@@ -25,8 +25,14 @@ See the design rationale in
 - **All entries as one buffer**: `cat ai-todo/*.md` (skip this
   README first if you want only entries: `cat ai-todo/2*.md`).
 
-## Legacy `AI_TODO.md`
+## Legacy `#N` references
 
-The repo-root `AI_TODO.md` is frozen at entry #190. Cross-references
-like `// per AI_TODO #138` in code comments resolve against it.
-New entries do NOT go there.
+The repo-root `AI_TODO.md` is gone — its 163 numbered entries were
+migrated into this directory by `scripts/migrate-ai-todo.ts`. Each
+migrated file carries a `legacy_number:` frontmatter field AND a
+`legacy-NNN-` segment in its filename, so existing code comments
+like `// per AI_TODO #138` resolve via:
+
+```
+ls ai-todo/ | grep legacy-138-
+```
