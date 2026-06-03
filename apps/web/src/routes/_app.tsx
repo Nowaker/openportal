@@ -605,12 +605,17 @@ function AppLayout() {
           <AppSidebar collapsible="dock" />
           <SidebarInset className="overflow-hidden">
             <PinnedTabStrip />
-            <AppSidebarNav />
-            <BuildMismatchBanner />
-            <NotificationPermissionBanner />
-            <OpencodeUpdateBanner />
-            <StuckDetectorInstallBanner />
-            <ConnectionStatusBanner />
+            <AppSidebarNav
+              bannerSlot={
+                <>
+                  <BuildMismatchBanner />
+                  <NotificationPermissionBanner />
+                  <OpencodeUpdateBanner />
+                  <StuckDetectorInstallBanner />
+                  <ConnectionStatusBanner />
+                </>
+              }
+            />
             <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
               <Outlet />
             </div>

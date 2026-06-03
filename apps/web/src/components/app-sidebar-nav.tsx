@@ -55,7 +55,8 @@ import { SessionContextDial } from "@/components/session-context-dial";
 import { McpInfoModal } from "@/components/mcp-info-modal";
 import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
-import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useElementWidth } from "@/hooks/use-element-width";
 import { toast } from "@/components/ui/toast";
 import {
   effectiveTitle,
@@ -178,7 +179,11 @@ function projectLabelFromDirectory(directory?: string): string | null {
   return parts[parts.length - 1] || null;
 }
 
-export function AppSidebarNav() {
+interface AppSidebarNavProps {
+  bannerSlot?: React.ReactNode;
+}
+
+export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
   const instance = useInstanceStore((s) => s.instance);
   const port = instance?.port ?? 0;
   const titleBarPlacements = useTitleBarActionsStore((s) => s.placements);
@@ -692,9 +697,20 @@ export function AppSidebarNav() {
 
   const showPageTitle = !sessionId && !!pageTitle;
 
+  const clusterRef = useRef<HTMLDivElement>(null);
+  const clusterWidth = useElementWidth(clusterRef);
+
   return (
-    <SidebarNav isSticky>
-      <span className="flex items-center gap-x-1 min-w-0 flex-1">
+    <nav
+      data-slot="sidebar-nav"
+      className="isolate sticky top-0 z-40 flex flex-col shrink-0 border-b bg-bg text-fg min-h-[3.5rem]"
+    >
+      <div
+        className="flex flex-1 min-w-0 flex-col"
+        style={clusterWidth > 0 ? { paddingRight: `${clusterWidth}px` } : undefined}
+      >
+        <div className="flex h-[3.5rem] items-center gap-x-2 px-4">
+          <span className="flex items-center gap-x-1 min-w-0 flex-1">
         <SidebarTrigger className="-ml-2 px-0 shrink-0" />
         {showPageTitle && (
           <button
@@ -891,8 +907,15 @@ export function AppSidebarNav() {
             )}
           </>
         )}
-      </span>
-      <span className="flex items-center gap-x-2 ml-auto shrink-0">
+          </span>
+        </div>
+        {bannerSlot}
+      </div>
+      <div
+        ref={clusterRef}
+        className="absolute top-0 right-0 flex h-[3.5rem] items-center gap-x-2 px-4"
+      >
+        <span className="flex items-center gap-x-2 shrink-0">
         {sessionId && (
           <SessionContextDial
             sessionId={sessionId}
@@ -1200,7 +1223,8 @@ export function AppSidebarNav() {
               )}
             </MenuContent>
           </Menu>
-      </span>
+        </span>
+      </div>
       {sessionId && (
         <SessionInfoModal
           isOpen={showSessionInfo}
@@ -1383,7 +1407,7 @@ export function AppSidebarNav() {
         }}
       />
       {vscodeModal}
-    </SidebarNav>
+    </nav>
   );
 }
 
