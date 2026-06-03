@@ -1,0 +1,15 @@
+---
+status: DONE
+commit: 2bbc71a
+session: ses_1b66ba2aaffeW7xyxcjmde6oYq
+queued_at: 2026-05-21T15:04:57-05:00
+legacy_number: 4
+---
+
+# File-browser "letter j" scroll cap
+
+User prompt:
+
+> Enqueue task: https://portal.desktop.ts.nowaker.net:8443/files?path=%2Fhome%2Fnowaker%2Fprojekty I only see directories up to letter j, scroll past it...
+
+The file browser appears to cap the listing alphabetically. Need pagination OR cap removal. Investigate the listing endpoint + FE rendering.

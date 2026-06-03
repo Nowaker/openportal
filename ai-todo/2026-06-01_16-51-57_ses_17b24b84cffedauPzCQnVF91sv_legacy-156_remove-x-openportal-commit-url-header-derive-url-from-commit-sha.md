@@ -1,0 +1,22 @@
+---
+status: DONE
+commit: 
+session: ses_17b24b84cffedauPzCQnVF91sv
+queued_at: 2026-06-01T16:51:57-05:00
+legacy_number: 156
+---
+
+# Remove X-OpenPortal-Commit-Url header; derive URL from commit SHA
+
+User prompt (verbatim):
+
+> X-OpenPortal-Commit-Url
+>
+> really needed? commit urls are based on commit shas anyway?
+> fix if true.
+
+Design notes:
+
+- Remove redundant `X-OpenPortal-Commit-Url` response header and associated build-time define.
+- Keep `X-OpenPortal-Commit-Sha` + `X-OpenPortal-Commit-Subject`; derive URL client-side from canonical GitLab commit base URL + SHA.
+- Preserve existing banner UX (`Incoming: <subject>` as a clickable link), with no behavior regression.

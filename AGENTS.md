@@ -57,9 +57,13 @@ The `ai-todo/` directory at the repo root is the durable
 cross-session task queue. One entry = one file. No shared write
 target = no merge conflicts between agents working in parallel.
 
-(Legacy `AI_TODO.md` at the repo root is frozen as-is through
-entry #190 for historical references like `// per AI_TODO #138`
-that exist in code comments. New entries go in `ai-todo/`.)
+The legacy `AI_TODO.md` is gone — its 163 numbered entries were
+migrated into per-entry files in this directory via
+`scripts/migrate-ai-todo.ts`. Each migrated file carries a
+`legacy_number:` frontmatter field AND a `legacy-NNN-` segment
+in its filename, so old `// per AI_TODO #138` cross-references
+in code comments still resolve trivially via
+`ls ai-todo/ | grep legacy-138-`.
 
 **Every user prompt that maps to a queueable task MUST land in
 `ai-todo/` in the same turn it's accepted.** Skipping the sync
@@ -143,8 +147,9 @@ parenthesized statuses.
 - **Cross-references in code comments.** New references go by slug:
   `// per ai-todo "btw side question"` or
   `// see ai-todo/...load-first-and-last.md`. Legacy `// per
-  AI_TODO #138` references stay valid against the frozen
-  `AI_TODO.md`.
+  AI_TODO #138` references resolve via the filename's
+  `legacy-138-` segment (or the `legacy_number: 138` frontmatter
+  field): `ls ai-todo/ | grep legacy-138-`.
 
 ### What this design eliminates
 

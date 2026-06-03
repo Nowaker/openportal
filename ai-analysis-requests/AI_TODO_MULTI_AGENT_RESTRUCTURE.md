@@ -123,23 +123,53 @@ Existing `// AI_TODO #138` comments in the codebase stay valid as
 historical references — `AI_TODO.md` is preserved frozen alongside
 the new directory, so anyone curious can still look up #138.
 
-## Migration plan
+## Migration plan (executed)
 
-**Option A (zero-migration freeze, recommended).** Freeze `AI_TODO.md`
-as it stands today (entries #1-#190). New entries go in `ai-todo/`.
-Cross-refs to legacy numbers still resolve against the frozen file.
-No risk of breaking historical references. Zero churn.
+The user chose the full split. `scripts/migrate-ai-todo.ts` (Bun) reads
+`AI_TODO.md`, splits at `^### N\. ` boundaries, and writes each entry
+as a standalone file under `ai-todo/`. The script's matching strategy:
 
-**Option B (full split).** A one-time `scripts/migrate-ai-todo.sh` reads
-`AI_TODO.md`, splits at `^### N\. ` boundaries, writes each entry as
-`ai-todo/<derived-timestamp>_ses_legacy_<NNN>_<slug>.md` with synthetic
-timestamps reconstructed from `git log -- AI_TODO.md`. Higher risk
-(reconstruction is fuzzy for entries that landed via squashes); only
-worth doing if the user wants the directory to be the single source
-of truth.
+1. **Parse each entry** for its title, status parens, and verbatim user
+   prompt block. The header regex matches `User prompt`, `User prompts`,
+   `User-provided`, and `Follow-up user prompt` variants.
+2. **Pre-cache** every `role=='user'` text part from
+   `~/.local/share/opencode/opencode.db` into memory (~15K rows).
+3. **Match** the prompt against the cache using a layered candidate set:
+   prefix slices at 30/50/80/150 chars, prefix-stripped slices that drop
+   common AI annotations (`Enqueue:`, `enqueue to end:`, `after done:`,
+   `H:`), mid-prompt offset slices, tail slices, and a whole-prompt
+   slice for short entries. First substring hit wins, ordered by
+   message `time_created` ascending so the earliest occurrence is used.
+4. **Filename**:
+   `ai-todo/<YYYY-MM-DD>_<HH-MM-SS>_<sessionid>_legacy-NNN_<slug>.md`
+   in this machine's local timezone (`-05:00`). The `legacy-NNN`
+   segment preserves the original number so old `// per AI_TODO #138`
+   references resolve via `ls ai-todo/ | grep legacy-138-`.
+5. **Frontmatter**: `status`, `commit` (SHA extracted from
+   `(DONE - <sha>...)` parens when present), `session`, `queued_at`,
+   `legacy_number`. Body content is preserved byte-for-byte from the
+   legacy entry minus its `### N.` heading line.
+6. **Fallback**: entries whose prompt doesn't match anything in
+   opencode.db (synthesized/paraphrased prompts, empty bodies, too-
+   generic two-word prompts) get `session: ses_unknown` and a
+   synthetic timestamp at `2024-01-01 00:00:00 + N seconds` so the
+   files still sort by original entry number.
+7. **Preamble preserved**: the leading non-numbered sections of
+   `AI_TODO.md` (EXPLICIT CANCELLATIONS, STANDING RULES, COMPLETED
+   THEMES) are archived to `ai-todo/_archive-legacy-preamble.md`.
+8. **`AI_TODO.md` deleted** after migration. Cross-references in code
+   comments resolve via `legacy_number` instead.
 
-I recommend Option A. Option B can always happen later as a
-mechanical follow-up; freezing the legacy file is cheap and reversible.
+Result on the migration run: 158/163 entries matched a real opencode
+session ID and datetime. 5 fell back to `ses_unknown` (`#57`, `#129`,
+`#130`, `#137`, `#149`) — these were either empty-body section
+headers, synthesized multi-part dispatch summaries, or prompts so
+short ("still wrong") they'd have thousands of false-positive
+matches and aren't worth a lookup.
+
+The script is committed at `scripts/migrate-ai-todo.ts` for
+reproducibility; it can be re-run end-to-end against the same
+`AI_TODO.md` content to regenerate the directory.
 
 ## Commit message convention
 
