@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useCmdStore } from "@/stores/cmd-store";
 import { useNavigate, useParams, useLocation } from "@tanstack/react-router";
 import {
@@ -10,7 +10,7 @@ import {
   CommandMenuSection,
 } from "@/components/ui/command-menu";
 import {
-  useSessions,
+  useAllSessions,
   useCreateSession,
   useInstances,
   usePortalConfig,
@@ -34,6 +34,13 @@ import {
 import { useTheme } from "@/providers/theme-provider";
 import { toast } from "@/components/ui/toast";
 import type { Session } from "@opencode-ai/sdk";
+import { useDateFormatStore } from "@/stores/date-format-store";
+import { formatAbsoluteAndRelative, formatMessageTime } from "@/lib/format-time";
+
+function sessionActivityTime(session: Session): number | undefined {
+  const time = session.time as { created?: number; updated?: number } | undefined;
+  return time?.updated ?? time?.created;
+}
 
 interface InstanceData {
   id: string;
@@ -53,16 +60,18 @@ export default function Cmd() {
   const setIsOpen = useCmdStore((s) => s.setOpen);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
+  const lastQueryRef = useRef("");
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams({ strict: false });
-  const { data: sessionsData, mutate } = useSessions();
+  const { data: sessionsData, mutate } = useAllSessions();
   const { data: instancesData } = useInstances();
   const { data: portalConfig } = usePortalConfig();
   const { data: pinnedData } = usePinnedSessions();
   const createSession = useCreateSession();
   const { setTheme } = useTheme();
   const currentInstance = useInstanceStore((s) => s.instance);
+  const dateFormat = useDateFormatStore((s) => s.format);
 
   const sessions: Session[] = sessionsData ?? [];
   const instances: InstanceData[] = instancesData?.instances ?? [];
@@ -109,8 +118,8 @@ export default function Cmd() {
     const sorted = [...sessions]
       .filter((s) => !pinnedIds.has(s.id))
       .sort((a, b) => {
-        const ta = (a.time as { updated?: number })?.updated ?? 0;
-        const tb = (b.time as { updated?: number })?.updated ?? 0;
+        const ta = sessionActivityTime(a) ?? 0;
+        const tb = sessionActivityTime(b) ?? 0;
         return tb - ta;
       });
     return isIdQuery ? sorted : sorted.slice(0, 300);
@@ -142,21 +151,18 @@ export default function Cmd() {
   ): Array<{ session: Session; match: MatchResult }> => {
     const trimmed = query.trim();
     const out: Array<{ session: Session; match: MatchResult }> = [];
-    // Session-ID-prefix path: when the query looks like a session id
-    // (`ses_<chars>`), match it as a prefix against session.id and
-    // return a synthetic high-score MatchResult so the matched session
-    // pops to the top. Falls through to the regular title/project
-    // fuzzy match for the same session so a partial ID hit is never
-    // worse than a partial title hit.
-    const idQuery = trimmed.startsWith("ses_") ? trimmed.toLowerCase() : null;
+    const idQuery = trimmed.toLowerCase().startsWith("ses_")
+      ? trimmed.toLowerCase()
+      : null;
     for (const s of list) {
       const title = s.title || `Session ${s.id.slice(0, 8)}`;
       const project = projectLabelForSession(s);
       const titleMatch = scoreItem(title, project, trimmed);
+      const idIndex = idQuery === null ? -1 : s.id.toLowerCase().indexOf(idQuery);
       const idMatch =
-        idQuery !== null && s.id.toLowerCase().startsWith(idQuery)
+        idIndex >= 0
           ? {
-              score: 10_000 + idQuery.length,
+              score: (idIndex === 0 ? 10_000 : 9_000) + idQuery!.length,
               titleRanges: [] as Array<[number, number]>,
               projectRanges: [] as Array<[number, number]>,
             }
@@ -188,8 +194,11 @@ export default function Cmd() {
   ) => {
     const title = session.title || `Session ${session.id.slice(0, 8)}`;
     const projectLabel = projectLabelForSession(session);
-    const textValue = projectLabel ? `${title} ${projectLabel}` : title;
+    const textValue = [title, projectLabel, session.id].filter(Boolean).join(" ");
     const isCurrent = session.id === currentSessionId;
+    const activityAt = sessionActivityTime(session);
+    const timestamp = activityAt ? formatMessageTime(activityAt, dateFormat) : "";
+    const timestampTitle = formatAbsoluteAndRelative(activityAt);
     return (
       <CommandMenuItem
         key={session.id}
@@ -207,22 +216,32 @@ export default function Cmd() {
         ) : (
           <ChatBubbleLeftIcon className="size-4" />
         )}
-        <CommandMenuLabel>
-          <div className="flex items-center gap-2 min-w-0 w-full">
-            <span className="flex-1 min-w-0 truncate">
-              <HighlightedText text={title} ranges={match.titleRanges} />
-            </span>
-            {projectLabel && (
-              <span className="text-xs text-muted-fg/70 shrink-0 font-mono">
-                <HighlightedText
-                  text={projectLabel}
-                  ranges={match.projectRanges}
-                />
+        <CommandMenuLabel className="col-start-2 col-span-4 min-w-0 w-full">
+          <div className="grid min-w-0 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate">
+                <HighlightedText text={title} ranges={match.titleRanges} />
               </span>
-            )}
-            {isCurrent && (
-              <span className="text-[10px] uppercase tracking-wide text-primary shrink-0">
-                current
+              {projectLabel && (
+                <span className="text-xs text-muted-fg/70 shrink-0 font-mono">
+                  <HighlightedText
+                    text={projectLabel}
+                    ranges={match.projectRanges}
+                  />
+                </span>
+              )}
+              {isCurrent && (
+                <span className="text-[10px] uppercase tracking-wide text-primary shrink-0">
+                  current
+                </span>
+              )}
+            </span>
+            {timestamp && (
+              <span
+                className="shrink-0 justify-self-end whitespace-nowrap text-xs tabular-nums text-muted-fg/70"
+                title={timestampTitle}
+              >
+                {timestamp}
               </span>
             )}
           </div>
@@ -245,7 +264,7 @@ export default function Cmd() {
       navigate({
         to: "/session/$id",
         params: { id: newSession.id },
-        search: (prev) => prev,
+        search: { focus: "composer" },
       });
     } catch (err) {
       console.error("Failed to create session:", err);
@@ -260,8 +279,22 @@ export default function Cmd() {
     navigate({
       to: "/session/$id",
       params: { id: sessionId },
-      search: (prev) => ({ ...prev, focus: "composer" }),
+      search: { focus: "composer" },
     });
+  }
+
+  function handleOpenChange(open: boolean) {
+    if (open && query === "" && lastQueryRef.current !== "") {
+      setQuery(lastQueryRef.current);
+    }
+    setIsOpen(open);
+  }
+
+  function handleInputChange(value: string) {
+    setQuery(value);
+    if (value !== "") {
+      lastQueryRef.current = value;
+    }
   }
 
   function handleThemeChange(theme: "light" | "dark" | "system") {
@@ -290,9 +323,9 @@ export default function Cmd() {
   return (
     <CommandMenu
       isOpen={isOpen}
-      onOpenChange={setIsOpen}
+      onOpenChange={handleOpenChange}
       inputValue={query}
-      onInputChange={setQuery}
+      onInputChange={handleInputChange}
       shortcut="k"
       size="wide"
       isBlurred

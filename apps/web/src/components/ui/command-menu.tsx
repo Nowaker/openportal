@@ -1,5 +1,5 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { createContext, use, useEffect } from "react";
+import { createContext, use, useEffect, useRef } from "react";
 import type {
   AutocompleteProps,
   CollectionRenderer,
@@ -183,6 +183,14 @@ const CommandMenuSearch = ({
   const state = use(OverlayTriggerStateContext)!;
   const { isPending, escapeButton } = useCommandMenu();
   const { isMobile } = useMediaQuery();
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!state?.isOpen || isMobile) return;
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [state?.isOpen, isMobile]);
   return (
     <SearchField
       aria-label="Quick search"
@@ -199,6 +207,26 @@ const CommandMenuSearch = ({
         />
       )}
       <Input
+        ref={inputRef}
+        onKeyDownCapture={(e) => {
+          if (e.key === "ArrowRight") {
+            const input = e.currentTarget;
+            if (
+              input.selectionStart !== input.selectionEnd &&
+              input.selectionEnd === input.value.length
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+              input.setSelectionRange(input.value.length, input.value.length);
+            }
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Escape") return;
+          e.preventDefault();
+          e.stopPropagation();
+          state?.close();
+        }}
         placeholder={placeholder ?? "Search..."}
         className="w-full min-w-0 bg-transparent px-2.5 py-1.5 text-sm text-fg placeholder-muted-fg outline-hidden focus:outline-hidden [&::-ms-reveal]:hidden [&::-webkit-search-cancel-button]:hidden"
       />

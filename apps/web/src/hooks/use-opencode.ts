@@ -14,6 +14,7 @@ import {
   type SessionIndicatorState,
 } from "@/hooks/use-indicators";
 import type { TodoItem, TodoSnapshot, TodoStatus } from "@/lib/todos";
+import type { Session } from "@opencode-ai/sdk";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -108,10 +109,24 @@ export function useSelfInstance() {
 export function useSessions() {
   const port = usePort();
 
-  const swr = useSWR(
+  const swr = useSWR<Session[]>(
     port ? `/api/opencode/${port}/sessions` : null,
     fetcher,
   );
+  return { ...swr, data: useVisibleSessions(swr.data) };
+}
+
+export function useAllSessions() {
+  const port = usePort();
+
+  const swr = useSWR<Session[]>(
+    port ? `/api/opencode/${port}/sessions?scope=all` : null,
+    fetcher,
+  );
+  return { ...swr, data: useVisibleSessions(swr.data) };
+}
+
+function useVisibleSessions(data: Session[] | undefined): Session[] | undefined {
   // Hide /btw fork sessions from the live sidebar/navbar per AI_TODO
   // #138. These are background side-question forks named "[btw#N] ..."
   // and the user should never interact with them directly - the
@@ -119,18 +134,16 @@ export function useSessions() {
   // parent session. The forks also get archived once /btw completes,
   // so they additionally fall out of the live list via archive
   // filtering; this title-prefix filter covers the in-flight window.
-  const filteredData = useMemo(() => {
-    if (!Array.isArray(swr.data)) return swr.data;
-    return (swr.data as Array<{ title?: string } | undefined>).filter(
+  return useMemo(() => {
+    if (!data) return data;
+    return data.filter(
       (s) =>
         !(
-          s &&
           typeof s.title === "string" &&
           s.title.startsWith("[btw#")
         ),
     );
-  }, [swr.data]);
-  return { ...swr, data: filteredData };
+  }, [data]);
 }
 
 export function useSession(id: string | null) {
