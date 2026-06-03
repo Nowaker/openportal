@@ -11,37 +11,19 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 
-interface ModelItem {
+interface ProviderRaw {
   id: string;
   name: string;
-}
-
-interface ModelData {
-  id: string;
-  name: string;
-  providerID: string;
-}
-
-interface Provider {
-  id: string;
-  name: string;
-  models: Record<string, ModelData>;
-}
-
-interface ProviderWithModels {
-  id: string;
-  name: string;
-  models: ModelItem[];
+  models: Record<string, { id: string; name: string }>;
 }
 
 interface ModelsData {
-  providers: ProviderWithModels[];
   defaultModel: string | null;
   defaultModelName: string | null;
 }
 
 function transformProviders(data: {
-  providers?: Provider[];
+  providers?: ProviderRaw[];
   default?: Record<string, string>;
 }): ModelsData {
   const providers = data?.providers || [];
@@ -64,29 +46,7 @@ function transformProviders(data: {
     defaultModelName = model?.name ?? defaultModel;
   }
 
-  const sortedProviders: ProviderWithModels[] = providers
-    .map((provider) => ({
-      id: provider.id,
-      name: provider.name,
-      models: Object.values(provider.models || {})
-        .map((model) => ({
-          id: `${provider.id}/${model.id}`,
-          name: model.name,
-        }))
-        .sort((a, b) => {
-          const [aPid, ...aRest] = a.id.split("/");
-          const [bPid, ...bRest] = b.id.split("/");
-          const aParsed = parseModelId(aPid, aRest.join("/"));
-          const bParsed = parseModelId(bPid, bRest.join("/"));
-          if (aParsed.familyKey === bParsed.familyKey) {
-            return compareModelVersion(aParsed, bParsed);
-          }
-          return aParsed.family.localeCompare(bParsed.family);
-        }),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  return { providers: sortedProviders, defaultModel, defaultModelName };
+  return { defaultModel, defaultModelName };
 }
 
 const USE_DEFAULT_KEY = "__use_default__";
@@ -142,16 +102,19 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
     () => (rawData ? transformProviders(rawData) : null),
     [rawData],
   );
-  const providers = data?.providers ?? [];
   const defaultModel = data?.defaultModel ?? null;
   const defaultModelName = useMemo(() => {
     if (!effectiveDefaultKey) return null;
     const [pid, ...rest] = effectiveDefaultKey.split("/");
     const mid = rest.join("/");
-    const provider = providers.find((p) => p.id === pid);
-    const model = provider?.models.find((m) => m.id === effectiveDefaultKey);
+    const raw = rawData as
+      | { providers?: Array<{ id: string; models?: Record<string, { id: string; name?: string }> }> }
+      | null
+      | undefined;
+    const provider = raw?.providers?.find((p) => p.id === pid);
+    const model = provider?.models?.[mid];
     return model?.name ?? effectiveDefaultKey;
-  }, [effectiveDefaultKey, providers]);
+  }, [effectiveDefaultKey, rawData]);
 
   useEffect(() => {
     if (defaultModel) {
