@@ -3897,7 +3897,7 @@ Design notes:
 - Source comment in `apps/web/src/routes/_app/session/$id.tsx` next to the wrapper updated to spell out the same contract inline so a future reader doesn't have to bounce to AGENTS.md.
 - Files: `AGENTS.md`, `apps/web/src/routes/_app/session/$id.tsx`, `apps/web/src/routes/_app/session/new.tsx`.
 
-### 168. Ctrl+K open-session search must match full or partial session IDs (PENDING - queued for current ^K worktree)
+### 168. Ctrl+K open-session search must match full or partial session IDs (DONE - 11bcb77)
 
 User prompt (verbatim):
 
@@ -3932,7 +3932,7 @@ Design notes:
 - Preserve existing title/path fuzzy matching and result ranking unless code inspection shows ranking is the root cause.
 - Verify with the real UI surface and deploy/push after merge.
 
-### 169. Ctrl+K search remembers previous query and selects it on reopen (PENDING - queued after #168)
+### 169. Ctrl+K search remembers previous query and selects it on reopen (DONE - 11bcb77)
 
 User prompt (verbatim):
 
@@ -3945,7 +3945,7 @@ Design notes:
 - Preserve browser-like caret behavior: pressing ArrowRight should collapse selection at the end so typed text concatenates to the remembered query.
 - Implement in the shared Ctrl+K search component if both sidebar button and keyboard shortcut use it.
 
-### 170. Ctrl+K session results show preferred-format datetime in an aligned right column (PENDING - queued after #169)
+### 170. Ctrl+K session results show preferred-format datetime in an aligned right column (DONE - 11bcb77)
 
 User prompt (verbatim):
 
@@ -3961,7 +3961,7 @@ Design notes:
 - Keep the timestamp column flexible and aligned across rows; it should size to the longest visible timestamp, not consume excessive width.
 - Preserve mobile usability and existing row content truncation.
 
-### 171. Ctrl+K open-session search must include all sessions in open workspaces (PENDING - queued after #170)
+### 171. Ctrl+K open-session search must include all sessions in open workspaces (DONE - 11bcb77)
 
 User prompt (verbatim):
 
@@ -3987,7 +3987,7 @@ Design notes:
 - Preserve any intentional exclusions for archived/deleted sessions unless the current code proves they are unrelated to this bug.
 - Verify with a session ID outside the currently focused workspace if possible.
 
-### 172. Escape in Ctrl+K closes the modal instead of clearing the query (PENDING - queued after #171)
+### 172. Escape in Ctrl+K closes the modal instead of clearing the query (DONE - 11bcb77)
 
 User prompt (verbatim):
 
@@ -4064,3 +4064,4 @@ Design notes:
 - Current `main-nowaker` also includes later composer-padding follow-up `4a69796`, which forces the requested 5/3/3/46 px padding through inline style so Tailwind base classes cannot override it.
 - Used `~/projekty/nowaker/opencode-tools/session-grep.ts` to locate the implementing session: `ses_18572f9a8ffecB57FPahdTEZ4Y` (`Textarea submit button padding fix`).
 - Sent apology/recovery prompts to that session asking it to verify the composer-padding feature is back and to reintroduce anything still missing without disturbing concurrent WIP. Confirmed the prompt text persisted in the target session with `session-grep.ts`.
+
