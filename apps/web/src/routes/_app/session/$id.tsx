@@ -5338,13 +5338,13 @@ function SessionPage() {
     const firstHeader = firstHeaderShown ? (
       <>
         {renderMessage(firstMessage, -1, {
-          baseVisible: [firstMessage],
+          baseVisible,
           revertIndex: -1,
           lastErrorMessageId: undefined,
         })}
         {firstExtraToShow.map((m, idx) =>
           renderMessage(m, -2 - idx, {
-            baseVisible: firstExtraToShow,
+            baseVisible,
             revertIndex: -1,
             lastErrorMessageId: undefined,
           }),

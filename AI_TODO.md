@@ -4135,3 +4135,24 @@ Design notes:
 - `PermalinkGapBanner` component unchanged from its #175-era shape (already accepts `onLoadTop` / `onLoadBottom` as optional). My fix just passes all 3 instead of only `onLoadAll`.
 - Verification: `bunx tsc --noEmit` clean for my touched files (`use-session-messages.ts`, `session/$id.tsx`). API probe against the user-reported session `ses_1bda04b07ffeIidF4TI76qQdI2` (162 messages total): `?first=1` returns user-role msg `msg_e425fb54a001BY4QYgqpr58hda`; `?after=msg_e425fb54a001BY4QYgqpr58hda&limit=50` returns 50 messages — both endpoints feed the new wiring correctly. Worktree on port 5410 served the new bundle (`index-DlYMBc1C.js`) which contains the `?after=` URL literal.
 - Integration: developed on worktree `~/projekty/webapps/portal-load-first-fix` / `feat/load-first-and-last-fix`. Per the fork-branch policy in personal AGENTS.md, fixes to already-merged features land on a new branch off main, not on the original (already-merged) feature branch. Rebased onto current `main-nowaker` post-implementation; FF-merged + deployed + pushed.
+
+### 177. Fix incorrect "Queued" badge on the first-prompt header (DONE - this commit)
+
+User prompt (verbatim):
+
+> the first prompt shows with a badge "Queued". obviously, it's not queued. it's fully processed.
+>
+> <span title="OpenCode has this user message as a real entry in its own stream, but the assistant has not yet produced a response. Queued behind earlier turns or an in-flight tool call." class="..." >Queued</span>
+>
+> probably 'queued' detection code needs an improvement.
+>
+> fix on a worktree. ff merge only when done. rebase your stuff if conflicting. don't trash main-master. force pushes are now forbidden and rejected by the server so not worth trying.
+
+Design notes:
+
+- Bug introduced by #175 (the first-prompt + last-N header). The renderMessage call for the first-prompt header passed `baseVisible: [firstMessage]` — a single-element list containing only the first user message itself. The queue-detection logic inside renderMessage walks `ctx.baseVisible` from `baseIdx + 1` onward looking for an assistant; with a one-element baseVisible, the loop is empty, `answered=false`, and `isQueued = !answered && !(isLastInBase && isServerBusy)` resolved to `true` whenever the server wasn't actively busy.
+- Fix: pass the real `baseVisible` (the full visible window's filtered messages) for both the first-prompt header AND the `firstExtraToShow` rows. When firstHeaderShown is true, the first message is by definition NOT in the visible window (`baseIdx = -1`), so the loop walks from index 0 forward and finds an assistant within seconds — `answered=true`, `isQueued=false`. Correct.
+- Same fix applies to `firstExtraToShow.map(...)`: those messages are historical (came from `?after=<firstId>&limit=N`), they have long been answered, so passing the full visible window's baseVisible lets the existing heuristic resolve correctly instead of getting confused by a truncated array.
+- Why this works for historical messages: `firstHeaderShown` is only true when the session has more messages than the visible window (typically >50 messages). The visible window contains at least one assistant, so the "any assistant in baseVisible" heuristic is a reliable proxy for "this historical message has been answered."
+- Verification: `bunx tsc --noEmit` clean for files I touched. The 66 pre-existing errors elsewhere (sidebar, settings, file-route TS strictness) are unchanged from main.
+- Integration: developed on worktree `~/projekty/webapps/portal-queued-badge-fix` / `feat/queued-badge-fix`. Branched off main-nowaker `9716dec`. FF merge into main, deploy, push to both remotes. Force-pushes to main are server-blocked now per the user's recent GitLab branch-rule change.
