@@ -653,9 +653,15 @@ function spawnedSubsessionId(part: ToolPart): string | null {
     tool.includes("opencode_fire") ||
     tool.includes("session_resume");
   if (!isSubsessionTool) return null;
-  const fromMetadata = extractSessionIdCandidate(part.state?.metadata ?? null);
+  const state = part.state;
+  const fromMetadata =
+    state && "metadata" in state
+      ? extractSessionIdCandidate(state.metadata)
+      : null;
   if (fromMetadata) return fromMetadata;
-  return extractSessionIdCandidate(part.state?.output ?? null);
+  return state && "output" in state
+    ? extractSessionIdCandidate(state.output)
+    : null;
 }
 
 function QuestionDisplay({
@@ -3223,6 +3229,73 @@ function SessionLevelErrorBox({
   );
 }
 
+function RateLimitBanner({
+  retry,
+}: {
+  retry: NonNullable<
+    NonNullable<ReturnType<typeof useIndicator>>["opencode_retry"]
+  >;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const remainingMs = retry.next > 0 ? Math.max(0, retry.next - now) : 0;
+  const sec = Math.ceil(remainingMs / 1000);
+  const countdown =
+    sec >= 60
+      ? `${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, "0")}s`
+      : `${sec}s`;
+  const isRetryingNow = retry.next > 0 && remainingMs <= 0;
+  const action = retry.action;
+  const headline = action?.title ?? "Provider asked to slow down";
+  const body = action?.message ?? retry.message ?? null;
+  const labelLine = action?.label ?? null;
+  return (
+    <div className="mx-3 my-3 rounded-md border border-warning/40 bg-warning-subtle/40 p-3 text-xs text-warning-fg">
+      <div className="flex items-center gap-2 font-semibold">
+        <span
+          className={`inline-block size-2 rounded-full bg-warning ${
+            isRetryingNow ? "animate-pulse" : ""
+          }`}
+          aria-hidden
+        />
+        <span>{headline}</span>
+        {retry.attempt > 0 && (
+          <span className="font-mono text-[11px] text-muted-fg">
+            attempt {retry.attempt}
+          </span>
+        )}
+        <span className="ml-auto font-mono text-[11px] text-muted-fg">
+          {isRetryingNow ? "retrying now..." : `next attempt in ${countdown}`}
+        </span>
+      </div>
+      {body && (
+        <div className="mt-1 whitespace-pre-wrap break-words leading-snug">
+          {body}
+        </div>
+      )}
+      {(labelLine || action?.link) && (
+        <div className="mt-1 text-[11px] text-muted-fg">
+          {action?.link ? (
+            <a
+              href={action.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-warning-fg"
+            >
+              {labelLine ?? action.link}
+            </a>
+          ) : (
+            <span>{labelLine}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModelOverrideControl({
   sessionId,
   instanceId,
@@ -3348,7 +3421,7 @@ function SessionPage() {
   } | null>(null);
   const loadMoreSelectionRef = useRef<Range | null>(null);
   const promptsSearchParam = Route.useSearch({
-    select: (s) => s.prompts != null && s.prompts !== false,
+    select: (s) => s.prompts === 1,
   });
   const [onlyUserMessages, setOnlyUserMessages] = useState(promptsSearchParam);
   useEffect(() => {
@@ -5525,6 +5598,9 @@ function SessionPage() {
               lastError={sessionIndicatorForErrors.lastError}
             />
           )}
+          {sessionIndicatorForErrors?.opencode_retry && (
+            <RateLimitBanner retry={sessionIndicatorForErrors.opencode_retry} />
+          )}
           {permalinkMode && permalinkWindow.loading.after && (
             <div className="px-3 py-2 flex items-center justify-center gap-2 text-xs text-muted-fg">
               <Loader className="size-4" />
@@ -6126,7 +6202,7 @@ function SessionPage() {
                         ? "This session is archived. Unarchive it to send new prompts."
                         : "Type your message..."
                     }
-                    isDisabled={sessionIsArchived}
+                    disabled={sessionIsArchived}
                     style={{ paddingLeft: 5, paddingTop: 3, paddingBottom: 3, paddingRight: 46 }}
                     className={`resize-none overflow-y-auto text-sm min-h-[max(6rem,100%)] rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0${
                       sessionIsArchived ? " text-center placeholder:text-center" : ""

@@ -67,6 +67,25 @@ export interface SessionIndicatorState {
   stuck_verdict: "idle" | "in-progress" | "stuck" | null;
   stuck_cause: string | null;
   stuck_warnings: string[];
+  retry: {
+    attempt: number;
+    next_ms: number | null;
+    message: string | null;
+    overdue: boolean;
+  } | null;
+  opencode_retry: {
+    attempt: number;
+    next: number;
+    message: string;
+    action?: {
+      reason: string;
+      provider: string;
+      title: string;
+      message: string;
+      label: string;
+      link?: string;
+    };
+  } | null;
 }
 
 type StreamPayload =
