@@ -1,33 +1,30 @@
 import { visit, SKIP } from "unist-util-visit";
 
-// Detect opencode session IDs (ses_*) and message IDs (msg_*) in chat
-// text and rewrite them into internal links. Two flavours:
-//
-//   ses_<full-id>       -> /session/<full-id>. Full IDs are 20-32
-//                          alphanumeric chars; always linkized.
-//   ses_<prefix>        -> /session/<resolved-full-id>. Short prefixes
-//                          (9-19 alphanumeric chars) only linkize when
-//                          options.resolveSessionId() can map the
-//                          prefix back to a full ID via the portal's
-//                          sessions cache. Ambiguous (multi-match) or
-//                          unknown prefixes stay as text rather than
-//                          producing dead /session/<short> links.
-//   msg_<mid>           -> #msg-<mid> hash on the current session
-//                          (the markdown renderer can't see what
-//                          session we're in from plugin context).
-//
-// Pattern anchored on word-boundary delimiters so we don't munge
-// arbitrary identifiers that happen to contain "ses" or "msg".
-//
-// Link targets are openportal-internal. MessageMarkdown's `a`
-// component override routes them through tanstack SPA nav.
 const ID_REGEX =
-  /(^|[\s'"\[\]{}()=:,;./?#&-])((?:ses_[A-Za-z0-9]{9,32})|(?:msg_[A-Za-z0-9]{20,32}))(?=$|[\s'"\[\]{}().,:;?!/&#-])/g;
+  /(^|[\s'"\[\]{}()=:,;./?#&-])((?:ses_[A-Za-z0-9]{9,32})|(?:msg_[A-Za-z0-9]{20,32})|(?:bg_[A-Za-z0-9]{6,32}))(?=$|[\s'"\[\]{}().,:;?!/&#-])/g;
 
 const FULL_SES_MIN_CHARS = 20;
 
 export interface RemarkIdLinksOptions {
   resolveSessionId?: (partialOrFullId: string) => string | null;
+  resolveBgId?: (bgId: string) => string | null;
+}
+
+function hrefForId(
+  id: string,
+  options: RemarkIdLinksOptions | undefined,
+): string | null {
+  if (id.startsWith("msg_")) return `#msg-${id}`;
+  if (id.startsWith("bg_")) {
+    const ses = options?.resolveBgId?.(id) ?? null;
+    return ses === null ? null : `/session/${ses}`;
+  }
+  let target: string | null = id;
+  const charCount = id.length - "ses_".length;
+  if (charCount < FULL_SES_MIN_CHARS) {
+    target = options?.resolveSessionId?.(id) ?? null;
+  }
+  return target === null ? null : `/session/${target}`;
 }
 
 interface MdastNode {
@@ -39,24 +36,21 @@ interface MdastNode {
 
 export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
   return (tree: MdastNode) => {
-    visit(tree, (node: MdastNode, index: number | undefined, parent: MdastNode | undefined) => {
+    visit(tree as Parameters<typeof visit>[0], (rawNode, rawIndex, rawParent) => {
+      const node = rawNode as MdastNode;
+      const parent = rawParent as MdastNode | undefined;
+      const index = rawIndex;
+
       if (node.type === "link" || node.type === "linkReference" || node.type === "code") {
         return SKIP;
       }
       if (node.type === "inlineCode" && parent && typeof index === "number") {
         const value = node.value ?? "";
-        const m = value.match(/^(ses_[A-Za-z0-9]{9,32}|msg_[A-Za-z0-9]{20,32})$/);
+        const m = value.match(/^(ses_[A-Za-z0-9]{9,32}|msg_[A-Za-z0-9]{20,32}|bg_[A-Za-z0-9]{6,32})$/);
         if (!m) return;
         const id = m[1];
-        let targetId: string | null = id;
-        if (id.startsWith("ses_")) {
-          const charCount = id.length - "ses_".length;
-          if (charCount < FULL_SES_MIN_CHARS) {
-            targetId = options?.resolveSessionId?.(id) ?? null;
-          }
-        }
-        if (targetId === null) return;
-        const href = id.startsWith("ses_") ? `/session/${targetId}` : `#msg-${id}`;
+        const href = hrefForId(id, options);
+        if (href === null) return;
         parent.children!.splice(index, 1, {
           type: "link",
           url: href,
@@ -65,11 +59,12 @@ export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
         return index + 1;
       }
       if (node.type === "html" && parent && typeof index === "number") {
-        // mdast `html` nodes carry raw markup as `value`, not parsed
-        // children, so the text-node branch below never sees IDs inside
-        // blocks like <task_metadata>...</task_metadata>.
         const value = node.value ?? "";
-        if (value.indexOf("ses_") < 0 && value.indexOf("msg_") < 0) {
+        if (
+          value.indexOf("ses_") < 0 &&
+          value.indexOf("msg_") < 0 &&
+          value.indexOf("bg_") < 0
+        ) {
           return undefined;
         }
         let m;
@@ -80,20 +75,11 @@ export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
           const id = m[2];
           const ms = m.index + m[1].length;
           const me = ms + id.length;
-          let target: string | null = id;
-          if (id.startsWith("ses_")) {
-            const charCount = id.length - "ses_".length;
-            if (charCount < FULL_SES_MIN_CHARS) {
-              target = options?.resolveSessionId?.(id) ?? null;
-            }
-          }
-          if (target === null) continue;
+          const href = hrefForId(id, options);
+          if (href === null) continue;
           if (ms > last) {
             out.push({ type: "html", value: value.slice(last, ms) });
           }
-          const href = id.startsWith("ses_")
-            ? `/session/${target}`
-            : `#msg-${id}`;
           out.push({
             type: "link",
             url: href,
@@ -118,21 +104,9 @@ export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
         const id = match[2];
         const matchStart = match.index + match[1].length;
         const matchEnd = matchStart + id.length;
+        const href = hrefForId(id, options);
 
-        let targetId: string | null = id;
-        if (id.startsWith("ses_")) {
-          const charCount = id.length - "ses_".length;
-          if (charCount < FULL_SES_MIN_CHARS) {
-            targetId = options?.resolveSessionId?.(id) ?? null;
-          }
-        }
-
-        if (targetId === null) {
-          // Short prefix that the cache can't resolve unambiguously.
-          // Leave the match as literal text - splicing into newChildren
-          // below would still happen if there are later resolvable
-          // matches; the unresolved span is captured by the pre-text
-          // slice on the next iteration's matchStart.
+        if (href === null) {
           continue;
         }
 
@@ -143,9 +117,6 @@ export const remarkIdLinks = (options?: RemarkIdLinksOptions) => {
           });
         }
 
-        const href = id.startsWith("ses_")
-          ? `/session/${targetId}`
-          : `#msg-${id}`;
         newChildren.push({
           type: "link",
           url: href,

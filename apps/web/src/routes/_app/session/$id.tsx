@@ -14,6 +14,11 @@ import remarkGfm from "remark-gfm";
 import { remarkFileLinks } from "@/lib/remark-file-links";
 import { remarkIdLinks } from "@/lib/remark-id-links";
 import { linkifySessionIds } from "@/lib/linkify-session-ids";
+import {
+  IdResolversProvider,
+  useBuildIdResolvers,
+  useIdResolvers,
+} from "@/lib/id-resolvers";
 import useSWR, { mutate as globalSWRMutate } from "swr";
 import { Ripples } from "ldrs/react";
 import "ldrs/react/Ripples.css";
@@ -1256,20 +1261,15 @@ function PermissionRequestForm({
 // Strings render verbatim with their actual line breaks preserved so
 // multi-line tool inputs (bash commands, edit diffs) read as the
 // user-typed source rather than as one-line JSON with \n sequences.
-function FormattedValue({
-  value,
-  resolveSessionId,
-}: {
-  value: unknown;
-  resolveSessionId: (partial: string) => string | null;
-}): React.ReactElement {
+function FormattedValue({ value }: { value: unknown }): React.ReactElement {
+  const resolvers = useIdResolvers();
   if (value === null || value === undefined) {
     return <span className="text-muted-fg/60 italic">(none)</span>;
   }
   if (typeof value === "string") {
     return (
       <span className="whitespace-pre-wrap break-words">
-        {linkifySessionIds(value, { resolveSessionId })}
+        {linkifySessionIds(value, resolvers)}
       </span>
     );
   }
@@ -1284,7 +1284,7 @@ function FormattedValue({
       <ul className="ml-3 mt-1 space-y-1 list-disc">
         {value.map((item, i) => (
           <li key={i} className="break-words">
-            <FormattedValue value={item} resolveSessionId={resolveSessionId} />
+            <FormattedValue value={item} />
           </li>
         ))}
       </ul>
@@ -1301,7 +1301,7 @@ function FormattedValue({
           <div key={k} className="grid grid-cols-[auto_1fr] gap-x-2 items-start">
             <dt className="font-mono text-muted-fg text-xs pt-0.5">{k}:</dt>
             <dd className="break-words text-fg">
-              <FormattedValue value={v} resolveSessionId={resolveSessionId} />
+              <FormattedValue value={v} />
             </dd>
           </div>
         ))}
@@ -1352,17 +1352,7 @@ function ToolInputModal({
   }, [currentValue]);
   const hasOutput =
     output !== null && output !== undefined && output !== "";
-  const { data: sessionsData } = useSessions();
-  const resolveSessionId = useMemo(() => {
-    const sessions = sessionsData ?? [];
-    return (partial: string): string | null => {
-      if (!partial.startsWith("ses_")) return null;
-      const exact = sessions.find((s) => s.id === partial);
-      if (exact) return exact.id;
-      const matches = sessions.filter((s) => s.id.startsWith(partial));
-      return matches.length === 1 ? matches[0].id : null;
-    };
-  }, [sessionsData]);
+  const resolvers = useIdResolvers();
   return (
     <ModalOverlay
       isOpen
@@ -1455,13 +1445,10 @@ function ToolInputModal({
                     Failed to load tool {section}.
                   </div>
                 ) : view === "formatted" ? (
-                  <FormattedValue
-                    value={currentValue}
-                    resolveSessionId={resolveSessionId}
-                  />
+                  <FormattedValue value={currentValue} />
                 ) : (
                   <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-muted/30 rounded p-3">
-                    {linkifySessionIds(jsonText, { resolveSessionId })}
+                    {linkifySessionIds(jsonText, resolvers)}
                   </pre>
                 )}
               </div>
@@ -1545,11 +1532,33 @@ const ToolCallItem = memo(function ToolCallItem({
   const spawnedSessionHref = spawnedSessionId
     ? `/session/${spawnedSessionId}`
     : null;
-  const spawnedSessionLink = spawnedSessionHref ? (
-    <a href={spawnedSessionHref} className="text-primary hover:underline">
-      {spawnedSessionId}
-    </a>
-  ) : null;
+  const toolResolvers = useIdResolvers();
+  const spawnedSessionTitle = spawnedSessionId
+    ? toolResolvers.resolveSessionTitle(spawnedSessionId)
+    : null;
+  const idLinkClass =
+    "text-primary underline decoration-dotted underline-offset-2 hover:decoration-solid";
+  const withSpawnedTooltip = (node: React.ReactNode): React.ReactNode =>
+    spawnedSessionTitle ? (
+      <span className="group relative inline-block">
+        {node}
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden whitespace-nowrap rounded-md border border-(--tooltip-border) [--tooltip-border:var(--color-muted-fg)]/30 bg-overlay px-2 py-1 text-xs text-overlay-fg shadow-md group-hover:block"
+        >
+          {spawnedSessionTitle}
+        </span>
+      </span>
+    ) : (
+      node
+    );
+  const spawnedSessionLink = spawnedSessionHref
+    ? withSpawnedTooltip(
+        <a href={spawnedSessionHref} className={idLinkClass}>
+          {spawnedSessionId}
+        </a>,
+      )
+    : null;
 
   if (hasQuestions) {
     return (
@@ -1652,7 +1661,7 @@ const ToolCallItem = memo(function ToolCallItem({
       <span className="opacity-60 shrink-0">{icon}</span>
       <span className="truncate">
         {typeof label === "string"
-          ? linkifySessionIds(label, { resolveSessionId: (id) => id })
+          ? linkifySessionIds(label, toolResolvers)
           : label}
       </span>
       {details && (
@@ -1660,12 +1669,14 @@ const ToolCallItem = memo(function ToolCallItem({
           {taskDetailText && spawnedSessionHref ? (
             <>
               -{" "}
-              <a href={spawnedSessionHref} className="text-primary hover:underline">
-                {taskDetailText}
-              </a>
+              {withSpawnedTooltip(
+                <a href={spawnedSessionHref} className={idLinkClass}>
+                  {taskDetailText}
+                </a>,
+              )}
             </>
           ) : (
-            linkifySessionIds(details, { resolveSessionId: (id) => id })
+            linkifySessionIds(details, toolResolvers)
           )}
         </span>
       )}
@@ -2135,22 +2146,8 @@ function MessageMarkdown({
 }) {
   const { isMobile } = useMediaQuery();
   const navigate = useNavigate();
-  const { data: sessionsData } = useSessions();
-  // Short-prefix resolver for remark-id-links. Required to keep
-  // ambiguous prefixes from producing wrong links: when multiple
-  // cached sessions start with the same `ses_<9-19 char>` prefix,
-  // we return null so the plugin leaves the prefix as plain text
-  // instead of linking to a guess.
-  const resolveSessionId = useMemo(() => {
-    const sessions = sessionsData ?? [];
-    return (partial: string): string | null => {
-      if (!partial.startsWith("ses_")) return null;
-      const exact = sessions.find((s) => s.id === partial);
-      if (exact) return exact.id;
-      const matches = sessions.filter((s) => s.id.startsWith(partial));
-      return matches.length === 1 ? matches[0].id : null;
-    };
-  }, [sessionsData]);
+  const { resolveSessionId, resolveBgId, resolveSessionTitle } =
+    useIdResolvers();
   const components = useMemo(
     () => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2224,10 +2221,20 @@ function MessageMarkdown({
           }
         })();
         if (isOpenPortalInternal) {
-          return (
+          const sessionMatch = hrefStr.match(/^\/session\/(ses_[A-Za-z0-9]{9,32})/);
+          const linkSessionId = sessionMatch ? sessionMatch[1] : null;
+          const linkTitle = linkSessionId
+            ? resolveSessionTitle(linkSessionId)
+            : null;
+          const anchor = (
             <a
               {...rest}
               href={hrefStr}
+              className={
+                linkSessionId
+                  ? "text-primary underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                  : (rest as { className?: string }).className
+              }
               onClick={(e) => {
                 if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 if (e.button !== 0) return;
@@ -2245,6 +2252,18 @@ function MessageMarkdown({
               {children}
             </a>
           );
+          if (!linkTitle) return anchor;
+          return (
+            <span className="group relative inline-block">
+              {anchor}
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden whitespace-nowrap rounded-md border border-(--tooltip-border) [--tooltip-border:var(--color-muted-fg)]/30 bg-overlay px-2 py-1 text-xs text-overlay-fg shadow-md group-hover:block"
+              >
+                {linkTitle}
+              </span>
+            </span>
+          );
         }
         const openInNewTab = !!hrefStr && !isAnchor && !isMailto;
         return (
@@ -2259,11 +2278,11 @@ function MessageMarkdown({
         );
       },
     }),
-    [isMobile, sessionDirectory, navigate],
+    [isMobile, sessionDirectory, navigate, resolveSessionTitle],
   );
 
   return (
-    <Markdown remarkPlugins={[...remarkPlugins, remarkFileLinks, [remarkIdLinks, { resolveSessionId }]]} components={components}>
+    <Markdown remarkPlugins={[...remarkPlugins, remarkFileLinks, [remarkIdLinks, { resolveSessionId, resolveBgId }]]} components={components}>
       {text}
     </Markdown>
   );
@@ -5474,7 +5493,10 @@ function SessionPage() {
     setPendingAttachments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const idResolvers = useBuildIdResolvers(sessions, messages);
+
   return (
+    <IdResolversProvider value={idResolvers}>
     <div className="flex flex-1 flex-col min-h-0">
       <div className="relative flex-1 min-h-0">
       <TextSelectionMenu
@@ -6321,5 +6343,6 @@ function SessionPage() {
         errorMessage={forkError}
       />
     </div>
+    </IdResolversProvider>
   );
 }
