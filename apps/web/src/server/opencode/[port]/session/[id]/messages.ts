@@ -4,6 +4,7 @@ import {
   setResponseHeader,
   setResponseStatus,
 } from "nitro/h3";
+import type { H3Event } from "nitro/h3";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
 import {
   getCachedMessages,
@@ -174,7 +175,7 @@ export default defineHandler(async (event) => {
   return view.slice(-limit);
 });
 
-type EventLike = Parameters<Parameters<typeof defineHandler>[0]>[0];
+type EventLike = H3Event;
 
 // Thrown when opencode is unreachable AND we have nothing to serve (no
 // stale cache, no pending-prompt virtuals). The outer handler catches
@@ -270,7 +271,11 @@ async function loadFullMessages(
   }
   if (real === null) real = [];
   stampTurnStartTimes(real);
-  if (visible.length === 0) return real;
+  const synthRows = listSynthetic(id);
+  const synthMessages = synthRows.map(toSyntheticChatMessage);
+  if (visible.length === 0) {
+    return synthMessages.length === 0 ? real : [...real, ...synthMessages];
+  }
   // Dedup pass 1: text match. Drop any virtual whose raw_text
   // matches a real user message that landed AFTER the prompt was
   // captured. Without this the user briefly sees their submission
@@ -344,15 +349,6 @@ async function loadFullMessages(
     .map((row) =>
       toVirtualUserMessage(row, Math.max(row.ts_ms, latestRealAnyMs + 1)),
     );
-  // Synthetic messages from the /btw side-question feature live in
-  // openportal's own SQLite and are NEVER part of opencode's message
-  // stream. Wrap them in an opencode-shaped object so MessageItem
-  // renders them like any other user/assistant message; the
-  // `info._synthetic` flag lets the frontend apply distinct styling
-  // (per AI_TODO #138: green-question with /btw prefix label,
-  // mid-color answer between user-prompt bg and chat-log bg).
-  const synthRows = listSynthetic(id);
-  const synthMessages = synthRows.map(toSyntheticChatMessage);
   const merged =
     filtered.length === 0 ? real : [...real, ...filtered];
   return synthMessages.length === 0 ? merged : [...merged, ...synthMessages];
