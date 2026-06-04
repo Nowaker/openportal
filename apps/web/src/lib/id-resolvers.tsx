@@ -19,8 +19,13 @@ const IdResolversContext = createContext<IdResolvers>(NULL_RESOLVERS);
 
 const FULL_SES_MIN_CHARS = 20;
 
-const BG_NEAR_SES_REGEX =
-  /(bg_[A-Za-z0-9]{6,32})[\s\S]{0,400}?(ses_[A-Za-z0-9]{20,32})|(ses_[A-Za-z0-9]{20,32})[\s\S]{0,400}?(bg_[A-Za-z0-9]{6,32})/g;
+const TASK_METADATA_PAIR_REGEXES = [
+  /background_task_id:\s*(bg_[A-Za-z0-9]{6,32})[\s\S]{0,200}?session_id:\s*(ses_[A-Za-z0-9]{20,32})/g,
+  /session_id:\s*(ses_[A-Za-z0-9]{20,32})[\s\S]{0,200}?background_task_id:\s*(bg_[A-Za-z0-9]{6,32})/g,
+  /Background Task ID:\s*(bg_[A-Za-z0-9]{6,32})[\s\S]{0,600}?session_id:\s*(ses_[A-Za-z0-9]{20,32})/g,
+  /(bg_[A-Za-z0-9]{6,32})[^A-Za-z0-9_]{0,50}?(?:->|→|=>)[^A-Za-z0-9_]{0,80}?\/?session\/?(ses_[A-Za-z0-9]{20,32})/g,
+  /(bg_[A-Za-z0-9]{6,32})\s*->\s*(ses_[A-Za-z0-9]{20,32})/g,
+];
 
 function buildBgIdMap(messages: MessageWithParts[]): Map<string, string> {
   const map = new Map<string, string>();
@@ -37,12 +42,16 @@ function buildBgIdMap(messages: MessageWithParts[]): Map<string, string> {
         output: p.state?.output ?? null,
       });
       if (blob.indexOf("bg_") < 0) continue;
-      BG_NEAR_SES_REGEX.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = BG_NEAR_SES_REGEX.exec(blob)) !== null) {
-        const bg = match[1] ?? match[4];
-        const ses = match[2] ?? match[3];
-        if (bg && ses && !map.has(bg)) map.set(bg, ses);
+      for (const regex of TASK_METADATA_PAIR_REGEXES) {
+        regex.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(blob)) !== null) {
+          const a = match[1];
+          const b = match[2];
+          const bg = a.startsWith("bg_") ? a : b;
+          const ses = a.startsWith("ses_") ? a : b;
+          if (!map.has(bg)) map.set(bg, ses);
+        }
       }
     }
   }
