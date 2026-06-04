@@ -442,6 +442,28 @@ hard refresh (Ctrl+Shift+R / Cmd+Shift+R) to pick up the new
 asset hash. The asset-fallback layer keeps the old tab working
 without crashes; the user just has to reload to see the new code.
 
+### Final-message validation hooks (mandatory)
+
+When claiming a feature is implemented or a bug is fixed, the
+final assistant message MUST include something the user can
+click / paste / inspect to validate the claim with one action.
+Brevity is king — one or two lines, not paragraphs.
+
+Examples:
+- Linkify shipped → cite live URLs containing the very tokens
+  the feature should linkify (`bg_xxx`, `ses_xxx`, `/abs/path`).
+- File-path rendering shipped → cite an absolute path in
+  backticks so the new path-link shows up in chat.
+- Commit / branch claim → cite the REAL commit SHA you just
+  pushed (`git rev-parse HEAD`), not a guessed prefix. A 404
+  from the user clicking a fake SHA is unacceptable.
+- Build artifact shipped → cite the asset hash `deploy.sh`
+  printed.
+
+If no validation hook is possible (pure refactor, internal
+plumbing), say so in one line: "no user-visible surface to
+validate, smoke check via tests". Don't invent fake hooks.
+
 ### Stale asset 500s are impossible by construction
 
 A browser tab whose cached `index.html` references a hashed asset
