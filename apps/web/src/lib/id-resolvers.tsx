@@ -63,7 +63,7 @@ function buildBgIdMap(messages: MessageWithParts[]): Map<string, string> {
 function formatSessionDescriptor(s: Session, format: DateFormat): string {
   const dt = formatFullDateTime(s.time?.created, format);
   const title = s.title || "(untitled)";
-  return dt ? `${s.id} - ${dt} - ${title}` : `${s.id} - ${title}`;
+  return dt ? `${dt} - ${s.id} - ${title}` : `${s.id} - ${title}`;
 }
 
 function buildSessionTitleMap(
