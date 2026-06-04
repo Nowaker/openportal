@@ -58,10 +58,27 @@ function buildBgIdMap(messages: MessageWithParts[]): Map<string, string> {
   return map;
 }
 
+function formatSessionDescriptor(s: Session): string {
+  const created = s.time?.created;
+  const dt =
+    typeof created === "number"
+      ? new Date(created).toLocaleString(undefined, {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+      : "";
+  const title = s.title || "(untitled)";
+  return dt ? `${s.id} - ${dt} - ${title}` : `${s.id} - ${title}`;
+}
+
 function buildSessionTitleMap(sessions: Session[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const s of sessions) {
-    if (s.id && s.title) map.set(s.id, s.title);
+    if (s.id) map.set(s.id, formatSessionDescriptor(s));
   }
   return map;
 }
