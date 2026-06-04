@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 67c75e8
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T06:01:12-05:00
 legacy_number: 33
+commits:
+  attributed:
+    - 67c75e8ffcb7
+  on_main:
+    - 67c75e8ffcb7
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Move-to-project modal: cropped content + font too large + needs vertical scroll on phone

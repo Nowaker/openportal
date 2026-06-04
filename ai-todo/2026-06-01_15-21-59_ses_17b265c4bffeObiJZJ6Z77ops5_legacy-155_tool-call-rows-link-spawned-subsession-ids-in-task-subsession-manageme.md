@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_17b265c4bffeObiJZJ6Z77ops5
 queued_at: 2026-06-01T15:21:59-05:00
 legacy_number: 155
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Tool call rows: link spawned subsession ids in task/subsession-management labels

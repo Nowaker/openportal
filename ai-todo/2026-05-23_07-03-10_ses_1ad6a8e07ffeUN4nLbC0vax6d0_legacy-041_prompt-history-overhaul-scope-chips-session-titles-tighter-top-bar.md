@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 0f0df8b
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T07:03:10-05:00
 legacy_number: 41
+commits:
+  attributed:
+    - 0f0df8b42ea3
+  on_main:
+    - 0f0df8b42ea3
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Prompt history overhaul: scope chips + session titles + tighter top bar

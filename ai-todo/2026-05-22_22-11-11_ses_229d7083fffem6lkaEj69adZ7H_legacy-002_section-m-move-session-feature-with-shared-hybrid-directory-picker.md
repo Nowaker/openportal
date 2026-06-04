@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_229d7083fffem6lkaEj69adZ7H
 queued_at: 2026-05-22T22:11:11-05:00
 legacy_number: 2
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Section M — Move session feature with shared hybrid directory picker

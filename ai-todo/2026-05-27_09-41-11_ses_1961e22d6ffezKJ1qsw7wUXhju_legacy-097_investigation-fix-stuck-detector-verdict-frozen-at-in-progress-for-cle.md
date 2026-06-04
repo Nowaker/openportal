@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_1961e22d6ffezKJ1qsw7wUXhju
 queued_at: 2026-05-27T09:41:11-05:00
 legacy_number: 97
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Investigation + fix: stuck-detector verdict frozen at `in-progress` for cleanly-completed sessions

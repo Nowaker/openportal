@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 0b9786e
 session: ses_1880349b6ffemB21A7XNLPev3w
 queued_at: 2026-05-30T05:39:17-05:00
 legacy_number: 138
+commits:
+  attributed:
+    - 0b9786e7336a
+  on_main:
+    - 0b9786e7336a
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # /btw (side question) - redesign to fork-archive-replay pattern

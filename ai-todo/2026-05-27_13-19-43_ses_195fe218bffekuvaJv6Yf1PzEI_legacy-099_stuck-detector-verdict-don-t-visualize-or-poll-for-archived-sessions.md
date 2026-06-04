@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 93fc003
 session: ses_195fe218bffekuvaJv6Yf1PzEI
 queued_at: 2026-05-27T13:19:43-05:00
 legacy_number: 99
+commits:
+  attributed:
+    - 93fc00350cf8
+  on_main:
+    - 93fc00350cf8
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Stuck-detector verdict: don't visualize or poll for archived sessions

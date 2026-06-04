@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 2bbc71a
 session: ses_1b66ba2aaffeW7xyxcjmde6oYq
 queued_at: 2026-05-21T15:04:57-05:00
 legacy_number: 55
+commits:
+  attributed:
+    - 2bbc71ab5d99
+  on_main:
+    - 2bbc71ab5d99
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # File browser dir listing aside scrolls past viewport on desktop

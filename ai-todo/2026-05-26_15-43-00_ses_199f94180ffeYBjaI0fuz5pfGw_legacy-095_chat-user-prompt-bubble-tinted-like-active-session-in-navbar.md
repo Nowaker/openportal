@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 6bf0205
 session: ses_199f94180ffeYBjaI0fuz5pfGw
 queued_at: 2026-05-26T15:43:00-05:00
 legacy_number: 95
+commits:
+  attributed:
+    - 6bf020566a4e
+  on_main:
+    - 6bf020566a4e
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Chat user prompt bubble tinted like active session in navbar

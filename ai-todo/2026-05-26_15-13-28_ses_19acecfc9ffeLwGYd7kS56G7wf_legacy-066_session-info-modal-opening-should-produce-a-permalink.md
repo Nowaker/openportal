@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T15:13:28-05:00
 legacy_number: 66
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Session info modal: opening should produce a permalink

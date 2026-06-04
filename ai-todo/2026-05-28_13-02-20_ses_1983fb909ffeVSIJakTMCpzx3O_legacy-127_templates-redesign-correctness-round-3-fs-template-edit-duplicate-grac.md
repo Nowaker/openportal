@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_1983fb909ffeVSIJakTMCpzx3O
 queued_at: 2026-05-28T13:02:20-05:00
 legacy_number: 127
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Templates redesign correctness round 3: FS template edit/duplicate, graceful refresh, Burger/Init/Slash on create

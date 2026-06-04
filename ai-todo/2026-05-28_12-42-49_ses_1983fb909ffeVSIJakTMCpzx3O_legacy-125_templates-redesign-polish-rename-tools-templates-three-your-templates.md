@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_1983fb909ffeVSIJakTMCpzx3O
 queued_at: 2026-05-28T12:42:49-05:00
 legacy_number: 125
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Templates redesign polish: rename tools->templates, three Your-templates sections, visual-framework dropdown, sub-path completion, no monospace on prompt fields, horizontal label/field for small fields

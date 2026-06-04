@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_17a9c305bfferyIXISgiQFdeUl
 queued_at: 2026-06-01T17:52:52-05:00
 legacy_number: 157
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Auto-revive sessions stopped with unexpected finish='unknown'

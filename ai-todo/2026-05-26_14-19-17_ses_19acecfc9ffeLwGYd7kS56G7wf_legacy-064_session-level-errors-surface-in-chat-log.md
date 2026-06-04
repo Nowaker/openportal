@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 9ce45c7
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T14:19:17-05:00
 legacy_number: 64
+commits:
+  attributed:
+    - 9ce45c7d4c82
+  on_main:
+    - 9ce45c7d4c82
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Session-level errors surface in chat log

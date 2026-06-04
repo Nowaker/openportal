@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: e99fc88
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T14:45:46-05:00
 legacy_number: 65
+commits:
+  attributed:
+    - e99fc88a4005
+  on_main:
+    - e99fc88a4005
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Compaction events render as chat log entries

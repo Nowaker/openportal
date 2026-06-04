@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 4e543bd
 session: ses_unknown
 queued_at: 2024-01-01T00:00:57-05:00
 legacy_number: 57
+commits:
+  attributed:
+    - 4e543bdf8a71
+  on_main:
+    - 4e543bdf8a71
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Stuck-detector multi-part dispatch: SSE independence + PUT /config audit + label rename + presets + SSE latency sidebar metric (ITEMs 1-5 from msg_e575eb73f)

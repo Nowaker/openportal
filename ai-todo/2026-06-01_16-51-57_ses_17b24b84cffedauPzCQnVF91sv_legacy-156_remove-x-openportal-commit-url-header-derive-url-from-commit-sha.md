@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_17b24b84cffedauPzCQnVF91sv
 queued_at: 2026-06-01T16:51:57-05:00
 legacy_number: 156
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Remove X-OpenPortal-Commit-Url header; derive URL from commit SHA

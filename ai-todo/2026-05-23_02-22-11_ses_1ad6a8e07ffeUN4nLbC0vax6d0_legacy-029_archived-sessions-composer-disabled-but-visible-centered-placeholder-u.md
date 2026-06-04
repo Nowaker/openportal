@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 24a22c5
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T02:22:11-05:00
 legacy_number: 29
+commits:
+  attributed:
+    - 24a22c534295
+  on_main:
+    - 24a22c534295
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Archived sessions: composer disabled-but-visible + centered placeholder + Unarchive button

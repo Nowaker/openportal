@@ -1,8 +1,14 @@
 ---
 status: PENDING
-commit:
 session: ses_unknown
 queued_at: 2026-06-03T15:30:00-05:00
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Restructure AI_TODO for multi-agent / multi-branch safety

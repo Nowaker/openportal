@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: f2a9f1f
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T04:24:57-05:00
 legacy_number: 31
+commits:
+  attributed:
+    - f2a9f1fda1a5
+  on_main:
+    - f2a9f1fda1a5
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # systemctl --user env vars (DBUS_SESSION_BUS_ADDRESS + XDG_RUNTIME_DIR)

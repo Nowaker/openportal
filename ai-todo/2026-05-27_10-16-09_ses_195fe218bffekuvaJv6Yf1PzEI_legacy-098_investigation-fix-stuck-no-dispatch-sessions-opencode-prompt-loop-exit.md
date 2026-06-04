@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 4537a0d
 session: ses_195fe218bffekuvaJv6Yf1PzEI
 queued_at: 2026-05-27T10:16:09-05:00
 legacy_number: 98
+commits:
+  attributed:
+    - 4537a0d46e0f
+  on_main:
+    - 4537a0d46e0f
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Investigation + fix: stuck `no-dispatch` sessions — opencode prompt-loop exit guard collides with portal-generated UUIDs

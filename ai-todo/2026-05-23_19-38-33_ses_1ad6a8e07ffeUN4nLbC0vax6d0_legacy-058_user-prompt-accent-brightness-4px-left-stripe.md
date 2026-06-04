@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 0df212d
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T19:38:33-05:00
 legacy_number: 58
+commits:
+  attributed:
+    - 0df212d432c5
+  on_main:
+    - 0df212d432c5
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # User-prompt accent brightness + 4px left stripe

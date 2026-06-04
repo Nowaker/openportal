@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 9bc5fc2
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T13:12:24-05:00
 legacy_number: 52
+commits:
+  attributed:
+    - 9bc5fc21051f
+  on_main:
+    - 9bc5fc21051f
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # AGENTS.md: text-selectable rule (codified standing rule)

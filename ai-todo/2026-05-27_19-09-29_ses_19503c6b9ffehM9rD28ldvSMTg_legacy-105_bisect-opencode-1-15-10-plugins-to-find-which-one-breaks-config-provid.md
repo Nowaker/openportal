@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_19503c6b9ffehM9rD28ldvSMTg
 queued_at: 2026-05-27T19:09:29-05:00
 legacy_number: 105
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Bisect opencode 1.15.10 plugins to find which one breaks `/config/providers` 500

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 209474e
 session: ses_198a8d956ffejgqFA4fkunxwG2
 queued_at: 2026-05-26T21:50:26-05:00
 legacy_number: 87
+commits:
+  attributed:
+    - 209474e516d3
+  on_main:
+    - 209474e516d3
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # STUCK badge doesn't render for already-stuck sessions; "queued in openportal but invisible in opencode web UI" follow-up has same root cause

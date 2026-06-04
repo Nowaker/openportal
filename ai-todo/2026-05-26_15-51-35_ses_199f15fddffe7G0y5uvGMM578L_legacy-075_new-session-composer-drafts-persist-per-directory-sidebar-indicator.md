@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 93c176e
 session: ses_199f15fddffe7G0y5uvGMM578L
 queued_at: 2026-05-26T15:51:35-05:00
 legacy_number: 75
+commits:
+  attributed:
+    - 93c176e740e5
+  on_main:
+    - 93c176e740e5
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # New-session composer drafts persist per directory + sidebar indicator

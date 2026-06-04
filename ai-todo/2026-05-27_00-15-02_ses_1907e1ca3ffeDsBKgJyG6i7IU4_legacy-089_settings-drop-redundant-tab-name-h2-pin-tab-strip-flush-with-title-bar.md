@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: ae52a95
 session: ses_1907e1ca3ffeDsBKgJyG6i7IU4
 queued_at: 2026-05-27T00:15:02-05:00
 legacy_number: 89
+commits:
+  attributed:
+    - ae52a954da95
+  on_main:
+    - ae52a954da95
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Settings: drop redundant tab-name h2 + pin tab strip flush with title bar

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 11bcb77
 session: ses_176410872ffema25qtI9SvYuUh
 queued_at: 2026-06-02T16:39:40-05:00
 legacy_number: 170
+commits:
+  attributed:
+    - 11bcb7795134
+  on_main:
+    - 11bcb7795134
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Ctrl+K session results show preferred-format datetime in an aligned right column

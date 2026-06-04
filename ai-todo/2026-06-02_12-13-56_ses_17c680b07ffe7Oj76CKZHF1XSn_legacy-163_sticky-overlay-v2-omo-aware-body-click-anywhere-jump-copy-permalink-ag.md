@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_17c680b07ffe7Oj76CKZHF1XSn
 queued_at: 2026-06-02T12:13:56-05:00
 legacy_number: 163
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Sticky overlay v2: OMO-aware body, click-anywhere jump, copy + permalink + agent/model/variant rows; shared MessageMetaStack on user messages (DONE - this commit) [loser-bump: originally #161; bumped to #163 because OMO fenced-code (#161) and composer-padding (#162) landed on origin/main-nowaker concurrently with this work]

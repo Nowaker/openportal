@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 
 session: ses_1982abce8ffezvjg4sZJArAJGZ
 queued_at: 2026-05-27T00:08:11-05:00
 legacy_number: 148
+commits:
+  attributed:
+    - f51310a99b96
+  on_main:
+    - f51310a99b96
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Per-message timing indicators - step duration on intermediate + dual durations on turn-final

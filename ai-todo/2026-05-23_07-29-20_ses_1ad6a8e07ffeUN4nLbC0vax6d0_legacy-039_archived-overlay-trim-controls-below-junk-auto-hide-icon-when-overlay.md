@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 68d9ede
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T07:29:20-05:00
 legacy_number: 39
+commits:
+  attributed:
+    - 68d9ede38328
+  on_main:
+    - 68d9ede38328
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Archived overlay: trim "Controls below..." junk + auto-hide icon when overlay short

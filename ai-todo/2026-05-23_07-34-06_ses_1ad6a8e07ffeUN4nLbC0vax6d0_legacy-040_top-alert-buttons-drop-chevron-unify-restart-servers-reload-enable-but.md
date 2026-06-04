@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: b3e9597
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T07:34:06-05:00
 legacy_number: 40
+commits:
+  attributed:
+    - b3e95973d93c
+  on_main:
+    - b3e95973d93c
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Top alert buttons: drop ^ chevron + unify Restart/Servers/Reload/Enable button sizes

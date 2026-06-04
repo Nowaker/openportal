@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_18cd90b4effeWgohIGbJD9tVkE
 queued_at: 2026-06-01T11:02:20-05:00
 legacy_number: 151
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # FS template row disappears after flag toggle - writeTemplate workspaceRoot regression fix

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 5589844
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T14:57:12-05:00
 legacy_number: 72
+commits:
+  attributed:
+    - 55898443283d
+  on_main:
+    - 55898443283d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Prompt history page: slow cold load; render openportal data immediately + spinner per opencode-dependent field

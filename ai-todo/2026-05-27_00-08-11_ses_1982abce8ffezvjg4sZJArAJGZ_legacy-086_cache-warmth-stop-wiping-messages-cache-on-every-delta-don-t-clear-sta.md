@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: ef26452
 session: ses_1982abce8ffezvjg4sZJArAJGZ
 queued_at: 2026-05-27T00:08:11-05:00
 legacy_number: 86
+commits:
+  attributed:
+    - ef26452219b0
+  on_main:
+    - ef26452219b0
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Cache warmth: stop wiping messages cache on every delta + don't clear stale content on transient fetch errors

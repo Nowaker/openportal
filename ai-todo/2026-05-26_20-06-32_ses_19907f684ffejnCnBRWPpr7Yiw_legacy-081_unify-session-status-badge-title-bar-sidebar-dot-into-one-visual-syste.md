@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 8f1cfa2
 session: ses_19907f684ffejnCnBRWPpr7Yiw
 queued_at: 2026-05-26T20:06:32-05:00
 legacy_number: 81
+commits:
+  attributed:
+    - 8f1cfa2d8970
+  on_main:
+    - 8f1cfa2d8970
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Unify session-status badge (title bar) + sidebar dot into one visual system; redo colors so every state is distinguishable; "done / review needed" becomes GREEN

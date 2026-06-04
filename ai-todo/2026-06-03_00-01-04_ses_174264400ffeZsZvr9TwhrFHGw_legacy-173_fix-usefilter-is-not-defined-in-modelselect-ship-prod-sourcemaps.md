@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_174264400ffeZsZvr9TwhrFHGw
 queued_at: 2026-06-03T00:01:04-05:00
 legacy_number: 173
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Fix `useFilter is not defined` in ModelSelect + ship prod sourcemaps

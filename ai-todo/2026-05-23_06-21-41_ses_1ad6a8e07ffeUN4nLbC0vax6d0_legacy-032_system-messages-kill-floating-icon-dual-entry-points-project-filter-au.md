@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: e08807b
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T06:21:41-05:00
 legacy_number: 32
+commits:
+  attributed:
+    - e08807bb03cd
+  on_main:
+    - e08807bb03cd
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # System messages: kill floating icon, dual entry points, project filter, audit-log enrichment, localStorage persistence

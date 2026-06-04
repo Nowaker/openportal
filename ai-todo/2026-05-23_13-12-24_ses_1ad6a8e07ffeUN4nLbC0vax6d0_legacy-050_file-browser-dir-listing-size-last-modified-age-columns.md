@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: c3a1eeb
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T13:12:24-05:00
 legacy_number: 50
+commits:
+  attributed:
+    - c3a1eeb0eee7
+  on_main:
+    - c3a1eeb0eee7
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # File browser: dir listing size + last-modified age columns

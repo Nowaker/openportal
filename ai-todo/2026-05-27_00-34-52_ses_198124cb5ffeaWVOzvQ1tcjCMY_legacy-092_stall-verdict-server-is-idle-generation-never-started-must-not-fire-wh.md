@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 2f181c3
 session: ses_198124cb5ffeaWVOzvQ1tcjCMY
 queued_at: 2026-05-27T00:34:52-05:00
 legacy_number: 92
+commits:
+  attributed:
+    - 2f181c36ba08
+  on_main:
+    - 2f181c36ba08
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Stall verdict: "Server is idle - generation never started" must not fire when a final AI response is visible

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 3e0dd5b
 session: ses_1983566f5ffemNKO0R8Bm8e1Go
 queued_at: 2026-05-26T23:56:31-05:00
 legacy_number: 85
+commits:
+  attributed:
+    - 3e0dd5baa188
+  on_main:
+    - 3e0dd5baa188
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Mobile composer: submit button always visible + textarea height cap + correct touch scrolling + no overlap with other content

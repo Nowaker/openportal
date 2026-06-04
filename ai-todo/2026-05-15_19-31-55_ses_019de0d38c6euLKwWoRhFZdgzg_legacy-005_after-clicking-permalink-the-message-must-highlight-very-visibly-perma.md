@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 695ae79
 session: ses_019de0d38c6euLKwWoRhFZdgzg
 queued_at: 2026-05-15T19:31:55-05:00
 legacy_number: 5
+commits:
+  attributed:
+    - 695ae79df95c
+  on_main:
+    - 695ae79df95c
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # "After clicking permalink, the message must highlight very visibly" + permalink-UX

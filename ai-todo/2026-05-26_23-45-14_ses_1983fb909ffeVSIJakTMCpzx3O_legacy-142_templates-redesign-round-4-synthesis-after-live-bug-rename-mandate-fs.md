@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_1983fb909ffeVSIJakTMCpzx3O
 queued_at: 2026-05-26T23:45:14-05:00
 legacy_number: 142
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Templates redesign Round 4 — synthesis after live bug + rename mandate + FS polish

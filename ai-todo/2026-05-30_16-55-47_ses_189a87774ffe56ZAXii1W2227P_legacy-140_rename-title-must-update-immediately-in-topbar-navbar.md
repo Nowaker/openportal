@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 7f8097a
 session: ses_189a87774ffe56ZAXii1W2227P
 queued_at: 2026-05-30T16:55:47-05:00
 legacy_number: 140
+commits:
+  attributed:
+    - 7f8097a11be8
+  on_main:
+    - 7f8097a11be8
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Rename title must update immediately in topbar + navbar

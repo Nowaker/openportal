@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_19897fcbfffeVl7vIfNEFose3d
 queued_at: 2026-05-26T22:08:51-05:00
 legacy_number: 103
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Text selection menu: direction-aware placement (above when dragging down, below when dragging up) (DONE - c8ab08d) [loser-bump: originally #102; bumped to #103 because origin sync 52b9eb2 took #102 for the stuck-detector /health probe entry below while this work was mid-rebase]

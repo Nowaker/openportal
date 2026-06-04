@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 2d506bc
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T20:16:21-05:00
 legacy_number: 60
+commits:
+  attributed:
+    - 2d506bc2dbcf
+  on_main:
+    - 2d506bc2dbcf
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # P1 cohort registry + sidebar partitioning

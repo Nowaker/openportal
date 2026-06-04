@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 
 session: ses_229d7083fffem6lkaEj69adZ7H
 queued_at: 2026-05-22T22:11:11-05:00
 legacy_number: 1
+commits:
+  attributed:
+    - 52e3109e98e4
+  on_main:
+    - 52e3109e98e4
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Section L — Fork dialog with project picker + progress indication

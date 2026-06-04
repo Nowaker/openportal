@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 6679f61
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T18:06:54-05:00
 legacy_number: 54
+commits:
+  attributed:
+    - 6679f6141ab5
+  on_main:
+    - 6679f6141ab5
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Caching-proxy major refactor: stale-while-revalidate everywhere + STUCK badge clickable + sound dropdown width capped + SQLite persistence across restarts

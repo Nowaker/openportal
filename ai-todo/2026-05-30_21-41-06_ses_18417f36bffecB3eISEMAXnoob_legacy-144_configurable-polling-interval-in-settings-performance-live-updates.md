@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 9b8c673
 session: ses_18417f36bffecB3eISEMAXnoob
 queued_at: 2026-05-30T21:41:06-05:00
 legacy_number: 144
+commits:
+  attributed:
+    - 9b8c6737a614
+  on_main:
+    - 9b8c6737a614
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Configurable polling interval in Settings → Performance → Live updates

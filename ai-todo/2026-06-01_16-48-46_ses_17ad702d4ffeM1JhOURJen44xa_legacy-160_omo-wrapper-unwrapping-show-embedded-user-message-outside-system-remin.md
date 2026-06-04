@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_17ad702d4ffeM1JhOURJen44xa
 queued_at: 2026-06-01T16:48:46-05:00
 legacy_number: 160
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # OMO wrapper unwrapping: show embedded user message outside `<system-reminder>` boilerplate (DONE - this commit) [loser-bump: originally #157 → #158 → #159 → #160; bumped four times because unknown-finish auto-revive, auto-approve reconcile, and sticky-user-prompt landed concurrently on main-nowaker while this work was being integrated]

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 3ad3c59
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T14:45:46-05:00
 legacy_number: 70
+commits:
+  attributed:
+    - 3ad3c598bf17
+  on_main:
+    - 3ad3c598bf17
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Fork-to-different-project: fork stayed in source dir

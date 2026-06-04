@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: d214ef5
 session: ses_198788003ffep3vWpenhgR0knV
 queued_at: 2026-05-27T00:11:32-05:00
 legacy_number: 96
+commits:
+  attributed:
+    - d214ef563858
+  on_main:
+    - d214ef563858
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # CPU expanded display: drop the "current vs expected" two-line form, just show "X% (of N cores)" as the value

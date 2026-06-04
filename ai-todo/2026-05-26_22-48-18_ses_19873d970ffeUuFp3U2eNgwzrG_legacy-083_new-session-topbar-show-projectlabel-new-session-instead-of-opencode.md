@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 2e8f5cb
 session: ses_19873d970ffeUuFp3U2eNgwzrG
 queued_at: 2026-05-26T22:48:18-05:00
 legacy_number: 83
+commits:
+  attributed:
+    - 2e8f5cbb2f0d
+  on_main:
+    - 2e8f5cbb2f0d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # New-session topbar: show "{projectLabel}: New session" instead of "opencode"

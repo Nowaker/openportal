@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 2bd3d4d
 session: ses_1907e1ca3ffeDsBKgJyG6i7IU4
 queued_at: 2026-05-27T21:07:02-05:00
 legacy_number: 102
+commits:
+  attributed:
+    - 2bd3d4dab8d1
+  on_main:
+    - 2bd3d4dab8d1
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Stuck-detector liveness probe: switch from /config to /health endpoint

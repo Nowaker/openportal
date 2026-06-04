@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_18572f9a8ffecB57FPahdTEZ4Y
 queued_at: 2026-06-02T17:38:08-05:00
 legacy_number: 167
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Composer textarea: tight 5/3/3/46 px inset, top-only border resting / focus brings other three sides at 1px, square corners, overlay anchored bottom-1 right-1

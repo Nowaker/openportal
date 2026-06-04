@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 
 session: ses_17693d98dffes5r0F6Eaz3KdHA
 queued_at: 2026-06-02T12:40:28-05:00
 legacy_number: 175
+commits:
+  attributed:
+    - 3adcbb3cbd79
+  on_main:
+    - 3adcbb3cbd79
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Always render original prompt + last N messages when loading a session

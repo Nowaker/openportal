@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 65f2e85
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T01:28:13-05:00
 legacy_number: 23
+commits:
+  attributed:
+    - 65f2e85a6632
+  on_main:
+    - 65f2e85a6632
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Systemctl restart alert vanishes too fast

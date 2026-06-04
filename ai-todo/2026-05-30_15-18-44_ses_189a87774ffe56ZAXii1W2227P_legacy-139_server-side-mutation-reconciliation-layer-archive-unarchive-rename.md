@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 9d0be86
 session: ses_189a87774ffe56ZAXii1W2227P
 queued_at: 2026-05-30T15:18:44-05:00
 legacy_number: 139
+commits:
+  attributed:
+    - 9d0be864d6c0
+  on_main:
+    - 9d0be864d6c0
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Server-side mutation reconciliation layer (archive, unarchive, rename)

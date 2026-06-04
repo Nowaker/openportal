@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_1b66ba2aaffeW7xyxcjmde6oYq
 queued_at: 2026-05-22T15:52:37-05:00
 legacy_number: 10
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # "All lists prioritize files from current project first" — refinement

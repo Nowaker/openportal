@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 526410b
 session: ses_18441dfc8ffeuahaGXM3HIWZma
 queued_at: 2026-05-30T20:55:20-05:00
 legacy_number: 143
+commits:
+  attributed:
+    - 526410b00256
+  on_main:
+    - 526410b00256
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Composer draft persisted after /btw and empty /agent /model submits

@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_019de0d38c6euLKwWoRhFZdgzg
 queued_at: 2026-05-16T22:46:57-05:00
 legacy_number: 7
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Permalink + scroll-down-stickiness coherence

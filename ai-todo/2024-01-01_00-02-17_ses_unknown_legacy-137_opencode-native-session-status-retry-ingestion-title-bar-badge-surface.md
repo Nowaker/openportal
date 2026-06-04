@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_unknown
 queued_at: 2024-01-01T00:02:17-05:00
 legacy_number: 137
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Opencode-native session.status retry ingestion + title-bar badge surface

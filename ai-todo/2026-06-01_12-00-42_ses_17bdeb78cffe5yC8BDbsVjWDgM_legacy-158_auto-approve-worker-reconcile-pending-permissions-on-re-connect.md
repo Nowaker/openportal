@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: b601607
 session: ses_17bdeb78cffe5yC8BDbsVjWDgM
 queued_at: 2026-06-01T12:00:42-05:00
 legacy_number: 158
+commits:
+  attributed:
+    - b6016079097d
+  on_main:
+    - b6016079097d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Auto-approve worker: reconcile pending permissions on (re)connect

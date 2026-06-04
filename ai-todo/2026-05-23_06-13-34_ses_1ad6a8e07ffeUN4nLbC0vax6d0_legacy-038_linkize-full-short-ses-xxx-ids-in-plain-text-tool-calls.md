@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 77b40c8
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T06:13:34-05:00
 legacy_number: 38
+commits:
+  attributed:
+    - 77b40c81ffad
+  on_main:
+    - 77b40c81ffad
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Linkize full + short ses_xxx IDs in plain text + tool calls

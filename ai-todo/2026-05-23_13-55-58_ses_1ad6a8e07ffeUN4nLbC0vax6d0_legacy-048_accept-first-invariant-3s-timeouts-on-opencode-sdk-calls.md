@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 60ac234
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T13:55:58-05:00
 legacy_number: 48
+commits:
+  attributed:
+    - 60ac234acb31
+  on_main:
+    - 60ac234acb31
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Accept-first invariant: 3s timeouts on opencode SDK calls

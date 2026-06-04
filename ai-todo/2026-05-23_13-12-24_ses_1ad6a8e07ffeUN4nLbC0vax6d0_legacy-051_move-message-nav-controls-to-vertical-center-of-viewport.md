@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 38af7b9
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T13:12:24-05:00
 legacy_number: 51
+commits:
+  attributed:
+    - 38af7b9f5f37
+  on_main:
+    - 38af7b9f5f37
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Move message-nav controls to vertical center of viewport

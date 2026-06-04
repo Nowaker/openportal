@@ -1,9 +1,15 @@
 ---
 status: Q-DEFERRED
-commit: 
 session: ses_2294c8a2fffes6jyLrC1lUSF3v
 queued_at: 2026-04-29T18:45:18-05:00
 legacy_number: 20
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Compaction-summary GC for older summaries

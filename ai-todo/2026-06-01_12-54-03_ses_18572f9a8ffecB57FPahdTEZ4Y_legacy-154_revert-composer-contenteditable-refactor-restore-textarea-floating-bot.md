@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 
 session: ses_18572f9a8ffecB57FPahdTEZ4Y
 queued_at: 2026-06-01T12:54:03-05:00
 legacy_number: 154
+commits:
+  attributed:
+    - 8d5ad5990461
+  on_main:
+    - 8d5ad5990461
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Revert composer contenteditable refactor: restore textarea + floating bottom-right buttons (pr-24 era)

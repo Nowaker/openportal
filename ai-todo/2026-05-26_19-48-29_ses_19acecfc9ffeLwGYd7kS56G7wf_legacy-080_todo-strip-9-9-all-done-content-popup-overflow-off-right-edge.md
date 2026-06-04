@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 08b05e7
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T19:48:29-05:00
 legacy_number: 80
+commits:
+  attributed:
+    - 08b05e78e937
+  on_main:
+    - 08b05e78e937
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Todo strip: 9/9-all-done content + popup overflow off right edge

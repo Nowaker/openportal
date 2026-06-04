@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: fa08027
 session: ses_199227d6cffeTeVJUTbvAI4gmM
 queued_at: 2026-05-26T19:37:33-05:00
 legacy_number: 77
+commits:
+  attributed:
+    - fa080275675d
+  on_main:
+    - fa080275675d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Left sidebar: consistent 0.75rem indent per level + reduce ambient padding + align pinned buttons

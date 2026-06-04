@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 6b5e4c7
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T15:13:28-05:00
 legacy_number: 67
+commits:
+  attributed:
+    - 6b5e4c7b9264
+  on_main:
+    - 6b5e4c7b9264
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Session info modal: expose owner/runner instance info

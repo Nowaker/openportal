@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_18572f9a8ffecB57FPahdTEZ4Y
 queued_at: 2026-06-02T00:23:21-05:00
 legacy_number: 162
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Composer textarea padding: compact symmetric inset around floating buttons (DONE - this commit) [loser-bump: originally #160; bumped to #162 because OMO wrapper unwrapping (#160) and OMO fenced-code (#161) landed on origin/main-nowaker concurrently with this work]

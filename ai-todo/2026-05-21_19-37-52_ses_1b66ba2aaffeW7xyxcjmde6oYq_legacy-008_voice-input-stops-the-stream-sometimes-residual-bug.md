@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 44dba1e
 session: ses_1b66ba2aaffeW7xyxcjmde6oYq
 queued_at: 2026-05-21T19:37:52-05:00
 legacy_number: 8
+commits:
+  attributed:
+    - 44dba1ebcd1e
+  on_main:
+    - 44dba1ebcd1e
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Voice-input "stops the stream sometimes" residual bug

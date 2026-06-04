@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: e03e836
 session: ses_198788003ffep3vWpenhgR0knV
 queued_at: 2026-05-26T22:43:13-05:00
 legacy_number: 84
+commits:
+  attributed:
+    - e03e83609c2d
+  on_main:
+    - e03e83609c2d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Sidebar resources/CPU indicator: collapsible by default, better labels, two-view layout

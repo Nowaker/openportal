@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 9265f87
 session: ses_17bdd4bacffeMBK2mBDNa7fN3g
 queued_at: 2026-06-01T12:02:12-05:00
 legacy_number: 153
+commits:
+  attributed:
+    - 9265f874580d
+  on_main:
+    - 9265f874580d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # New-session sending banner: drop max-h-32 overflow-y-auto from prompt preview

@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_199f5a6d3ffevYWMdqBGik1CHK
 queued_at: 2026-05-26T15:46:55-05:00
 legacy_number: 74
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Session prompt directory routing (bash cwd wrong) - openportal bug, fix on worktree

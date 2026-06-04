@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_1adcb0fddffenglncs0bYf820u
 queued_at: 2026-05-26T19:28:05-05:00
 legacy_number: 110
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Hamburger MCP knob: needs_auth (snake_case) not detected, shows gray instead of orange (DONE - 3ae1c13) [loser-bump: originally #102 in mcp-polish branch]

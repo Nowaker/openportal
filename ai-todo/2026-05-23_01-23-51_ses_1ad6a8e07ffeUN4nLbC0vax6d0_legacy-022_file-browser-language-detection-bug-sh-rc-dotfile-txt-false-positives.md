@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 1a78d8b
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T01:23:51-05:00
 legacy_number: 22
+commits:
+  attributed:
+    - 1a78d8b42227
+  on_main:
+    - 1a78d8b42227
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # File browser language detection bug (sh / rc / dotfile + txt false-positives)

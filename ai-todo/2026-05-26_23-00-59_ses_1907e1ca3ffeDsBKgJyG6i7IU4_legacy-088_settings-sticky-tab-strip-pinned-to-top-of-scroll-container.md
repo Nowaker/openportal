@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 789f79d
 session: ses_1907e1ca3ffeDsBKgJyG6i7IU4
 queued_at: 2026-05-26T23:00:59-05:00
 legacy_number: 88
+commits:
+  attributed:
+    - 789f79d2ddce
+  on_main:
+    - 789f79d2ddce
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Settings: sticky tab strip pinned to top of scroll container

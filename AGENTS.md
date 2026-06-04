@@ -103,9 +103,18 @@ YAML frontmatter for machine-readable status, then the body:
 ```markdown
 ---
 status: DONE
-commit: 3adcbb3
 session: ses_18572f9a8ffecB57FPahdTEZ4Y
 queued_at: 2026-06-03T08:18:12-05:00
+legacy_number: 175
+commits:
+  attributed:
+    - 3adcbb3cbd79
+  on_main:
+    - 3adcbb3cbd79
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Always render original prompt + last N messages
@@ -124,12 +133,43 @@ Status vocabulary (in frontmatter): `PENDING`, `IN_PROGRESS`,
 `DONE`, `Q-DEFERRED`, `CANCELLED`. Same meanings as the legacy
 parenthesized statuses.
 
+Commit tracking fields (replaces the older flat `commit: <sha>`
+single-field form):
+
+- `commits.attributed` — every commit SHA (12-char) ever
+  attributed to this entry. A list because a single user request
+  can ship in multiple chunks, or be force-reset / rebased into a
+  different SHA later (the original SHA stays here for audit).
+- `commits.on_main` — the subset of `attributed` that is currently
+  present on `origin/main-nowaker`. An entry stamped DONE whose
+  `on_main` shrinks back to `[]` is a signal the work got dropped
+  or replaced; investigate before re-queuing.
+- `commits.reverted` — `false` when nothing was reverted; otherwise
+  the 12-char SHA of the revert / drop commit. Distinguishes "the
+  feature was undone deliberately" from "the SHA got rewritten in a
+  rebase" (the latter shows up as missing-from-`on_main` without a
+  matching revert SHA).
+- `validated.at` — ISO-8601 timestamp at which the on_main /
+  reverted verdicts were computed.
+- `validated.main_tip` — 12-char SHA of `origin/main-nowaker` at
+  validation time. Lets a reviewer re-derive every `on_main` value
+  from the same snapshot the agent saw: `git merge-base
+  --is-ancestor <attributed-sha> <main_tip>`.
+
+Re-run `bun scripts/enrich-ai-todo.ts` to refresh these fields
+after a substantial rebase of main or after force-resets. The
+script is idempotent — it rewrites the blocks in place and leaves
+the body byte-for-byte untouched.
+
 ### Operational rules
 
 - **One file per entry, never edit shipped files** except to flip
-  `status:` (e.g. `PENDING` → `DONE`) and fill in `commit:`. No
-  edits to body content of historical entries, no reformatting, no
-  renames after commit.
+  `status:` (e.g. `PENDING` → `DONE`) and append a SHA to
+  `commits.attributed`. The matching `commits.on_main`,
+  `commits.reverted`, `validated.at`, and `validated.main_tip` are
+  rewritten by `bun scripts/enrich-ai-todo.ts`. No edits to body
+  content of historical entries, no reformatting, no renames after
+  commit.
 - **Append-only by file creation.** Pick the current timestamp and
   your own sessionid; collisions are impossible because two
   sessions cannot share the same session ID.

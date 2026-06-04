@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_189a87774ffe56ZAXii1W2227P
 queued_at: 2026-05-29T23:10:42-05:00
 legacy_number: 134
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Archived-session placement and highlight parity in sidebar

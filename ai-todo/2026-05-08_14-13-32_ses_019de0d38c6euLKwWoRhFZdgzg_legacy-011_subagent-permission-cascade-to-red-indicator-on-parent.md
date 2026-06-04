@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_019de0d38c6euLKwWoRhFZdgzg
 queued_at: 2026-05-08T14:13:32-05:00
 legacy_number: 11
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Subagent permission cascade to red indicator on parent

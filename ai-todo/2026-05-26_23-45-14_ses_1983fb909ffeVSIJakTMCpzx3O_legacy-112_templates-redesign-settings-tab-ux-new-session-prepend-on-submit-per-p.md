@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_1983fb909ffeVSIJakTMCpzx3O
 queued_at: 2026-05-26T23:45:14-05:00
 legacy_number: 112
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Templates redesign: Settings tab UX + new-session prepend-on-submit + per-project .vibekick/templates + slash command integration

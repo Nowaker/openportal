@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 94c8ced
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T06:03:46-05:00
 legacy_number: 34
+commits:
+  attributed:
+    - 94c8ced6891a
+  on_main:
+    - 94c8ced6891a
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # ses_xxxxxx links open same-tab; only non-openportal links open new-tab

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: d7a7d9f
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T20:50:53-05:00
 legacy_number: 62
+commits:
+  attributed:
+    - d7a7d9f1dcb0
+  on_main:
+    - d7a7d9f1dcb0
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Session info modal: incremental rendering with per-field spinners

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: d2b4eec
 session: ses_199327545ffeiH2jGHf2inNjA1
 queued_at: 2026-05-26T19:20:08-05:00
 legacy_number: 76
+commits:
+  attributed:
+    - d2b4eec42a7e
+  on_main:
+    - d2b4eec42a7e
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # File browser: stop hiding dotfiles by default + cog popover with quick settings + Ctrl+Shift+L address-bar focus

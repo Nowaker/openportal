@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 2bda920
 session: ses_229d7083fffem6lkaEj69adZ7H
 queued_at: 2026-05-22T16:14:28-05:00
 legacy_number: 9
+commits:
+  attributed:
+    - 2bda92034bc0
+  on_main:
+    - 2bda92034bc0
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # "Recently mentioned files" — implementation behind placeholder dropdown

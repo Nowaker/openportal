@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: ebdbc92
 session: ses_19910c092ffe18ioTab3mWZxyG
 queued_at: 2026-05-26T19:56:56-05:00
 legacy_number: 78
+commits:
+  attributed:
+    - ebdbc92e8b0d
+  on_main:
+    - ebdbc92e8b0d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Clean session + stuck-compaction fixer in hamburger menu, with progress UI + auto-navigate to fork

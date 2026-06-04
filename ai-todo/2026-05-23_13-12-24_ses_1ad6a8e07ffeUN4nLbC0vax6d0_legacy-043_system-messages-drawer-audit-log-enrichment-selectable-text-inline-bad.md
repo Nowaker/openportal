@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: e2d080a
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T13:12:24-05:00
 legacy_number: 43
+commits:
+  attributed:
+    - e2d080afb70d
+  on_main:
+    - e2d080afb70d
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # System messages drawer: audit log enrichment + selectable text + inline badge + 3-mode scoping + wider modal

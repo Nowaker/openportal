@@ -82,9 +82,18 @@ followed by the same body content the legacy `### N.` heading had:
 ```markdown
 ---
 status: DONE
-commit: 3adcbb3
 session: ses_18572f9a8ffecB57FPahdTEZ4Y
 queued_at: 2026-06-03T08:18:12-05:00
+legacy_number: 175
+commits:
+  attributed:
+    - 3adcbb3cbd79
+  on_main:
+    - 3adcbb3cbd79
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Always render original prompt + last N messages
@@ -103,11 +112,13 @@ Design notes:
 Status values: `PENDING`, `IN_PROGRESS`, `DONE`, `Q-DEFERRED`,
 `CANCELLED` (same vocabulary as today).
 
-`commit` is the SHA that landed the work (or empty for PENDING).
-
 `queued_at` is ISO-8601 with timezone — matches the timestamp in the
 filename, but kept in frontmatter too for tooling that doesn't want
 to parse filenames.
+
+`commits` + `validated` blocks replace the older flat `commit: <sha>`
+single-field form. Schema, rationale, and audit workflow are in the
+"Commit tracking + validation metadata" section below.
 
 ## Numbering and references
 
@@ -170,6 +181,133 @@ matches and aren't worth a lookup.
 The script is committed at `scripts/migrate-ai-todo.ts` for
 reproducibility; it can be re-run end-to-end against the same
 `AI_TODO.md` content to regenerate the directory.
+
+## Commit tracking + validation metadata
+
+Past projects have shipped DONE entries whose recorded SHA later
+disappeared from `main-nowaker` via force-reset, revert, or rebase
+chain — and the only proof of vanished work was a stale frontmatter
+field. The single-SHA `commit:` form silently masked the rewrite. The
+`commits:` + `validated:` blocks fix that by recording (a) every SHA
+ever attributed and (b) which of them are still on main as of a
+specific snapshot.
+
+### Schema
+
+```yaml
+commits:
+  attributed:        # 12-char SHAs (full audit trail)
+    - 3adcbb3cbd79
+    - 5c48ab8e8200  # original SHA that got force-reset/rebased into 3adcbb3, kept for forensics
+  on_main:           # subset of `attributed` currently present on origin/main-nowaker
+    - 3adcbb3cbd79
+  reverted: false    # OR: 12-char SHA of the revert / drop commit when work was undone
+validated:
+  at: 2026-06-03T19:06:51-05:00   # ISO-8601 timestamp at which on_main was computed
+  main_tip: a30d45b0f729           # 12-char SHA of origin/main-nowaker at validation time
+```
+
+Field semantics:
+
+- `commits.attributed` — append-only list. New SHAs land at the
+  end. Original SHAs are kept even after a rebase rewrites them,
+  so a reviewer can see exactly what changed and when.
+- `commits.on_main` — the intersection of `attributed` with the
+  ancestry of `origin/main-nowaker` at validation time. Computed
+  with `git merge-base --is-ancestor <attributed-sha>
+  origin/main-nowaker`. Empty `on_main` on a DONE entry is a flag
+  ("did the work get dropped?").
+- `commits.reverted` — `false` when no revert was found; the
+  12-char SHA of a `Revert "..." <attributed-sha>` commit otherwise.
+  Distinguishes "feature deliberately rolled back" (reverted has a
+  SHA) from "history rewritten" (`on_main` empty, `reverted: false`).
+- `validated.at` — ISO-8601 with the project's `-05:00` offset.
+- `validated.main_tip` — 12-char SHA of `origin/main-nowaker` at
+  validation time. Lets a reviewer reproduce the verdict:
+  `git merge-base --is-ancestor <attributed-sha> <main_tip>`.
+
+### Discovery rules used by `scripts/enrich-ai-todo.ts`
+
+The script populates `commits.attributed` for every entry, in
+priority order:
+
+1. **Explicit SHA in existing frontmatter.** If the entry came
+   from the migration with a `commit: <sha>` field, that SHA is
+   adopted verbatim (expanded to 12 chars via `git rev-parse`).
+2. **Topic search by title keywords** — only for `status: DONE`
+   entries with no explicit commit. Distinctive tokens are
+   extracted from the `# Title` heading; a commit is attributed
+   only when EXACTLY ONE subject across all branches contains
+   every keyword AND its author date falls within
+   `queued_at + [-2d, +14d]`. Conservative on purpose: ambiguous
+   matches are rejected, no entry is fabricated.
+3. **Nothing else.** If neither rule lands a SHA, the script
+   writes `commits.attributed: []` and `commits.reverted: false`.
+   No guessing.
+
+`commits.on_main` is set from in-memory ancestry: the script
+caches `git log origin/main-nowaker --format=%H` once at startup
+and intersects each attributed SHA with that set.
+
+`commits.reverted` is set from a single pre-computed map: every
+subject on main matching `/Revert.*\b([a-f0-9]{7,40})\b/` is
+indexed by its referenced short SHA. Attributed SHAs missing from
+`on_main` are then looked up in this map.
+
+`validated.at` is captured ONCE at the start of the run and
+applied to every file, so the snapshot is internally consistent —
+the reviewer can re-derive every `on_main` value from the same
+git state the agent saw. `validated.main_tip` is captured the
+same way.
+
+### Audit workflow
+
+After a major rebase, force-reset of `main-nowaker`, or any time
+the integrity of past DONE entries needs verification:
+
+```bash
+cd ~/projekty/webapps/portal-ai-todo-restructure
+git fetch origin main-nowaker
+bun scripts/enrich-ai-todo.ts
+```
+
+The script prints three flags worth a human's attention:
+
+1. **DONE + attributed but no on_main** — the work was attributed
+   to a SHA that no longer reaches main. Either a force-reset
+   wiped it (cross-check via `git reflog`) or the SHA itself got
+   rewritten into a different commit on main (cross-check by
+   subject-line grep). Update the entry by appending the new SHA
+   to `commits.attributed` so the original is preserved.
+2. **Reverted (true)** — a revert commit was found targeting an
+   attributed SHA. The work is no longer live. Decide whether to
+   re-queue (new PENDING entry referencing the original) or
+   accept the rollback.
+3. **DONE + attributed empty** — entries with no SHA recorded at
+   all. Mostly historical baggage from the legacy migration; the
+   user can fill these in manually with `git log -S '<distinctive
+   code>'` if any DONE entry's exact landing SHA is worth
+   recovering.
+
+Commit the enriched files atomically with subject
+`ai-todo: re-validate against origin/main-nowaker tip <main_tip>`
+so history shows when the audit ran.
+
+### Why two blocks instead of one
+
+Splitting `commits` (what shipped) from `validated` (when it was
+checked) is deliberate:
+
+- `commits.*` is immutable history — append-only attribution and
+  the latest verdict on landing. A reviewer reading an old entry
+  sees what was true when the last audit ran.
+- `validated.*` is a snapshot timestamp. Two entries can both
+  claim `on_main: [<sha>]` but if their `validated.main_tip`
+  differs, they were checked against different states of the
+  world. The audit timestamp is part of the claim.
+
+Flat `commit: <sha>` had neither property: no audit trail of
+rewrites, no snapshot of when the field was last true.
 
 ## Commit message convention
 

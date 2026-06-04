@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 8b94dc3
 session: ses_1895559c5ffeQMyfWWNKatvrrS
 queued_at: 2026-05-29T22:46:48-05:00
 legacy_number: 132
+commits:
+  attributed:
+    - 8b94dc36fa89
+  on_main:
+    - 8b94dc36fa89
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Path linkization parity in chat messages

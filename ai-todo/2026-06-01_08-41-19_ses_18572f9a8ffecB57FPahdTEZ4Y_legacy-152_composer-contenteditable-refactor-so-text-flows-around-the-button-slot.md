@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_18572f9a8ffecB57FPahdTEZ4Y
 queued_at: 2026-06-01T08:41:19-05:00
 legacy_number: 152
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Composer: contenteditable refactor so text flows around the button slot

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 11bcb77
 session: ses_242dd72b5ffeg8fAcRybH3twQA
 queued_at: 2026-04-24T22:28:28-05:00
 legacy_number: 171
+commits:
+  attributed:
+    - 11bcb7795134
+  on_main:
+    - 11bcb7795134
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Ctrl+K open-session search must include all sessions in open workspaces

@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_2907c1bb8ffea6dho411fHEE29
 queued_at: 2026-04-24T21:49:19-05:00
 legacy_number: 136
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Archive sidebar regression tests for archived placement + highlight helper logic

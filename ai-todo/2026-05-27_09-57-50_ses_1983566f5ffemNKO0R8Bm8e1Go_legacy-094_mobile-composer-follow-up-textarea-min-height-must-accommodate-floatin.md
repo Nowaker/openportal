@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: ce8f404
 session: ses_1983566f5ffemNKO0R8Bm8e1Go
 queued_at: 2026-05-27T09:57:50-05:00
 legacy_number: 94
+commits:
+  attributed:
+    - ce8f404c8c4f
+  on_main:
+    - ce8f404c8c4f
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Mobile composer follow-up: textarea min-height must accommodate floating mic+submit column

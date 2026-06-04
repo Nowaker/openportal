@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 5809ad8
 session: ses_19917d66fffeYrwLQebKe922Kf
 queued_at: 2026-05-26T19:49:11-05:00
 legacy_number: 79
+commits:
+  attributed:
+    - 5809ad87f483
+  on_main:
+    - 5809ad87f483
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Settings page Prompt tab: inconsistent vertical spacing across sub-sections

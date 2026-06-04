@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: fdd8071
 session: ses_1989e185cffehRAJm3WotM6yYg
 queued_at: 2026-05-26T22:02:11-05:00
 legacy_number: 82
+commits:
+  attributed:
+    - fdd807184029
+  on_main:
+    - fdd807184029
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Session title row: tap-scroll truncated titles + select-all includes hidden chars

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 5f3c103
 session: ses_1907e1ca3ffeDsBKgJyG6i7IU4
 queued_at: 2026-05-27T00:20:00-05:00
 legacy_number: 90
+commits:
+  attributed:
+    - 5f3c10375818
+  on_main:
+    - 5f3c10375818
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # AGENTS.md: codify safe-diff + temp-file fallback for AI_TODO under concurrent writers

@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 46450b7
 session: ses_unknown
 queued_at: 2024-01-01T00:02:29-05:00
 legacy_number: 149
+commits:
+  attributed:
+    - 46450b728bc5
+  on_main:
+    - 46450b728bc5
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Composer textarea right-padding: pr-20 -> pr-24 (further bump for visible clearance)

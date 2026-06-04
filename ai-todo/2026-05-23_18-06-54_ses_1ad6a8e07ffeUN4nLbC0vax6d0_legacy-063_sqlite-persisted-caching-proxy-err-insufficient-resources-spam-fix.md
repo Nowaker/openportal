@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 357c8e4
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T18:06:54-05:00
 legacy_number: 63
+commits:
+  attributed:
+    - 357c8e4e29e8
+  on_main:
+    - 357c8e4e29e8
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # SQLite-persisted caching proxy + ERR_INSUFFICIENT_RESOURCES spam fix

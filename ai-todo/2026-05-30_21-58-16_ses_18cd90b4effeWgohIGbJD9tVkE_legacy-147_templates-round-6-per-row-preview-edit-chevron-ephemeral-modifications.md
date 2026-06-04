@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: b6e54eb
 session: ses_18cd90b4effeWgohIGbJD9tVkE
 queued_at: 2026-05-30T21:58:16-05:00
 legacy_number: 147
+commits:
+  attributed:
+    - b6e54eb60174
+  on_main:
+    - b6e54eb60174
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Templates Round 6: per-row preview/edit chevron + ephemeral modifications + " + modifications" suffix

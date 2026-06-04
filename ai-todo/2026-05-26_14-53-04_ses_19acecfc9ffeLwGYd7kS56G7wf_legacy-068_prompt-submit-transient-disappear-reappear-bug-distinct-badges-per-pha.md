@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 9cd994d
 session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T14:53:04-05:00
 legacy_number: 68
+commits:
+  attributed:
+    - 9cd994debfc8
+  on_main:
+    - 9cd994debfc8
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Prompt-submit transient disappear+reappear bug; distinct badges per phase

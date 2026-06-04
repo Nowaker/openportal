@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 39d11a5
 session: ses_188e02aaaffeWDD8zi4iER82a2
 queued_at: 2026-05-29T23:24:20-05:00
 legacy_number: 135
+commits:
+  attributed:
+    - 39d11a59b54c
+  on_main:
+    - 39d11a59b54c
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Remove OpenCode server-ID pre-generation from portal request paths

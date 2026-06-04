@@ -1,9 +1,17 @@
 ---
 status: DONE
-commit: 2fa0d94
 session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T20:16:21-05:00
 legacy_number: 59
+commits:
+  attributed:
+    - 2fa0d9489ef6
+  on_main:
+    - 2fa0d9489ef6
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # P0 cohort owner-routing across every runner-targeted command (CRITICAL CORRECTNESS)

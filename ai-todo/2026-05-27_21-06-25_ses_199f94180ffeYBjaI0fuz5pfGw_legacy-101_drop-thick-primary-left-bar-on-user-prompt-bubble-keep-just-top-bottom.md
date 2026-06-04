@@ -1,9 +1,15 @@
 ---
 status: PENDING
-commit: 
 session: ses_199f94180ffeYBjaI0fuz5pfGw
 queued_at: 2026-05-27T21:06:25-05:00
 legacy_number: 101
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # Drop thick primary left bar on user prompt bubble; keep just top/bottom borders (DONE - 38542c5) [loser-bump: this work originally claimed #100 in a parallel-agent race; #100 went to the google-calendar-mcp entry above]

@@ -1,9 +1,15 @@
 ---
 status: DONE
-commit: 
 session: ses_199d77387ffeGge9y32D5ue4By
 queued_at: 2026-04-30T13:52:05-05:00
 legacy_number: 100
+commits:
+  attributed: []
+  on_main: []
+  reverted: false
+validated:
+  at: 2026-06-03T19:06:51-05:00
+  main_tip: a30d45b0f729
 ---
 
 # google-calendar-multiuser-mcp: native MCP OAuth (Google-backed) + Streamable HTTP transport on /mcp
