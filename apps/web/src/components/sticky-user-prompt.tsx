@@ -33,6 +33,10 @@ function extractText(parts: Part[]): string {
 }
 
 const TOP_EPSILON_PX = 4;
+// Fallback hide-threshold used until the sticky element has rendered
+// and its real height is measured. Roughly: two text lines + meta line
+// + padding + border.
+const FALLBACK_STICKY_HEIGHT_PX = 96;
 
 export function StickyUserPromptOverlay({
   containerRef,
@@ -48,6 +52,8 @@ export function StickyUserPromptOverlay({
   const [isTruncated, setIsTruncated] = useState(false);
   const rafRef = useRef(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const stickyRef = useRef<HTMLDivElement | null>(null);
+  const stickyHeightRef = useRef(FALLBACK_STICKY_HEIGHT_PX);
   const dateFormat = useDateFormatStore((s) => s.format);
   const shortenOmoAgent = useChatDisplayStore((s) => s.shortenOmoAgentNames);
 
@@ -78,13 +84,28 @@ export function StickyUserPromptOverlay({
     }
     const containerTop = c.getBoundingClientRect().top;
     let lastAbove: HTMLElement | null = null;
+    let firstNotAbove: HTMLElement | null = null;
     for (const el of userEls) {
       const rect = el.getBoundingClientRect();
       if (rect.bottom <= containerTop + TOP_EPSILON_PX) {
         lastAbove = el;
         continue;
       }
+      firstNotAbove = el;
       break;
+    }
+    // Hide the sticky when the next visible user prompt is still close
+    // enough to the top bar that overlaying its predecessor as a sticky
+    // would visually crowd it. Threshold = the sticky's own rendered
+    // height (so the sticky never overlaps a user-message header row).
+    if (lastAbove && firstNotAbove) {
+      const rect = firstNotAbove.getBoundingClientRect();
+      const distanceFromTop = rect.top - containerTop;
+      const threshold = stickyHeightRef.current || FALLBACK_STICKY_HEIGHT_PX;
+      if (distanceFromTop < threshold) {
+        setCurrentId(null);
+        return;
+      }
     }
     setCurrentId(lastAbove?.dataset.messageId ?? null);
   }, [containerRef]);
@@ -119,6 +140,25 @@ export function StickyUserPromptOverlay({
     setExpanded(false);
     setIsTruncated(false);
   }, [currentId]);
+
+  // Keep stickyHeightRef in sync with the rendered sticky element so the
+  // "hide when next prompt nears top" threshold uses the real height.
+  useEffect(() => {
+    const el = stickyRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.offsetHeight;
+      if (h > 0 && h !== stickyHeightRef.current) {
+        stickyHeightRef.current = h;
+        // Re-evaluate visibility with the new threshold.
+        update();
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [currentId, expanded, update]);
 
   useLayoutEffect(() => {
     if (expanded) return;
@@ -193,6 +233,7 @@ export function StickyUserPromptOverlay({
   return (
     <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 px-3 pt-2">
       <div
+        ref={stickyRef}
         role="button"
         tabIndex={0}
         onClick={handleBoxClick}
@@ -234,7 +275,8 @@ export function StickyUserPromptOverlay({
             <MessageMetaStack
               messageId={currentId}
               className="mt-1 text-[10px] text-muted-fg/70"
-              align="left"
+              align="right"
+              inline
               copyText={copyText}
               timestamp={
                 timestamp ? { display: timestamp, title: titleAt } : null
