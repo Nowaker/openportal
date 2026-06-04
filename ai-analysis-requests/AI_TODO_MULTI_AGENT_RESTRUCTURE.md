@@ -309,6 +309,116 @@ checked) is deliberate:
 Flat `commit: <sha>` had neither property: no audit trail of
 rewrites, no snapshot of when the field was last true.
 
+### Verdict + investigation metadata
+
+The enrichment pass conservatively attributes a SHA only when an
+explicit `commit:` field carried over from the migration OR a
+title-keyword topic search lands EXACTLY one matching subject in
+the right time window. That leaves a long tail of DONE entries
+with `commits.attributed: []` — work the user knows shipped but
+that the heuristic couldn't pin to a commit. The verdict pass
+turns those empty rows into a positive cited claim.
+
+`scripts/verdict-ai-todo.ts` stamps three additional fields on
+every DONE entry, written between the `commits:` and `validated:`
+blocks:
+
+```yaml
+verdict: present                                       # OR: lost | uncertain
+verdict_reason: "Component X at apps/web/.../foo.tsx:123"  # ALWAYS cited
+verdict_investigated_at: 2026-06-03T19:51:00-05:00
+```
+
+Field semantics:
+
+- `verdict` — three values:
+  - `present` — the work is verifiably in today's codebase
+    (file:line anchor found via `rg`) OR an attributed SHA is on
+    `origin/main-nowaker`.
+  - `lost` — positive evidence the work was reverted (revert
+    commit found), force-reset away (SHA exists in history but
+    not on main and no revert), or shipped only to a stale
+    branch that never merged. The user's real concern: the verdict
+    pass surfaces these prominently in the script's summary.
+  - `uncertain` — last resort. The four-step investigation
+    (codebase grep, git pickaxe, session-grep, ancestry) yielded
+    nothing conclusive. Try not to use this; exhaust the other
+    paths first.
+- `verdict_reason` — ALWAYS cite a specific anchor. Good shapes:
+  `"Component X at apps/web/.../foo.tsx:123"`, `"Commit abc1234 on
+  main: 'subject line'"`, `"Session ses_XXX msg_YYY shows AI
+  announced 'shipped: <sha>' but sha not on any branch — reverted"`.
+  Bad shape: `"investigated"` (uncited; worthless).
+- `verdict_investigated_at` — ISO-8601 timestamp at which the
+  verdict was reasoned about. Distinct from `validated.at` because
+  validation just intersects SHAs with main, whereas the verdict
+  involves real investigation — re-running the verdict script
+  applies the curated map plus a fresh blanket pass over
+  already-attributed entries.
+
+Two-pass design (matches the script):
+
+1. **99 DONE entries that already carry `commits.attributed` SHAs.**
+   Trivially stamped `verdict: present` with reason
+   `"commits.attributed all on main as of validation"`. No
+   investigation needed — the enrichment pass already proved
+   ancestry.
+2. **32 DONE entries with empty `commits.attributed: []`.**
+   Investigated by hand using a four-step methodology, then
+   stamped via a curated map embedded in
+   `scripts/verdict-ai-todo.ts` (`VERDICT_MAP_UNRESOLVED`):
+   1. **Extract clues** from the entry body: title keywords,
+      file paths in `Design notes:`, function/component names, UI
+      strings, API endpoint paths, config keys, the
+      `session:` ID, and the `queued_at:` timestamp.
+   2. **Codebase verification (primary signal).** `rg -F
+      '<distinctive identifier>' apps/web/src/` against HEAD. If
+      any clue resolves to live code, the work is present.
+   3. **Git history forensics.** `git log --all --grep` / `git
+      log --pickaxe-regex -S` for the distinctive identifier;
+      `git merge-base --is-ancestor <sha> origin/main-nowaker`
+      to verify on-main; subject-grep for `Revert "..."
+      <attributed-sha>` to surface reverts.
+   4. **Session forensics via
+      `~/projekty/nowaker/opencode-tools/session-grep.ts`.** For
+      operational entries (smoke tests, branch unprotect, recovery
+      handoffs) where no code commit is expected, the session
+      breadcrumb (assistant announcing a SHA, user confirming
+      "shipped", tool calls writing specific files) is the
+      durable artefact.
+
+When a new commit SHA is discovered during the investigation it
+is appended to `commits.attributed` AND (when on main)
+`commits.on_main`. The enrichment pass was conservative; the
+verdict pass digs harder, so previously-empty rows can pick up
+real attribution after a verdict run.
+
+### Audit workflow for verdicts
+
+After a major rebase, force-reset of `main-nowaker`, or any time
+the integrity of past DONE verdicts needs re-verification:
+
+```bash
+cd ~/projekty/webapps/portal-ai-todo-restructure
+git fetch origin main-nowaker
+bun scripts/enrich-ai-todo.ts   # refresh commits.on_main / reverted / validated.*
+bun scripts/verdict-ai-todo.ts  # re-stamp verdicts against the new ancestry
+```
+
+The verdict script prints a summary including:
+
+- Total DONE entries processed and how many were blanket-stamped
+  vs deep-investigated.
+- `verdict: present` count.
+- `verdict: lost` count + the actual list (path + reason). These
+  are the user's real concern — surfaced prominently.
+- `verdict: uncertain` count + the actual list.
+- New SHAs added to `commits.on_main` during the run.
+
+Commit the re-stamped files atomically with subject
+`ai-todo: re-stamp verdicts against origin/main-nowaker tip <main_tip>`
+so history shows when the re-audit ran.
+
 ## Commit message convention
 
 - Today: `AI_TODO.md: <subject>` for entry-only commits.

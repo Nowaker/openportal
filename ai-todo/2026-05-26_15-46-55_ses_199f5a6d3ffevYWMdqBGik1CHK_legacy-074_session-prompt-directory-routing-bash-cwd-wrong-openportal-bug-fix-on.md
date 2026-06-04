@@ -4,9 +4,14 @@ session: ses_199f5a6d3ffevYWMdqBGik1CHK
 queued_at: 2026-05-26T15:46:55-05:00
 legacy_number: 74
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 5f04d7700684
+  on_main:
+    - 5f04d7700684
   reverted: false
+verdict: present
+verdict_reason: "Commit 5f04d77 on main: 'session prompt: thread directory query into opencode dispatch'. resolveSessionDirectory at apps/web/src/server/lib/opencode-client.ts:368. Analysis doc at ai-analysis-requests/SESSION_PROMPT_DIRECTORY_ROUTING.md"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

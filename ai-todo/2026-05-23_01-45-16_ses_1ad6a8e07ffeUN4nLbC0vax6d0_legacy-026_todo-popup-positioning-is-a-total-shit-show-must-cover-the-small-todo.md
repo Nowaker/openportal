@@ -4,9 +4,18 @@ session: ses_1ad6a8e07ffeUN4nLbC0vax6d0
 queued_at: 2026-05-23T01:45:16-05:00
 legacy_number: 26
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - dac4662bb97e
+    - ebbf6dcc7a7f
+    - 1184ed537211
+  on_main:
+    - dac4662bb97e
+    - ebbf6dcc7a7f
+    - 1184ed537211
   reverted: false
+verdict: present
+verdict_reason: "Commits dac4662 + ebbf6dc + 7051e12 + 1184ed5 on main (todo-strip popup positioning + overflow fixes). Backfill commit 064a175 marked #26+#27 DONE"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

@@ -4,9 +4,14 @@ session: ses_18cd90b4effeWgohIGbJD9tVkE
 queued_at: 2026-06-01T08:36:32-05:00
 legacy_number: 150
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 3f661b926eaa
+  on_main:
+    - 3f661b926eaa
   reverted: false
+verdict: present
+verdict_reason: "Commit 3f661b9 on main: 'fs-templates: backend snapshot cache + periodic rebuild + Refresh button (#150)'. getCachedSnapshot + forceRebuildSnapshot at apps/web/src/server/lib/vibekick-templates.ts:422,436"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

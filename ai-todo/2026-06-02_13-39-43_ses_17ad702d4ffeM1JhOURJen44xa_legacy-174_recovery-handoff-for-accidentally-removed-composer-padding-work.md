@@ -7,6 +7,9 @@ commits:
   attributed: []
   on_main: []
   reverted: false
+verdict: present
+verdict_reason: "Recovery verification completed: c2387ff ('composer: tighten textarea padding to a compact 6px inset') + 4a69796 ('composer: force textarea padding via inline style') both confirmed on origin/main-nowaker. Apology prompt dispatched to ses_18572f9a8ffecB57FPahdTEZ4Y via session-grep per design notes"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

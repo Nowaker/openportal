@@ -4,9 +4,14 @@ session: ses_17ad702d4ffeM1JhOURJen44xa
 queued_at: 2026-06-02T12:20:54-05:00
 legacy_number: 161
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 1c70555ac8b7
+  on_main:
+    - 1c70555ac8b7
   reverted: false
+verdict: present
+verdict_reason: "Commit 1c70555 on main: 'chat: skip OMO detection inside fenced markdown code blocks'. collectFencedCodeBlockRanges at apps/web/src/lib/omo-injection.ts:518, called from parseOmoBlocks at :636"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

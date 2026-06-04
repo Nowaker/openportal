@@ -4,9 +4,14 @@ session: ses_17afe7fc2ffemjVUEGe4taO7ZT
 queued_at: 2026-06-01T16:05:38-05:00
 legacy_number: 156
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 67ddbb351861
+  on_main:
+    - 67ddbb351861
   reverted: false
+verdict: present
+verdict_reason: "Commit 67ddbb3 on main: 'session: guard permalink and telemetry number formatting'. safeGapCount.toLocaleString() at apps/web/src/routes/_app/session/$id.tsx:2288"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

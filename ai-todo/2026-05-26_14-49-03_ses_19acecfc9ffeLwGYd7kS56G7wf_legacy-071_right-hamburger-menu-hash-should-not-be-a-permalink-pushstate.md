@@ -4,9 +4,14 @@ session: ses_19acecfc9ffeLwGYd7kS56G7wf
 queued_at: 2026-05-26T14:49:03-05:00
 legacy_number: 71
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 0b8cbcb1a3c2
+  on_main:
+    - 0b8cbcb1a3c2
   reverted: false
+verdict: present
+verdict_reason: "Commit 0b8cbcb on main: 'title-bar: context dial opens Session Info + hamburger closes on Android back'. apps/web/src/components/app-sidebar-nav.tsx:243 'Hamburger menu open state. Plain React state - NOT hash-tracked'"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

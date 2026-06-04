@@ -4,9 +4,14 @@ session: ses_17b265c4bffeObiJZJ6Z77ops5
 queued_at: 2026-06-01T15:21:59-05:00
 legacy_number: 155
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 3fae9e3c2cc2
+  on_main:
+    - 3fae9e3c2cc2
   reverted: false
+verdict: present
+verdict_reason: "Commit 3fae9e3 on main: 'session-ui: link spawned subsessions from tool rows'. spawnedSessionId + spawnedSessionHref at apps/web/src/routes/_app/session/$id.tsx:1487,1538"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

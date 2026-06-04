@@ -4,9 +4,14 @@ session: ses_19503c6b9ffehM9rD28ldvSMTg
 queued_at: 2026-05-27T19:09:29-05:00
 legacy_number: 105
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - de7989b4ada2
+  on_main:
+    - de7989b4ada2
   reverted: false
+verdict: present
+verdict_reason: "Commit de7989b on main: 'AI_TODO.md: backfill #105 bisection conclusion - opencode-stuck-detector was the culprit, fixed upstream by opencode-tools 98f7a42 + 504de25'"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

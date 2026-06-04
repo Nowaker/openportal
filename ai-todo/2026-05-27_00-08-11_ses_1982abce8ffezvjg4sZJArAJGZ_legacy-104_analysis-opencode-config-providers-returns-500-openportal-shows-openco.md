@@ -7,6 +7,9 @@ commits:
   attributed: []
   on_main: []
   reverted: false
+verdict: present
+verdict_reason: "Analysis-only task. Doc at ai-analysis-requests/OPENCODE_CONFIG_PROVIDERS_500.md"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

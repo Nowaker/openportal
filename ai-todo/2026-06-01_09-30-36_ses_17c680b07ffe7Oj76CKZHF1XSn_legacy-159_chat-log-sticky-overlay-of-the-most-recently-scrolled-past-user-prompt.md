@@ -4,9 +4,14 @@ session: ses_17c680b07ffe7Oj76CKZHF1XSn
 queued_at: 2026-06-01T09:30:36-05:00
 legacy_number: 159
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - d479ced2188d
+  on_main:
+    - d479ced2188d
   reverted: false
+verdict: present
+verdict_reason: "Commit d479ced on main: 'chat: sticky overlay of the most-recent user prompt above the viewport'. apps/web/src/components/sticky-user-prompt.tsx + StickyUserPromptOverlay rendered in $id.tsx:5370"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

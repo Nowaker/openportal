@@ -4,9 +4,16 @@ session: ses_17a9c305bfferyIXISgiQFdeUl
 queued_at: 2026-06-01T17:52:52-05:00
 legacy_number: 157
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 080ae2d02489
+    - eda0d8f4ccc2
+  on_main:
+    - 080ae2d02489
+    - eda0d8f4ccc2
   reverted: false
+verdict: present
+verdict_reason: "Commits 080ae2d + eda0d8f on main. reviveUnknownFinishSession at apps/web/src/server/plugins/unknown-finish-reviver.ts:50 + tests at unknown-finish-reviver.test.ts"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

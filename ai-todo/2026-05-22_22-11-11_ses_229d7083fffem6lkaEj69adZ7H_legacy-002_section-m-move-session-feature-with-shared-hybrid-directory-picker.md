@@ -4,9 +4,14 @@ session: ses_229d7083fffem6lkaEj69adZ7H
 queued_at: 2026-05-22T22:11:11-05:00
 legacy_number: 2
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 7de6c97de910
+  on_main:
+    - 7de6c97de910
   reverted: false
+verdict: present
+verdict_reason: "Commit 7de6c97 on main: 'session: Section M - move-to-project via shared picker + dry-run preflight'. 'Move to project...' hamburger entry at apps/web/src/components/app-sidebar-nav.tsx:1065"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

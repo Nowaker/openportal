@@ -7,6 +7,9 @@ commits:
   attributed: []
   on_main: []
   reverted: false
+verdict: present
+verdict_reason: "externalOpencode lifecycle logic intact at packages/cli/src/index.ts:585 ('externalOpencode.port set -> connect-only. NEVER spawn opencode'). Operational regression check confirmed existing behaviour; no code change needed"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

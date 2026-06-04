@@ -112,6 +112,9 @@ commits:
   on_main:
     - 3adcbb3cbd79
   reverted: false
+verdict: present
+verdict_reason: "commits.attributed all on main as of validation"
+verdict_investigated_at: 2026-06-03T19:51:00-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729
@@ -156,10 +159,34 @@ single-field form):
   from the same snapshot the agent saw: `git merge-base
   --is-ancestor <attributed-sha> <main_tip>`.
 
-Re-run `bun scripts/enrich-ai-todo.ts` to refresh these fields
-after a substantial rebase of main or after force-resets. The
-script is idempotent — it rewrites the blocks in place and leaves
-the body byte-for-byte untouched.
+Verdict fields (stamped by `bun scripts/verdict-ai-todo.ts` on
+every DONE entry; live between `commits:` and `validated:`):
+
+- `verdict` — one of `present`, `lost`, or `uncertain`. `present`
+  means the work is verifiably in today's codebase OR a commit
+  landing it is on `main-nowaker`. `lost` means positive evidence
+  the work was reverted, force-reset away, or shipped only to a
+  stale branch that never merged. `uncertain` is a last resort —
+  the four-step investigation (codebase grep, git pickaxe,
+  session-grep, on-main ancestry) yielded nothing conclusive.
+- `verdict_reason` — one-line cited anchor: a file path + symbol
+  (`Component X at apps/web/.../foo.tsx:123`), a commit subject
+  on main (`Commit abc1234 on main: '...'`), or a session message
+  reference (`Session ses_XXX msg_YYY shows ...`). NEVER
+  uncited — a verdict without an anchor is worthless.
+- `verdict_investigated_at` — ISO-8601 with the project's `-05:00`
+  offset. Distinct from `validated.at` because verdicts are
+  reasoned about, not just intersected: re-running the verdict
+  script applies the latest curated investigation map plus a
+  fresh blanket pass over already-attributed entries.
+
+Re-run `bun scripts/enrich-ai-todo.ts` to refresh the
+`commits.on_main` / `commits.reverted` / `validated.*` blocks
+after a substantial rebase of main or after force-resets. Re-run
+`bun scripts/verdict-ai-todo.ts` afterwards to re-stamp verdicts
+against the new ancestry. Both scripts are idempotent — they
+rewrite the relevant frontmatter blocks in place and leave the
+body byte-for-byte untouched.
 
 ### Operational rules
 
@@ -167,7 +194,9 @@ the body byte-for-byte untouched.
   `status:` (e.g. `PENDING` → `DONE`) and append a SHA to
   `commits.attributed`. The matching `commits.on_main`,
   `commits.reverted`, `validated.at`, and `validated.main_tip` are
-  rewritten by `bun scripts/enrich-ai-todo.ts`. No edits to body
+  rewritten by `bun scripts/enrich-ai-todo.ts`; the `verdict`,
+  `verdict_reason`, and `verdict_investigated_at` fields are
+  rewritten by `bun scripts/verdict-ai-todo.ts`. No edits to body
   content of historical entries, no reformatting, no renames after
   commit.
 - **Append-only by file creation.** Pick the current timestamp and

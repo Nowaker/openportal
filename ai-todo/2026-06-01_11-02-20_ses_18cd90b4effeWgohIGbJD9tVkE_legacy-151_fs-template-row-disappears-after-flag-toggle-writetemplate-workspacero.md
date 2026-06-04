@@ -4,9 +4,14 @@ session: ses_18cd90b4effeWgohIGbJD9tVkE
 queued_at: 2026-06-01T11:02:20-05:00
 legacy_number: 151
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - bc6f6e3ca26a
+  on_main:
+    - bc6f6e3ca26a
   reverted: false
+verdict: present
+verdict_reason: "Commit bc6f6e3 on main: 'fs-templates: writeTemplate must use validated workspaceRoot, not file-path-derived (#151)'. writeTemplate(location, workspaceRoot, input) at apps/web/src/server/lib/vibekick-templates.ts:339 with anti-reversion comment"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

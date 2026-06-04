@@ -4,9 +4,16 @@ session: ses_18572f9a8ffecB57FPahdTEZ4Y
 queued_at: 2026-06-02T17:38:08-05:00
 legacy_number: 167
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - c6211359728b
+    - 4a69796b039f
+  on_main:
+    - c6211359728b
+    - 4a69796b039f
   reverted: false
+verdict: present
+verdict_reason: "Commits c621135 + 4a69796 on main. apps/web/src/routes/_app/session/$id.tsx:6087 and new.tsx:1235 carry inline style={{paddingLeft:5,paddingTop:3,paddingBottom:3,paddingRight:46}} + 'rounded-none border-x-0 border-b-0 focus:border-x focus:border-b focus:ring-0'"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

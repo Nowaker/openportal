@@ -7,6 +7,9 @@ commits:
   attributed: []
   on_main: []
   reverted: false
+verdict: present
+verdict_reason: "External opencode-tools commit dea56e7: 'stuck-detector: downgrade in-progress/stuck verdicts to idle on clean completion'. Analysis doc at ai-analysis-requests/STUCK_VERDICT_FROZEN_IN_PROGRESS.md"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

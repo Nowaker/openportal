@@ -7,6 +7,9 @@ commits:
   attributed: []
   on_main: []
   reverted: false
+verdict: present
+verdict_reason: "useHashOpen('info') for SessionInfoModal at apps/web/src/components/app-sidebar-nav.tsx:224; SessionInfoModal mounted at line 1205"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

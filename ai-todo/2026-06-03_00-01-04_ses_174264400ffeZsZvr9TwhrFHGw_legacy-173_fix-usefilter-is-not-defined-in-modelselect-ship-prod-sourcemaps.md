@@ -4,9 +4,16 @@ session: ses_174264400ffeZsZvr9TwhrFHGw
 queued_at: 2026-06-03T00:01:04-05:00
 legacy_number: 173
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - f8fad16cf5a8
+    - 97b4c9a34f41
+  on_main:
+    - f8fad16cf5a8
+    - 97b4c9a34f41
   reverted: false
+verdict: present
+verdict_reason: "Commits f8fad16 + 97b4c9a on main: 'model-select: drop dead useFilter/useMediaQuery calls + ship hidden sourcemaps' + 'sourcemap: hidden -> true so DevTools auto-associates maps'. apps/web/vite.config.ts:31 has build.sourcemap: true"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

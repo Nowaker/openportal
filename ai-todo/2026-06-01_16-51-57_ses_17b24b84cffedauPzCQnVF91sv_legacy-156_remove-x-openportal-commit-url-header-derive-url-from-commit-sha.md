@@ -4,9 +4,14 @@ session: ses_17b24b84cffedauPzCQnVF91sv
 queued_at: 2026-06-01T16:51:57-05:00
 legacy_number: 156
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 179bcf19a4fe
+  on_main:
+    - 179bcf19a4fe
   reverted: false
+verdict: present
+verdict_reason: "Commit 179bcf1 on main: 'app: drop commit-url header from upgrade metadata'. X-OpenPortal-Commit-Url no longer present anywhere in apps/web/ (rg confirms zero matches)"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

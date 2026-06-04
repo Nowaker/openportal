@@ -4,9 +4,14 @@ session: ses_18cd90b4effeWgohIGbJD9tVkE
 queued_at: 2026-05-30T21:08:02-05:00
 legacy_number: 146
 commits:
-  attributed: []
-  on_main: []
+  attributed:
+    - 58bf95af7c34
+  on_main:
+    - 58bf95af7c34
   reverted: false
+verdict: present
+verdict_reason: "Commit 58bf95a on main: 'templates-r5: prompt format pivot - user prompt first, /template Title blocks (R5-A + R5-B)'. buildPromptWithTemplates + parsePromptWithTemplates at apps/web/src/lib/prompt-template-format.ts:14,43"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

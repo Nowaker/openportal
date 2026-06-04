@@ -9,6 +9,9 @@ commits:
   on_main:
     - e2d080afb70d
   reverted: false
+verdict: present
+verdict_reason: "commits.attributed all on main as of validation"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729

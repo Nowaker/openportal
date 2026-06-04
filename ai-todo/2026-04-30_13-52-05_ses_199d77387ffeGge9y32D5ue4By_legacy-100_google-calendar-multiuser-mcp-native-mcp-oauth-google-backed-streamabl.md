@@ -7,6 +7,9 @@ commits:
   attributed: []
   on_main: []
   reverted: false
+verdict: present
+verdict_reason: "External mcp-proxy commit cd80b65: 'google-calendar: native MCP OAuth (Google-backed) on /mcp + Streamable HTTP'. File ~/projekty/dreamhost/mcp-proxy/google-calendar-multiuser-mcp/src/auth/mcp-oauth.ts exists"
+verdict_investigated_at: 2026-06-03T19:54:52-05:00
 validated:
   at: 2026-06-03T19:06:51-05:00
   main_tip: a30d45b0f729
