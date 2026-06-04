@@ -157,7 +157,7 @@ function PinnedMessagesPage() {
             sessionTitleById.get(m.sessionId) ??
             m.sessionId;
           const when = formatMessageTime(m.starredAt, dateFormat);
-          const whenTitle = formatAbsoluteAndRelative(m.starredAt);
+          const whenTitle = formatAbsoluteAndRelative(m.starredAt, dateFormat);
           return (
             <div
               key={`${m.serverId}::${m.messageId}`}

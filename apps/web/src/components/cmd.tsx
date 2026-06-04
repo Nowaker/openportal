@@ -198,7 +198,7 @@ export default function Cmd() {
     const isCurrent = session.id === currentSessionId;
     const activityAt = sessionActivityTime(session);
     const timestamp = activityAt ? formatMessageTime(activityAt, dateFormat) : "";
-    const timestampTitle = formatAbsoluteAndRelative(activityAt);
+    const timestampTitle = formatAbsoluteAndRelative(activityAt, dateFormat);
     return (
       <CommandMenuItem
         key={session.id}

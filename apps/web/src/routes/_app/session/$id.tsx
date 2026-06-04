@@ -1099,6 +1099,7 @@ function PastPermissionDecisionPill({
 }: {
   decision: PastPermissionDecision;
 }) {
+  const dateFormat = useDateFormatStore((s) => s.format);
   const isReject = decision.decision === "reject";
   const label =
     decision.decision === "always"
@@ -1126,7 +1127,7 @@ function PastPermissionDecisionPill({
           ({decision.permissionType || "permission"})
         </span>
         <span className="ml-auto text-[10px] text-muted-fg/70 font-normal tabular-nums">
-          {new Date(decision.decidedAt).toLocaleTimeString()}
+          {formatMessageTime(decision.decidedAt, dateFormat)}
         </span>
       </div>
       {firstPattern && (
@@ -1505,7 +1506,7 @@ const ToolCallItem = memo(function ToolCallItem({
     (part as { time?: { start?: number; end?: number } }).time?.end ??
     messageTime;
   const toolTimestamp = toolStart ? formatMessageTime(toolStart, dateFormat) : "";
-  const toolTitleAt = formatAbsoluteAndRelative(toolStart);
+  const toolTitleAt = formatAbsoluteAndRelative(toolStart, dateFormat);
   const [showInputModal, setShowInputModal] = useState(false);
   const [inlineExpanded, setInlineExpanded] = useState(false);
   const toolInput = (part.state?.input ?? null) as Record<string, unknown> | null;
@@ -2657,7 +2658,7 @@ const MessageItem = memo(function MessageItem({
   const messageTimestamp = message.info.time?.created
     ? formatMessageTime(message.info.time.created, dateFormat)
     : "";
-  const messageTitleAt = formatAbsoluteAndRelative(message.info.time?.created);
+  const messageTitleAt = formatAbsoluteAndRelative(message.info.time?.created, dateFormat);
   const messageMeta = computeMessageMeta(
     message.info,
     nextAssistantInfo,

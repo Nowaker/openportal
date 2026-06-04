@@ -33,6 +33,7 @@ import { useSessions } from "@/hooks/use-opencode";
 import type { Session } from "@opencode-ai/sdk";
 import {
   formatAbsoluteAndRelative,
+  formatFullDateTime,
   formatMessageTime,
 } from "@/lib/format-time";
 import { useInstanceStore } from "@/stores/instance-store";
@@ -658,7 +659,7 @@ function PromptRowItem({
               search: (prev) => prev,
             })
           }
-          title={formatAbsoluteAndRelative(row.ts_ms)}
+          title={formatAbsoluteAndRelative(row.ts_ms, dateFormat)}
           className="tabular-nums whitespace-nowrap hover:text-fg hover:underline"
         >
           {formatMessageTime(row.ts_ms, dateFormat)}
@@ -966,7 +967,7 @@ function PendingSubmissionsBanner() {
 }
 
 function PendingEntryRow({ entry }: { entry: PendingPromptEntry }) {
-  const submittedAt = new Date(entry.submittedAt);
+  const dateFormat = useDateFormatStore((s) => s.format);
   const ageMs = Date.now() - entry.submittedAt;
   const ageLabel =
     ageMs < 60_000
@@ -980,7 +981,9 @@ function PendingEntryRow({ entry }: { entry: PendingPromptEntry }) {
     <li className="flex items-start gap-2 rounded border border-warning/20 bg-bg/50 p-1.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[10px] text-muted-fg">
-          <span title={submittedAt.toLocaleString()}>{ageLabel}</span>
+          <span title={formatFullDateTime(entry.submittedAt, dateFormat)}>
+            {ageLabel}
+          </span>
           <span>·</span>
           <span className="font-mono">
             {entry.sessionId.slice(0, 12)}…

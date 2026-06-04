@@ -16,6 +16,8 @@ import { useSessionVerdict } from "@/hooks/use-session-verdict";
 import { useHashValue } from "@/hooks/use-hash-open";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useCohort, type CohortWorker } from "@/stores/cohort-store";
+import { formatFullDateTime } from "@/lib/format-time";
+import { useDateFormatStore, type DateFormat } from "@/stores/date-format-store";
 import { McpRow } from "@/components/app-sidebar-nav";
 import { Loader } from "@/components/ui/loader";
 
@@ -145,9 +147,12 @@ function fmtMoney(n: number | undefined | null): string {
   return `$${n.toFixed(2)}`;
 }
 
-function fmtDate(ms: number | undefined | null): string {
+function fmtDate(
+  ms: number | undefined | null,
+  format: DateFormat,
+): string {
   if (typeof ms !== "number" || !ms) return "—";
-  return new Date(ms).toLocaleString();
+  return formatFullDateTime(ms, format);
 }
 
 interface OwnerInfo {
@@ -253,6 +258,7 @@ function Body({
   sessionId: string;
   onClose: () => void;
 }) {
+  const dateFormat = useDateFormatStore((s) => s.format);
   const {
     messages,
     isLoading: messagesLoading,
@@ -561,12 +567,12 @@ function Body({
           />
           <Field
             label="Session Created"
-            value={fmtDate(session?.time?.created)}
+            value={fmtDate(session?.time?.created, dateFormat)}
             loading={sessionPending && !session}
           />
           <Field
             label="Last Activity"
-            value={fmtDate(session?.time?.updated)}
+            value={fmtDate(session?.time?.updated, dateFormat)}
             loading={sessionPending && !session}
           />
           <Field

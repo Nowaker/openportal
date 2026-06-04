@@ -45,6 +45,8 @@ import {
   type FileHistoryEntry,
 } from "@/stores/file-history-store";
 import { useFileBrowserSettingsStore } from "@/stores/file-browser-settings-store";
+import { formatFullDateTime } from "@/lib/format-time";
+import { useDateFormatStore } from "@/stores/date-format-store";
 
 interface BrowseEntry {
   name: string;
@@ -962,6 +964,7 @@ function FileTree({
   const showModDate = useFileBrowserSettingsStore((s) => s.showModDate);
   const showFileSize = useFileBrowserSettingsStore((s) => s.showFileSize);
   const showDirSize = useFileBrowserSettingsStore((s) => s.showDirSize);
+  const dateFormat = useDateFormatStore((s) => s.format);
   // Synthetic '..' entry rendered as the first row when the current
   // directory isn't the user-visible root. Clicking it routes back
   // to `parent` (which the server computed against the configured
@@ -1050,7 +1053,7 @@ function FileTree({
               {showModDate && typeof e.mtimeMs === "number" && (
                 <span
                   className="shrink-0 text-xs text-muted-fg tabular-nums w-10 text-right"
-                  title={new Date(e.mtimeMs).toLocaleString()}
+                  title={formatFullDateTime(e.mtimeMs, dateFormat)}
                 >
                   {formatAge(e.mtimeMs)}
                 </span>

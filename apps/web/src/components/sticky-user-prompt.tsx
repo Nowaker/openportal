@@ -223,7 +223,7 @@ export function StickyUserPromptOverlay({
 
   const created = message.info.time?.created;
   const timestamp = created ? formatMessageTime(created, dateFormat) : "";
-  const titleAt = formatAbsoluteAndRelative(created) ?? "";
+  const titleAt = formatAbsoluteAndRelative(created, dateFormat) ?? "";
 
   const blocks = text ? parseOmoBlocks(text) : [];
 

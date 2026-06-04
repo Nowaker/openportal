@@ -23,6 +23,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageTitle } from "@/components/ui/typography";
+import { formatFullDateTime } from "@/lib/format-time";
+import { useDateFormatStore } from "@/stores/date-format-store";
 import { useInstanceStore } from "@/stores/instance-store";
 
 // /servers — Server List screen.
@@ -1944,6 +1946,7 @@ function DirectoriesModalBody({
   target: { serverId: string; label: string };
   onClose: () => void;
 }) {
+  const dateFormat = useDateFormatStore((s) => s.format);
   const url = `/api/servers/${encodeURIComponent(target.serverId)}/directories`;
   const { data, mutate, isLoading } = useSWR<DirectoriesResponse>(url, fetcher);
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -2338,7 +2341,7 @@ function DirectoriesModalBody({
                     <ArrowPathIcon className="size-3.5" />
                   </button>
                   <span className="text-muted-fg whitespace-nowrap">
-                    {new Date(h.at).toLocaleString()}
+                    {formatFullDateTime(h.at, dateFormat)}
                   </span>
                   <span className="font-mono text-muted-fg/70 truncate">
                     {normalizeEntries(h.directories)

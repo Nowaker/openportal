@@ -76,12 +76,50 @@ export function formatRelativeTime(ms: number): string {
   return future ? `in ${out}` : `${out} ago`;
 }
 
-// Combined tooltip: "<absolute toLocaleString> - <relative>". Used for
-// title= attributes on inline timestamps so a hover surfaces both the
-// precise moment and the human-friendly relative phrasing.
-export function formatAbsoluteAndRelative(ms: number | undefined): string | undefined {
+// Full absolute date + time honoring the user's DateFormat preference.
+// Always shows date AND time (unlike formatMessageTime which is compact).
+// Use this anywhere you'd otherwise reach for `new Date(ms).toLocaleString()`.
+export function formatFullDateTime(
+  ms: number | undefined,
+  format: DateFormat,
+): string {
+  if (!ms || !Number.isFinite(ms)) return "";
+  const d = new Date(ms);
+  const date = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+  const time =
+    format === "12h"
+      ? d
+          .toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          })
+          .replace(/\s/g, "")
+          .toLowerCase()
+      : format === "24h"
+        ? d.toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : d
+            .toLocaleTimeString(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+            })
+            .replace(/\s+/g, " ");
+  return `${date}, ${time}`;
+}
+
+// Combined tooltip: "<absolute> - <relative>". Used for title= attributes
+// on inline timestamps so a hover surfaces both the precise moment and
+// the human-friendly relative phrasing. Honors user DateFormat.
+export function formatAbsoluteAndRelative(
+  ms: number | undefined,
+  format: DateFormat = "locale",
+): string | undefined {
   if (!ms || !Number.isFinite(ms)) return undefined;
-  return `${new Date(ms).toLocaleString()} - ${formatRelativeTime(ms)}`;
+  return `${formatFullDateTime(ms, format)} - ${formatRelativeTime(ms)}`;
 }
 
 // Compact duration formatter, max two units of granularity from the

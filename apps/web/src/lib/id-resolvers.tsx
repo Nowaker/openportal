@@ -2,6 +2,8 @@ import { createContext, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { Session } from "@opencode-ai/sdk";
 import type { MessageWithParts } from "@/hooks/use-session-messages";
+import { formatFullDateTime } from "@/lib/format-time";
+import { useDateFormatStore, type DateFormat } from "@/stores/date-format-store";
 
 export interface IdResolvers {
   resolveSessionId: (partialOrFullId: string) => string | null;
@@ -58,27 +60,19 @@ function buildBgIdMap(messages: MessageWithParts[]): Map<string, string> {
   return map;
 }
 
-function formatSessionDescriptor(s: Session): string {
-  const created = s.time?.created;
-  const dt =
-    typeof created === "number"
-      ? new Date(created).toLocaleString(undefined, {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        })
-      : "";
+function formatSessionDescriptor(s: Session, format: DateFormat): string {
+  const dt = formatFullDateTime(s.time?.created, format);
   const title = s.title || "(untitled)";
   return dt ? `${s.id} - ${dt} - ${title}` : `${s.id} - ${title}`;
 }
 
-function buildSessionTitleMap(sessions: Session[]): Map<string, string> {
+function buildSessionTitleMap(
+  sessions: Session[],
+  format: DateFormat,
+): Map<string, string> {
   const map = new Map<string, string>();
   for (const s of sessions) {
-    if (s.id) map.set(s.id, formatSessionDescriptor(s));
+    if (s.id) map.set(s.id, formatSessionDescriptor(s, format));
   }
   return map;
 }
@@ -87,9 +81,10 @@ export function useBuildIdResolvers(
   sessions: Session[],
   messages: MessageWithParts[],
 ): IdResolvers {
+  const dateFormat = useDateFormatStore((s) => s.format);
   const sessionTitleMap = useMemo(
-    () => buildSessionTitleMap(sessions),
-    [sessions],
+    () => buildSessionTitleMap(sessions, dateFormat),
+    [sessions, dateFormat],
   );
   const bgIdMap = useMemo(() => buildBgIdMap(messages), [messages]);
   return useMemo<IdResolvers>(() => {
