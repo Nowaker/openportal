@@ -50,6 +50,7 @@ export function StickyUserPromptOverlay({
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
+  const [maxLines, setMaxLines] = useState(2);
   const rafRef = useRef(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -135,6 +136,21 @@ export function StickyUserPromptOverlay({
   useEffect(() => {
     update();
   }, [messages, update]);
+
+  // Mobile: 2 lines. Desktop scales by viewport height (2560x1440 -> 5).
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      if (w < 640) setMaxLines(2);
+      else if (h >= 1300) setMaxLines(5);
+      else if (h >= 1000) setMaxLines(4);
+      else setMaxLines(3);
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
 
   useEffect(() => {
     setExpanded(false);
@@ -229,6 +245,14 @@ export function StickyUserPromptOverlay({
 
   const showChevron = expanded || isTruncated;
   const copyText = text || null;
+  const clampClass =
+    maxLines === 5
+      ? "line-clamp-5"
+      : maxLines === 4
+        ? "line-clamp-4"
+        : maxLines === 3
+          ? "line-clamp-3"
+          : "line-clamp-2";
 
   return (
     <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 px-3 pt-2">
@@ -243,7 +267,7 @@ export function StickyUserPromptOverlay({
             handleJump();
           }
         }}
-        className="pointer-events-auto cursor-pointer rounded-md border border-primary/30 bg-primary/15 shadow-sm backdrop-blur-sm hover:bg-primary/20"
+        className="pointer-events-auto relative cursor-pointer rounded-md border border-primary/30 bg-primary/15 shadow-sm backdrop-blur-sm hover:bg-primary/20"
         title="Click to jump to this prompt"
         aria-label="Jump to this prompt"
       >
@@ -254,7 +278,7 @@ export function StickyUserPromptOverlay({
               className={
                 expanded
                   ? "whitespace-pre-wrap break-words overflow-y-auto"
-                  : "line-clamp-2 whitespace-pre-wrap break-words"
+                  : `${clampClass} whitespace-pre-wrap break-words`
               }
               style={expanded ? { maxHeight: "40vh" } : undefined}
             >
@@ -272,17 +296,6 @@ export function StickyUserPromptOverlay({
                 ),
               )}
             </div>
-            <MessageMetaStack
-              messageId={currentId}
-              className="mt-1 text-[10px] text-muted-fg/70"
-              align="right"
-              inline
-              copyText={copyText}
-              timestamp={
-                timestamp ? { display: timestamp, title: titleAt } : null
-              }
-              meta={meta}
-            />
           </div>
           {showChevron && (
             <button
@@ -303,6 +316,17 @@ export function StickyUserPromptOverlay({
             </button>
           )}
         </div>
+        <MessageMetaStack
+          messageId={currentId}
+          className="absolute bottom-2 right-3 max-w-[calc(100%-1.5rem)] rounded bg-overlay/95 px-1 text-[10px] text-muted-fg/80 backdrop-blur-sm"
+          align="right"
+          inline
+          copyText={copyText}
+          timestamp={
+            timestamp ? { display: timestamp, title: titleAt } : null
+          }
+          meta={meta}
+        />
       </div>
     </div>
   );
