@@ -4287,6 +4287,12 @@ function SessionPage() {
     refreshPendingPermissions();
   }, [refreshPendingPermissions, pendingPermissionKey]);
 
+  useEffect(() => {
+    if (!port || !sessionId) return;
+    const timer = window.setInterval(refreshPendingPermissions, 2_000);
+    return () => window.clearInterval(timer);
+  }, [port, sessionId, refreshPendingPermissions]);
+
   const visibleMessageIds = useMemo(
     () => new Set(messages.map((m) => m.info.id)),
     [messages],

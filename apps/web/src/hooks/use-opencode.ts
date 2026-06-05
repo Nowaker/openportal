@@ -24,6 +24,8 @@ const fetcher = async (url: string) => {
   return res.json();
 };
 
+const PERMISSION_FALLBACK_POLL_MS = 2_000;
+
 function usePort() {
   const instance = useInstanceStore((s) => s.instance);
   return instance?.port ?? null;
@@ -524,20 +526,6 @@ export function useGitDiff() {
   );
 }
 
-// Phase C: permissions list comes from the indicator-state singleton,
-// not the 2s poll against /api/opencode/<port>/permissions. The
-// indicator-state stream carries `pendingPermissionIds: string[]` per
-// session; we flatten into the legacy `{ id, sessionID }[]` shape so
-// the two sidebar consumers (app-sidebar.tsx, app-sidebar-nav.tsx)
-// keep working unchanged.
-//
-// The full permission object (with action / call / metadata) is NOT
-// reconstructable from the indicator stream - only the IDs and their
-// owning sessionID are tracked. None of the current callsites read
-// any other field, so this is sufficient. If a future consumer needs
-// the full object, it should fetch /api/opencode/<port>/permissions
-// on-demand (one-shot, not polled) when the permission is selected
-// for display, not on every list render.
 export interface PermissionRequestSummary {
   id: string;
   sessionID: string;
@@ -551,17 +539,33 @@ export function usePermissions(): {
 } {
   const instance = useInstanceStore((s) => s.instance);
   const serverId = instance?.id;
+  const port = instance?.port;
   const states = useIndicators(serverId ? { serverId } : {});
+  const fallback = useSWR<PermissionRequestSummary[]>(
+    port ? `/api/opencode/${port}/permissions` : null,
+    fetcher,
+    {
+      refreshInterval: PERMISSION_FALLBACK_POLL_MS,
+      revalidateOnFocus: true,
+      dedupingInterval: 1_000,
+    },
+  );
   const data = useMemo<PermissionRequestSummary[]>(() => {
     if (!serverId) return [];
-    const out: PermissionRequestSummary[] = [];
+    const out = new Map<string, PermissionRequestSummary>();
     for (const s of states) {
       for (const id of s.pendingPermissionIds) {
-        out.push({ id, sessionID: s.sessionId });
+        out.set(id, { id, sessionID: s.sessionId });
       }
     }
-    return out;
-  }, [states, serverId]);
+    for (const item of fallback.data ?? []) {
+      if (typeof item?.id !== "string" || typeof item?.sessionID !== "string") {
+        continue;
+      }
+      out.set(item.id, { id: item.id, sessionID: item.sessionID });
+    }
+    return [...out.values()];
+  }, [states, serverId, fallback.data]);
   return { data, isLoading: false, error: undefined, mutate: noopMutate };
 }
 

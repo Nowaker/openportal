@@ -222,6 +222,12 @@ interface OpencodeFrame {
   time?: number;
 }
 
+function requestIdFromProps(props: Record<string, unknown>): string | null {
+  if (typeof props.id === "string") return props.id;
+  const info = props.info as { id?: unknown } | undefined;
+  return typeof info?.id === "string" ? info.id : null;
+}
+
 // Caller supplies (serverId, port) because opencode frames only carry
 // sessionID; we need server identity for sidebar grouping and port for
 // any downstream callbacks that need to hit the upstream.
@@ -313,34 +319,34 @@ export function applyOpencodeEvent(
       fanout({ type: "remove", serverId, sessionId: sid });
       return;
     case "question.asked": {
-      const info = props.info as { id?: string } | undefined;
-      if (info?.id && !next.pendingQuestionIds.includes(info.id)) {
-        next.pendingQuestionIds = [...next.pendingQuestionIds, info.id];
+      const requestId = requestIdFromProps(props);
+      if (requestId && !next.pendingQuestionIds.includes(requestId)) {
+        next.pendingQuestionIds = [...next.pendingQuestionIds, requestId];
       }
       break;
     }
     case "question.replied":
     case "question.rejected": {
-      const info = props.info as { id?: string } | undefined;
-      if (info?.id) {
+      const requestId = requestIdFromProps(props);
+      if (requestId) {
         next.pendingQuestionIds = next.pendingQuestionIds.filter(
-          (qid) => qid !== info.id,
+          (qid) => qid !== requestId,
         );
       }
       break;
     }
     case "permission.asked": {
-      const info = props.info as { id?: string } | undefined;
-      if (info?.id && !next.pendingPermissionIds.includes(info.id)) {
-        next.pendingPermissionIds = [...next.pendingPermissionIds, info.id];
+      const requestId = requestIdFromProps(props);
+      if (requestId && !next.pendingPermissionIds.includes(requestId)) {
+        next.pendingPermissionIds = [...next.pendingPermissionIds, requestId];
       }
       break;
     }
     case "permission.replied": {
-      const info = props.info as { id?: string } | undefined;
-      if (info?.id) {
+      const requestId = requestIdFromProps(props);
+      if (requestId) {
         next.pendingPermissionIds = next.pendingPermissionIds.filter(
-          (pid) => pid !== info.id,
+          (pid) => pid !== requestId,
         );
       }
       break;
