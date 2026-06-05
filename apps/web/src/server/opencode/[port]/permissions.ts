@@ -1,11 +1,14 @@
 import { defineHandler } from "nitro/h3";
-import { getOpencodeClientV2 } from "../../lib/opencode-client";
+import { fetchOpencode } from "../../lib/opencode-client";
 import { parsePort } from "../../lib/validation";
 
 export default defineHandler(async (event) => {
   const port = parsePort(event);
-  const client = await getOpencodeClientV2(port);
-  const result = await client.permission.list();
+  const result = await fetchOpencode(port, "/permission");
 
-  return result.data;
+  if (!result.ok) {
+    return new Response(await result.text(), { status: result.status });
+  }
+
+  return result.json();
 });
