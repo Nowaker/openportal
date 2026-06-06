@@ -110,6 +110,17 @@ const sessions = new Map<string, SessionIndicatorState>();
 const subs = new Set<Subscription>();
 const serverConnected = new Map<string, boolean>();
 
+// Whether the stuck-detector plugin is actively scanning. Mirrored from
+// the plugin's /scanning + /health by stuck-detector-client.ts and the
+// /api/stuck-detector/scanning proxy. When false, portal ignores stuck-
+// detector verdicts entirely and falls back to native indicators
+// (busy/question/permission/compaction/opencode-retry from opencode
+// SSE). applyStuckVerdict no-ops while false; the true->false transition
+// clears every cached stuck verdict so a stale STUCK badge cannot
+// persist - the plugin sends no deltas while disabled, so nothing else
+// would ever clear it.
+let stuckScanningEnabled = true;
+
 function key(serverId: string, sessionId: string): string {
   return `${serverId}::${sessionId}`;
 }
@@ -519,6 +530,7 @@ export interface StuckVerdictUpdate {
 }
 
 export function applyStuckVerdict(update: StuckVerdictUpdate): void {
+  if (!stuckScanningEnabled) return;
   let any = false;
   for (const [k, cur] of sessions.entries()) {
     if (cur.sessionId !== update.sessionID) continue;
@@ -544,6 +556,35 @@ export function applyStuckVerdict(update: StuckVerdictUpdate): void {
     fresh.lastEventAt = Date.now();
     sessions.set(key(t.serverId, update.sessionID), fresh);
     fanOut({ type: "update", state: fresh });
+  }
+}
+
+export function isStuckScanningEnabled(): boolean {
+  return stuckScanningEnabled;
+}
+
+export function setStuckScanningEnabled(enabled: boolean): void {
+  if (stuckScanningEnabled === enabled) return;
+  stuckScanningEnabled = enabled;
+  if (enabled) return;
+  for (const [k, cur] of sessions.entries()) {
+    if (
+      cur.stuck_verdict === null &&
+      cur.stuck_cause === null &&
+      cur.stuck_warnings.length === 0 &&
+      cur.retry === null
+    ) {
+      continue;
+    }
+    const next: SessionIndicatorState = {
+      ...cur,
+      stuck_verdict: null,
+      stuck_cause: null,
+      stuck_warnings: [],
+      retry: null,
+    };
+    sessions.set(k, next);
+    fanOut({ type: "update", state: next });
   }
 }
 
@@ -658,4 +699,5 @@ export function clearForTesting(): void {
   sessions.clear();
   subs.clear();
   serverConnected.clear();
+  stuckScanningEnabled = true;
 }

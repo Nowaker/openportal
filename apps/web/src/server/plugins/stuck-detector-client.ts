@@ -14,6 +14,7 @@
 import { definePlugin } from "nitro";
 import {
   applyStuckVerdict,
+  setStuckScanningEnabled,
   type StuckVerdictUpdate,
 } from "../lib/indicator-state";
 import {
@@ -25,6 +26,7 @@ import { listConfiguredServers } from "../lib/server-registry";
 const PLUGIN_URL = "http://127.0.0.1:4098";
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
+const SCANNING_POLL_INTERVAL_MS = 7_000;
 
 // Track the last verdict per session so we only fan out actual
 // transitions. Verdict deltas come in continuously (every retry
@@ -202,10 +204,39 @@ async function streamVerdicts(signal: AbortSignal): Promise<void> {
   }
 }
 
+// Poll the plugin's /health for scanning_enabled and mirror it into the
+// indicator-state flag. This is the authoritative path that converges
+// portal even when the toggle was flipped out-of-band (curl) or persisted
+// across a restart - the verdict stream sends no deltas while disabled, so
+// it cannot carry the state itself.
+async function pollScanningStateOnce(signal: AbortSignal): Promise<void> {
+  try {
+    const res = await fetch(`${PLUGIN_URL}/health`, { signal });
+    if (!res.ok) return;
+    const body = (await res.json()) as { scanning_enabled?: unknown };
+    if (typeof body.scanning_enabled === "boolean") {
+      setStuckScanningEnabled(body.scanning_enabled);
+    }
+  } catch {
+    /* plugin unreachable; leave the flag as-is until it answers again */
+  }
+}
+
+async function runScanningStatePoll(signal: AbortSignal): Promise<void> {
+  while (!signal.aborted) {
+    await pollScanningStateOnce(signal);
+    if (signal.aborted) return;
+    await new Promise((resolve) =>
+      setTimeout(resolve, SCANNING_POLL_INTERVAL_MS),
+    );
+  }
+}
+
 async function runLoop(signal: AbortSignal): Promise<void> {
   let delay = RECONNECT_BASE_DELAY_MS;
   while (!signal.aborted) {
     try {
+      await pollScanningStateOnce(signal);
       await fetchSnapshot(signal);
       await streamVerdicts(signal);
       delay = RECONNECT_BASE_DELAY_MS;
@@ -225,6 +256,7 @@ async function runLoop(signal: AbortSignal): Promise<void> {
 export default definePlugin(() => {
   const controller = new AbortController();
   void runLoop(controller.signal);
+  void runScanningStatePoll(controller.signal);
   return {
     close() {
       controller.abort();

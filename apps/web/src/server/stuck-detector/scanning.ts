@@ -1,4 +1,5 @@
 import { defineHandler, getMethod, readBody, setResponseStatus } from "nitro/h3";
+import { setStuckScanningEnabled } from "../lib/indicator-state";
 
 // Proxy to the stuck-detector plugin's GET/PUT /scanning endpoint.
 // The plugin runs on 127.0.0.1:4098 (same loopback bind as every other
@@ -27,7 +28,9 @@ export default defineHandler(async (event) => {
         };
       }
       const body = (await r.json()) as { enabled?: unknown };
-      return { ok: true, enabled: body.enabled === true };
+      const enabled = body.enabled === true;
+      setStuckScanningEnabled(enabled);
+      return { ok: true, enabled };
     } catch (err) {
       setResponseStatus(event, 503);
       const msg = err instanceof Error ? err.message : String(err);
@@ -62,7 +65,9 @@ export default defineHandler(async (event) => {
       } catch {
         // plugin returned non-JSON; treat parsed.enabled as undefined
       }
-      return { ok: true, enabled: parsed.enabled === true };
+      const enabled = parsed.enabled === true;
+      setStuckScanningEnabled(enabled);
+      return { ok: true, enabled };
     } catch (err) {
       setResponseStatus(event, 503);
       return {
