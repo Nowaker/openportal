@@ -22,6 +22,7 @@ import {
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
+import { TEMPLATE_ICONS, templateIconFor } from "@/lib/template-icons";
 import {
   deleteFsTemplate,
   forceRescanFsTemplates,
@@ -34,6 +35,8 @@ import {
 function useResolvedTools(): ResolvedTool[] {
   const disabledIds = useToolsStore((s) => s.disabledIds);
   const burgerHiddenIds = useToolsStore((s) => s.burgerHiddenIds);
+  const outsideBurgerIds = useToolsStore((s) => s.outsideBurgerIds);
+  const iconOverrides = useToolsStore((s) => s.iconOverrides);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
@@ -43,6 +46,8 @@ function useResolvedTools(): ResolvedTool[] {
       resolveToolsFromState({
         disabledIds,
         burgerHiddenIds,
+        outsideBurgerIds,
+        iconOverrides,
         systemOverrides,
         customTools,
         projectInitOrder,
@@ -51,6 +56,8 @@ function useResolvedTools(): ResolvedTool[] {
     [
       disabledIds,
       burgerHiddenIds,
+      outsideBurgerIds,
+      iconOverrides,
       systemOverrides,
       customTools,
       projectInitOrder,
@@ -109,6 +116,53 @@ function FlagCheckbox({
   );
 }
 
+function TemplateIconPicker({
+  value,
+  onChange,
+}: {
+  value: string | undefined;
+  onChange: (iconId: string | null) => void;
+}) {
+  const Current = templateIconFor(value);
+  return (
+    <Select
+      selectedKey={value ?? "__default__"}
+      onSelectionChange={(k) =>
+        onChange(k === "__default__" ? null : String(k))
+      }
+      aria-label="Title-bar icon"
+      className="w-36 shrink-0"
+    >
+      <SelectTrigger>
+        <span className="inline-flex items-center gap-1.5">
+          <Current className="size-4" />
+          <span className="text-xs">Icon</span>
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectLabel>Title-bar icon</SelectLabel>
+        <SelectItem id="__default__" textValue="Default">
+          <span className="inline-flex items-center gap-2">
+            {(() => {
+              const D = templateIconFor(undefined);
+              return <D className="size-4" />;
+            })()}
+            Default
+          </span>
+        </SelectItem>
+        {TEMPLATE_ICONS.map((entry) => (
+          <SelectItem key={entry.id} id={entry.id} textValue={entry.label}>
+            <span className="inline-flex items-center gap-2">
+              <entry.Icon className="size-4" />
+              {entry.label}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 interface ToolRowProps {
   tool: ResolvedTool;
   draggable: boolean;
@@ -134,6 +188,8 @@ function SystemToolRow({
   const setFullyDisabled = useToolsStore((s) => s.setFullyDisabled);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
   const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
+  const setOutsideBurger = useToolsStore((s) => s.setOutsideBurger);
+  const setTemplateIcon = useToolsStore((s) => s.setTemplateIcon);
   const setSystemOverride = useToolsStore((s) => s.setSystemOverride);
   const resetSystemOverride = useToolsStore((s) => s.resetSystemOverride);
 
@@ -203,6 +259,19 @@ function SystemToolRow({
           disabled={isDisabled}
           onChange={(next) => toggleSlashCommand(tool.id, next)}
         />
+        <FlagCheckbox
+          label="Outside"
+          title="Render as its own icon button in the title bar (desktop, session routes)"
+          checked={tool.isOutsideBurger && !isDisabled}
+          disabled={isDisabled}
+          onChange={(next) => setOutsideBurger(tool.id, next)}
+        />
+        {tool.isOutsideBurger && !isDisabled && (
+          <TemplateIconPicker
+            value={tool.iconId}
+            onChange={(ic) => setTemplateIcon(tool.id, ic)}
+          />
+        )}
         <div className="min-w-0 flex-1 px-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{tool.name}</span>
@@ -311,6 +380,8 @@ function CustomToolRow({
   const setBurgerVisible = useToolsStore((s) => s.setBurgerVisible);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
   const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
+  const setOutsideBurger = useToolsStore((s) => s.setOutsideBurger);
+  const setTemplateIcon = useToolsStore((s) => s.setTemplateIcon);
   const upsertCustomTool = useToolsStore((s) => s.upsertCustomTool);
   const removeCustomTool = useToolsStore((s) => s.removeCustomTool);
 
@@ -378,6 +449,18 @@ function CustomToolRow({
           checked={tool.isSlash}
           onChange={(next) => toggleSlashCommand(tool.id, next)}
         />
+        <FlagCheckbox
+          label="Outside"
+          title="Render as its own icon button in the title bar (desktop, session routes)"
+          checked={tool.isOutsideBurger}
+          onChange={(next) => setOutsideBurger(tool.id, next)}
+        />
+        {tool.isOutsideBurger && (
+          <TemplateIconPicker
+            value={tool.iconId}
+            onChange={(ic) => setTemplateIcon(tool.id, ic)}
+          />
+        )}
         <div className="min-w-0 flex-1 px-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{tool.name}</span>
@@ -1307,6 +1390,11 @@ export function ToolsSettings() {
             <strong>Slash</strong> — appears in the composer
             &quot;/&quot; autocomplete as <code>/template Full name</code>.
             Accepting it replaces the token with the template body.
+          </li>
+          <li>
+            <strong>Outside</strong> — promoted out of the hamburger into
+            the title bar as its own icon button (desktop, session routes).
+            Pick the icon with the selector that appears when enabled.
           </li>
         </ul>
         <p className="text-xs text-muted-fg">

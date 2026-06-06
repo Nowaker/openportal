@@ -52,6 +52,7 @@ import {
 import { LongOpDialog } from "@/components/long-op-dialog";
 import { SessionStatusBadge } from "@/components/session-status-badge";
 import { SessionContextDial } from "@/components/session-context-dial";
+import { templateIconFor } from "@/lib/template-icons";
 import { McpInfoModal } from "@/components/mcp-info-modal";
 import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
@@ -201,28 +202,45 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
   // (infinite update loop) because Zustand sees a new identity each time.
   const disabledIds = useToolsStore((s) => s.disabledIds);
   const burgerHiddenIds = useToolsStore((s) => s.burgerHiddenIds);
+  const outsideBurgerIds = useToolsStore((s) => s.outsideBurgerIds);
+  const iconOverrides = useToolsStore((s) => s.iconOverrides);
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
   const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
-  const enabledTools = useMemo(
+  const resolvedTools = useMemo(
     () =>
       resolveToolsFromState({
         disabledIds,
         burgerHiddenIds,
+        outsideBurgerIds,
+        iconOverrides,
         systemOverrides,
         customTools,
         projectInitOrder,
         slashCommandIds,
-      }).filter((tool) => tool.enabled),
+      }),
     [
       disabledIds,
       burgerHiddenIds,
+      outsideBurgerIds,
+      iconOverrides,
       systemOverrides,
       customTools,
       projectInitOrder,
       slashCommandIds,
     ],
+  );
+  const enabledTools = useMemo(
+    () => resolvedTools.filter((tool) => tool.enabled),
+    [resolvedTools],
+  );
+  const outsideTools = useMemo(
+    () =>
+      resolvedTools.filter(
+        (tool) => tool.isOutsideBurger && !tool.isDisabled,
+      ),
+    [resolvedTools],
   );
 
   const [runningToolId, setRunningToolId] = useState<string | null>(null);
@@ -923,6 +941,25 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
           />
         )}
         {!isMobile && sessionId && <PinTopbarButton sessionId={sessionId} />}
+        {!isMobile &&
+          sessionId &&
+          outsideTools.map((tool) => {
+            const Icon = templateIconFor(tool.iconId);
+            return (
+              <button
+                key={tool.id}
+                type="button"
+                disabled={!canRun || isBusy}
+                onClick={() => runTool(tool.id, tool.prompt, tool.name)}
+                aria-label={tool.name}
+                title={tool.name}
+                data-test={`portal-titlebar-template-${tool.id}`}
+                className="shrink-0 rounded-md p-1 text-muted-fg hover:bg-muted hover:text-fg disabled:opacity-40"
+              >
+                <Icon className="size-4" />
+              </button>
+            );
+          })}
         <Menu isOpen={menuOpen} onOpenChange={setMenuOpen}>
           <MenuTrigger aria-label="Open menu">
             <Button intent="outline" size="sq-sm">

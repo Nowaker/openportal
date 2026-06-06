@@ -13,6 +13,8 @@ export type ResolvedTool =
   | (SystemTool & {
       kind: "system";
       isInBurger: boolean;
+      isOutsideBurger: boolean;
+      iconId?: string;
       isDisabled: boolean;
       enabled: boolean;
       isOverridden: boolean;
@@ -22,6 +24,8 @@ export type ResolvedTool =
   | (CustomTool & {
       kind: "custom";
       isInBurger: boolean;
+      isOutsideBurger: boolean;
+      iconId?: string;
       isDisabled: boolean;
       enabled: boolean;
       isInit: boolean;
@@ -47,6 +51,18 @@ interface ToolsPersistedState {
   // autocomplete; Burger-off is NOT a kill switch. New slice introduced
   // when the spec split "On" into "Burger" + "Disable".
   burgerHiddenIds: string[];
+
+  // Templates promoted OUT of the hamburger menu into the title bar as
+  // their own icon button. Independent of the Burger flag - a template
+  // can live in the menu, as an outside icon, or both. Rendered only on
+  // session routes (the icon fires the template against the open
+  // session) and only on desktop (mobile keeps the burger).
+  outsideBurgerIds: string[];
+
+  // Per-template icon id, resolved against lib/template-icons. Unset ids
+  // fall back to the default document glyph. Drives the outside-burger
+  // icon button's glyph.
+  iconOverrides: Record<string, string>;
 
   // Per-tool prompt overrides. Stored as full text rather than a diff
   // so the system text can change underneath without merge surprises.
@@ -77,6 +93,8 @@ interface ToolsPersistedState {
 
 interface ToolsState extends ToolsPersistedState {
   setBurgerVisible: (id: string, visible: boolean) => void;
+  setOutsideBurger: (id: string, outside: boolean) => void;
+  setTemplateIcon: (id: string, iconId: string | null) => void;
   setFullyDisabled: (id: string, disabled: boolean) => void;
   setSystemOverride: (
     id: string,
@@ -104,10 +122,13 @@ export function resolveToolsFromState(
     | "customTools"
     | "projectInitOrder"
     | "slashCommandIds"
-  >,
+  > &
+    Partial<Pick<ToolsPersistedState, "outsideBurgerIds" | "iconOverrides">>,
 ): ResolvedTool[] {
   const fullyDisabled = new Set(state.disabledIds);
   const burgerHidden = new Set(state.burgerHiddenIds);
+  const outsideSet = new Set(state.outsideBurgerIds ?? []);
+  const iconMap = state.iconOverrides ?? {};
   const initSet = new Set(state.projectInitOrder);
   const slashSet = new Set(state.slashCommandIds);
   const resolveFlags = (id: string) => {
@@ -115,6 +136,8 @@ export function resolveToolsFromState(
     const isDisabled = fullyDisabled.has(id);
     return {
       isInBurger,
+      isOutsideBurger: outsideSet.has(id),
+      iconId: iconMap[id],
       isDisabled,
       // Backward-compat alias for callers that only care about the
       // "is this template active on the surface that asks?" question.
@@ -158,6 +181,8 @@ export const useToolsStore = create<ToolsState>()(
     (set) => ({
       disabledIds: [],
       burgerHiddenIds: [],
+      outsideBurgerIds: [],
+      iconOverrides: {},
       systemOverrides: {},
       customTools: [],
       projectInitOrder: [],
@@ -169,6 +194,23 @@ export const useToolsStore = create<ToolsState>()(
           if (visible) hidden.delete(id);
           else hidden.add(id);
           return { burgerHiddenIds: Array.from(hidden) };
+        }),
+
+      setOutsideBurger: (id, outside) =>
+        set((state) => {
+          const next = new Set(state.outsideBurgerIds);
+          if (outside) next.add(id);
+          else next.delete(id);
+          return { outsideBurgerIds: Array.from(next) };
+        }),
+
+      setTemplateIcon: (id, iconId) =>
+        set((state) => {
+          if (!iconId) {
+            const { [id]: _omit, ...rest } = state.iconOverrides;
+            return { iconOverrides: rest };
+          }
+          return { iconOverrides: { ...state.iconOverrides, [id]: iconId } };
         }),
 
       setFullyDisabled: (id, disabled) =>
@@ -217,13 +259,18 @@ export const useToolsStore = create<ToolsState>()(
         }),
 
       removeCustomTool: (id) =>
-        set((state) => ({
-          customTools: state.customTools.filter((t) => t.id !== id),
-          disabledIds: state.disabledIds.filter((d) => d !== id),
-          burgerHiddenIds: state.burgerHiddenIds.filter((d) => d !== id),
-          projectInitOrder: state.projectInitOrder.filter((p) => p !== id),
-          slashCommandIds: state.slashCommandIds.filter((p) => p !== id),
-        })),
+        set((state) => {
+          const { [id]: _icon, ...iconOverrides } = state.iconOverrides;
+          return {
+            customTools: state.customTools.filter((t) => t.id !== id),
+            disabledIds: state.disabledIds.filter((d) => d !== id),
+            burgerHiddenIds: state.burgerHiddenIds.filter((d) => d !== id),
+            outsideBurgerIds: state.outsideBurgerIds.filter((d) => d !== id),
+            iconOverrides,
+            projectInitOrder: state.projectInitOrder.filter((p) => p !== id),
+            slashCommandIds: state.slashCommandIds.filter((p) => p !== id),
+          };
+        }),
 
       toggleProjectInit: (id, enabled) =>
         set((state) => ({
@@ -255,6 +302,8 @@ export const useToolsStore = create<ToolsState>()(
       partialize: (state) => ({
         disabledIds: state.disabledIds,
         burgerHiddenIds: state.burgerHiddenIds,
+        outsideBurgerIds: state.outsideBurgerIds,
+        iconOverrides: state.iconOverrides,
         systemOverrides: state.systemOverrides,
         customTools: state.customTools,
         projectInitOrder: state.projectInitOrder,
