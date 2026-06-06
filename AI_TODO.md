@@ -4244,3 +4244,30 @@ Design notes:
 - handleSubmit keeps all prior safety nets: `?includeStale=1` question lookup, fallback prompt path when no match, error surface via setSubmitError. promptAsync fires first when customNotes present; reply with cleanAnswers second.
 - Stuck session ses_17c8c220fffe7xdvRgBhOasCvm (srv-2dy1srwz, port 4096) already had an empty in-memory question registry, so it was unblocked with a direct promptAsync continuation (opencode returned 202) during the earlier attempt.
 - Files: `apps/web/src/lib/question-answers.ts` (new), `apps/web/src/lib/question-answers.test.ts` (new), `apps/web/src/routes/_app/session/$id.tsx` (handleSubmit), `AI_TODO.md` (this entry).
+### 180. Topbar action cluster: banners end before the hamburger + actions; outside-burger template placement with per-template icons (DONE - f2c224a/fd63774/3ab37f2, feat/topbar-actions-cluster)
+
+User prompt (verbatim):
+
+> location of the disappearing alerts:
+> desktop: must be underneath pinned tabs on the top (if any are present) AND its box should end before hamburger and any enabled actions that were configured to be shown outside of the hamrburger. for example, /session/new doesn't have any (currently but may have in the future - who knows). /session/ses_id has context use indicator (hardcoded), pin/unpin (hardcoded), and templates marked as "burger" (in https://portal.desktop.ts.nowaker.net/settings?server=srv-2dy1srwz&directory=%2Fhome%2Fnowaker%2Fprojekty%2Fwebapps%2Fportal#templates). all of these selections must be taken into account.
+>
+> DRY - maybe a refactor is needed so there's a component for hamburger location that renders the hamburger + any icons depending on context (session view, session new, prompt history page, other pages) - so it's a central place to decide what to render, and can tell you how many items is there, what width it will request for it, etc.
+
+Follow-up answers to four open questions (verbatim):
+
+> 1. simpler isn't better. 2. i don't know - what is it currently? but probably yeah, no mobile custom tools exposed there. 3. per template. 4. re-read banner code, it was modified in the meantime. but yes - confirm. PROCEED ON WORKTREE. integrate only when done. ff merge only.
+
+What shipped (reconciled to actual implementation; differs from the original aspirational design notes):
+- `apps/web/src/components/app-sidebar-nav.tsx` AppSidebarNav restructured rather than fully extracted. The nav is now a `flex-col` with: (a) a `flex-1` title-side column holding the existing title row PLUS a new `bannerSlot` prop, carrying `style={{ paddingRight: clusterWidth }}` so banners always end before the cluster; (b) the right-edge action cluster as an `absolute top-0 right-0` div measured by a ResizeObserver. Cluster stays top-anchored (Q4 confirmed) so the hamburger is reachable no matter how many banners stack.
+- `apps/web/src/routes/_app.tsx`: the five banners (BuildMismatch / Notification / OpencodeUpdate / StuckDetector / ConnectionStatus) moved from full-width siblings of the nav into `<AppSidebarNav bannerSlot={...} />`.
+- `apps/web/src/hooks/use-element-width.ts` (new): ResizeObserver width publisher. Measures BORDER-box (`getBoundingClientRect().width` in both seed and callback) - the cluster carries its own `px-4`, and `contentRect.width` would under-reserve by the padding, sliding banners 4px under the cluster (caught + fixed in browser QA before merge).
+- `apps/web/src/stores/tools-store.ts`: two new persisted slices - `outsideBurgerIds: string[]` (templates promoted OUT of the hamburger into the cluster as icon buttons; independent of the existing Burger flag) and `iconOverrides: Record<string,string>` (per-template heroicon name, default fallback). Setters `setOutsideBurger(id, outside)` + `setIconOverride(id, iconName)`. Both made OPTIONAL in `resolveToolsFromState`'s Pick so the 4 existing call sites (folder-browser, session/$id, session/new, plus tools-settings) compile unchanged.
+- `apps/web/src/lib/template-icons.tsx` (new): curated heroicon list + `OutsideTemplateIcon` renderer shared by the settings picker and the topbar cluster (DRY).
+- `apps/web/src/components/tools-settings.tsx`: per-row "Outside" flag + icon-picker `<Select>` on both SystemToolRow and CustomToolRow; intro bullet documents the flag. FS (.vibekick) templates deferred - their YAML schema would need an `outside`/`icon` field (follow-up).
+- Mobile: outside-cluster template icons render desktop-only (session + !isMobile), matching Q2 "no mobile custom tools exposed there". SessionContextDial keeps its existing mobile behavior.
+
+Verification:
+- `cd apps/web && bunx tsc --noEmit`: 64 total errors on the rebased base, ALL pre-existing; zero new errors mention my changed symbols. New files (tools-store, template-icons, use-element-width) are error-clean.
+- Browser QA (visual subagent, desktop 1280x900) on the worktree build: first pass caught a 4px overlap (contentRect vs border-box); after the border-box fix both `/` and `/session/<id>` PASS - banner content right edge (1204px / 1136px) clears the cluster left edge (1232px), no console errors.
+
+Pre-existing bug noticed (NOT in scope, present on main-nowaker independently): app-sidebar-nav `runTool` calls `recordPendingSubmission`/`recordFailedAttempt`/`clearPendingSubmission` without importing them from `apps/web/src/lib/pending-prompts.ts` - the hamburger "Prompt templates" path would ReferenceError at runtime. Left untouched.
