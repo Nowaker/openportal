@@ -4210,3 +4210,37 @@ Design notes:
 - Current mobile-only `EmptyState` branch duplicates the sidebar by rendering its own Projects list. The replacement should remove that list and show a chat-surface empty state instead.
 - The empty-state copy should expose three actions: open/select from the left navbar (and open the navbar if closed), create a new session (`/session/new`), and find a session by opening the existing Ctrl+K command palette.
 - Implementation must use the feature worktree `~/projekty/webapps/portal-server-empty-state`, verify there first, then rebase/FF-merge to `main-nowaker`, deploy with `scripts/deploy.sh`, and push to both `origin` and `github`.
+
+### 179. Question reply: split selected option + freeform note into promptAsync + question.reply (DONE - this commit)
+
+User prompt (verbatim):
+
+> https://portal.desktop.ts.nowaker.net:8443/session/ses_17c8c220fffe7xdvRgBhOasCvm?server=srv-2dy1srwz
+>
+> answering AI questions (set as native opencode questions) didn't work here. opencode still blocks it, and wants the answer.
+> should respond using opencode api for todos/continuation.
+>
+> i think this is because we have fancy mechanism for radio selections, that we allow ourselves to always pick existing option + give a comment.
+> i think this treatment of questions results in openportal sending a message (promptAsync) instead of questions/answers api.
+>
+> whenever we're trying to submit something that wasn't technically allowed as an option (e.g. can't submit free form if only radios were given), we should, first send promptAsync for the custom parts, and then submit responses via opencode q/a api. this way session wakes up, and it sees both the answers and your extra comments.
+>
+> once implemented, and openportal restarted, unblock session https://portal.desktop.ts.nowaker.net:8443/session/ses_17c8c220fffe7xdvRgBhOasCvm?server=srv-2dy1srwz so it continues
+
+Follow-up (verbatim): "first exists, second doesn't. merge correctly into main-nowaker"
+
+Re-land note:
+
+- An earlier attempt landed this fix on an orphaned divergent main-nowaker timeline (commit 4d7b138 + AI_TODO #154 + mark-done 09b3ebc). A parallel session reset/replaced main-nowaker out from under it; 4d7b138 survived only on branch fix/question-replies-split, 09b3ebc was lost, and the fix never reached the real main-nowaker (which had independently advanced to #178). This entry re-lands the SAME code cleanly onto the real main-nowaker via cherry-pick into an isolated worktree, renumbered #154 -> #179.
+
+Design notes:
+
+- Root cause: `apps/web/src/routes/_app/session/$id.tsx` `QuestionAnswerForm.handleSubmit` concatenated the user's freeform note onto the selected option string (single-select: `"Label\n\nfreeform"`; multi-select: `[...selected, freeform]`). opencode's question.reply validates each answer against `q.options[].label`; the concatenated string matches no label, so the question stays pending and the session blocks.
+- Fix splits each question's submission into two disjoint surfaces:
+  - `cleanAnswers`: only strings valid for question.reply (option labels; or the freeform when q.options is empty / q.custom path). Sent via `POST /api/opencode/<port>/question/<requestId>/reply`.
+  - `customNotes`: freeform captured separately when options are present. Sent as a single promptAsync FIRST so the note becomes a real user message BEFORE the question resolves; resolving the question then triggers the next assistant turn which sees both surfaces. Order per user spec.
+- New module `apps/web/src/lib/question-answers.ts`: `partitionQuestionAnswers(questions, selections, freeforms)` -> `{ cleanAnswers, customNotes }`; `formatCustomNotesAsPrompt(notes)` renders the blockquoted note prompt.
+- Sibling test `apps/web/src/lib/question-answers.test.ts` (bun:test, 16 cases): radio+freeform, multi+freeform, freeform-only, options+no-selection, custom=false, whitespace trim, multi-question ordering, missing inputs.
+- handleSubmit keeps all prior safety nets: `?includeStale=1` question lookup, fallback prompt path when no match, error surface via setSubmitError. promptAsync fires first when customNotes present; reply with cleanAnswers second.
+- Stuck session ses_17c8c220fffe7xdvRgBhOasCvm (srv-2dy1srwz, port 4096) already had an empty in-memory question registry, so it was unblocked with a direct promptAsync continuation (opencode returned 202) during the earlier attempt.
+- Files: `apps/web/src/lib/question-answers.ts` (new), `apps/web/src/lib/question-answers.test.ts` (new), `apps/web/src/routes/_app/session/$id.tsx` (handleSubmit), `AI_TODO.md` (this entry).
