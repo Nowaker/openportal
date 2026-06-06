@@ -4156,3 +4156,57 @@ Design notes:
 - Why this works for historical messages: `firstHeaderShown` is only true when the session has more messages than the visible window (typically >50 messages). The visible window contains at least one assistant, so the "any assistant in baseVisible" heuristic is a reliable proxy for "this historical message has been answered."
 - Verification: `bunx tsc --noEmit` clean for files I touched. The 66 pre-existing errors elsewhere (sidebar, settings, file-route TS strictness) are unchanged from main.
 - Integration: developed on worktree `~/projekty/webapps/portal-queued-badge-fix` / `feat/queued-badge-fix`. Branched off main-nowaker `9716dec`. FF merge into main, deploy, push to both remotes. Force-pushes to main are server-blocked now per the user's recent GitLab branch-rule change.
+
+### 178. Server-open empty chat fallback instead of mobile project dashboard (DONE - this commit)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> After going to the server from server list from mobile, I'm getting like a dashboard screen with project list. This list is redundant and code duplication as navbar literally has the same thing. When opening server for the first time and there is no last session to resume, simply expand navbar, and main screen should be an empty chat output with a message in the middle to open a session from the left navbar (and navbar text is link that triggers navbar open if person closed it).
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+>
+> # /template "all env":
+>
+> # Remember about safe credentials handling!
+>
+> Personal and community projects: source ~/projekty/nowaker/env for a variety of useful credentials, especially GitHub/GitLab tokens.
+>
+> Work projects: source ~/projekty/dreamhost/env.
+>
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> ... Or to create new session (also a link), or find a session (link to open ^K form).
+
+Design notes:
+
+- Current root route `apps/web/src/routes/_app/index.tsx` resumes `localStorage["opencode-last-session"]` when it still exists, then renders `EmptyState` when there is no valid session to resume.
+- Current mobile-only `EmptyState` branch duplicates the sidebar by rendering its own Projects list. The replacement should remove that list and show a chat-surface empty state instead.
+- The empty-state copy should expose three actions: open/select from the left navbar (and open the navbar if closed), create a new session (`/session/new`), and find a session by opening the existing Ctrl+K command palette.
+- Implementation must use the feature worktree `~/projekty/webapps/portal-server-empty-state`, verify there first, then rebase/FF-merge to `main-nowaker`, deploy with `scripts/deploy.sh`, and push to both `origin` and `github`.
