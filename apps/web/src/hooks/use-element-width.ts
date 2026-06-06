@@ -18,7 +18,14 @@ export function useElementWidth(ref: React.RefObject<HTMLElement | null>): numbe
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      const next = Math.ceil(entry.contentRect.width);
+      // border-box, not contentRect: contentRect drops the cluster's own
+      // px-4 padding, under-reserving padding-right so banners slid under it.
+      const borderBox = entry.borderBoxSize?.[0]?.inlineSize;
+      const next = Math.ceil(
+        typeof borderBox === "number"
+          ? borderBox
+          : entry.target.getBoundingClientRect().width,
+      );
       setWidth((prev) => (prev === next ? prev : next));
     });
     ro.observe(el);
