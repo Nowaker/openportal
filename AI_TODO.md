@@ -4673,3 +4673,25 @@ Design notes:
 - Add an optional per-server OpenCode web endpoint URL (for example `https://opencode.ts.nowaker.net/`). If unset, derive the default regular OpenCode web base from the server's current HTTP endpoint.
 - Add a session hamburger action `Open in OpenCode Web` that opens the current session in the regular opencode web UI using the configured web endpoint and current session id. Because it navigates externally, implement it as a real link per the navigation-link rule.
 - Use a worktree, validate with type-check/build/deploy/browser QA, merge cleanly into `main-nowaker`, then push both remotes.
+
+### 192. Bash tool-call file paths should link to the file browser (DONE - this commit)
+
+User prompt (verbatim):
+
+> While at it, check why there is no link to file in tool calls and fix. Here - bash:
+>
+> > bash export CI=true DEBIAN_FRONTEND=noninteractive GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never GIT_EDITOR=: EDITOR=: VISUAL='' GIT_PAGER=cat PAGER=cat; cd /home/nowaker/projekty/tmp/agents-md-refresh-hook && rm -rf smoke-work smoke-opencode.db 2>&1
+>
+> This msgid or one before or after https://portal.desktop.ts.nowaker.net:8443/session/ses_1d159c8fdffe57J8mXDUeXl7D3?server=srv-2dy1srwz#msg-msg_e95f666fd001zd71UZ81OGb2s8
+>
+>
+> Note: this full path to file shows after clicking expand button, as it's only a single line cropped mid on mobile. Untested on desktop. Should be a link in either platform. When cropped, the link should still activate and point to a full uncropped url obviously.
+>
+> Worktree. Ff merge to main Nowaker ONLY. start fresh from main Nowaker.
+
+Design notes:
+
+- Root cause: bash tool-call rows bypassed markdown rendering and rendered both the collapsed command label and expanded command body as plain text. Existing file linkification covered markdown prose and read/edit/write tool labels, not bash command text.
+- Fix: add a tool-text path linkifier that reuses `FileExistenceLink`, so bash command paths get the same `/files?path=<encoded>` href, existence check, and desktop/mobile click behavior as markdown file links. The visible row may truncate, but the anchor `href` contains the full uncropped path.
+- Preserve existing session/task ID linkification in the non-path chunks of tool strings by continuing to run `linkifySessionIds` around file-path matches.
+- Integration: developed on worktree `~/projekty/webapps/portal-tool-call-file-links` / `feat/tool-call-file-links` from fresh `origin/main-nowaker`; rebase + FF merge to `main-nowaker` only.

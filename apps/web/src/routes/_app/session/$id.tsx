@@ -528,7 +528,12 @@ function formatToolCall(part: ToolPart): {
       const shortCmd = command.split("\n")[0]?.slice(0, 200) || "";
       return {
         icon: "$",
-        label: `bash ${shortCmd}${command.length > 200 ? "..." : ""}`,
+        label: (
+          <>
+            bash <ToolTextFileLinks text={shortCmd} />
+            {command.length > 200 ? "..." : ""}
+          </>
+        ),
         details: input.description ? `# ${input.description}` : undefined,
       };
     }
@@ -1311,14 +1316,13 @@ function PermissionRequestForm({
 // multi-line tool inputs (bash commands, edit diffs) read as the
 // user-typed source rather than as one-line JSON with \n sequences.
 function FormattedValue({ value }: { value: unknown }): React.ReactElement {
-  const resolvers = useIdResolvers();
   if (value === null || value === undefined) {
     return <span className="text-muted-fg/60 italic">(none)</span>;
   }
   if (typeof value === "string") {
     return (
       <span className="whitespace-pre-wrap break-words">
-        {linkifySessionIds(value, resolvers)}
+        <ToolTextFileLinks text={value} />
       </span>
     );
   }
@@ -1671,7 +1675,9 @@ const ToolCallItem = memo(function ToolCallItem({
       <div data-test={`portal-toolcall-${part.tool ?? "unknown"}`} className={`font-mono text-xs flex items-start gap-1.5 py-0.5 min-w-0 ${toneClass}`}>
         <span className="opacity-60 shrink-0">$</span>
         <div className="flex-1 min-w-0">
-          <pre className="m-0 whitespace-pre-wrap break-all">{bashCommand}</pre>
+          <pre className="m-0 whitespace-pre-wrap break-all">
+            <ToolTextFileLinks text={bashCommand} />
+          </pre>
           {bashDescription && (
             <div className="mt-0.5 opacity-60"># {bashDescription}</div>
           )}
@@ -2164,6 +2170,55 @@ function FileExistenceLink({
       {children}
     </a>
   );
+}
+
+const TOOL_TEXT_PATH_REGEX =
+  /(^|[\s'"\[\]{}()=:])((?:\/(?:[\w$.-]+\/)+|~\/(?:[\w$.-]+\/)*)[\w$.-]*[\w$])(?=$|[\s'"\[\]{}().,:;?!])/g;
+
+function ToolTextFileLinks({ text }: { text: string }) {
+  const resolvers = useIdResolvers();
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  const pushText = (chunk: string, key: string) => {
+    if (!chunk) return;
+    parts.push(
+      <span key={key}>{linkifySessionIds(chunk, resolvers)}</span>,
+    );
+  };
+
+  TOOL_TEXT_PATH_REGEX.lastIndex = 0;
+  while ((match = TOOL_TEXT_PATH_REGEX.exec(text)) !== null) {
+    const path = match[2];
+    if (path.startsWith("/api/")) continue;
+    const matchStart = match.index + match[1].length;
+    const matchEnd = matchStart + path.length;
+
+    if (matchStart > lastIndex) {
+      pushText(text.slice(lastIndex, matchStart), `txt-${lastIndex}`);
+    }
+    parts.push(
+      <FileExistenceLink
+        key={matchStart}
+        rawPath={path}
+        sessionDirectory={null}
+        hash=""
+        rest={{ className: "text-primary underline decoration-dotted underline-offset-2 hover:decoration-solid" }}
+      >
+        {path}
+      </FileExistenceLink>,
+    );
+    lastIndex = matchEnd;
+  }
+
+  if (parts.length === 0) {
+    return <>{linkifySessionIds(text, resolvers)}</>;
+  }
+  if (lastIndex < text.length) {
+    pushText(text.slice(lastIndex), `txt-${lastIndex}`);
+  }
+  return <>{parts}</>;
 }
 
 // Inline file-path link used inside tool-call labels (edit/read/write).
