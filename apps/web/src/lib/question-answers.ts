@@ -31,8 +31,8 @@ export interface QuestionLike {
   question: string;
   header: string;
   options: QuestionOptionLike[];
-  multiple: boolean;
-  custom: boolean;
+  multiple?: boolean;
+  custom?: boolean;
 }
 
 export interface CustomNote {

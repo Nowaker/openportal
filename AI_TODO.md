@@ -4470,3 +4470,48 @@ Design notes:
 - Audit the app for navigation-looking controls that are not links, especially settings tabs, bottom navbar hamburger items, top-right hamburger items, and pinned sessions.
 - Fix navigational controls so right-click, Shift/Ctrl/Cmd-click, copy-link, and open-in-new-tab work without losing existing visual styling or keyboard/touch behavior.
 - Use a worktree, validate with type-check/build/deploy/browser QA, merge cleanly into `main-nowaker`, then push both remotes.
+
+### 186. Collapse small permalink gap controls (DONE - this commit)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> [ Load top 50 more ]
+> [ Load all (slow) ]
+> Gap of 50 messages between target window and latest messages. <- change to Gap of 50 messages in between.   <- that's it :)
+> [ Load bottom 50 more ]
+> [ Load all (slow) ]
+>
+> makes no sense to display it like that when it's 50 or less messages, top 50 and bottom 50 are the same 50. and load all is also 50.
+> change to:
+>
+> Gap of 50 messages between in between.
+> [ Load all ]
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+
+Design notes:
+
+- Worktree: `~/projekty/webapps/portal-small-gap-banner` on branch `feat/small-gap-banner`.
+- `PermalinkGapBanner` now treats `gapCount <= 50` as a single-page gap: top/bottom chunk buttons are hidden, the all-load button label becomes `Load all`, and the default message becomes `Gap of N messages in between.`
+- Larger gaps keep the prior three-action permalink UX and the explicit `Load all (slow)` label.
+- Validate in the worktree, rebase onto current `origin/main-nowaker`, fast-forward merge into the primary repo, deploy through `scripts/deploy.sh`, then push `main-nowaker` to both `origin` and `github`.

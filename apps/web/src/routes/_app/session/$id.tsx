@@ -2327,8 +2327,7 @@ function MessageMarkdown({
 // Gap banner rendered between the around-target window and the latest
 // window in permalink mode. Surfaces (a) how many messages are between
 // the two windows, (b) a spinner while a fillGap fetch is in flight,
-// and (c) two load-more buttons: "Load 50 more" (next chunk of the
-// gap) and "Load all" (entire session - slow on big histories).
+// and (c) load-more buttons.
 function PermalinkGapBanner({
   gapCount,
   loading,
@@ -2345,11 +2344,13 @@ function PermalinkGapBanner({
   gapLabel?: string;
 }) {
   const safeGapCount = Number.isFinite(gapCount) && gapCount > 0 ? gapCount : 0;
+  const fitsInSinglePage = safeGapCount <= 50;
   const label =
     gapLabel ??
     `Gap of ${safeGapCount.toLocaleString()} message${
       safeGapCount === 1 ? "" : "s"
-    } between target window and latest messages.`;
+    } ${fitsInSinglePage ? "in between" : "between target window and latest messages"}.`;
+  const loadAllLabel = fitsInSinglePage ? "Load all" : "Load all (slow)";
   return (
     <div className="my-3 mx-3 rounded-md border border-dashed border-border bg-muted/20 px-3 py-3 flex flex-col gap-2 items-center text-center">
       {loading ? (
@@ -2359,7 +2360,7 @@ function PermalinkGapBanner({
         </div>
       ) : (
         <>
-          {onLoadTop && (
+          {!fitsInSinglePage && onLoadTop && (
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <button
                 type="button"
@@ -2377,13 +2378,13 @@ function PermalinkGapBanner({
                 title="Loading the entire history can take long on big sessions"
                 className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
               >
-                Load all (slow)
+                {loadAllLabel}
               </button>
             </div>
           )}
           <div className="text-xs text-muted-fg">{label}</div>
           <div className="flex items-center justify-center gap-2 flex-wrap">
-            {onLoadBottom && (
+            {!fitsInSinglePage && onLoadBottom && (
               <button
                 type="button"
                 onClick={onLoadBottom}
@@ -2401,7 +2402,7 @@ function PermalinkGapBanner({
               title="Loading the entire history can take long on big sessions"
               className="rounded-md border border-dashed border-border bg-bg px-3 py-1 text-xs text-muted-fg hover:border-fg/30 hover:text-fg transition-colors disabled:opacity-50"
             >
-              Load all (slow)
+              {loadAllLabel}
             </button>
           </div>
         </>
