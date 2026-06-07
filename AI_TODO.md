@@ -2914,7 +2914,7 @@ Design notes:
   - `apps/web/src/components/app-sidebar.tsx` - add archive confirm dialog for session-row archive action.
 - Verify manually by clicking both entry points and confirming behavior split matches prompt.
 
-### 134. Archived-session placement and highlight parity in sidebar (PENDING - in progress)
+### 134. Archived-session placement and highlight parity in sidebar (DONE - fcb67cd + 5249d8d)
 
 User prompt (verbatim):
 
