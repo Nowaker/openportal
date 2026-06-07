@@ -740,6 +740,17 @@ exceptions for "it's just a modal" or "it's just a panel". The user
 should never be unable to share or bookmark a state they're currently
 looking at.
 
+Any UI element whose action navigates to a route, hash, or external
+destination MUST render as a real browser-recognized link (`<a>`,
+TanStack `<Link>`, React Aria `Link`, or `MenuItem href`). It may be
+styled like a button, tab, row, chip, icon, or menu item, but the DOM
+must expose an href so right-click, Shift/Ctrl/Cmd-click, copy-link,
+and open-in-new-tab work normally. Do NOT implement navigation with a
+plain `<button>` / `<div>` plus `navigate()` / `window.location` just
+because it looks visually button-like. Buttons are for actions that
+mutate, toggle, submit, open non-URL-backed transient UI, or otherwise
+do not have a destination URL.
+
 Covered:
 
 - Active session: `/session/<id>` route path. Already routed.

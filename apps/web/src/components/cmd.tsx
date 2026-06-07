@@ -55,6 +55,20 @@ interface InstanceData {
   status: string;
 }
 
+function hrefWithCurrentSearch(
+  pathname: string,
+  patch?: Record<string, string | null | undefined>,
+): string {
+  if (typeof window === "undefined") return pathname;
+  const params = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(patch ?? {})) {
+    if (value == null) params.delete(key);
+    else params.set(key, value);
+  }
+  const search = params.toString();
+  return `${pathname}${search ? `?${search}` : ""}`;
+}
+
 export default function Cmd() {
   const isOpen = useCmdStore((s) => s.isOpen);
   const setIsOpen = useCmdStore((s) => s.setOpen);
@@ -203,7 +217,12 @@ export default function Cmd() {
       <CommandMenuItem
         key={session.id}
         textValue={textValue}
-        onAction={() => handleSessionSelect(session.id)}
+        href={
+          isCurrent
+            ? undefined
+            : hrefWithCurrentSearch(`/session/${session.id}`, { focus: "composer" })
+        }
+        onAction={() => setIsOpen(false)}
         isDisabled={isCurrent}
       >
         {isPinned ? (
@@ -274,15 +293,6 @@ export default function Cmd() {
     }
   }
 
-  function handleSessionSelect(sessionId: string) {
-    setIsOpen(false);
-    navigate({
-      to: "/session/$id",
-      params: { id: sessionId },
-      search: { focus: "composer" },
-    });
-  }
-
   function handleOpenChange(open: boolean) {
     if (open && query === "" && lastQueryRef.current !== "") {
       setQuery(lastQueryRef.current);
@@ -302,22 +312,13 @@ export default function Cmd() {
     setIsOpen(false);
   }
 
-  function handleInstanceOpen(instance: InstanceData) {
-    if (instance.id === currentInstance?.id) {
-      setIsOpen(false);
-      return;
-    }
-    if (!instance.webPort) {
-      toast.error(`No web port registered for ${instance.name}`);
-      return;
-    }
+  function instanceHref(instance: InstanceData): string | undefined {
+    if (!instance.webPort) return undefined;
     const host =
       instance.hostname === "0.0.0.0"
         ? window.location.hostname
         : instance.hostname;
-    const url = `${window.location.protocol}//${host}:${instance.webPort}/`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    setIsOpen(false);
+    return `${window.location.protocol}//${host}:${instance.webPort}/`;
   }
 
   return (
@@ -361,20 +362,16 @@ export default function Cmd() {
           </CommandMenuItem>
           <CommandMenuItem
             textValue="Other Portals"
-            onAction={() => {
-              setIsOpen(false);
-              navigate({ to: "/instances", search: (prev) => prev });
-            }}
+            href={hrefWithCurrentSearch("/instances")}
+            onAction={() => setIsOpen(false)}
           >
             <IconManageInstances className="size-4 mr-2" />
             <CommandMenuLabel>Other Portals</CommandMenuLabel>
           </CommandMenuItem>
           <CommandMenuItem
             textValue="Servers"
-            onAction={() => {
-              setIsOpen(false);
-              navigate({ to: "/servers", search: (prev) => prev });
-            }}
+            href={hrefWithCurrentSearch("/servers")}
+            onAction={() => setIsOpen(false)}
           >
             <ServerIcon className="size-4 mr-2" />
             <CommandMenuLabel>Servers</CommandMenuLabel>
@@ -387,8 +384,14 @@ export default function Cmd() {
               <CommandMenuItem
                 key={instance.id}
                 textValue={instance.name}
-                onAction={() => handleInstanceOpen(instance)}
-                isDisabled={currentInstance?.id === instance.id}
+                href={instanceHref(instance)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onAction={() => {
+                  if (!instance.webPort) toast.error(`No web port registered for ${instance.name}`);
+                  setIsOpen(false);
+                }}
+                isDisabled={currentInstance?.id === instance.id || !instance.webPort}
               >
                 {currentInstance?.id === instance.id ? (
                   <IconBox className="size-4 mr-2" />

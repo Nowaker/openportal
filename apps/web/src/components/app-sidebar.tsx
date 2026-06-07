@@ -95,7 +95,6 @@ import {
   DraftIndicator,
 } from "@/lib/session-indicators";
 import { useInstanceStore } from "@/stores/instance-store";
-import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import { VSCodeLink } from "@/components/vscode-link";
 import { SidebarSystemStats } from "@/components/sidebar-system-stats";
 import { useNavigate, useMatch } from "@tanstack/react-router";
@@ -133,6 +132,20 @@ function highlightMatch(text: string, query: string): React.ReactNode {
       {text.slice(idx + query.length)}
     </>
   );
+}
+
+function hrefWithCurrentSearch(
+  pathname: string,
+  patch?: Record<string, string | null | undefined>,
+): string {
+  if (typeof window === "undefined") return pathname;
+  const params = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(patch ?? {})) {
+    if (value == null) params.delete(key);
+    else params.set(key, value);
+  }
+  const search = params.toString();
+  return `${pathname}${search ? `?${search}` : ""}`;
 }
 
 interface ProjectGroupProps {
@@ -333,19 +346,18 @@ function ProjectGroup({
             className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
           />
         </span>
-        <button
-          type="button"
+        <UILink
+          href={hrefWithCurrentSearch("/session/new", { directory })}
           onClick={(e) => {
             e.stopPropagation();
             onNewSessionInProject();
           }}
           data-test="portal-sidebar-newsession"
-          title={`New session in ${directory}`}
           aria-label={`New session in ${projectName}`}
           className="shrink-0 inline-flex items-center justify-center size-6 rounded text-muted-fg hover:text-fg hover:bg-muted/50"
         >
           <PlusIcon className="size-3.5" />
-        </button>
+        </UILink>
       </div>
       {visible.map((session) => {
         const status = statusMap?.[session.id]?.type;
@@ -964,7 +976,6 @@ function PinnedSection({
 }) {
   const { data } = usePinnedSessions();
   const togglePin = useTogglePinnedSession();
-  const navigate = useNavigate();
   const pinned = data?.sessions ?? [];
   const allRows = pinned
     .map((id) => sessions.find((s) => s.id === id))
@@ -1008,20 +1019,13 @@ function PinnedSection({
                 hasQuestion={hasQuestion}
                 hasError={hasError}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  onSessionClick();
-                  void navigate({
-                    to: "/session/$id",
-                    params: { id: session.id },
-                    search: (prev) => prev,
-                  });
-                }}
+              <UILink
+                href={`/session/${session.id}`}
+                onClick={onSessionClick}
                 className="flex-1 min-w-0 truncate text-left text-xs sm:text-sm text-sidebar-fg hover:text-fg"
               >
                 {highlightMatch(sessionLabel, searchQuery)}
-              </button>
+              </UILink>
               <button
                 type="button"
                 onClick={() => void togglePin(session.id, "unpin")}
@@ -1454,7 +1458,7 @@ export default function AppSidebar(
       navigate({
         to: "/session/$id",
         params: { id: session.id },
-        search: (prev) => prev,
+        search: true,
       });
     } catch (error) {
       console.error("Failed to create session:", error);
@@ -1488,7 +1492,7 @@ export default function AppSidebar(
       void navigate({
         to: "/session/$id",
         params: { id },
-        search: (prev) => prev,
+        search: true,
       });
     },
   });
@@ -1551,13 +1555,7 @@ export default function AppSidebar(
             lastViewedMap={lastViewedMap}
             currentSessionId={currentSessionId}
             onOpenDirectory={() => setBrowserOpen(true)}
-            onSelectSession={(id) =>
-              navigate({
-                to: "/session/$id",
-                params: { id },
-                search: (prev) => prev,
-              })
-            }
+            onSelectSession={() => setIsOpenOnMobile(false)}
           />
         ) : (
           <SidebarSectionGroup>
@@ -1574,9 +1572,9 @@ export default function AppSidebar(
               </SidebarItem>
               <SidebarItem
                 tooltip="Live messages"
-                onPress={() => {
+                href={hrefWithCurrentSearch("/live-messages")}
+                onClick={() => {
                   setIsOpenOnMobile(false);
-                  navigate({ to: "/live-messages", search: (prev) => prev });
                 }}
                 className="cursor-pointer gap-x-2"
                 data-test="portal-sidebar-live-messages"
@@ -1611,7 +1609,7 @@ export default function AppSidebar(
                   setSearchInput(v);
                   if (v.length === 0) {
                     setSearchQuery("");
-                  } else if (!isMobile) {
+                  } else if (!sidebarIsMobile) {
                     setSearchQuery(v.trim());
                   }
                 }}
@@ -1662,10 +1660,6 @@ export default function AppSidebar(
                 onNewSessionInProject={(dir) => {
                   setIsOpenOnMobile(false);
                   setVirtualDirectory(dir);
-                  navigate({
-                    to: "/session/new",
-                    search: (prev) => ({ ...prev, directory: dir }),
-                  });
                 }}
               />
             </SidebarSection>
@@ -1720,37 +1714,24 @@ export default function AppSidebar(
             )}
             <MenuItem
               data-test="portal-sidebar-prompts"
-              onAction={() => {
-                setIsOpenOnMobile(false);
-                navigate({ to: "/prompts", search: (prev) => prev });
-              }}
+              href={hrefWithCurrentSearch("/prompts")}
+              onAction={() => setIsOpenOnMobile(false)}
             >
               <ArchiveBoxIcon />
               Prompt history
             </MenuItem>
             <MenuItem
               data-test="portal-sidebar-files"
-              onAction={() => {
-                setIsOpenOnMobile(false);
-                if (
-                  typeof window !== "undefined" &&
-                  window.matchMedia("(min-width: 768px)").matches
-                ) {
-                  useFileBrowserPanelStore.getState().toggle("/");
-                } else {
-                  window.open("/files?path=/", "_blank", "noopener");
-                }
-              }}
+              href={hrefWithCurrentSearch("/files", { path: "/" })}
+              onAction={() => setIsOpenOnMobile(false)}
             >
               <FolderOpenIcon />
               File browser (root)
             </MenuItem>
             <MenuItem
               data-test="portal-sidebar-servers"
-              onAction={() => {
-                setIsOpenOnMobile(false);
-                navigate({ to: "/servers", search: (prev) => prev });
-              }}
+              href={hrefWithCurrentSearch("/servers")}
+              onAction={() => setIsOpenOnMobile(false)}
             >
               <ServerStackIcon />
               Server list
@@ -1774,20 +1755,16 @@ export default function AppSidebar(
             </MenuItem>
             <MenuItem
               data-test="portal-sidebar-docs"
-              onAction={() => {
-                setIsOpenOnMobile(false);
-                navigate({ to: "/docs", search: (prev) => prev });
-              }}
+              href={hrefWithCurrentSearch("/docs")}
+              onAction={() => setIsOpenOnMobile(false)}
             >
               <BookOpenIcon />
               Documentation
             </MenuItem>
             <MenuItem
               data-test="portal-sidebar-settings"
-              onAction={() => {
-                setIsOpenOnMobile(false);
-                navigate({ to: "/settings", search: (prev) => prev });
-              }}
+              href={hrefWithCurrentSearch("/settings")}
+              onAction={() => setIsOpenOnMobile(false)}
             >
               <Cog6ToothIcon />
               Settings

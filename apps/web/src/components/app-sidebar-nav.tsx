@@ -70,7 +70,6 @@ import { MutationErrorIndicator } from "@/components/mutation-error-indicator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DirectoryPicker } from "@/components/directory-picker/directory-picker";
 import { mutate as globalSWRMutate } from "swr";
-import { useFileBrowserPanelStore } from "@/stores/file-browser-panel-store";
 import {
   logSystemMessage,
   useSystemMessagesStore,
@@ -112,6 +111,11 @@ import {
   SessionStatusDot,
   DraftIndicator,
 } from "@/lib/session-indicators";
+import {
+  clearPendingSubmission,
+  recordFailedAttempt,
+  recordPendingSubmission,
+} from "@/lib/pending-prompts";
 import { cascadeIdsToAncestors } from "@/lib/project-path";
 import type { Session } from "@opencode-ai/sdk";
 
@@ -200,6 +204,21 @@ function projectLabelFromDirectory(directory?: string): string | null {
   if (!directory) return null;
   const parts = directory.replace(/\/+$/, "").split("/");
   return parts[parts.length - 1] || null;
+}
+
+function hrefWithCurrentSearch(
+  pathname: string,
+  patch?: Record<string, string | null | undefined>,
+  hash?: string,
+): string {
+  if (typeof window === "undefined") return `${pathname}${hash ? `#${hash}` : ""}`;
+  const params = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(patch ?? {})) {
+    if (value == null) params.delete(key);
+    else params.set(key, value);
+  }
+  const search = params.toString();
+  return `${pathname}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
 }
 
 interface AppSidebarNavProps {
@@ -847,21 +866,13 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                   {isSubagent ? (
                     <>
                       {parentSession?.title ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!parentSession?.id) return;
-                            void navigate({
-                              to: "/session/$id",
-                              params: { id: parentSession.id },
-                              search: (prev) => prev,
-                            });
-                          }}
+                        <a
+                          href={`/session/${parentSession.id}`}
                           className="text-muted-fg hover:text-fg hover:underline underline-offset-2"
                           title={`Open parent session: ${parentSession.title}`}
                         >
                           {parentSession.title}
-                        </button>
+                        </a>
                       ) : (
                         <span className="text-muted-fg">
                           (parent session)
@@ -889,7 +900,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                 className="shrink-0"
               />
             )}
-            {parentSession && (
+            {sessionId && parentSession && (
               <SubagentJumpButtons
                 childID={sessionId}
                 port={port}
@@ -962,6 +973,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
         {sessionId && (
           <SessionContextDial
             sessionId={sessionId}
+            href={`${hrefWithCurrentSearch(`/session/${sessionId}`)}#info`}
             onClick={() => setShowSessionInfo(true)}
           />
         )}
@@ -994,51 +1006,28 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
           <MenuContent placement="bottom end" className="min-w-56">
             <MenuSection>
               <MenuItem
-                onAction={() => {
-                  startTransition(() => {
-                    void navigate({
-                      to: "/prompts",
-                      search: (prev) =>
-                        sessionId ? { ...prev, focus: sessionId } : { ...prev },
-                    });
-                  });
-                }}
+                href={hrefWithCurrentSearch(
+                  "/prompts",
+                  sessionId ? { focus: sessionId } : undefined,
+                )}
               >
                 <ArchiveBoxIcon className="size-4" data-slot="icon" />
                 Prompt history
               </MenuItem>
-              <MenuItem
-                onAction={() => {
-                  startTransition(() => {
-                    void navigate({ to: "/pinned", search: (prev) => prev });
-                  });
-                }}
-              >
+              <MenuItem href={hrefWithCurrentSearch("/pinned")}>
                 <StarIcon className="size-4" data-slot="icon" />
                 Pinned messages
               </MenuItem>
               <MenuItem
-                onAction={() => {
-                  const startDir = currentSession?.directory ?? null;
-                  if (
-                    typeof window !== "undefined" &&
-                    window.matchMedia("(min-width: 768px)").matches
-                  ) {
-                    useFileBrowserPanelStore.getState().toggle(startDir);
-                  } else {
-                    const params = new URLSearchParams();
-                    if (startDir) {
-                      params.set("path", startDir);
-                      params.set("project", startDir);
-                    }
-                    const qs = params.toString();
-                    window.open(
-                      `/files${qs ? `?${qs}` : ""}`,
-                      "_blank",
-                      "noopener",
-                    );
-                  }
-                }}
+                href={hrefWithCurrentSearch(
+                  "/files",
+                  currentSession?.directory
+                    ? {
+                        path: currentSession.directory,
+                        project: currentSession.directory,
+                      }
+                    : undefined,
+                )}
               >
                 <FolderOpenIcon className="size-4" data-slot="icon" />
                 File browser
@@ -1067,14 +1056,14 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
             {sessionId && <MenuSeparator />}
             {sessionId && (
                 <MenuSection>
-                  <MenuItem onAction={() => setShowSessionInfo(true)}>
+                  <MenuItem href={`${hrefWithCurrentSearch(`/session/${sessionId}`)}#info`}>
                     <InformationCircleIcon
                       className="size-4"
                       data-slot="icon"
                     />
                     Session info
                   </MenuItem>
-                  <MenuItem onAction={() => setShowExportSession(true)}>
+                  <MenuItem href={`${hrefWithCurrentSearch(`/session/${sessionId}`)}#export`}>
                     <ArrowDownTrayIcon
                       className="size-4"
                       data-slot="icon"
@@ -1129,14 +1118,14 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                     Compact session
                   </MenuItem>
                   <MenuItem
-                    onAction={() => setShowCleanDialog(true)}
+                    href={`${hrefWithCurrentSearch(`/session/${sessionId}`)}#clean`}
                     data-test="portal-hamburger-clean-session"
                   >
                     <SparklesIcon className="size-4" data-slot="icon" />
                     Clean session...
                   </MenuItem>
                   <MenuItem
-                    onAction={() => setShowStuckFixDialog(true)}
+                    href={`${hrefWithCurrentSearch(`/session/${sessionId}`)}#stuck-fix`}
                     data-test="portal-hamburger-stuck-fix"
                   >
                     <WrenchScrewdriverIcon
@@ -1269,7 +1258,11 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                     <MenuItem
                       key={p.spec}
                       textValue={p.label}
-                      onAction={() => setPluginInfoSpec(p.spec)}
+                      href={hrefWithCurrentSearch(
+                        typeof window === "undefined" ? "/" : window.location.pathname,
+                        undefined,
+                        `plugin:${encodeURIComponent(p.spec)}`,
+                      )}
                     >
                       <div
                         className="flex w-full items-center gap-2 min-w-0"
@@ -1283,14 +1276,13 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                           {p.source}
                           {p.version ? ` ${p.version}` : ""}
                         </span>
-                        <button
-                          type="button"
+                        <span
                           aria-label={`Plugin info: ${p.label}`}
                           title="Show plugin details"
                           className="shrink-0 inline-flex items-center justify-center size-5 rounded text-muted-fg hover:bg-muted hover:text-fg pointer-events-none"
                         >
                           <QuestionMarkCircleIcon className="size-4" />
-                        </button>
+                        </span>
                       </div>
                     </MenuItem>
                   ))}
@@ -1336,7 +1328,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
               void navigate({
                 to: "/session/$id",
                 params: { id: forkId },
-                search: (prev) => prev,
+                search: true,
               });
             });
           }}
@@ -1364,7 +1356,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
               void navigate({
                 to: "/session/$id",
                 params: { id: forkId },
-                search: (prev) => prev,
+                search: true,
               });
             });
           }}
@@ -1731,13 +1723,6 @@ export function PinnedTabStrip() {
           hasNewContent={hasNewContent}
           hasQuestion={hasQuestion}
           hasError={hasError}
-          onNavigate={() =>
-            void navigate({
-              to: "/session/$id",
-              params: { id },
-              search: (prev) => prev,
-            })
-          }
           onUnpin={() => void togglePin(id, "unpin")}
         />
       );
@@ -1776,7 +1761,6 @@ interface SortablePinnedTabProps {
   hasNewContent: boolean;
   hasQuestion: boolean;
   hasError: boolean;
-  onNavigate: () => void;
   onUnpin: () => void;
 }
 
@@ -1791,7 +1775,6 @@ function SortablePinnedTab({
   hasNewContent,
   hasQuestion,
   hasError,
-  onNavigate,
   onUnpin,
 }: SortablePinnedTabProps) {
   if (!sortable) {
@@ -1806,7 +1789,7 @@ function SortablePinnedTab({
         hasNewContent={hasNewContent}
         hasQuestion={hasQuestion}
         hasError={hasError}
-        onNavigate={onNavigate}
+        id={id}
         onUnpin={onUnpin}
       />
     );
@@ -1822,13 +1805,12 @@ function SortablePinnedTab({
       hasNewContent={hasNewContent}
       hasQuestion={hasQuestion}
       hasError={hasError}
-      onNavigate={onNavigate}
       onUnpin={onUnpin}
     />
   );
 }
 
-type TabVisualProps = Omit<SortablePinnedTabProps, "id" | "sortable">;
+type TabVisualProps = Omit<SortablePinnedTabProps, "sortable">;
 
 function NonSortablePinnedTab({ tabId, ...props }: TabVisualProps & { tabId?: string }) {
   return (
@@ -1844,7 +1826,7 @@ function NonSortablePinnedTab({ tabId, ...props }: TabVisualProps & { tabId?: st
   );
 }
 
-function SortableTabInner({ id, ...visual }: { id: string } & TabVisualProps) {
+function SortableTabInner({ id, ...visual }: TabVisualProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
   const style = {
@@ -1865,7 +1847,7 @@ function SortableTabInner({ id, ...visual }: { id: string } & TabVisualProps) {
           : "border-transparent text-muted-fg hover:bg-muted/30 hover:text-fg"
       }`}
     >
-      <PinnedTabInner {...visual} />
+      <PinnedTabInner {...visual} id={id} />
     </div>
   );
 }
@@ -1891,7 +1873,6 @@ function PinnedTabInner(visual: TabVisualProps) {
     hasNewContent,
     hasQuestion,
     hasError,
-    onNavigate,
     onUnpin,
   } = visual;
   return (
@@ -1908,14 +1889,13 @@ function PinnedTabInner(visual: TabVisualProps) {
           />
         </div>
       )}
-      <button
-        type="button"
-        onClick={onNavigate}
+      <a
+        href={`/session/${visual.id}`}
         className="max-w-[16rem] truncate text-left"
         title={title}
       >
         {title}
-      </button>
+      </a>
       <button
         type="button"
         onClick={onUnpin}
@@ -1959,17 +1939,12 @@ function SubagentJumpButtons({
     if (!r.ok) throw new Error(`spawn-info HTTP ${r.status}`);
     return r.json();
   });
-  const go = (msgID: string | null) => {
-    if (typeof window !== "undefined" && msgID) {
-      window.location.hash = `msg-${msgID}`;
-    }
-    void navigate({
-      to: "/session/$id",
-      params: { id: parentSessionID },
-      search: (prev) => prev,
-      hash: msgID ? `msg-${msgID}` : undefined,
-    });
-  };
+  const parentHref = (msgID: string | null) =>
+    hrefWithCurrentSearch(
+      `/session/${parentSessionID}`,
+      undefined,
+      msgID ? `msg-${msgID}` : undefined,
+    );
   const baseClass =
     "shrink-0 inline-flex items-center gap-1 rounded-md border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-500/20 dark:text-violet-300";
 
@@ -1998,7 +1973,7 @@ function SubagentJumpButtons({
         void navigate({
           to: "/session/$id",
           params: { id: body.id },
-          search: (prev) => prev,
+          search: true,
         });
       } else {
         toast.success("Forked");
@@ -2010,9 +1985,8 @@ function SubagentJumpButtons({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => go(data?.spawnMessageID ?? null)}
+      <a
+        href={parentHref(data?.spawnMessageID ?? null)}
         aria-label="Jump to where parent spawned this subagent"
         title={
           data?.spawnMessageID
@@ -2024,11 +1998,10 @@ function SubagentJumpButtons({
       >
         <ArrowLeftIcon className="size-3.5" />
         Spawn
-      </button>
+      </a>
       {data?.finishMessageID && (
-        <button
-          type="button"
-          onClick={() => go(data.finishMessageID)}
+        <a
+          href={parentHref(data.finishMessageID)}
           aria-label="Jump to where parent resumed after this subagent finished"
           title={`Jump to parent's next message after this subagent finished (${parentTitle})`}
           data-test="portal-jump-to-parent-finish"
@@ -2036,7 +2009,7 @@ function SubagentJumpButtons({
         >
           <ArrowLeftIcon className="size-3.5" />
           Resumed
-        </button>
+        </a>
       )}
       <Menu>
         <MenuTrigger

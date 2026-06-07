@@ -65,9 +65,11 @@ function tokenTotal(tokens: AssistantTokens | undefined): number | null {
 
 export function SessionContextDial({
   sessionId,
+  href,
   onClick,
 }: {
   sessionId: string | null;
+  href?: string;
   onClick?: () => void;
 }) {
   const { messages } = useSessionMessages(sessionId ?? undefined, {
@@ -143,8 +145,8 @@ export function SessionContextDial({
     : "Context usage unknown - click for Session Info";
 
   return (
-    <button
-      type="button"
+    <a
+      href={href ?? "#info"}
       onClick={onClick}
       aria-label={label}
       title={tooltip}
@@ -188,6 +190,6 @@ export function SessionContextDial({
           </span>
         )}
       </span>
-    </button>
+    </a>
   );
 }

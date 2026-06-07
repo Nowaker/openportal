@@ -8,7 +8,7 @@ import {
   MagnifyingGlassIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog as PrimitiveDialog,
@@ -645,44 +645,34 @@ function PromptRowItem({
   onRefire: () => void;
   compact?: boolean;
 }) {
-  const navigate = useNavigate();
   const dateFormat = useDateFormatStore((s) => s.format);
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-fg">
-        <button
-          type="button"
-          onClick={() =>
-            void navigate({
-              to: "/session/$id",
-              params: { id: row.session_id },
-              search: (prev) => prev,
-            })
-          }
+        <Link
+          to="/session/$id"
+          params={{ id: row.session_id }}
+          search={true}
           title={formatAbsoluteAndRelative(row.ts_ms, dateFormat)}
           className="tabular-nums whitespace-nowrap hover:text-fg hover:underline"
         >
           {formatMessageTime(row.ts_ms, dateFormat)}
-        </button>
+        </Link>
         {!compact && (
           <>
             <span className="text-muted-fg/60">·</span>
             <span className="truncate">{basename(row.project_path)}</span>
             <span className="text-muted-fg/60">·</span>
-            <button
-              type="button"
-              onClick={() =>
-                void navigate({
-                  to: "/session/$id",
-                  params: { id: row.session_id },
-                })
-              }
+            <Link
+              to="/session/$id"
+              params={{ id: row.session_id }}
+              search={true}
               className="inline-flex items-center gap-0.5 font-mono text-xs hover:text-fg hover:underline"
               title={`Open session ${row.session_id}`}
             >
               {row.session_id.slice(0, 12)}…
               <ArrowTopRightOnSquareIcon className="size-3" />
-            </button>
+            </Link>
           </>
         )}
         {row.source === "command" && (
@@ -791,7 +781,7 @@ function RefireModal({
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const sessions: Array<{ id: string; title?: string; directory?: string }> =
-    sessionsResp?.sessions ?? sessionsResp ?? [];
+    sessionsResp ?? [];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

@@ -120,7 +120,7 @@ const MenuItem = ({ className, intent, children, ...props }: MenuItemProps) => {
                   "open:bg-accent open:text-accent-fg open:*:data-[slot=icon]:text-accent-fg open:*:[.text-muted-fg]:text-accent-fg",
                 className,
               )
-            : className,
+            : twMerge("href" in props && "cursor-pointer", className),
         }),
       )}
       textValue={textValue}

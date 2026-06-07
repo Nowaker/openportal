@@ -1828,43 +1828,43 @@ function SettingsPage() {
             sticky to the Tabs container (where the element is already at
             top:0, defeating the sticky). */}
         <TabList className="sticky top-0 z-20 -mx-4 -mt-6 flex overflow-x-auto bg-bg px-4 scrollbar-none border-b border-border [&_*[data-slot=selected-indicator]]:hidden">
-          <Tab id="appearance" data-test="portal-settings-tab-appearance">
+          <Tab id="appearance" href="#appearance" data-test="portal-settings-tab-appearance">
             <SwatchIcon className="size-4" data-slot="icon" />
             Appearance
           </Tab>
-          <Tab id="prompt" data-test="portal-settings-tab-prompt">
+          <Tab id="prompt" href="#prompt" data-test="portal-settings-tab-prompt">
             <PencilSquareIcon className="size-4" data-slot="icon" />
             Prompt
           </Tab>
-          <Tab id="composer" data-test="portal-settings-tab-composer">
+          <Tab id="composer" href="#composer" data-test="portal-settings-tab-composer">
             <ChatBubbleLeftEllipsisIcon className="size-4" data-slot="icon" />
             Composer
           </Tab>
-          <Tab id="chat" data-test="portal-settings-tab-chat">
+          <Tab id="chat" href="#chat" data-test="portal-settings-tab-chat">
             <ChatBubbleLeftRightIcon className="size-4" data-slot="icon" />
             Chat
           </Tab>
-          <Tab id="files" data-test="portal-settings-tab-files">
+          <Tab id="files" href="#files" data-test="portal-settings-tab-files">
             <FolderIcon className="size-4" data-slot="icon" />
             Files
           </Tab>
-          <Tab id="templates" data-test="portal-settings-tab-templates">
+          <Tab id="templates" href="#templates" data-test="portal-settings-tab-templates">
             <WrenchScrewdriverIcon className="size-4" data-slot="icon" />
             Templates
           </Tab>
-          <Tab id="content" data-test="portal-settings-tab-content">
+          <Tab id="content" href="#content" data-test="portal-settings-tab-content">
             <EyeIcon className="size-4" data-slot="icon" />
             Content
           </Tab>
-          <Tab id="notifications" data-test="portal-settings-tab-notifications">
+          <Tab id="notifications" href="#notifications" data-test="portal-settings-tab-notifications">
             <BellIcon className="size-4" data-slot="icon" />
             Notifications
           </Tab>
-          <Tab id="performance" data-test="portal-settings-tab-performance">
+          <Tab id="performance" href="#performance" data-test="portal-settings-tab-performance">
             <BoltIcon className="size-4" data-slot="icon" />
             Performance
           </Tab>
-          <Tab id="diagnostics" data-test="portal-settings-tab-diagnostics">
+          <Tab id="diagnostics" href="#diagnostics" data-test="portal-settings-tab-diagnostics">
             <InformationCircleIcon className="size-4" data-slot="icon" />
             Diagnostics
           </Tab>

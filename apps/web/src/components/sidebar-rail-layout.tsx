@@ -78,7 +78,7 @@ export interface SidebarRailLayoutProps {
   lastViewedMap: Record<string, number>;
   currentSessionId: string | undefined;
   onOpenDirectory: () => void;
-  onSelectSession: (sessionId: string) => void;
+  onSelectSession: () => void;
 }
 
 export function SidebarRailLayout({
@@ -184,9 +184,8 @@ export function SidebarRailLayout({
             label={bin.dir}
             isCurrent={isCurrentInProject}
             indicator={aggregate}
-            onClick={() => {
-              if (target) onSelectSession(target.id);
-            }}
+            href={target ? `/session/${target.id}` : undefined}
+            onClick={target ? onSelectSession : undefined}
             onContextMenu={(event) => {
               event.preventDefault();
               setDesktopMode("full");
@@ -257,8 +256,9 @@ interface RailTileProps {
   isCurrent?: boolean;
   indicator?: RailProjectAggregate;
   contentOverride?: React.ReactNode;
-  onClick: () => void;
-  onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  href?: string;
+  onClick?: () => void;
+  onContextMenu?: (event: React.MouseEvent<HTMLElement>) => void;
 }
 
 function RailTile({
@@ -267,6 +267,7 @@ function RailTile({
   isCurrent,
   indicator,
   contentOverride,
+  href,
   onClick,
   onContextMenu,
 }: RailTileProps) {
@@ -279,9 +280,10 @@ function RailTile({
       indicator.question ||
       indicator.error ||
       indicator.childBusy);
+  const Component = href ? "a" : "button";
   return (
-    <button
-      type="button"
+    <Component
+      {...(href ? { href } : { type: "button" })}
       onClick={onClick}
       onContextMenu={onContextMenu}
       aria-label={label}
@@ -317,6 +319,6 @@ function RailTile({
           />
         </span>
       )}
-    </button>
+    </Component>
   );
 }
