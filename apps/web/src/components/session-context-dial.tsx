@@ -33,6 +33,7 @@ interface RawProviderConfig {
 }
 
 interface AssistantTokens {
+  total?: number;
   input?: number;
   output?: number;
   reasoning?: number;
@@ -47,6 +48,19 @@ interface AssistantMessageLike {
     tokens?: AssistantTokens;
     time?: { completed?: number };
   };
+}
+
+function tokenTotal(tokens: AssistantTokens | undefined): number | null {
+  if (typeof tokens?.total === "number") return tokens.total;
+  const knownTokens = [
+    tokens?.input,
+    tokens?.output,
+    tokens?.reasoning,
+    tokens?.cache?.read,
+    tokens?.cache?.write,
+  ].filter((n): n is number => typeof n === "number");
+  if (knownTokens.length === 0) return null;
+  return knownTokens.reduce((sum, n) => sum + n, 0);
 }
 
 export function SessionContextDial({
@@ -64,26 +78,21 @@ export function SessionContextDial({
   const { usage, contextLimit, totalTokens } = useMemo(() => {
     const list = (messages ?? []) as AssistantMessageLike[];
     let lastAssistant: AssistantMessageLike["info"] | null = null;
+    let total: number | null = null;
     for (const m of list) {
-      if (m.info?.role === "assistant" && m.info.time?.completed) {
+      const candidateTotal = tokenTotal(m.info?.tokens);
+      if (
+        m.info?.role === "assistant" &&
+        m.info.time?.completed &&
+        candidateTotal !== null
+      ) {
         lastAssistant = m.info;
+        total = candidateTotal;
       }
     }
-    if (!lastAssistant) {
+    if (!lastAssistant || total === null) {
       return { usage: null, contextLimit: null, totalTokens: null };
     }
-    const t = lastAssistant.tokens ?? {};
-    const knownTokens = [
-      t.input,
-      t.output,
-      t.reasoning,
-      t.cache?.read,
-      t.cache?.write,
-    ].filter((n): n is number => typeof n === "number");
-    if (knownTokens.length === 0) {
-      return { usage: null, contextLimit: null, totalTokens: null };
-    }
-    const total = knownTokens.reduce((sum, n) => sum + n, 0);
 
     const raw = (providersData ?? null) as
       | { providers?: RawProviderConfig[] }
@@ -103,63 +112,82 @@ export function SessionContextDial({
     };
   }, [messages, providersData]);
 
-  if (sessionId === null || usage === null) return null;
+  if (sessionId === null) return null;
 
-  const dashOffset = CIRCUMFERENCE * (1 - usage);
-  const usagePct = Math.round(usage * 100);
+  const usageKnown = usage !== null;
+  const dashOffset = CIRCUMFERENCE * (1 - (usage ?? 0));
+  const usagePct = usageKnown ? Math.round(usage * 100) : null;
   const tone =
-    usage >= 0.95 ? "danger" : usage >= 0.85 ? "warning" : "default";
+    usageKnown && usage >= 0.95
+      ? "danger"
+      : usageKnown && usage >= 0.85
+        ? "warning"
+        : "default";
   const ringClass =
     tone === "danger"
       ? "text-danger"
       : tone === "warning"
         ? "text-warning"
         : "text-muted-fg";
-  const formattedTokens = totalTokens
+  const formattedTokens = totalTokens !== null
     ? new Intl.NumberFormat("en-US").format(totalTokens)
     : "?";
-  const formattedLimit = contextLimit
+  const formattedLimit = contextLimit !== null
     ? new Intl.NumberFormat("en-US").format(contextLimit)
     : "?";
+  const label = usageKnown
+    ? `Context usage: ${usagePct}% (${formattedTokens} / ${formattedLimit} tokens). Click to open Session Info.`
+    : "Context usage unknown. Click to open Session Info.";
+  const tooltip = usageKnown
+    ? `${usagePct}%  ${formattedTokens} / ${formattedLimit} tokens - click for Session Info`
+    : "Context usage unknown - click for Session Info";
 
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Context usage: ${usagePct}% (${formattedTokens} / ${formattedLimit} tokens). Click to open Session Info.`}
-      title={`${usagePct}%  ${formattedTokens} / ${formattedLimit} tokens - click for Session Info`}
+      aria-label={label}
+      title={tooltip}
       data-test="portal-session-context-dial"
       className="shrink-0 inline-flex items-center justify-center size-6 rounded hover:bg-muted/40 cursor-pointer"
     >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 16 16"
-        fill="none"
-        className={ringClass}
-      >
-        <circle
-          cx="8"
-          cy="8"
-          r={RADIUS}
-          stroke="currentColor"
-          strokeOpacity={0.25}
-          strokeWidth={2}
+      <span className="relative inline-flex size-4 items-center justify-center">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
           fill="none"
-        />
-        <circle
-          cx="8"
-          cy="8"
-          r={RADIUS}
-          stroke="currentColor"
-          strokeWidth={2}
-          fill="none"
-          strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          transform="rotate(-90 8 8)"
-        />
-      </svg>
+          className={ringClass}
+          aria-hidden="true"
+        >
+          <circle
+            cx="8"
+            cy="8"
+            r={RADIUS}
+            stroke="currentColor"
+            strokeOpacity={0.25}
+            strokeWidth={2}
+            fill="none"
+          />
+          <circle
+            cx="8"
+            cy="8"
+            r={RADIUS}
+            stroke="currentColor"
+            strokeWidth={2}
+            fill="none"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={dashOffset}
+            strokeLinecap="round"
+            transform="rotate(-90 8 8)"
+          />
+        </svg>
+        {!usageKnown && (
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold leading-none text-muted-fg">
+            ?
+          </span>
+        )}
+      </span>
     </button>
   );
 }

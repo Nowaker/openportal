@@ -4321,3 +4321,61 @@ Design notes (from the original fragment):
   - opencode's `directory` field on the session row points at `~/projekty/nowaker/vibekick-test/`. That directory MUST exist when the check runs (opencode may 500 some endpoints if not). `seed.sh` ensures the directory exists + is a git repo, idempotently.
   - The render check needs a working opencode at `:4096` because openportal proxies live state. The dev/prod probes already rely on prod opencode being up; that requirement carries over.
 - Integration: merge worktree to `main-nowaker`, deploy via `scripts/deploy.sh` (which now runs the new gate end-to-end), push to `origin` + `github`.
+
+
+### 183. Session context dial must stay visible with unknown fallback (DONE - 03a51a4)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> [analyze-mode]
+> ANALYSIS MODE. Gather context before diving deep:
+>
+> CONTEXT GATHERING (parallel):
+> - 1-2 explore agents (codebase patterns, implementations)
+> - 1-2 librarian agents (if external library involved)
+> - Direct tools: Grep, AST-grep, LSP for targeted searches
+>
+> IF COMPLEX - DO NOT STRUGGLE ALONE. Consult specialists:
+> - **Oracle**: Conventional problems (architecture, debugging, complex logic)
+> - **Artistry**: Non-conventional problems (different approach needed)
+>
+> SYNTHESIZE findings before proceeding.
+> ---
+> MANDATORY delegate_task params: ALWAYS include load_skills and run_in_background when calling delegate_task. Evaluate available skills before dispatch - pass task-appropriate skills when relevant, pass [] ONLY when no skill matches the task domain.
+> Example: delegate_task(subagent_type="explore", prompt="...", run_in_background=true, load_skills=[])
+>
+> ---
+>
+> https://portal.desktop.ts.nowaker.net:8443/session/ses_1880349b6ffemB21A7XNLPev3w?server=srv-9myqtdk1
+> this session isn't showing me the session context info icon in the top right; the icon is a percentage circle of how full the context is. here: none shows up.
+>
+> we need some fallbacks. the icon should be there at all times. whether some data about the session flew in on time or not. it could have a small ? in the middle if percentage isn't known at the time - but the icon must be there so i can click on it and open modal with other information.
+>
+> another thing is - WHY isn't it showing up? what's up with this piece of info? it's unknown or what? figure out the best way to do it.
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+
+Design notes:
+
+- Root cause from live data: the latest assistant-shaped row in the reported session is a synthetic event row (`synthetic::...`) with no provider, model, or tokens. `SessionContextDial` picked the latest completed assistant row, found no usable usage, and returned `null`, removing the clickable Session Info affordance entirely.
+- Fix `SessionContextDial` so the button is always mounted whenever a session id exists. Known usage renders the percentage ring; unknown usage renders a `?` inside the circle with a stable accessible label and still opens `#info`.
+- Fix `SessionInfoModal` to compute context stats from the latest assistant row that actually has token telemetry, so synthetic event rows cannot hide real usage or produce `NaN%`.
+- Validate in the worktree, integrate by rebase + fast-forward merge to `main-nowaker`, deploy through `scripts/deploy.sh`, then push both remotes.

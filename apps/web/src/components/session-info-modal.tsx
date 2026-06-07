@@ -81,6 +81,17 @@ interface MessageLike {
   parts: PartLike[];
 }
 
+function hasTokenTelemetry(tokens: AssistantTokens | undefined): boolean {
+  if (typeof tokens?.total === "number") return true;
+  return [
+    tokens?.input,
+    tokens?.output,
+    tokens?.reasoning,
+    tokens?.cache?.read,
+    tokens?.cache?.write,
+  ].some((n) => typeof n === "number");
+}
+
 function partLen(p: PartLike, role: "user" | "assistant"): {
   user: number;
   assistant: number;
@@ -342,7 +353,7 @@ function Body({
           assistantChars += c.assistant;
           toolChars += c.tool;
         }
-        if (a.time?.completed) {
+        if (a.time?.completed && hasTokenTelemetry(a.tokens)) {
           lastAssistant = a;
         }
       }
@@ -405,7 +416,9 @@ function Body({
   }, [providersData, stats.lastAssistant]);
 
   const usagePct = useMemo(() => {
-    if (!modelInfo?.contextLimit) return null;
+    if (!modelInfo?.contextLimit || typeof stats.totalTokens !== "number") {
+      return null;
+    }
     return Math.min(
       100,
       Math.round((stats.totalTokens / modelInfo.contextLimit) * 100),
@@ -416,7 +429,7 @@ function Body({
     { key: BucketKey; tokens: number; percent: number; width: number }[]
   >(() => {
     const input = stats.inputSum;
-    if (input <= 0) return [];
+    if (typeof input !== "number" || input <= 0) return [];
     const estimateTokens = (chars: number) => Math.ceil(chars / 4);
     const raw = {
       system: estimateTokens(stats.breakdownChars.system),
