@@ -274,7 +274,7 @@ async function loadFullMessages(
   const synthRows = listSynthetic(id);
   const synthMessages = synthRows.map(toSyntheticChatMessage);
   if (visible.length === 0) {
-    return synthMessages.length === 0 ? real : [...real, ...synthMessages];
+    return interleaveByCreated(real, synthMessages);
   }
   // Dedup pass 1: text match. Drop any virtual whose raw_text
   // matches a real user message that landed AFTER the prompt was
@@ -351,7 +351,7 @@ async function loadFullMessages(
     );
   const merged =
     filtered.length === 0 ? real : [...real, ...filtered];
-  return synthMessages.length === 0 ? merged : [...merged, ...synthMessages];
+  return interleaveByCreated(merged, synthMessages);
 }
 
 type MutableMessage = {
@@ -484,6 +484,26 @@ function toVirtualUserMessage(
       },
     ],
   };
+}
+
+// Splice synthetic /btw rows into chronological position by
+// info.time.created. useSessionMessages renders backend order verbatim
+// (only the permalink path sorts via mergeByIdSorted), so an append
+// would strand an old /btw at the bottom instead of beside its
+// contemporaries. Stable sort keeps real-message order among equal
+// timestamps; pending virtuals were bumped to max-real-created+1 to
+// stay last.
+function interleaveByCreated(base: unknown[], synth: unknown[]): unknown[] {
+  if (synth.length === 0) return base;
+  const combined = [...base, ...synth];
+  combined.sort((a, b) => createdMs(a) - createdMs(b));
+  return combined;
+}
+
+function createdMs(m: unknown): number {
+  if (!m || typeof m !== "object") return 0;
+  const info = (m as { info?: { time?: { created?: number } } }).info;
+  return info?.time?.created ?? 0;
 }
 
 function isUserMessage(msg: unknown): boolean {
