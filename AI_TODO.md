@@ -2800,7 +2800,7 @@ Design notes:
 
 ### 129. Clean Session UX: expose detailed flags, mode semantics, live progress, and post-cleanup navigation (DONE - 70d879f)
 
-### 130. Session-id mentions must always linkize (PENDING - worktree fix in progress)
+### 130. Session-id mentions must always linkize (DONE - 2235e11 + 8e77723)
 
 ### 131. Clean Session UI: expose drop-after msg id and conditional preserve-user toggle (DONE - 952121c)
 
