@@ -4379,3 +4379,39 @@ Design notes:
 - Fix `SessionContextDial` so the button is always mounted whenever a session id exists. Known usage renders the percentage ring; unknown usage renders a `?` inside the circle with a stable accessible label and still opens `#info`.
 - Fix `SessionInfoModal` to compute context stats from the latest assistant row that actually has token telemetry, so synthetic event rows cannot hide real usage or produce `NaN%`.
 - Validate in the worktree, integrate by rebase + fast-forward merge to `main-nowaker`, deploy through `scripts/deploy.sh`, then push both remotes.
+
+### 184. Ctrl+K mobile palette viewport fit + close button (DONE - this commit)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> ^K window on mobile extends beyond screen height. Also, it's positioned weirdly. Like 20% margin from top, and nothing on other sides. It's excessive 20%. Let's do something like 5% on each side, and responsive to viewport size (when keyboard opens it's shrinking significantly). Also, need X button in top right.
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+
+Design notes:
+
+- Worktree: `~/projekty/webapps/portal-cmd-mobile-palette` on branch `cmd-mobile-palette`.
+- Root cause: `CommandMenu` used a bottom-sheet/grid layout on mobile and desktop-only fixed positioning (`sm:top-[10%]`), so the palette could sit with excessive top offset and no usable side gutters on Android Chrome.
+- Fix `apps/web/src/components/ui/command-menu.tsx` so the overlay uses 5vw side gutters, the modal top offset is `5%` of `--visual-viewport-height`, and max height is `90%` of the same visual viewport variable. This makes the palette shrink when the soft keyboard changes the visual viewport.
+- Add a visible top-right X button in the search row using the existing react-aria `Button` close action and `XMarkIcon`; keep Escape handling and the desktop `Esc` hint.
+- Validate in the worktree, rebase onto current `origin/main-nowaker`, fast-forward merge into the primary repo, deploy through `scripts/deploy.sh`, then push `main-nowaker` to both `origin` and `github`.

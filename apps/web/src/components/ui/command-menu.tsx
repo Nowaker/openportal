@@ -1,4 +1,4 @@
-import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { createContext, use, useEffect, useRef } from "react";
 import type {
   AutocompleteProps,
@@ -139,7 +139,7 @@ const CommandMenu = ({
           isDismissable={isDismissable}
           className={twJoin(
             "fixed inset-0 z-50 h-(--visual-viewport-height,100vh) w-screen overflow-hidden bg-black/15",
-            "grid grid-rows-[1fr_auto] justify-items-center text-center sm:grid-rows-[1fr_auto_3fr]",
+            "flex items-start justify-center px-[5vw] text-center",
             "entering:fade-in entering:animate-in entering:duration-300 entering:ease-out",
             "exiting:fade-out exiting:animate-out exiting:ease-in",
             isBlurred && "backdrop-blur-[1px] backdrop-filter",
@@ -148,12 +148,12 @@ const CommandMenu = ({
         >
           <Modal
             className={cx(
-              "row-start-2 bg-overlay text-left text-overlay-fg shadow-lg outline-none ring ring-muted-fg/15 md:row-start-1 dark:ring-border",
-              "max-h-[calc(var(--visual-viewport-height)*0.8)] w-full sm:fixed sm:top-[10%] sm:left-1/2 sm:-translate-x-1/2",
-              "rounded-t-2xl md:rounded-xl",
+              "mt-[calc(var(--visual-viewport-height,100vh)*0.05)] bg-overlay text-left text-overlay-fg shadow-lg outline-none ring ring-muted-fg/15 dark:ring-border",
+              "max-h-[calc(var(--visual-viewport-height,100vh)*0.9)] w-full",
+              "rounded-xl",
               sizes[size],
-              "entering:slide-in-from-bottom sm:entering:zoom-in-95 sm:entering:slide-in-from-bottom-0 entering:animate-in entering:duration-300 entering:ease-out",
-              "exiting:slide-out-to-bottom sm:exiting:zoom-out-95 sm:exiting:slide-out-to-bottom-0 exiting:animate-out exiting:ease-in",
+              "entering:zoom-in-95 entering:animate-in entering:duration-300 entering:ease-out",
+              "exiting:zoom-out-95 exiting:animate-out exiting:ease-in",
               className,
             )}
           >
@@ -230,6 +230,13 @@ const CommandMenuSearch = ({
         placeholder={placeholder ?? "Search..."}
         className="w-full min-w-0 bg-transparent px-2.5 py-1.5 text-sm text-fg placeholder-muted-fg outline-hidden focus:outline-hidden [&::-ms-reveal]:hidden [&::-webkit-search-cancel-button]:hidden"
       />
+      <Button
+        onPress={() => state?.close()}
+        aria-label="Close"
+        className="rounded-md p-1.5 text-muted-fg hover:bg-muted hover:text-fg"
+      >
+        <XMarkIcon className="size-4" />
+      </Button>
       {escapeButton && (
         <Button
           onPress={() => state?.close()}
