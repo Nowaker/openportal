@@ -4290,7 +4290,7 @@ Design notes:
 - Verified: `bunx tsc --noEmit` clean on touched files (pre-existing errors in untouched files documented in the typecheck pass); 181/181 tests pass; `scripts/build.sh` green; new bundle `/assets/index-ByQNKyST.js`.
 - Net effect: every visible chat message — text, tool-only, compaction-only, error-only, past-permission-only — now exposes the timestamp + permalink in the same right-aligned meta stack the text messages use. Session-level error box gets the same treatment from the authoritative `event.time` field.
 
-### 182. Deploy-time browser render check against a seeded multi-feature test session (PENDING - never implemented; salvaged from an orphaned AI_TODO fragment)
+### 182. Deploy-time browser render check against a seeded multi-feature test session (DONE - pending commit)
 
 User prompt (verbatim):
 
@@ -4321,6 +4321,16 @@ Design notes (from the original fragment):
   - opencode's `directory` field on the session row points at `~/projekty/nowaker/vibekick-test/`. That directory MUST exist when the check runs (opencode may 500 some endpoints if not). `seed.sh` ensures the directory exists + is a git repo, idempotently.
   - The render check needs a working opencode at `:4096` because openportal proxies live state. The dev/prod probes already rely on prod opencode being up; that requirement carries over.
 - Integration: merge worktree to `main-nowaker`, deploy via `scripts/deploy.sh` (which now runs the new gate end-to-end), push to `origin` + `github`.
+
+Shipped design:
+
+- Worktree: `~/projekty/webapps/portal-deploy-render-check` on `feat/deploy-render-check-182`.
+- Seed script: `scripts/test-session/seed.mjs` writes the stable fixture session `ses_openportal_render_check` into OpenPortal's SQLite cache tables (`sessions_cache`, `messages_cache`) instead of mutating opencode-owned rows. This exercises OpenPortal's source-of-truth cache path and avoids minting opencode-owned ids in live opencode storage.
+- Wrapper: `scripts/test-session/seed.sh` runs the seed script from the repo root. The script also ensures `~/projekty/nowaker/vibekick-test` exists and is a git repo.
+- Browser check: `scripts/check-session-renders.ts` drives `/usr/bin/chromium` headlessly over CDP, loads `/session/ses_openportal_render_check?server=<active server id>`, and fails on console errors, runtime exceptions, 5xx network responses, empty chat state, missing fixture messages, or missing fixture tool rows.
+- Deploy integration: `scripts/deploy.sh` seeds and checks dev before prod promotion, then seeds and checks prod after prod probe. Escape hatch: `DEPLOY_SKIP_SESSION_RENDER_CHECK=1`.
+- Documentation: `AGENTS.md` build/deploy cycle now lists the seeded session and Chromium render gate.
+- Verified in worktree: `bash scripts/test-session/seed.sh`; `bun scripts/check-session-renders.ts http://100.105.229.19:5000/` -> `render check ok`, `messages: 7`, `toolcalls: 5`; `bash scripts/build.sh` green with `/assets/index-BqvKXeG5.js`. Full `cd apps/web && bunx tsc --noEmit` still reports pre-existing unrelated errors in untouched app files (`agent-select.tsx`, `app-sidebar-nav.tsx`, `app-sidebar.tsx`, `companion-telemetry-panel.tsx`, etc.); no errors mention the changed scripts.
 
 
 ### 183. Session context dial must stay visible with unknown fallback (DONE - 03a51a4)

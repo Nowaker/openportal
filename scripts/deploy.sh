@@ -30,6 +30,9 @@
 #                     successful build, but a build that "works"
 #                     by tsc + builds clean but is functionally
 #                     broken would now go straight to prod.
+#   DEPLOY_SKIP_SESSION_RENDER_CHECK
+#                     set to 1 to bypass the headless browser session
+#                     route render check (NOT RECOMMENDED).
 
 set -euo pipefail
 
@@ -66,6 +69,24 @@ probe() {
   return 1
 }
 
+seed_render_check_session() {
+  local label="$1"
+  local db_path="$2"
+  echo "===== seed render-check session ($label) ====="
+  OPENPORTAL_DB_PATH="$db_path" bun scripts/test-session/seed.mjs
+}
+
+check_session_render() {
+  local label="$1"
+  local url="$2"
+  if [ "${DEPLOY_SKIP_SESSION_RENDER_CHECK:-0}" = "1" ]; then
+    echo "$label render check: skipped"
+    return 0
+  fi
+  echo "===== $label browser session render check ====="
+  OPENPORTAL_RENDER_CHECK_URL="$url" bun scripts/check-session-renders.ts
+}
+
 echo "===== build ====="
 bash scripts/build.sh
 
@@ -78,9 +99,11 @@ expected_hash="$(printf '%s' "$current_entry" | grep -oE 'index-[A-Za-z0-9_-]+\.
 echo "build entry: $current_entry"
 
 if [ "${DEPLOY_SKIP_DEV:-0}" != "1" ]; then
+  seed_render_check_session "dev" "$HOME/.local/share/openportal-dev/openportal.db"
   echo "===== dev restart (serves apps/web/.output) ====="
   systemctl --user restart openportal-dev.service
   probe "dev" "$DEV_URL" "$expected_hash" 15
+  check_session_render "dev" "$DEV_URL"
 fi
 
 echo "===== promote .output -> .output-released ====="
@@ -99,8 +122,10 @@ fi
 echo "released entry: $released_entry"
 
 echo "===== prod restart (serves apps/web/.output-released) ====="
+seed_render_check_session "prod" "$HOME/.local/share/openportal/openportal.db"
 systemctl --user restart openportal.service
 probe "prod" "$PROD_URL" "$expected_hash" 60
+check_session_render "prod" "$PROD_URL"
 
 echo "===== deploy ok ====="
 echo "entry:    $current_entry"

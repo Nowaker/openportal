@@ -309,20 +309,31 @@ It wraps `scripts/build.sh` plus the dev-first sequence:
 
 1. Build the bundle via `scripts/build.sh` (see below for what it
    guarantees on its own).
-2. Restart `openportal-dev.service` (port 5001, isolated DB/config).
-3. Probe `http://100.105.229.19:5001/` until it serves the new
+2. Seed the render-check fixture session into the dev OpenPortal
+   SQLite cache.
+3. Restart `openportal-dev.service` (port 5001, isolated DB/config).
+4. Probe `http://100.105.229.19:5001/` until it serves the new
    asset hash (max 15s).
-4. ONLY if dev came up green, restart `openportal.service` (port
-   5000) and probe `http://100.105.229.19:5000/` for the same
-   hash.
-5. Exit non-zero (and leave prod untouched) if any probe fails.
+5. Run the headless browser render check against the dev session
+   route. This loads the seeded session page in Chromium and fails on
+   console errors, runtime exceptions, 5xx XHR/fetches, missing
+   fixture messages, or missing fixture tool rows.
+6. ONLY if dev came up green, seed the same fixture into the prod
+   OpenPortal cache.
+7. Restart `openportal.service` (port 5000) and probe
+   `http://100.105.229.19:5000/` for the same hash.
+8. Run the same browser render check against prod.
+9. Exit non-zero (and leave prod untouched where possible) if any
+   probe or render check fails.
 
 This catches asset-pipeline regressions on the side channel before
 they bounce the user's prod chat sessions. The dev portal has
 `TimeoutStopSec=2` so the side-channel hop only costs ~5s; prod
 keeps its 30s for clean SSE drain. Override knobs:
 `DEPLOY_SKIP_DEV=1` (NOT RECOMMENDED) bypasses the dev probe;
-`DEPLOY_DEV_URL` / `DEPLOY_PROD_URL` retarget the probes.
+`DEPLOY_SKIP_SESSION_RENDER_CHECK=1` (NOT RECOMMENDED) bypasses
+the Chromium session-route render gate; `DEPLOY_DEV_URL` /
+`DEPLOY_PROD_URL` retarget the probes.
 
 Then: 6. Verify in the browser. 7. Commit (atomic). 8. Push to
 BOTH remotes (`origin` gitlab + `github`).
