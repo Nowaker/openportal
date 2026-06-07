@@ -2897,7 +2897,7 @@ Design notes:
 - Preserve current behavior for `./AI_TODO.md` and `AI_TODO.md` (already linkized in prose); add missing coverage in code-formatted text.
 - Keep fenced code blocks readable (fix single-letter regression) while adding linkization only where intended.
 
-### 133. Archive confirmation split by trigger source (PENDING - in progress)
+### 133. Archive confirmation split by trigger source (DONE - 21163c3)
 
 User prompt (verbatim):
 
