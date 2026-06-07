@@ -51,6 +51,7 @@ export function StickyUserPromptOverlay({
   const [expanded, setExpanded] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
   const [maxLines, setMaxLines] = useState(2);
+  const [isMobile, setIsMobile] = useState(false);
   const rafRef = useRef(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -142,7 +143,9 @@ export function StickyUserPromptOverlay({
     const compute = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      if (w < 640) setMaxLines(2);
+      const mobile = w < 640;
+      setIsMobile(mobile);
+      if (mobile) setMaxLines(2);
       else if (h >= 1300) setMaxLines(5);
       else if (h >= 1000) setMaxLines(4);
       else setMaxLines(3);
@@ -318,7 +321,11 @@ export function StickyUserPromptOverlay({
         </div>
         <MessageMetaStack
           messageId={currentId}
-          className="absolute bottom-2 right-3 max-w-[calc(100%-1.5rem)] rounded bg-overlay/95 px-1 text-[10px] text-muted-fg/80 backdrop-blur-sm"
+          className={
+            isMobile
+              ? "px-3 pb-2 pt-0 text-[10px] text-muted-fg/80"
+              : "absolute bottom-2 right-3 max-w-[calc(100%-1.5rem)] rounded bg-overlay/95 px-1 text-[10px] text-muted-fg/80 backdrop-blur-sm"
+          }
           align="right"
           inline
           copyText={copyText}
