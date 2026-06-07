@@ -723,11 +723,13 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
       data-slot="sidebar-nav"
       className="isolate sticky top-0 z-40 flex flex-col shrink-0 border-b bg-bg text-fg min-h-[3.5rem]"
     >
-      <div
-        className="flex flex-1 min-w-0 flex-col"
-        style={clusterWidth > 0 ? { paddingRight: `${clusterWidth}px` } : undefined}
-      >
-        <div className="flex h-[3.5rem] items-center gap-x-2 px-4">
+      <div className="flex flex-1 min-w-0 flex-col">
+        <div
+          className="flex h-[3.5rem] items-center gap-x-2 px-4"
+          style={
+            clusterWidth > 0 ? { paddingRight: `${clusterWidth}px` } : undefined
+          }
+        >
           <span className="flex items-center gap-x-1 min-w-0 flex-1">
         <SidebarTrigger className="-ml-2 px-0 shrink-0" />
         {showPageTitle && (

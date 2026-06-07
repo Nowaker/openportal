@@ -4515,3 +4515,15 @@ Design notes:
 - `PermalinkGapBanner` now treats `gapCount <= 50` as a single-page gap: top/bottom chunk buttons are hidden, the all-load button label becomes `Load all`, and the default message becomes `Gap of N messages in between.`
 - Larger gaps keep the prior three-action permalink UX and the explicit `Load all (slow)` label.
 - Validate in the worktree, rebase onto current `origin/main-nowaker`, fast-forward merge into the primary repo, deploy through `scripts/deploy.sh`, then push `main-nowaker` to both `origin` and `github`.
+
+### 187. Topbar alert backgrounds must span the chat-log width (DONE - this commit)
+
+User prompt (verbatim):
+
+> i think one last defect around the alerts is that they don't extend to the full weidth of the chat log. they end right before where session info / pin / hamburger begin - speaking of x coordinate.
+
+Design notes:
+
+- Root cause: `AppSidebarNav` put the measured action-cluster reservation (`paddingRight: clusterWidth`) on the entire left/topbar column. That correctly kept title text away from the absolute action buttons, but it also shortened the banner stack itself, so alert backgrounds ended at the x-coordinate where Session Info / Pin / hamburger started.
+- Fix `apps/web/src/components/app-sidebar-nav.tsx` so the measured padding applies only to the fixed-height title row. Leave the banner stack outside that reservation, letting `CompactBanner` backgrounds span the full content width while title text still clears the action cluster.
+- Validate with the worktree browser route and deploy through `scripts/deploy.sh`; then push `main-nowaker` to both remotes.
