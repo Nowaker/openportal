@@ -16,6 +16,15 @@ function buildPresencePayload() {
   return { ip: p.ip, isLocal: p.isLocal, at: p.at, ageMs: Date.now() - p.at };
 }
 
+function webEndpointFor(host: string, port: number, explicit?: string): string {
+  const base = explicit?.trim() || `http://${host}:${port}`;
+  try {
+    return new URL(base).toString().replace(/\/$/, "");
+  } catch {
+    return `http://${host}:${port}`;
+  }
+}
+
 // /api/instance/self — tell the browser which server this Portal UI is
 // bound to. Resolution order:
 //
@@ -119,6 +128,7 @@ export default defineHandler(async (event) => {
         directory: undefined,
         port: fresh.port,
         hostname: fresh.host,
+        webEndpoint: webEndpointFor(fresh.host, fresh.port, fresh.webEndpoint),
         ephemeral: fresh.ephemeral,
       },
       health: { openportal: "up", opencode: "up" } as HealthShape,
@@ -167,6 +177,7 @@ export default defineHandler(async (event) => {
         directory: me.directory,
         port: me.opencodePort,
         hostname: me.hostname,
+        webEndpoint: webEndpointFor(me.hostname, me.opencodePort),
         ephemeral: false,
       },
       health: { openportal: "up", opencode: "up" } as HealthShape,

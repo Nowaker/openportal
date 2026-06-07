@@ -25,6 +25,7 @@ const addSchema = z.object({
   label: z.string().min(1).max(120),
   host: z.string().min(1).max(255),
   port: z.int().min(1).max(65535),
+  webEndpoint: z.string().min(1).max(2048).optional(),
   ephemeral: z.boolean().optional(),
   discoveryHint: z
     .object({ kind: z.literal("opencode-desktop") })
@@ -44,6 +45,7 @@ export default defineHandler(async (event) => {
       label: body.label,
       host: body.host,
       port: body.port,
+      webEndpoint: body.webEndpoint,
       ephemeral: body.ephemeral,
       discoveryHint: body.discoveryHint,
     });

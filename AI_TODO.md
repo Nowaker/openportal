@@ -4607,3 +4607,69 @@ Design notes:
   - Tools -> Templates rename.
   - Path completion entries for `/api/fs/list`.
   - Workspace-aware "create here" flow from sidebar / picker.
+
+### 191. Saved server ids, editable addresses, and OpenCode web links (DONE - this commit)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> [analyze-mode]
+> ANALYSIS MODE. Gather context before diving deep:
+>
+> CONTEXT GATHERING (parallel):
+> - 1-2 explore agents (codebase patterns, implementations)
+> - 1-2 librarian agents (if external library involved)
+> - Direct tools: Grep, AST-grep, LSP for targeted searches
+>
+> IF COMPLEX - DO NOT STRUGGLE ALONE. Consult specialists:
+> - **Oracle**: Conventional problems (architecture, debugging, complex logic)
+> - **Artistry**: Non-conventional problems (different approach needed)
+>
+> SYNTHESIZE findings before proceeding.
+> ---
+> MANDATORY delegate_task params: ALWAYS include load_skills and run_in_background when calling delegate_task. Evaluate available skills before dispatch - pass task-appropriate skills when relevant, pass [] ONLY when no skill matches the task domain.
+> Example: delegate_task(subagent_type="explore", prompt="...", run_in_background=true, load_skills=[])
+>
+> ---
+>
+> server list: saved servers on the list  should disclose its server id. for example, i'm currently prompting from srv-9myqtdk1 but i have no idea which item on the list is that server.
+> second, i'd like to be able to change the address of a saved server. the purpose is simple: there's many per-server settings, and if the address changes, i want to preserve those settings and not start from scratch.
+>
+> another thing is, we need a second optional field to define the web endpoint for that given opencode.
+> sure, a server like this one:
+> nowaker     2355  108  2.6 104231500 3508408 ?   Rsl  Jun06 451:37 /home/nowaker/projekty/webapps/opencode-build/bin/opencode --log-level DEBUG serve --hostname 100.105.229.19
+> the web endpoint is 100.105.229.19:4096, it will work, but some deployments also have a https reverse proxy with a nice vhost to use instead.
+> so i'd like to manually define https://opencode.ts.nowaker.net/ for it.
+>
+> finally, the reason to define this web end point is i want hamburger > Open in OpenCode Web. which will open the same session in opencode regular ui.
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+
+User prompt (verbatim):
+
+> continue
+
+Design notes:
+
+- Saved/configured server rows must visibly disclose the stable OpenPortal server id (for example `srv-9myqtdk1`) so the `?server=` permalink value can be mapped to a row in the UI.
+- Add an edit path for the saved server address/port without creating a new server id, preserving all per-server settings/history/credentials tied to that id.
+- Add an optional per-server OpenCode web endpoint URL (for example `https://opencode.ts.nowaker.net/`). If unset, derive the default regular OpenCode web base from the server's current HTTP endpoint.
+- Add a session hamburger action `Open in OpenCode Web` that opens the current session in the regular opencode web UI using the configured web endpoint and current session id. Because it navigates externally, implement it as a real link per the navigation-link rule.
+- Use a worktree, validate with type-check/build/deploy/browser QA, merge cleanly into `main-nowaker`, then push both remotes.

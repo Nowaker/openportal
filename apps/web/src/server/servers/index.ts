@@ -104,6 +104,7 @@ export interface ServerListEntry {
   label: string;
   host: string;
   port: number;
+  webEndpoint?: string;
   // Visible host:port may differ from `host:port` when an ephemeral
   // configured server has been re-discovered to a new endpoint. The
   // registry's stored port becomes a stable handle; liveHost/livePort
@@ -230,6 +231,7 @@ async function buildConfiguredEntries(
         label: server.label,
         host: server.host,
         port: server.port,
+        webEndpoint: server.webEndpoint,
         liveHost: liveHost && liveHost !== server.host ? liveHost : undefined,
         livePort: livePort && livePort !== server.port ? livePort : undefined,
         resolvedAddress,

@@ -20,6 +20,7 @@ import {
   ArrowDownTrayIcon,
   ArrowLeftIcon,
   ArrowPathRoundedSquareIcon,
+  ArrowTopRightOnSquareIcon,
   BellIcon,
   BoltIcon,
   BoltSlashIcon,
@@ -113,6 +114,27 @@ import {
 } from "@/lib/session-indicators";
 import { cascadeIdsToAncestors } from "@/lib/project-path";
 import type { Session } from "@opencode-ai/sdk";
+
+function buildOpenCodeWebSessionHref(
+  instance: { hostname?: string; port: number; webEndpoint?: string } | null,
+  sessionId: string | undefined,
+): string | null {
+  if (!instance || !sessionId) return null;
+  const fallbackHost =
+    instance.hostname && instance.hostname !== "0.0.0.0"
+      ? instance.hostname
+      : typeof window !== "undefined"
+        ? window.location.hostname
+        : "127.0.0.1";
+  const base = instance.webEndpoint || `http://${fallbackHost}:${instance.port}`;
+  try {
+    const url = new URL(base);
+    if (!url.pathname.endsWith("/")) url.pathname += "/";
+    return new URL(`session/${encodeURIComponent(sessionId)}`, url).toString();
+  } catch {
+    return null;
+  }
+}
 
 // Take the deepest path component and use it as a short project label.
 // session.directory can be absolute ('/home/u/projekty/nowaker/blah') or
@@ -290,6 +312,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
     shouldThrow: false,
   });
   const sessionId = sessionMatch?.params?.id;
+  const openCodeWebHref = buildOpenCodeWebSessionHref(instance, sessionId);
   const sessions: Session[] = sessionsData ?? [];
   const currentSession = sessions.find((s) => s.id === sessionId);
   // New-session route: the topbar should mirror the actual-session layout
@@ -1070,6 +1093,19 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                       Open in VS Code
                     </MenuItem>
                   )}
+                  <MenuItem
+                    href={openCodeWebHref ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    isDisabled={!openCodeWebHref}
+                    data-test="portal-hamburger-open-opencode-web"
+                  >
+                    <ArrowTopRightOnSquareIcon
+                      className="size-4"
+                      data-slot="icon"
+                    />
+                    Open in OpenCode Web
+                  </MenuItem>
                   <MenuItem
                     onAction={() => {
                       if (!port || !sessionId) return;

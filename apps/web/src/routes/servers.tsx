@@ -8,6 +8,7 @@ import {
   ClockIcon,
   FolderOpenIcon,
   KeyIcon,
+  PencilSquareIcon,
   PlusIcon,
   ServerStackIcon,
   SignalIcon,
@@ -21,6 +22,7 @@ import {
   Dialog as PrimitiveDialog,
 } from "react-aria-components";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageTitle } from "@/components/ui/typography";
 import { formatFullDateTime } from "@/lib/format-time";
@@ -80,6 +82,7 @@ interface ServerListEntry {
   label: string;
   host: string;
   port: number;
+  webEndpoint?: string;
   liveHost?: string;
   livePort?: number;
   // Server-side DNS lookup result for `host` when it's a hostname.
@@ -100,6 +103,12 @@ interface ServerListEntry {
 interface ServerListResponse {
   activeId: string | null;
   servers: ServerListEntry[];
+}
+
+interface ServerUpdatePayload {
+  host: string;
+  port: number;
+  webEndpoint: string | null;
 }
 
 const fetcher = async (url: string) => {
@@ -215,6 +224,8 @@ function ServersPage() {
             id: picked.id,
             name: picked.label,
             port: picked.port,
+            hostname: picked.host,
+            webEndpoint: picked.webEndpoint,
           });
         }
         // _app.tsx's redirect-to-/servers effect fires when
@@ -405,6 +416,43 @@ function ServersPage() {
     }
   };
 
+  const saveServer = async (
+    entry: ServerListEntry,
+    patch: ServerUpdatePayload,
+  ) => {
+    setBusyId(entry.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/servers/${encodeURIComponent(entry.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`save failed: ${res.status} ${txt}`);
+      }
+      const fresh = await mutate();
+      const picked = fresh?.servers.find((s) => s.id === entry.id);
+      if (picked?.isActive) {
+        setInstance({
+          id: picked.id,
+          name: picked.label,
+          port: picked.port,
+          hostname: picked.host,
+          webEndpoint: picked.webEndpoint,
+        });
+        await globalMutate("/api/instance/self");
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "save failed";
+      setError(message);
+      throw e;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const configured = (data?.servers ?? []).filter((s) => s.configured);
   const discovered = (data?.servers ?? []).filter((s) => !s.configured);
 
@@ -459,6 +507,7 @@ function ServersPage() {
               })
             }
             onOpen={() => void navigate({ to: "/", search: (prev) => prev })}
+            onSave={(patch) => saveServer(s, patch)}
             onConfigureDirs={() =>
               setDirectoriesTarget({ serverId: s.id, label: s.label })
             }
@@ -558,6 +607,7 @@ interface ServerCardProps {
   onRemove: () => void;
   onSetCreds: () => void;
   onConfigureDirs: () => void;
+  onSave: (patch: ServerUpdatePayload) => Promise<void>;
   // Navigate into the bound app for THIS server (only meaningful when
   // entry.isActive and entry.status is not offline).
   onOpen: () => void;
@@ -571,8 +621,25 @@ function ServerCard({
   onRemove,
   onSetCreds,
   onConfigureDirs,
+  onSave,
   onOpen,
 }: ServerCardProps) {
+  const [editing, setEditing] = useState(false);
+  const [editHost, setEditHost] = useState(entry.host);
+  const [editPort, setEditPort] = useState(String(entry.port));
+  const [editWebEndpoint, setEditWebEndpoint] = useState(
+    entry.webEndpoint ?? "",
+  );
+  const [editError, setEditError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (editing) return;
+    setEditHost(entry.host);
+    setEditPort(String(entry.port));
+    setEditWebEndpoint(entry.webEndpoint ?? "");
+    setEditError(null);
+  }, [editing, entry.host, entry.port, entry.webEndpoint]);
+
   // Cred-lookup hint shown on the card. Same data the Discovered
   // section uses, but rendered here too so the user sees probe
   // progress on freshly-added configured servers without having to
@@ -611,6 +678,34 @@ function ServerCard({
   const iconClasses = reachable
     ? "bg-emerald-500/10 text-emerald-600"
     : "bg-muted/30 text-muted-fg";
+  const effectiveWebEndpoint =
+    entry.webEndpoint ??
+    `http://${entry.liveHost ?? entry.host}:${entry.livePort ?? entry.port}`;
+
+  const saveEdit = async () => {
+    const nextHost = editHost.trim();
+    const nextPort = Number(editPort);
+    if (!nextHost) {
+      setEditError("Host is required.");
+      return;
+    }
+    if (!Number.isInteger(nextPort) || nextPort < 1 || nextPort > 65535) {
+      setEditError("Port must be between 1 and 65535.");
+      return;
+    }
+    setEditError(null);
+    try {
+      await onSave({
+        host: nextHost,
+        port: nextPort,
+        webEndpoint: editWebEndpoint.trim() || null,
+      });
+      setEditing(false);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "save failed");
+    }
+  };
+
   return (
     <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-bg p-4 shadow-sm">
       <div
@@ -633,13 +728,60 @@ function ServerCard({
           <StatusPill status={entry.status} />
         </div>
         <div className="text-xs text-muted-fg font-mono truncate">
-          {entry.host}:{entry.port}
-          {entry.resolvedAddress && entry.resolvedAddress !== entry.host
-            ? ` (${entry.resolvedAddress})`
-            : ""}
-          {liveLabel ? ` → ${liveLabel}` : ""}
-          {entry.ephemeral ? " · ephemeral" : ""}
+          ID: {entry.id}
         </div>
+        {editing ? (
+          <div className="grid gap-2 pt-1 sm:grid-cols-[minmax(0,1fr)_6rem]">
+            <label className="text-xs text-muted-fg">
+              Host
+              <Input
+                required
+                value={editHost}
+                onChange={(e) => setEditHost(e.target.value)}
+                className="mt-1 font-mono"
+              />
+            </label>
+            <label className="text-xs text-muted-fg">
+              Port
+              <Input
+                required
+                value={editPort}
+                onChange={(e) => setEditPort(e.target.value)}
+                inputMode="numeric"
+                className="mt-1 font-mono"
+              />
+            </label>
+            <label className="text-xs text-muted-fg sm:col-span-2">
+              OpenCode web endpoint (optional)
+              <Input
+                value={editWebEndpoint}
+                onChange={(e) => setEditWebEndpoint(e.target.value)}
+                placeholder={`http://${entry.host}:${entry.port}`}
+                className="mt-1 font-mono"
+              />
+            </label>
+            {editError && (
+              <div className="text-xs text-danger-subtle-fg sm:col-span-2">
+                {editError}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-fg font-mono truncate">
+              {entry.host}:{entry.port}
+              {entry.resolvedAddress && entry.resolvedAddress !== entry.host
+                ? ` (${entry.resolvedAddress})`
+                : ""}
+              {liveLabel ? ` → ${liveLabel}` : ""}
+              {entry.ephemeral ? " · ephemeral" : ""}
+            </div>
+            <div className="text-xs text-muted-fg font-mono truncate">
+              Web UI: {effectiveWebEndpoint}
+              {!entry.webEndpoint ? " (default)" : ""}
+            </div>
+          </>
+        )}
         {configuredCredHint && (
           <div className="flex items-center gap-1.5 text-xs">
             {configuredCredHint.spinner && (
@@ -660,6 +802,36 @@ function ServerCard({
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
+        {editing ? (
+          <>
+            <Button
+              size="sm"
+              intent="primary"
+              onPress={saveEdit}
+              isDisabled={busy}
+            >
+              Save
+            </Button>
+            <Button
+              size="sm"
+              intent="secondary"
+              onPress={() => setEditing(false)}
+              isDisabled={busy}
+            >
+              <XMarkIcon className="size-4" />
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            intent="secondary"
+            onPress={() => setEditing(true)}
+            isDisabled={busy}
+            aria-label="Edit server address and web endpoint"
+          >
+            <PencilSquareIcon className="size-4" />
+          </Button>
+        )}
         {entry.isActive && entry.status !== "offline" && (
           <Button size="sm" intent="primary" onPress={onOpen} isDisabled={busy}>
             Open
@@ -935,6 +1107,7 @@ function ManualAddCard({
   const [open, setOpen] = useState(false);
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState("4096");
+  const [webEndpoint, setWebEndpoint] = useState("");
   const [label, setLabel] = useState("127.0.0.1:4096");
   const [labelDirty, setLabelDirty] = useState(false);
   const [ephemeral, setEphemeral] = useState(false);
@@ -1004,6 +1177,7 @@ function ManualAddCard({
           label: label || `${host}:${port}`,
           host,
           port: Number(port),
+          webEndpoint: webEndpoint.trim() || undefined,
           ephemeral,
         }),
       });
@@ -1118,6 +1292,7 @@ function ManualAddCard({
         label: `${host}:${finding.port}`,
         host,
         port: finding.port,
+        webEndpoint: webEndpoint.trim() || undefined,
       };
       if (finding.username && finding.password) {
         body.auth = {
@@ -1245,6 +1420,21 @@ function ManualAddCard({
           />
         </label>
       </div>
+
+      <label className="text-sm block">
+        <div className="text-muted-fg mb-1">
+          OpenCode web endpoint{" "}
+          <span className="text-muted-fg/70 normal-case">
+            (optional)
+          </span>
+        </div>
+        <Input
+          value={webEndpoint}
+          onChange={(e) => setWebEndpoint(e.target.value)}
+          placeholder={`http://${host}:${port}`}
+          className="font-mono"
+        />
+      </label>
 
       <label className="flex items-center gap-2 text-sm text-muted-fg">
         <input

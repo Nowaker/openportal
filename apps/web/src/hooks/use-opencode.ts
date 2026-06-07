@@ -98,6 +98,7 @@ export interface SelfInstance {
   directory: string;
   port: number;
   hostname: string;
+  webEndpoint?: string;
 }
 
 export function useSelfInstance() {

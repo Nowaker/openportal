@@ -52,6 +52,7 @@ export interface ConfiguredServer {
   label: string;
   host: string;
   port: number;
+  webEndpoint?: string;
   ephemeral: boolean;
   discoveryHint?: DiscoveryHint;
   addedAt: string;
@@ -182,6 +183,21 @@ function generateServerId(): string {
   return "srv-" + Math.random().toString(36).slice(2, 10);
 }
 
+export function normalizeWebEndpoint(
+  value: string | undefined,
+): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+  const url = new URL(withScheme);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Web endpoint must be an http or https URL");
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
 export function listConfiguredServers(): ConfiguredServer[] {
   const doc = readRaw();
   if (!Array.isArray(doc.servers)) return [];
@@ -224,6 +240,7 @@ export interface AddServerInput {
   label: string;
   host: string;
   port: number;
+  webEndpoint?: string;
   ephemeral?: boolean;
   discoveryHint?: DiscoveryHint;
 }
@@ -246,6 +263,7 @@ export function addServer(input: AddServerInput): ConfiguredServer {
     label: input.label,
     host: input.host,
     port: input.port,
+    webEndpoint: normalizeWebEndpoint(input.webEndpoint),
     ephemeral: Boolean(input.ephemeral),
     discoveryHint: input.discoveryHint,
     addedAt: new Date().toISOString(),

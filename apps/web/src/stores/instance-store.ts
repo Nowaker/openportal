@@ -6,6 +6,7 @@ export interface Instance {
   name: string;
   port: number;
   hostname?: string;
+  webEndpoint?: string;
 }
 
 interface InstanceState {

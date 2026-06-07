@@ -523,13 +523,16 @@ function AppLayout() {
       if (
         !instance ||
         instance.port !== self.port ||
-        instance.id !== self.id
+        instance.id !== self.id ||
+        instance.webEndpoint !== self.webEndpoint
       ) {
         setInstance({
           id: self.id,
           name: self.name,
           port: self.port,
           hostname: typeof self.hostname === "string" ? self.hostname : undefined,
+          webEndpoint:
+            typeof self.webEndpoint === "string" ? self.webEndpoint : undefined,
         });
       }
     }
