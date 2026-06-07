@@ -2986,7 +2986,7 @@ Design notes:
   - `apps/web/src/lib/sidebar-archive-visibility.test.ts`
   - `apps/web/src/components/app-sidebar.tsx` (wire helper usage)
 
-### 137. Opencode-native session.status retry ingestion + title-bar badge surface (PENDING - in progress)
+### 137. Opencode-native session.status retry ingestion + title-bar badge surface (DONE - 311d248 + 0cd2dd18 + this commit)
 
 User prompt (verbatim):
 
@@ -3000,11 +3000,10 @@ Design notes:
   2. `apps/web/src/server/plugins/indicator-broadcaster.ts:205` hydrate path synthesises the same broken shape from `/session/status` REST output. The REST endpoint returns the same `Info` union; `.time.completed` doesn't exist on it.
 - Fix: add a new `opencode_retry: { attempt, next (absolute Unix ms), message, action? } | null` field on `SessionIndicatorState`. Separate channel from the stuck-detector-fed `retry` field so the two authoritative sources don't stomp each other. Populate from session.status SSE in both the live handler and the hydrate path. Expose via `pickBadgeStatus`.
 - Picker priority: retry surfaces BEFORE tool/thinking. The current priority chain doc had retry as #8 after thinking, which is dead code because busy=true triggers thinking first. Updated chain in `apps/web/src/lib/session-status.ts`.
-- Live countdown component (RetryCountdownBadge ticking every 1s) is a polish follow-up under this entry's todo list - this commit ships the snapshot title only.
+- Live countdown/rate-limit banner shipped in `apps/web/src/routes/_app/session/$id.tsx` via `RateLimitBanner`, ticking every 1s with attempt text and provider action/link support.
 - Worktree: `~/projekty/webapps/portal-session-status-retry` on branch `session-status-retry-ingest` off `main-nowaker` @ 5249d8d.
-- Follow-ups (also in this entry's todo list):
-  - `ai-analysis-requests/SESSION_STATUS_SIGNAL_AUDIT.md` enumerating every session.status type + relevant message Part types and surfaced-vs-dropped per portal indicator/chat path.
-  - Live verification: trigger retry on opencode and confirm portal indicator shows it end-to-end.
+- `ai-analysis-requests/SESSION_STATUS_SIGNAL_AUDIT.md` enumerates the surfaced/dropped status signals and records live verification limits.
+- Live verification: `curl http://100.105.229.19:5000/api/indicators` returned `{"sessions":[],"ok":true}` on 2026-06-07. No active retry was present to render at probe time; forcing one would require disrupting user-managed opencode, which this repo's rules forbid.
 
 ### 138. /btw (side question) - redesign to fork-archive-replay pattern (DONE - 0b9786e)
 
