@@ -2971,7 +2971,7 @@ Design notes:
 - Verify with direct curl calls against OpenCode endpoints (no SDK abstraction) and capture observed ID patterns and ordering.
 - Add an explicit AGENTS.md rule describing why local ID fabrication is dangerous for cache/order logic and can trigger stuck-loop behavior.
 
-### 136. Archive sidebar regression tests for archived placement + highlight helper logic (PENDING - in progress)
+### 136. Archive sidebar regression tests for archived placement + highlight helper logic (DONE - 5249d8d)
 
 User prompt (verbatim):
 
@@ -3062,7 +3062,7 @@ Follow-up commits:
 - 68a3103 - btw v2: fix wrong-answer bug (inherited-completion got picked as the answer) + inline thinking indicator (pending row via migration 0006 + _pending sentinel) + drop the success toast + hermetic e2e test (Bun.serve mock, no real opencode/LLM).
 - ab2308e - btw styling: /btw#N pill on both question + answer rows, mid-bg (bg-primary/[0.06]) on the answer so it reads as half-way between user-prompt bg and chat-log bg. Tooltips explain the ephemeral nature. Hooks on info._synthetic + info._btw_index from the messages.ts wrapper; existing stuck-detector-plugin synthetic path untouched.
 
-### 138. Archive/unarchive must invalidate sessions SWR cache (PENDING - in progress)
+### 138. Archive/unarchive must invalidate sessions SWR cache (DONE - 1c044ea)
 
 User prompt (verbatim):
 
