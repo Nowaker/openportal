@@ -2798,11 +2798,11 @@ Design notes:
   6. Workspace/filesystem templates remain path-aware and root-relative display (`~/projekty/...`) and are recursively discoverable in settings.
 - Additional user follow-up from reminder (same scope): FS template rows must be editable, refresh should keep list painted with a "rescanning" indicator, duplicate flow should prefill create form, and create form must include burger/init/slash fields.
 
-### 129. Clean Session UX: expose detailed flags, mode semantics, live progress, and post-cleanup navigation (PENDING)
+### 129. Clean Session UX: expose detailed flags, mode semantics, live progress, and post-cleanup navigation (DONE - 70d879f)
 
 ### 130. Session-id mentions must always linkize (PENDING - worktree fix in progress)
 
-### 131. Clean Session UI: expose drop-after msg id and conditional preserve-user toggle (PENDING)
+### 131. Clean Session UI: expose drop-after msg id and conditional preserve-user toggle (DONE - 952121c)
 
 User prompt (verbatim):
 
