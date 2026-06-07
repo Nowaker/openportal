@@ -4553,3 +4553,57 @@ Design notes:
 - Durable fix (apps/web/src/routes/_app/session/$id.tsx handleSubmit): resolve the pending question request FIRST; on no-match (registry lost it), POST session/<id>/abort to un-wedge the frozen turn, then deliver the answer as a single fresh prompt. Match path unchanged (notes prompt, then question.reply).
 - Type fix (apps/web/src/lib/question-answers.ts): QuestionLike.multiple/custom made optional (helper never reads them; opencode's QuestionInfo omits them) - clears a pre-existing TS2345 at the partitionQuestionAnswers call site that surfaced after a parallel SDK bump.
 - Verified tsc clean for touched files; question-answers tests 16/16. Worktree fix/question-unblock, integrated into main-nowaker + deployed.
+
+### 189. "Open in OpenCode Web" hamburger action discovery (DONE - User Review)
+
+User prompt (verbatim):
+
+> create a git worktree, develop/test there, merge cleanly to main, deploy, push. Need hamburger > Open in OpenCode Web, using optional per-server web endpoint URL, opening current session in opencode regular UI.
+>
+> [GOAL] Identify the hamburger/session action menu implementation, link-opening conventions, URL-driven/session id handling, and existing external-open helpers. [DOWNSTREAM] I will use findings to wire the action correctly and test it. [REQUEST] Return exact paths/functions/components, suggested insertion point, and any UI component rules. Skip implementation.
+
+Design notes:
+
+- Full discovery and architectural patterns documented in `ai-analysis-requests/OPENCODE_WEB_LINK_INTEGRATION.md`.
+- Hamburger menu implementation: `apps/web/src/components/app-sidebar-nav.tsx` lines 963-1149.
+- Menu components from `ui/menu.tsx`: `Menu`, `MenuTrigger`, `MenuContent`, `MenuItem`, `MenuSection`, `MenuSeparator`.
+- Insertion point: `app-sidebar-nav.tsx:1071` after "Open in VS Code", before "Compact session".
+- Link opening patterns: use `window.open(webUrl, '_blank')` for external URLs, unlike VSCode's `vscode://` protocol handler.
+- Session context available via `sessionId` route param, `port` from `useInstanceStore`, and `currentSession` from SWR fetch.
+- Server instance data comes from `useInstanceStore` / `useSelfInstance()`; current limitation: neither interface includes `webUrl` / `webEndpoint`.
+- UI rules apply: loading feedback, async-action feedback, and no native HTML widgets.
+- Suggested test id: `data-test="portal-hamburger-open-in-opencode"`.
+- Optional title-bar placement should use `SESSION_ACTIONS` in `title-bar-actions-store.ts`.
+
+### 190. Filesystem template backend/frontend implementation map (DONE - User Review)
+
+User prompt (verbatim):
+
+> CONTEXT: OpenPortal repo at /home/nowaker/projekty/webapps/portal. User gave go-ahead for AI_TODO #142 templates redesign Round 4, including FS template edit/duplicate/refresh/flags-at-create and Tools -> Templates rename. GOAL: Map current filesystem template backend/frontend implementation and gaps. DOWNSTREAM: I will implement FS polish in same feature worktree. REQUEST: Inspect vibekick template server libs/routes, use-vibekick-templates hook, tools-settings UI components, PathInput/Select conventions. Return exact schemas, API methods, current mutation/revalidation behavior, missing edit/duplicate/create flags, and reusable UI components. Skip implementation code.
+
+Design notes:
+
+- Full discovery and architectural map documented in `ai-analysis-requests/FILESYSTEM_TEMPLATE_IMPLEMENTATION_MAP.md`.
+- Backend library: `apps/web/src/server/lib/vibekick-templates.ts`.
+  - Core schemas: `FsTemplate` for read, `FsTemplateInput` for write.
+  - I/O functions: `writeTemplate()`, `deleteTemplate()`, `readTemplateFile()`.
+  - Filesystem scanning: `scanWorkspaceTemplates()`, `templatesForDirectory()`, `resolveWorkspaceRoot()`.
+  - Path validation: `validateTemplateLocation()` path-traversal guard.
+  - Caching layer: `getCachedSnapshot()`, `forceRebuildSnapshot()`, `applyTemplateUpdate()`, `applyTemplateDelete()`.
+- API route: `apps/web/src/server/vibekick-templates.ts`.
+  - GET supports all templates, `?directory=`, `?workspace=`, and `?rescan=1`.
+  - POST creates/updates with Zod validation and path validation.
+  - DELETE removes the file and updates the snapshot.
+- Frontend hook: `apps/web/src/hooks/use-vibekick-templates.ts`.
+  - `useAllFsTemplates()` uses SWR key `/api/vibekick-templates` with `keepPreviousData: true`.
+  - `useFsTemplatesForDirectory(dir)` is a directory-aware picker hook.
+  - `writeFsTemplate()` and `deleteFsTemplate()` patch cache in place.
+  - `forceRescanFsTemplates()` refreshes with full cache replacement.
+- UI components: `apps/web/src/components/tools-settings.tsx`.
+  - Reusable pieces include `FlagCheckbox`, `TemplateIconPicker`, `FsTemplateRow`, `NewFsTemplateForm`, and `FsTemplatesSection`.
+- Current gaps for Round 4:
+  - Template-level refresh.
+  - Directory-level refresh in the new-session picker context.
+  - Tools -> Templates rename.
+  - Path completion entries for `/api/fs/list`.
+  - Workspace-aware "create here" flow from sidebar / picker.
