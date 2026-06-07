@@ -4425,7 +4425,7 @@ Design notes:
 - Add a visible top-right X button in the search row using the existing react-aria `Button` close action and `XMarkIcon`; keep Escape handling and the desktop `Esc` hint.
 - Validate in the worktree, rebase onto current `origin/main-nowaker`, fast-forward merge into the primary repo, deploy through `scripts/deploy.sh`, then push `main-nowaker` to both `origin` and `github`.
 
-### 185. Navigation actions must be real browser links (PENDING - link-navigation audit in progress)
+### 185. Navigation actions must be real browser links (DONE - 597a1c6)
 
 User prompt (verbatim):
 
