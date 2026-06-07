@@ -3147,7 +3147,7 @@ Files:
 - `apps/web/src/components/app-sidebar-nav.tsx` (rename optimistic + rollback + error + indicator render)
 - `apps/web/src/components/app-sidebar.tsx` (indicator render on active + archived rows)
 
-### 142. Templates redesign Round 4 — synthesis after live bug + rename mandate + FS polish (IN PROGRESS - user said continue on 2026-06-07)
+### 142. Templates redesign Round 4 — synthesis after live bug + rename mandate + FS polish (DONE - 22b7b83)
 
 User prompt (verbatim - composite of analyze-mode messages across ses_1983e857fffeO7svBxOQXm5Lr8 et al.):
 
