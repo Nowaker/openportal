@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Loader } from "@/components/ui/loader";
 import {
@@ -73,7 +74,7 @@ function makeCustomId(name: string, taken: Set<string>): string {
       .trim()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "")
-      .slice(0, 40) || "tool";
+      .slice(0, 40) || "template";
   const id = `custom.${base}`;
   if (!taken.has(id)) return id;
   return `custom.${base}-${Date.now().toString(36)}`;
@@ -81,7 +82,7 @@ function makeCustomId(name: string, taken: Set<string>): string {
 
 // Inline checkbox cluster on the left side of every row. Three flags
 // per template, three columns. Fixed widths keep the columns aligned
-// vertically across rows regardless of tool name length.
+// vertically across rows regardless of template name length.
 function FlagCheckbox({
   label,
   checked,
@@ -240,7 +241,7 @@ function SystemToolRow({
         />
         <FlagCheckbox
           label="Burger"
-          title="Show in the topbar Tools (burger) menu"
+          title="Show in the topbar templates menu"
           checked={tool.isInBurger && !isDisabled}
           disabled={isDisabled}
           onChange={(next) => setBurgerVisible(tool.id, next)}
@@ -392,6 +393,7 @@ function CustomToolRow({
   const [draftName, setDraftName] = useState(tool.name);
   const [draftDescription, setDraftDescription] = useState(customDescription);
   const [draftPrompt, setDraftPrompt] = useState(tool.prompt);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!editing) {
@@ -433,7 +435,7 @@ function CustomToolRow({
         />
         <FlagCheckbox
           label="Burger"
-          title="Show in the topbar Tools (burger) menu"
+          title="Show in the topbar templates menu"
           checked={tool.isInBurger}
           onChange={(next) => setBurgerVisible(tool.id, next)}
         />
@@ -480,15 +482,7 @@ function CustomToolRow({
           <Button
             size="xs"
             intent="danger"
-            onPress={() => {
-              if (
-                typeof window !== "undefined" &&
-                !window.confirm(`Delete custom tool "${tool.name}"?`)
-              ) {
-                return;
-              }
-              removeCustomTool(tool.id);
-            }}
+            onPress={() => setDeleteConfirmOpen(true)}
           >
             Delete
           </Button>
@@ -535,7 +529,7 @@ function CustomToolRow({
               onPress={() => {
                 upsertCustomTool({
                   id: tool.id,
-                  name: draftName.trim() || "Untitled tool",
+                  name: draftName.trim() || "Untitled template",
                   description: draftDescription.trim() || undefined,
                   prompt: draftPrompt,
                 });
@@ -547,6 +541,18 @@ function CustomToolRow({
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title={`Delete custom template "${tool.name}"?`}
+        description="This removes the template from localStorage. This cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => {
+          removeCustomTool(tool.id);
+          setDeleteConfirmOpen(false);
+        }}
+        onClose={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }
@@ -581,6 +587,18 @@ function AddCustomTool({
   const [slash, setSlash] = useState(initialValues?.slash ?? false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!initialValues) return;
+    setOpen(true);
+    setName(initialValues.name ?? "");
+    setDescription(initialValues.description ?? "");
+    setPrompt(initialValues.prompt ?? "");
+    setBurger(initialValues.burger ?? true);
+    setInit(initialValues.init ?? false);
+    setSlash(initialValues.slash ?? false);
+    setError(null);
+  }, [initialValues]);
 
   if (!open) {
     return (
@@ -671,7 +689,7 @@ function AddCustomTool({
         <div className="flex items-center gap-2">
           <FlagCheckbox
             label="Burger"
-            title="Show in the topbar Tools (burger) menu (YAML enabled)"
+            title="Show in the topbar templates menu (YAML enabled)"
             checked={burger}
             onChange={setBurger}
           />
@@ -796,7 +814,7 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
       </section>
       <section className="space-y-2">
         <div>
-          <h3 className="text-sm font-semibold">Your custom templates</h3>
+          <h3 className="text-sm font-semibold">Your templates - global</h3>
           <p className="text-xs text-muted-fg">
             Templates you create live in this browser&apos;s localStorage.
             Mark Init to drag-reorder; mark Slash to register a{" "}
@@ -846,6 +864,8 @@ function FsTemplateRow({
   );
   const [draftPrompt, setDraftPrompt] = useState(template.prompt);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -879,7 +899,7 @@ function FsTemplateRow({
       <div className="flex items-center gap-2">
         <FlagCheckbox
           label="Burger"
-          title="Show in the topbar Tools menu (maps to YAML 'enabled')"
+          title="Show in the topbar templates menu (maps to YAML 'enabled')"
           checked={template.enabled}
           onChange={(v) => void onToggle("enabled", v)}
         />
@@ -924,17 +944,7 @@ function FsTemplateRow({
           <Button
             size="xs"
             intent="danger"
-            onPress={() => {
-              if (
-                typeof window !== "undefined" &&
-                !window.confirm(
-                  `Delete filesystem template "${template.name}" at ${template.location}?`,
-                )
-              ) {
-                return;
-              }
-              void onDelete();
-            }}
+            onPress={() => setDeleteConfirmOpen(true)}
           >
             Delete
           </Button>
@@ -982,6 +992,34 @@ function FsTemplateRow({
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title={`Delete filesystem template "${template.name}"?`}
+        description={
+          <div className="space-y-2 text-sm text-muted-fg">
+            <p>This removes the template file from disk.</p>
+            <p className="font-mono text-xs break-all">{template.location}</p>
+          </div>
+        }
+        confirmLabel="Delete"
+        tone="danger"
+        busy={deleting}
+        onConfirm={async () => {
+          setDeleting(true);
+          setError(null);
+          try {
+            await onDelete();
+            setDeleteConfirmOpen(false);
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Failed to delete");
+          } finally {
+            setDeleting(false);
+          }
+        }}
+        onClose={() => {
+          if (!deleting) setDeleteConfirmOpen(false);
+        }}
+      />
     </div>
   );
 }
@@ -1089,6 +1127,8 @@ function NewFsTemplateForm({
           className="flex-1"
           value={subpath}
           onChange={setSubpath}
+          onSubmit={() => void submit()}
+          entries={[]}
           placeholder="e.g. webapps/portal - empty for workspace root"
         />
       </div>
@@ -1129,7 +1169,7 @@ function NewFsTemplateForm({
         <div className="flex items-center gap-2">
           <FlagCheckbox
             label="Burger"
-            title="Show in the topbar Tools (burger) menu (YAML enabled)"
+            title="Show in the topbar templates menu (YAML enabled)"
             checked={enabled}
             onChange={setEnabled}
           />
@@ -1263,7 +1303,6 @@ function FsTemplatesSection() {
               intent="outline"
               isDisabled={rescanning}
               onPress={() => void handleRescan()}
-              title="Force a fresh filesystem scan. Toggling flags does not need this - they update instantly via the in-memory snapshot. Use this if you edited a .md file on disk and want the change picked up before the 5-min periodic refresh."
             >
               {rescanning ? "Rescanning…" : "Refresh"}
             </Button>
@@ -1374,17 +1413,17 @@ export function ToolsSettings() {
     <div className="space-y-8">
       <section className="space-y-2">
         <p className="text-xs text-muted-fg">
-          Tools appear in the topbar action menu. Three flags per tool
+          Templates appear in the topbar action menu. Four flags per template
           control where it shows up:
         </p>
         <ul className="text-xs text-muted-fg list-disc pl-5 space-y-0.5">
           <li>
-            <strong>On</strong> — visible in the topbar Tools menu.
+            <strong>Burger</strong> — visible in the topbar templates menu.
           </li>
           <li>
-            <strong>Init</strong> — pre-checked in the create-project
-            modal and concatenated (in drag order below) as the new
-            session&apos;s first prompt.
+            <strong>Init</strong> — shown and checked in the new-session
+            picker, then prepended (in drag order below) to the first
+            prompt on submit.
           </li>
           <li>
             <strong>Slash</strong> — appears in the composer
@@ -1398,7 +1437,7 @@ export function ToolsSettings() {
           </li>
         </ul>
         <p className="text-xs text-muted-fg">
-          Edit a system tool&apos;s prompt to customise it - your edit
+          Edit a system template&apos;s prompt to customise it - your edit
           survives future updates and you can hit Reset to restore the
           shipped version. Add your own templates with the button at
           the bottom. Drag the handle on any Init-marked row to
