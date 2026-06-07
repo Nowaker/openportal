@@ -4424,3 +4424,49 @@ Design notes:
 - Fix `apps/web/src/components/ui/command-menu.tsx` so the overlay uses 5vw side gutters, the modal top offset is `5%` of `--visual-viewport-height`, and max height is `90%` of the same visual viewport variable. This makes the palette shrink when the soft keyboard changes the visual viewport.
 - Add a visible top-right X button in the search row using the existing react-aria `Button` close action and `XMarkIcon`; keep Escape handling and the desktop `Esc` hint.
 - Validate in the worktree, rebase onto current `origin/main-nowaker`, fast-forward merge into the primary repo, deploy through `scripts/deploy.sh`, then push `main-nowaker` to both `origin` and `github`.
+
+### 185. Navigation actions must be real browser links (PENDING - link-navigation audit in progress)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> permalinks is the grand rule of this project. as per agents.md.
+> another rule shall be: any element that performs a navigation to somewhere, must be a link. so i can right click on it, and my browser allows me to open it in a new tab.
+> update agents.md; and perform it.
+>
+> e.g. tabs in settings - must be links.
+> navbar bottom hamburger items - must be links.
+> elements in the top right hamburger - must be links.
+> sessions in the navbar tree are links - but somehow, the pinned ones aren't.
+>
+> screen the entire app for it, and fix it.
+>
+> Nnote: "link" doesn't mean any special formatting. link means the browser recognizes it as a link, and i can shift+click it, right click it, and things happen as expected.
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+
+Design notes:
+
+- Add a project rule to `AGENTS.md`: any UI element whose action navigates to another route, hash, or external/internal destination must render as a real browser link (`<a>` / router `Link`), not a button/div with an imperative `navigate()` handler. Styling does not matter; browser link semantics do.
+- Audit the app for navigation-looking controls that are not links, especially settings tabs, bottom navbar hamburger items, top-right hamburger items, and pinned sessions.
+- Fix navigational controls so right-click, Shift/Ctrl/Cmd-click, copy-link, and open-in-new-tab work without losing existing visual styling or keyboard/touch behavior.
+- Use a worktree, validate with type-check/build/deploy/browser QA, merge cleanly into `main-nowaker`, then push both remotes.
