@@ -4290,7 +4290,7 @@ Design notes:
 - Verified: `bunx tsc --noEmit` clean on touched files (pre-existing errors in untouched files documented in the typecheck pass); 181/181 tests pass; `scripts/build.sh` green; new bundle `/assets/index-ByQNKyST.js`.
 - Net effect: every visible chat message — text, tool-only, compaction-only, error-only, past-permission-only — now exposes the timestamp + permalink in the same right-aligned meta stack the text messages use. Session-level error box gets the same treatment from the authoritative `event.time` field.
 
-### 182. Deploy-time browser render check against a seeded multi-feature test session (DONE - pending commit)
+### 182. Deploy-time browser render check against a seeded multi-feature test session (DONE - fcfb3ac)
 
 User prompt (verbatim):
 
