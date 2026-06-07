@@ -815,47 +815,11 @@ function QuestionAnswerForm({
     );
 
     try {
-      // opencode's question.reply rejects strings that don't match
-      // q.options[].label, so freeform notes ride a separate prompt
-      // posted FIRST so the assistant's next turn sees both surfaces.
-      if (customNotes.length > 0) {
-        const noteText = formatCustomNotesAsPrompt(customNotes);
-        const notesPendingId = recordPendingSubmission({
-          sessionId,
-          port,
-          text: noteText,
-          attachmentsCount: 0,
-          kind: "prompt",
-        });
-        let noteRes: Response;
-        try {
-          noteRes = await fetch(
-            `/api/opencode/${port}/session/${sessionId}/prompt`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: noteText }),
-            },
-          );
-        } catch (fetchErr) {
-          recordFailedAttempt(
-            notesPendingId,
-            fetchErr instanceof Error ? fetchErr.message : "network error",
-          );
-          throw fetchErr;
-        }
-        if (!noteRes.ok) {
-          const msg = await readErrorMessage(noteRes);
-          recordFailedAttempt(notesPendingId, msg);
-          throw new Error(msg);
-        }
-        clearPendingSubmission(notesPendingId);
-      }
-
-      // includeStale=1 keeps the question request visible after the
-      // sidebar's stale-filter would have hidden it - without it,
-      // chat moving past the question forces the text-prompt
-      // fallback and leaves opencode pending forever.
+      // Resolve the live pending question request FIRST: a live request
+      // is answered via question.reply, a lost one needs session recovery
+      // (below). includeStale=1 keeps the request visible past the
+      // sidebar's stale-filter so chat moving on doesn't force recovery
+      // while opencode still holds the request.
       const listRes = await fetch(
         `/api/opencode/${port}/questions?includeStale=1`,
       );
@@ -867,6 +831,44 @@ function QuestionAnswerForm({
         pendingQuestions.find((q) => q.sessionID === sessionId);
 
       if (match) {
+        // opencode's question.reply rejects strings that don't match
+        // q.options[].label, so freeform notes ride a separate prompt
+        // posted FIRST so the assistant's next turn sees both surfaces,
+        // then the structured answers resolve the question.
+        if (customNotes.length > 0) {
+          const noteText = formatCustomNotesAsPrompt(customNotes);
+          const notesPendingId = recordPendingSubmission({
+            sessionId,
+            port,
+            text: noteText,
+            attachmentsCount: 0,
+            kind: "prompt",
+          });
+          let noteRes: Response;
+          try {
+            noteRes = await fetch(
+              `/api/opencode/${port}/session/${sessionId}/prompt`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: noteText }),
+              },
+            );
+          } catch (fetchErr) {
+            recordFailedAttempt(
+              notesPendingId,
+              fetchErr instanceof Error ? fetchErr.message : "network error",
+            );
+            throw fetchErr;
+          }
+          if (!noteRes.ok) {
+            const msg = await readErrorMessage(noteRes);
+            recordFailedAttempt(notesPendingId, msg);
+            throw new Error(msg);
+          }
+          clearPendingSubmission(notesPendingId);
+        }
+
         const replyRes = await fetch(
           `/api/opencode/${port}/question/${match.id}/reply`,
           {
@@ -883,41 +885,52 @@ function QuestionAnswerForm({
         return;
       }
 
-      // customNotes prompt above already unblocks the session;
-      // skip the formatted-answers fallback when it shipped.
-      if (customNotes.length === 0) {
-        const fallbackText = formatAnswersAsPrompt(questions, cleanAnswers);
-        const fallbackPendingId = recordPendingSubmission({
-          sessionId,
-          port,
-          text: fallbackText,
-          attachmentsCount: 0,
-          kind: "prompt",
-        });
-        let promptRes: Response;
-        try {
-          promptRes = await fetch(
-            `/api/opencode/${port}/session/${sessionId}/prompt`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: fallbackText }),
-            },
-          );
-        } catch (fetchErr) {
-          recordFailedAttempt(
-            fallbackPendingId,
-            fetchErr instanceof Error ? fetchErr.message : "network error",
-          );
-          throw fetchErr;
-        }
-        if (!promptRes.ok) {
-          const msg = await readErrorMessage(promptRes);
-          recordFailedAttempt(fallbackPendingId, msg);
-          throw new Error(msg);
-        }
-        clearPendingSubmission(fallbackPendingId);
+      // No live question request. opencode's in-memory question registry
+      // lost the request (server restart / dead runner) while the
+      // question tool part stayed frozen at status=running. The session's
+      // in-flight assistant turn is wedged: a plain prompt just queues
+      // behind it and never runs - the user-reported "answered but still
+      // blocked" bug. Abort the wedged turn first (best-effort; a no-op
+      // when nothing is in flight) so the session un-wedges, then deliver
+      // the answer as a single fresh prompt that starts a new turn.
+      await fetch(`/api/opencode/${port}/session/${sessionId}/abort`, {
+        method: "POST",
+      }).catch(() => {});
+
+      const fallbackText =
+        customNotes.length > 0
+          ? formatCustomNotesAsPrompt(customNotes)
+          : formatAnswersAsPrompt(questions, cleanAnswers);
+      const fallbackPendingId = recordPendingSubmission({
+        sessionId,
+        port,
+        text: fallbackText,
+        attachmentsCount: 0,
+        kind: "prompt",
+      });
+      let promptRes: Response;
+      try {
+        promptRes = await fetch(
+          `/api/opencode/${port}/session/${sessionId}/prompt`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: fallbackText }),
+          },
+        );
+      } catch (fetchErr) {
+        recordFailedAttempt(
+          fallbackPendingId,
+          fetchErr instanceof Error ? fetchErr.message : "network error",
+        );
+        throw fetchErr;
       }
+      if (!promptRes.ok) {
+        const msg = await readErrorMessage(promptRes);
+        recordFailedAttempt(fallbackPendingId, msg);
+        throw new Error(msg);
+      }
+      clearPendingSubmission(fallbackPendingId);
       setSubmittedAt(Date.now());
       mutateSessionMessages(port, sessionId);
     } catch (err) {

@@ -4527,3 +4527,29 @@ Design notes:
 - Root cause: `AppSidebarNav` put the measured action-cluster reservation (`paddingRight: clusterWidth`) on the entire left/topbar column. That correctly kept title text away from the absolute action buttons, but it also shortened the banner stack itself, so alert backgrounds ended at the x-coordinate where Session Info / Pin / hamburger started.
 - Fix `apps/web/src/components/app-sidebar-nav.tsx` so the measured padding applies only to the fixed-height title row. Leave the banner stack outside that reservation, letting `CompactBanner` backgrounds span the full content width while title text still clears the action cluster.
 - Validate with the worktree browser route and deploy through `scripts/deploy.sh`; then push `main-nowaker` to both remotes.
+
+### 188. Integrate question fix into local main, deploy, and unblock the wedged session (DONE - this commit)
+
+User prompt (verbatim):
+
+> must always integrate with local main branch.
+> is it integrated? if not, integrate.
+>
+> then check if it works.
+>
+> this session is blocked https://portal.desktop.ts.nowaker.net:8443/session/ses_17bdeb78cffe5yC8BDbsVjWDgM?server=srv-9myqtdk1 on a question.
+> i responded in openportal with custom answer: `where you see H: A: it's totally fake. ai didn't call anything. perform actual tool calls idiot.`
+>
+> and it is still blocked.
+>
+> when deployed to main-nowaker, navigate to https://portal.desktop.ts.nowaker.net:8443/session/ses_17bdeb78cffe5yC8BDbsVjWDgM?server=srv-9myqtdk1 via chrome/mcp and reanswer the question, and see it unblock.
+> if it doesn't unblock, well, fix the underlying issue. the ultimate fix is it gets unblocked.
+
+Design notes:
+
+- Integration verified: commit 0a01c2e (question reply split) is already an ancestor of local main-nowaker HEAD; fix files present, partitionQuestionAnswers wired. No re-integration needed.
+- Root cause of the still-blocked session: opencode's in-memory question registry (GET /question) had lost the request (server restart / dead runner) while the question tool part on the assistant message stayed frozen at status=running with time.completed=None. The session's in-flight assistant turn was wedged; the question form could not reply (no requestID) and fell through to a plain text prompt that just queued behind the dead turn (two such user messages had piled up unprocessed).
+- Operational unblock of ses_17bdeb78cffe5yC8BDbsVjWDgM: POST session/abort + POST session/prompt_async (anthropic/claude-opus-4-7) directly against the active host 192.168.10.10:4096, delivering the user's reanswer. Verified: session resumed with real bash/read tool calls.
+- Durable fix (apps/web/src/routes/_app/session/$id.tsx handleSubmit): resolve the pending question request FIRST; on no-match (registry lost it), POST session/<id>/abort to un-wedge the frozen turn, then deliver the answer as a single fresh prompt. Match path unchanged (notes prompt, then question.reply).
+- Type fix (apps/web/src/lib/question-answers.ts): QuestionLike.multiple/custom made optional (helper never reads them; opencode's QuestionInfo omits them) - clears a pre-existing TS2345 at the partitionQuestionAnswers call site that surfaced after a parallel SDK bump.
+- Verified tsc clean for touched files; question-answers tests 16/16. Worktree fix/question-unblock, integrated into main-nowaker + deployed.
