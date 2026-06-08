@@ -2432,7 +2432,7 @@ Design notes:
 - Fix path: route the slider OFF action through the openportal MCP-config PUT endpoint (set enabled:false) instead of opencode's runtime toggle. Slider ON sets enabled:true. Persistent through restart. Triggers PENDING RESTART badge so the user knows to restart opencode for the disable to take effect at the connection layer.
 - Alternative: file a bug with opencode for the silent-fail disconnect. Out of scope for this iteration.
 
-### 112. Templates redesign: Settings tab UX + new-session prepend-on-submit + per-project .vibekick/templates + slash command integration (PENDING - in-flight on feat/templates-redesign)
+### 112. Templates redesign: Settings tab UX + new-session prepend-on-submit + per-project .vibekick/templates + slash command integration (DONE - superseded by #142/#146/#147 shipped commits)
 
 User prompt (verbatim):
 
@@ -2514,7 +2514,7 @@ Design notes:
 - `.vibekick/` is the canonical path because OpenPortal -> vibekick rebrand is queued; adopting now avoids a filesystem migration later.
 - Side observation surfaced in the same prompt: `/btw` is invisible on new-session because the builtin-injection only exists in $id.tsx (chat composer), not new.tsx. Phase G closes both.
 
-### 125. Templates redesign polish: rename tools->templates, three Your-templates sections, visual-framework dropdown, sub-path completion, no monospace on prompt fields, horizontal label/field for small fields (PENDING - on feat/templates-redesign)
+### 125. Templates redesign polish: rename tools->templates, three Your-templates sections, visual-framework dropdown, sub-path completion, no monospace on prompt fields, horizontal label/field for small fields (DONE - superseded by #142 shipped commits)
 
 User prompt (verbatim):
 
@@ -2556,7 +2556,7 @@ Design notes:
   8. Push to both remotes
   9. Final monospace audit report delivered verbatim to user
 
-### 126. Templates redesign polish (Round 2): Burger rename, Disable as separate state, new-session shows all non-disabled, slash filter respects only disabled (PENDING - on feat/templates-redesign)
+### 126. Templates redesign polish (Round 2): Burger rename, Disable as separate state, new-session shows all non-disabled, slash filter respects only disabled (DONE - superseded by #142 shipped commits)
 
 User prompt (verbatim):
 
@@ -2608,7 +2608,7 @@ Design notes:
   8. Build + deploy + push + verify in browser
   9. Deliver monospace audit report (carried forward from #125)
 
-### 126. Templates redesign correctness: rename "On" to "Burger", separate Disable from Burger, show all non-disabled on new-session, fix slash filter to ignore burger state (PENDING - on feat/templates-redesign)
+### 126. Templates redesign correctness: rename "On" to "Burger", separate Disable from Burger, show all non-disabled on new-session, fix slash filter to ignore burger state (DONE - superseded by #142 shipped commits)
 
 User prompt (verbatim):
 
@@ -2646,7 +2646,7 @@ Design notes:
 - Folds in pending Phase D2 polish: workspace-root native `<select>` -> `<Select>`, sub-path `<Input>` -> `<PathInput>` with `/api/fs/list` completion, horizontal label/field layout for small fields, "tool" -> "template" copy update everywhere.
 - Plan order: store schema change first (foundation), then tools-settings.tsx UI rewrite (big), then callers (new.tsx + $id.tsx) in parallel, then FS YAML schema, then deploy + verify.
 
-### 127. FS templates polish: editable rows, graceful refresh, duplicate-template flow, flags on create form (PENDING - on feat/templates-redesign)
+### 127. FS templates polish: editable rows, graceful refresh, duplicate-template flow, flags on create form (DONE - superseded by #142 shipped commits)
 
 User prompt (verbatim):
 
@@ -2682,7 +2682,7 @@ Design notes:
   8. Deploy + verify + push
   9. (Polish if budget) section headers, copy "tool"->"template", Select, PathInput, horizontal layout. Monospace audit report deliverable to user.
 
-### 127. Templates redesign correctness round 3: FS template edit/duplicate, graceful refresh, Burger/Init/Slash on create (PENDING - on feat/templates-redesign)
+### 127. Templates redesign correctness round 3: FS template edit/duplicate, graceful refresh, Burger/Init/Slash on create (DONE - superseded by #142 shipped commits)
 
 User prompt (verbatim):
 
@@ -2713,7 +2713,7 @@ Design notes:
   5. \$id.tsx - slash filter !isDisabled
    6. build + deploy + push + browser-verify
 
-### 128. Templates/settings/new-session redesign round 4 + slash trigger bug (/btw) (PENDING - analyze in progress)
+### 128. Templates/settings/new-session redesign round 4 + slash trigger bug (/btw) (DONE - superseded by #142 shipped commits)
 
 User prompt (verbatim):
 
