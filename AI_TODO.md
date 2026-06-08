@@ -4748,3 +4748,17 @@ Design notes:
 - Directory edit modal: if a directory entry has ADV/advanced settings present, auto-expand the advanced settings section when opening the edit modal.
 - Verify with worktree build/type checks and browser/API checks; image/screenshot analysis must be delegated if needed.
 
+### 200. OpenCode Web UI link path must include opencode project/workspace prefix (PENDING - fold into #199 worktree)
+
+User prompt (verbatim):
+
+> 6. i specified my opencode web ui address as https://opencode.desktop.ts.nowaker.net/ and it resulted in 'open in opencode web' linking to https://opencode.desktop.ts.nowaker.net/session/ses_15ecd17b4ffeesQ5n6GnyuRNuq. this is an incorrect endpoint. this is an api endpoint, not a web endpoint. opencode links look like this: . i don't know what the first part is for each server, it's server/instance specific, you need to figure it out https://opencode.desktop.ts.nowaker.net/L2hvbWUvbm93YWtlci9wcm9qZWt0eS9ub3dha2VyL29wZW5jb2RlLXRvb2xz/session/ses_188220dadffeb8GepIK8xraEoj. opencode source is in ~/projekty/webapps/opencode if you need it. note: https://opencode.desktop.ts.nowaker.net/x/session/ses_188220dadffeb8GepIK8xraEoj automatically redirected me to the right place so maybe this is the way to go. but analyze opencode source to decide if it's important to fill the url in an appropriate way.
+
+Design notes:
+
+- Fold into the #199 server-polish worktree.
+- Current OpenPortal link builder appends `/session/<sid>` directly to the configured OpenCode Web UI base. That hits the API-style path, not the real opencode web route.
+- Need analyze opencode source at `/home/nowaker/projekty/webapps/opencode` to determine the meaning of the leading path segment (`L2hvb...`) and whether `/x/session/<sid>` is an intentional generic redirect or only a fallback.
+- Implement the correct OpenCode Web link generation in OpenPortal based on that source analysis.
+- Verify against a real deployed OpenCode Web UI URL if possible.
+
