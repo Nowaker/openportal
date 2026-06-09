@@ -191,7 +191,8 @@ function toStatus(
   s: SessionIndicatorState,
 ): { type: "busy" | "retry" | "idle" } {
   if (s.stuck_verdict === "stuck") return { type: "retry" };
-  if (s.busy || s.stuck_verdict === "in-progress") return { type: "busy" };
+  if (s.busy || s.db_in_flight || s.stuck_verdict === "in-progress")
+    return { type: "busy" };
   return { type: "idle" };
 }
 

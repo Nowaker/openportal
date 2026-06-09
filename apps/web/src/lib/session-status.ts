@@ -242,7 +242,8 @@ export function pickBadgeStatus(state: SessionIndicatorState | null): StatusInfo
     };
   }
 
-  const runtimeBusy = state.busy || state.stuck_verdict === "in-progress";
+  const runtimeBusy =
+    state.busy || state.db_in_flight || state.stuck_verdict === "in-progress";
 
   if (state.currentToolName && runtimeBusy) {
     return {
@@ -258,7 +259,9 @@ export function pickBadgeStatus(state: SessionIndicatorState | null): StatusInfo
       label: STATUS_DEFAULTS.thinking.label,
       title: state.busy
         ? "Assistant is generating"
-        : "Runtime is busy (per stuck-detector probe)",
+        : state.db_in_flight
+          ? "Session has an active (unfinished) turn"
+          : "Runtime is busy (per stuck-detector probe)",
     };
   }
 

@@ -53,6 +53,15 @@ export interface SessionIndicatorState {
   mode: string | null;
   currentToolName: string | null;
   inFlightAssistantId: string | null;
+  // Portal-derived "this session has an unfinished assistant turn" flag,
+  // computed by db-status-poller.ts straight from opencode's shared DB (an
+  // in-flight assistant message = time.completed null within a freshness
+  // window). Load-immune source of the in-progress indicator: opencode's
+  // /event SSE + /session/status starve under heavy multi-session load,
+  // leaving `busy` falsely false, which rendered active sessions as
+  // idle/green. Folded into runtimeBusy alongside `busy`. Portal owns this
+  // in-progress decision; it does NOT decide stuck.
+  db_in_flight: boolean;
   // Stuck-detector plugin verdict merged into the indicator state by
   // stuck-detector-client.ts. Null when the plugin isn't reachable;
   // 'idle' / 'in-progress' / 'stuck' when it is. stuck_cause and
@@ -153,6 +162,7 @@ function emptyState(
     mode: null,
     currentToolName: null,
     inFlightAssistantId: null,
+    db_in_flight: false,
   };
 }
 
@@ -585,6 +595,40 @@ export function setStuckScanningEnabled(enabled: boolean): void {
     };
     sessions.set(k, next);
     fanOut({ type: "update", state: next });
+  }
+}
+
+// Portal-derived in-progress set, computed by db-status-poller.ts from
+// opencode's shared DB. `inFlight` is the COMPLETE set of session IDs that
+// currently have an unfinished assistant turn. Every cached entry is
+// reconciled to db_in_flight = inFlight.has(sessionId), so sessions that
+// finished since the last poll flip back to idle. Sessions in `inFlight`
+// with no cached entry are seeded fresh under every (local) target server
+// - same rationale as the stuck seeding above: opencode's HTTP surface
+// materialises nothing under load, so the DB poll is the only path that
+// gets the in-progress indicator to the UI.
+export function applyDbInFlight(
+  inFlight: Set<string>,
+  targets: Array<{ serverId: string; port: number }>,
+): void {
+  for (const [k, cur] of sessions.entries()) {
+    const want = inFlight.has(cur.sessionId);
+    if (cur.db_in_flight === want) continue;
+    const next: SessionIndicatorState = { ...cur, db_in_flight: want };
+    sessions.set(k, next);
+    fanOut({ type: "update", state: next });
+  }
+  if (inFlight.size === 0 || targets.length === 0) return;
+  for (const sid of inFlight) {
+    for (const t of targets) {
+      const k = key(t.serverId, sid);
+      if (sessions.has(k)) continue;
+      const fresh = emptyState(t.serverId, t.port, sid);
+      fresh.db_in_flight = true;
+      fresh.lastEventAt = Date.now();
+      sessions.set(k, fresh);
+      fanOut({ type: "update", state: fresh });
+    }
   }
 }
 

@@ -59,6 +59,10 @@ export interface SessionIndicatorState {
   mode: string | null;
   currentToolName: string | null;
   inFlightAssistantId: string | null;
+  // Portal-derived in-progress flag (db-status-poller.ts): the session has
+  // an unfinished assistant turn per opencode's shared DB. Load-immune
+  // source of "in progress" when the SSE-fed `busy` is starved.
+  db_in_flight: boolean;
   // Stuck-detector verdict, merged into the indicator state by the
   // server-side stuck-detector-client plugin. Authoritative source
   // for "is the runner actually doing something" - the opencode
