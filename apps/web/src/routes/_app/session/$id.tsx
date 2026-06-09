@@ -5573,6 +5573,27 @@ function SessionPage() {
     firstExtra.isLoading,
   ]);
 
+  // The sticky overlay scans the DOM for rendered user rows but looks up
+  // each row's text/meta by id in this array. The first prompt
+  // (firstMessage) and gap-filled rows (firstExtra) are rendered OUTSIDE
+  // `messages`, so without merging them the sticky finds their DOM row,
+  // sets currentId, then fails the id lookup and renders nothing. Union
+  // them (deduped, first-prompt first) so every rendered user row resolves.
+  const stickyMessages = useMemo(() => {
+    if (!firstMessage && firstExtra.messages.length === 0) return messages;
+    const seen = new Set<string>();
+    const out: MessageWithParts[] = [];
+    const push = (m: MessageWithParts) => {
+      if (seen.has(m.info.id)) return;
+      seen.add(m.info.id);
+      out.push(m);
+    };
+    if (firstMessage) push(firstMessage);
+    for (const m of firstExtra.messages) push(m);
+    for (const m of messages) push(m);
+    return out;
+  }, [firstMessage, firstExtra.messages, messages]);
+
   // Size cap is conservative because the prompt body is sent inline as a
   // data URL (base64-encoded, ~33% inflation). A 10 MB file becomes a
   // ~13.3 MB JSON request body, which is fine for opencode but stresses
@@ -5647,7 +5668,7 @@ function SessionPage() {
       />
       <StickyUserPromptOverlay
         containerRef={chatContainerRef}
-        messages={messages}
+        messages={stickyMessages}
         providersData={providersData as ProvidersData | undefined}
       />
       <div
