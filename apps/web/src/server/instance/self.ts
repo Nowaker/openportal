@@ -6,6 +6,7 @@ import {
   buildServerOrigin,
   displayServerLabel,
   getActiveServer,
+  type ConfiguredServer,
   type ServerProtocol,
 } from "../lib/server-registry";
 import { resolveLiveEndpoint } from "../lib/server-resolver";
@@ -68,6 +69,35 @@ interface HealthShape {
   opencodeReason?: string;
 }
 
+type InstanceShape = {
+  id: string;
+  name: string;
+  directory: undefined;
+  port: number;
+  hostname: string;
+  protocol: ServerProtocol;
+  webEndpoint: string;
+  ephemeral: boolean;
+};
+
+function instanceFor(server: ConfiguredServer): InstanceShape {
+  return {
+    id: server.id,
+    name: displayServerLabel(server),
+    directory: undefined,
+    port: server.port,
+    hostname: server.host,
+    protocol: server.protocol,
+    webEndpoint: webEndpointFor(
+      server.protocol,
+      server.host,
+      server.port,
+      server.webEndpoint,
+    ),
+    ephemeral: server.ephemeral,
+  };
+}
+
 export default defineHandler(async (event) => {
   const client = detectClient(event);
   const presence = buildPresencePayload();
@@ -84,7 +114,7 @@ export default defineHandler(async (event) => {
         opencodeReason: reason,
       };
       return {
-        instance: null,
+        instance: instanceFor(active),
         error: "active-server-unreachable",
         reason,
         lastKnown: {
@@ -117,7 +147,7 @@ export default defineHandler(async (event) => {
           opencodeReason: reason,
         };
         return {
-          instance: null,
+          instance: instanceFor(fresh),
           error: "active-server-unreachable",
           reason,
           lastKnown: {
@@ -135,21 +165,7 @@ export default defineHandler(async (event) => {
       }
     }
     return {
-      instance: {
-        id: fresh.id,
-        name: displayServerLabel(fresh),
-        directory: undefined,
-        port: fresh.port,
-        hostname: fresh.host,
-        protocol: fresh.protocol,
-        webEndpoint: webEndpointFor(
-          fresh.protocol,
-          fresh.host,
-          fresh.port,
-          fresh.webEndpoint,
-        ),
-        ephemeral: fresh.ephemeral,
-      },
+      instance: instanceFor(fresh),
       health: { openportal: "up", opencode: "up" } as HealthShape,
       client,
       presence,
