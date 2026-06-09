@@ -44,9 +44,13 @@
 // re-attempts them.
 
 import { definePlugin } from "nitro";
-import { listConfiguredServers } from "../lib/server-registry";
+import {
+  buildServerOrigin,
+  listConfiguredServers,
+  type ServerProtocol,
+} from "../lib/server-registry";
 import { resolveLiveEndpointById } from "../lib/server-resolver";
-import { basicAuthHeader } from "../lib/server-discovery";
+import { basicAuthHeader, type BasicAuthCreds } from "../lib/server-discovery";
 import { invalidateMessagesCache } from "../lib/messages-cache";
 import { scheduleRefreshMessages } from "../lib/messages-refresh";
 import { invalidateSessionsCache } from "../lib/sessions-cache";
@@ -188,16 +192,17 @@ async function processStream(
 async function hydrateFromStatusEndpoint(
   serverId: string,
   port: number,
+  protocol: ServerProtocol,
   host: string,
   upstreamPort: number,
-  auth: ReturnType<typeof basicAuthHeader> extends infer T ? T : never,
+  auth: BasicAuthCreds | undefined,
   signal: AbortSignal,
 ): Promise<void> {
   try {
-    const url = `http://${host}:${upstreamPort}/session/status`;
+    const url = `${buildServerOrigin(protocol, host, upstreamPort)}/session/status`;
     const res = await fetch(url, {
       signal,
-      headers: { ...basicAuthHeader(auth as Parameters<typeof basicAuthHeader>[0]) },
+      headers: basicAuthHeader(auth),
     });
     if (!res.ok) return;
     const body = (await res.json()) as Record<string, unknown>;
@@ -243,7 +248,7 @@ async function runConnection(
       if (!target) {
         throw new Error(`server ${serverId} no longer in registry`);
       }
-      const url = `http://${target.host}:${target.port}/event`;
+      const url = `${buildServerOrigin(target.protocol, target.host, target.port)}/event`;
       console.log(
         `[indicator-broadcaster] connecting server=${serverId} port=${port} -> ${url}`,
       );
@@ -262,6 +267,7 @@ async function runConnection(
       void hydrateFromStatusEndpoint(
         serverId,
         port,
+        target.protocol,
         target.host,
         target.port,
         target.auth,

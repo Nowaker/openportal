@@ -1,6 +1,7 @@
 import { defineHandler } from "nitro/h3";
 import { resolveLiveTarget } from "../../lib/opencode-client";
 import { basicAuthHeader } from "../../lib/server-discovery";
+import { buildServerOrigin } from "../../lib/server-registry";
 import { parsePort } from "../../lib/validation";
 import { invalidateMessagesCache } from "../../lib/messages-cache";
 import {
@@ -41,7 +42,7 @@ const DELTA_EVENT_TYPES = new Set([
 export default defineHandler(async (event) => {
   const port = parsePort(event);
   const target = await resolveLiveTarget(port);
-  const upstreamUrl = `http://${target.host}:${target.port}/event`;
+  const upstreamUrl = `${buildServerOrigin(target.protocol, target.host, target.port)}/event`;
   const upstream = await fetch(upstreamUrl, {
     headers: {
       Accept: "text/event-stream",

@@ -12,6 +12,7 @@ import {
 } from "../server/lib/opencode-client";
 import { basicAuthHeader } from "../server/lib/server-discovery";
 import {
+  buildServerOrigin,
   getActiveServer,
   getServerById,
 } from "../server/lib/server-registry";
@@ -110,7 +111,7 @@ export default defineHandler(async (event) => {
 
   if (isSSE) {
     const target = await resolveLiveTarget(port);
-    const upstreamUrl = `http://${target.host}:${target.port}${fullPath}`;
+    const upstreamUrl = `${buildServerOrigin(target.protocol, target.host, target.port)}${fullPath}`;
     const headers = filterRequestHeaders(reqHeaders);
     if (target.auth && !headers.has("authorization")) {
       const auth = basicAuthHeader(target.auth);

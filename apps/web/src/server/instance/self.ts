@@ -2,7 +2,12 @@ import { defineHandler } from "nitro/h3";
 import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { getActiveServer } from "../lib/server-registry";
+import {
+  buildServerOrigin,
+  displayServerLabel,
+  getActiveServer,
+  type ServerProtocol,
+} from "../lib/server-registry";
 import { resolveLiveEndpoint } from "../lib/server-resolver";
 import { probeOpencodeCached } from "../lib/probe-cache";
 import { detectClient } from "../lib/client-detection";
@@ -16,12 +21,17 @@ function buildPresencePayload() {
   return { ip: p.ip, isLocal: p.isLocal, at: p.at, ageMs: Date.now() - p.at };
 }
 
-function webEndpointFor(host: string, port: number, explicit?: string): string {
-  const base = explicit?.trim() || `http://${host}:${port}`;
+function webEndpointFor(
+  protocol: ServerProtocol,
+  host: string,
+  port: number,
+  explicit?: string,
+): string {
+  const base = explicit?.trim() || buildServerOrigin(protocol, host, port);
   try {
     return new URL(base).toString().replace(/\/$/, "");
   } catch {
-    return `http://${host}:${port}`;
+    return buildServerOrigin(protocol, host, port);
   }
 }
 
@@ -79,7 +89,8 @@ export default defineHandler(async (event) => {
         reason,
         lastKnown: {
           id: active.id,
-          label: active.label,
+          label: displayServerLabel(active),
+          protocol: active.protocol,
           host: active.host,
           port: active.port,
           ephemeral: active.ephemeral,
@@ -95,6 +106,7 @@ export default defineHandler(async (event) => {
         live.host,
         live.port,
         live.auth,
+        live.protocol,
       );
       if (!probeResult.ok) {
         const reason =
@@ -110,7 +122,8 @@ export default defineHandler(async (event) => {
           reason,
           lastKnown: {
             id: fresh.id,
-            label: fresh.label,
+            label: displayServerLabel(fresh),
+            protocol: fresh.protocol,
             host: fresh.host,
             port: fresh.port,
             ephemeral: fresh.ephemeral,
@@ -124,11 +137,17 @@ export default defineHandler(async (event) => {
     return {
       instance: {
         id: fresh.id,
-        name: fresh.label,
+        name: displayServerLabel(fresh),
         directory: undefined,
         port: fresh.port,
         hostname: fresh.host,
-        webEndpoint: webEndpointFor(fresh.host, fresh.port, fresh.webEndpoint),
+        protocol: fresh.protocol,
+        webEndpoint: webEndpointFor(
+          fresh.protocol,
+          fresh.host,
+          fresh.port,
+          fresh.webEndpoint,
+        ),
         ephemeral: fresh.ephemeral,
       },
       health: { openportal: "up", opencode: "up" } as HealthShape,
@@ -177,7 +196,8 @@ export default defineHandler(async (event) => {
         directory: me.directory,
         port: me.opencodePort,
         hostname: me.hostname,
-        webEndpoint: webEndpointFor(me.hostname, me.opencodePort),
+        protocol: "http",
+        webEndpoint: webEndpointFor("http", me.hostname, me.opencodePort),
         ephemeral: false,
       },
       health: { openportal: "up", opencode: "up" } as HealthShape,

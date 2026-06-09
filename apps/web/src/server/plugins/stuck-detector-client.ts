@@ -21,7 +21,7 @@ import {
   emitStuckEvent,
   type VerdictKind,
 } from "../lib/stuck-detector-events";
-import { listConfiguredServers } from "../lib/server-registry";
+import { buildServerOrigin, listConfiguredServers } from "../lib/server-registry";
 
 const PLUGIN_URL = "http://127.0.0.1:4098";
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -72,7 +72,7 @@ function resolveSeedTargets(
   if (typeof raw.owner_instance_url === "string" && raw.owner_instance_url) {
     const target = raw.owner_instance_url.replace(/\/+$/, "");
     const hit = registered.find(
-      (s) => `http://${s.host}:${s.port}` === target,
+      (s) => buildServerOrigin(s.protocol, s.host, s.port) === target,
     );
     if (hit) return [{ serverId: hit.id, port: hit.port }];
     // owner_instance_url is set but unknown to this portal (e.g. a
