@@ -21,13 +21,16 @@
 // are handled transparently.
 
 import { definePlugin } from "nitro";
-import { listConfiguredServers } from "../lib/server-registry";
+import {
+  buildServerOrigin,
+  listConfiguredServers,
+} from "../lib/server-registry";
 import { resolveLiveEndpointById } from "../lib/server-resolver";
 import { basicAuthHeader } from "../lib/server-discovery";
 import { getEffectiveAutoApprove } from "../lib/auto-approve-state";
 import { replyToPermission } from "../lib/permission-reply";
-import { getOpencodeClient } from "../lib/opencode-client";
 import { recordAsked } from "../lib/permission-log";
+import { fetchOpencode } from "../lib/opencode-client";
 
 const RECONCILE_INTERVAL_MS = 30_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -49,6 +52,14 @@ interface PendingPermission {
   sessionID?: unknown;
 }
 
+function permissionsFromResponse(body: unknown): PendingPermission[] {
+  const data =
+    body && typeof body === "object" && "data" in body
+      ? (body as { data?: unknown }).data
+      : body;
+  return Array.isArray(data) ? (data as PendingPermission[]) : [];
+}
+
 // Drain any permission asks that already arrived in opencode before our SSE
 // stream went live. SSE only delivers events fired AFTER subscription, so
 // without this every openportal restart leaves prior `permission.asked`
@@ -65,9 +76,10 @@ async function reconcilePendingPermissions(
   if (signal.aborted) return;
   let pending: PendingPermission[];
   try {
-    const v1 = await getOpencodeClient(port);
-    const list = await v1.permission.list();
-    pending = (list.data ?? []) as PendingPermission[];
+    const res = await fetchOpencode(port, "/permission");
+    pending = res.ok
+      ? permissionsFromResponse(await res.json().catch(() => null))
+      : [];
   } catch (err) {
     console.warn(
       `[auto-approve-worker] reconcile list failed (port=${port}):`,
@@ -171,7 +183,7 @@ async function runConnection(
       if (!target) {
         throw new Error(`server ${serverId} no longer in registry`);
       }
-      const url = `http://${target.host}:${target.port}/event`;
+      const url = `${buildServerOrigin(target.protocol, target.host, target.port)}/event`;
       console.log(
         `[auto-approve-worker] connecting server=${serverId} -> ${url}`,
       );

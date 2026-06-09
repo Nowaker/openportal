@@ -12,7 +12,7 @@
 // permission's metadata (patterns, type, tool name, callId, messageId).
 
 import {
-  getOpencodeClient,
+  fetchOpencode,
   getOpencodeClientV2,
 } from "./opencode-client";
 import { recordResolved } from "./permission-log";
@@ -33,6 +33,14 @@ interface UpstreamPermission {
   tool?: { messageID?: string; callID?: string; name?: string };
 }
 
+function permissionsFromResponse(body: unknown): UpstreamPermission[] {
+  const data =
+    body && typeof body === "object" && "data" in body
+      ? (body as { data?: unknown }).data
+      : body;
+  return Array.isArray(data) ? (data as UpstreamPermission[]) : [];
+}
+
 export async function replyToPermission(
   port: number,
   requestId: string,
@@ -41,9 +49,10 @@ export async function replyToPermission(
 ): Promise<unknown> {
   let match: UpstreamPermission | null = null;
   try {
-    const v1 = await getOpencodeClient(port);
-    const list = await v1.permission.list();
-    const all = (list.data ?? []) as UpstreamPermission[];
+    const res = await fetchOpencode(port, "/permission");
+    const all = res.ok
+      ? permissionsFromResponse(await res.json().catch(() => null))
+      : [];
     match = all.find((p) => p.id === requestId) ?? null;
   } catch {
     // Best-effort capture - never block the reply.
