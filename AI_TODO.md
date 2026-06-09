@@ -4696,7 +4696,7 @@ Design notes:
 - Preserve existing session/task ID linkification in the non-path chunks of tool strings by continuing to run `linkifySessionIds` around file-path matches.
 - Integration: developed on worktree `~/projekty/webapps/portal-tool-call-file-links` / `feat/tool-call-file-links` from fresh `origin/main-nowaker`; rebase + FF merge to `main-nowaker` only.
 
-### 199. Server list polish: Web UI address label, editable server label, protocol support, modal editing, ADV auto-expand (PENDING - worktree implementation)
+### 199. Server list polish: Web UI address label, editable server label, protocol support, modal editing, ADV auto-expand (DONE - e61c4c3, 22c2fa9, 1e0a426, 8cc5969)
 
 User prompt (verbatim):
 
@@ -4748,7 +4748,7 @@ Design notes:
 - Directory edit modal: if a directory entry has ADV/advanced settings present, auto-expand the advanced settings section when opening the edit modal.
 - Verify with worktree build/type checks and browser/API checks; image/screenshot analysis must be delegated if needed.
 
-### 200. OpenCode Web UI link path must include opencode project/workspace prefix (PENDING - fold into #199 worktree)
+### 200. OpenCode Web UI link path must include opencode project/workspace prefix (DONE - a6a3362)
 
 User prompt (verbatim):
 
