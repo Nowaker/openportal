@@ -9,6 +9,10 @@ interface CompactBannerProps {
   actions?: React.ReactNode;
   details?: React.ReactNode;
   dataTest?: string;
+  // Drop the top border when rendered directly below the global banner
+  // stack - the CSS :first-child rule would otherwise double it against
+  // the stack's bottom border across the route-subtree seam.
+  seamlessTop?: boolean;
 }
 
 const PALETTE: Record<
@@ -42,13 +46,16 @@ export function CompactBanner({
   actions,
   details,
   dataTest,
+  seamlessTop,
 }: CompactBannerProps) {
   const [expanded, setExpanded] = useState(false);
   const p = PALETTE[intent];
   const expandable = Boolean(details);
   return (
     <div
-      className={`openportal-alert-banner flex flex-col gap-0.5 border-b px-3 py-1.5 text-xs ${p.wrap}`}
+      className={`openportal-alert-banner${
+        seamlessTop ? " openportal-alert-banner--seamless-top" : ""
+      } flex flex-col gap-0.5 border-b px-3 py-1.5 text-xs ${p.wrap}`}
       data-test={dataTest}
     >
       <div className="flex items-center gap-2">

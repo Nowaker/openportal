@@ -4957,3 +4957,38 @@ Design notes:
 - Fix: new zustand store `apps/web/src/stores/dismissed-questions-store.ts` (callID -> true), mirroring the permission `dismissedPermissionsRef` pattern. `QuestionAnswerForm.handleSubmit` calls `dismiss(callID)` on BOTH success paths (`question.reply` 200, and the abort+prompt recovery 200). The memo subscribes to the store and returns null when the running question's callID is dismissed, clearing the banner the instant the user answers. In-memory only; on reload the session has moved past the question so the memo returns null on its own.
 - Follow-up to #188 (the abort+prompt recovery): that fix unblocked opencode; this fix makes the UI reflect the unblock immediately instead of waiting on the frozen tool part.
 - Verified: tsc clean for touched files, question-answers tests 16/16. Worktree `fix/question-banner-dismiss`; integrate into `main-nowaker`, deploy, and browser-verify the banner clears on answer.
+### 207. StaleDataBanner: double border + non-matching font/icon size vs other alerts (DONE - this commit)
+
+User prompt (verbatim):
+
+> last remaining error is [Image 1] - notice how openportal updated and opencode unreachable are nicely stacked, while 'showing cached prompt history' has a double border, plus it appears to have non-matching font-size and icon size to other alerts (unsure about that, validate). any changes must be started on a fresh worktree off of main-nowaker. ff-merge any changes cleanly back. no rebase of main-nowaker allowed, ever. rebase your shit.
+
+Design notes:
+
+- `StaleDataBanner` (apps/web/src/components/stale-data-banner.tsx) was a
+  bespoke `<div>`: `text-sm` (vs CompactBanner's `text-xs`), `size-4` icon
+  (vs `size-3.5`), `py-2` (vs `py-1.5`). That alone caused the
+  non-matching font-size / icon-size the user flagged.
+- Double border: `.openportal-alert-banner` (main.css) defaults
+  `border-top-width: 0`, but the `:first-child` /
+  `:not(.openportal-alert-banner) + .openportal-alert-banner` rule re-adds
+  a 1px top border. `StaleDataBanner` renders inside the route subtree,
+  separated from the global `_app.tsx` banner stack by the Outlet wrapper,
+  so it is a `:first-child` -> gets a top border that doubles against the
+  stack's last banner's `border-b` at the seam.
+- Fix: route `StaleDataBanner` through the shared `CompactBanner`
+  (intent=warning) so font/icon/padding are identical by construction, and
+  add a `seamlessTop` prop to `CompactBanner` that applies a new
+  `.openportal-alert-banner--seamless-top` class. The CSS rule (placed
+  after the top-border rule, same 0,2,0 specificity -> later source order
+  wins) forces `border-top-width: 0`. Safe because `StaleDataBanner` only
+  renders on `opencode-down`, the same gate `ConnectionStatusBanner` uses,
+  so a global banner is always directly above it to provide the separator.
+- Verified headless (CDP) on worktree at port 5203 bound to sandbox
+  opencode 4998, then stopped 4998 to force opencode-down while /prompts
+  stayed mounted: StaleDataBanner computed `borderTopWidth: 0px`,
+  `msgFontSize: 12px`, svg `14px`, padding `6px` - identical to the
+  sibling CompactBanner above it. No doubled line at the seam. Screenshot
+  confirmed.
+- Worktree `fix/stale-banner-compact` -> rebased onto current
+  `main-nowaker` tip -> FF-merged -> deployed -> pushed both remotes.

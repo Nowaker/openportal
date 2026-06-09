@@ -18,6 +18,10 @@
   border-top-width: 1px;
 }
 
+.openportal-alert-banner.openportal-alert-banner--seamless-top {
+  border-top-width: 0;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
