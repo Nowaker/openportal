@@ -4936,3 +4936,24 @@ Design notes:
   load-immune fix needs an opencode change to persist pending
   permission/question to the DB (or accept the stuck-detector as the
   cross-process signal). Queue as a follow-up.
+
+### 206. Question banner: optimistic dismissal so it clears on successful answer (DONE - this commit)
+
+User prompt (verbatim):
+
+> are you insane? i just opened https://portal.desktop.ts.nowaker.net:8443/session/ses_17c8c220fffe7xdvRgBhOasCvm?server=srv-2dy1srwz and i see this:
+>
+> ```
+> Queued - blocked on question above
+> ...
+> OpenCode is waiting for your answer to the question above.
+> Scroll to question ↑
+> ```
+>
+> your feel good message is dated 6/7. last activity in [the session] is dated 6/1. why lie?
+
+Design notes:
+- Root cause: the `blockingQuestionMessageId` memo in `apps/web/src/routes/_app/session/$id.tsx` keys purely off the frozen question tool-part (last part of the latest in-flight assistant message with `state.status='running'`). After a successful answer, opencode leaves that part at `status=running` for seconds until the next turn starts, so the "OpenCode is waiting for your answer" banner lingers even though the answer already landed. On a host whose runner is dead it lingered indefinitely.
+- Fix: new zustand store `apps/web/src/stores/dismissed-questions-store.ts` (callID -> true), mirroring the permission `dismissedPermissionsRef` pattern. `QuestionAnswerForm.handleSubmit` calls `dismiss(callID)` on BOTH success paths (`question.reply` 200, and the abort+prompt recovery 200). The memo subscribes to the store and returns null when the running question's callID is dismissed, clearing the banner the instant the user answers. In-memory only; on reload the session has moved past the question so the memo returns null on its own.
+- Follow-up to #188 (the abort+prompt recovery): that fix unblocked opencode; this fix makes the UI reflect the unblock immediately instead of waiting on the frozen tool part.
+- Verified: tsc clean for touched files, question-answers tests 16/16. Worktree `fix/question-banner-dismiss`; integrate into `main-nowaker`, deploy, and browser-verify the banner clears on answer.

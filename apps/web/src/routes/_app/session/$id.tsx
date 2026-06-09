@@ -98,6 +98,7 @@ import {
 import { useAgentStore } from "@/stores/agent-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useDismissedQuestionsStore } from "@/stores/dismissed-questions-store";
 import { StarMessageButton } from "@/components/star-message-button";
 import { StickyUserPromptOverlay } from "@/components/sticky-user-prompt";
 import { CopyMarkdownButton } from "@/components/copy-markdown-button";
@@ -885,6 +886,7 @@ function QuestionAnswerForm({
         if (!replyRes.ok) {
           throw new Error(await readErrorMessage(replyRes));
         }
+        useDismissedQuestionsStore.getState().dismiss(callID);
         setSubmittedAt(Date.now());
         mutateSessionMessages(port, sessionId);
         return;
@@ -936,6 +938,7 @@ function QuestionAnswerForm({
         throw new Error(msg);
       }
       clearPendingSubmission(fallbackPendingId);
+      useDismissedQuestionsStore.getState().dismiss(callID);
       setSubmittedAt(Date.now());
       mutateSessionMessages(port, sessionId);
     } catch (err) {
@@ -3963,6 +3966,7 @@ function SessionPage() {
   //     until they answer the question, not silently dropped
   // The blockingQuestionMessageId enables a scroll-to-question anchor in
   // the banner.
+  const dismissedQuestions = useDismissedQuestionsStore((s) => s.dismissed);
   const blockingQuestionMessageId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
@@ -3979,10 +3983,16 @@ function SessionPage() {
       if ((toolPart.tool || "").toLowerCase() !== "question") return null;
       const status = (toolPart.state as { status?: string })?.status;
       if (status !== "running") return null;
+      // Answered optimistically: a successful submit dismisses the callID
+      // before opencode starts the next turn, so the banner clears the
+      // instant the user answers instead of waiting on the frozen running
+      // tool part to update.
+      const cid = (toolPart as { callID?: string }).callID;
+      if (cid && dismissedQuestions[cid]) return null;
       return m.info.id;
     }
     return null;
-  }, [messages]);
+  }, [messages, dismissedQuestions]);
   const isQuestionBlocked = blockingQuestionMessageId !== null;
 
   // Pending-prompt safety net: holds the text the user last submitted that
