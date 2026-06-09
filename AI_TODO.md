@@ -4801,3 +4801,84 @@ Design notes:
   indicator x=16; toggling the checkbox works; no console errors.
 - Worktree `settings-checkbox-align` -> rebased onto current
   `main-nowaker` tip -> FF-merged -> deployed -> pushed both remotes.
+
+### 203. Durable chronological permission log via synthetic messages (DONE - f48e386)
+
+User prompt (verbatim):
+
+> storing permission requests in a separate file, to be shown only in openportal is lame. make use of synthetic messages (messages that don't reach the AI). come up with a syntax, e.g. a yaml structure that will be recognized by openportal when fetching messages, and formatted accordingly. this way, all clients see this action happened. example syntax:
+>
+> ---
+> ```yaml
+> source: vibekick <- openportal will be changing name to vibekick, so we're keeping putting it here as such
+> kind: permissions
+> ... <- any relevant fields required to render the requested permissions, and the answers the user has given (allow once, allow always, rejected + whether it was autoapproved by the app)
+> ```
+> ---
+
+Design notes:
+
+- Replaced the in-memory `permission-audit.ts` map (7-day TTL, lost on
+  restart, rendered only as an inline pill) with a durable SQLite-backed
+  permission log surfaced as synthetic chat messages, the same substrate
+  as `/btw`.
+- Migration `0007_permission_events.sql`: `permission_events` table keyed
+  by `(server_id, session_id, request_id)` unique index. `server_id` is
+  informational (the worker that first saw the ask); the asked/resolved
+  upsert matches on the row. `asked_at` stamps chronological position so
+  the card renders where the permission was requested, not answered.
+- `permission-log.ts`: `recordAsked` (idempotent upsert on
+  `permission.asked`), `recordResolved` (fills decision/auto/decided_at),
+  `listResolvedForSession`, `toSyntheticPermissionMessage` (emits the
+  `source: vibekick / kind: permissions` YAML body + a structured
+  `_permissionEvent` view object for zero-parse frontend render).
+- Capture wired into the existing path: `auto-approve-worker.ts` records
+  every `permission.asked` (both the SSE stream and the reconcile-pending
+  snapshot) with its `serverId`; `permission-reply.ts` records the
+  resolution (auto or manual) for both the HTTP reply route and the
+  worker. Moves with the worker when the spawn-per-session rework lands.
+- Read path: `messages.ts` folds resolved permission synthetic messages
+  into the same `interleaveByCreated` merge as `/btw`, so windowing +
+  permalink behaviour carry over for free.
+- Retired the dead pill path: removed `attachPermissionDecisions` from
+  `messages-refresh.ts`, deleted `permission-audit.ts`, and replaced the
+  frontend `PastPermissionDecisionPill` with `PermissionLogCard` (reads
+  the structured `_permissionEvent`).
+- Verification: `permission-log.test.ts` 5/5 pass (upsert preserves
+  asked_at, resolve-without-ask insert, ordering, idempotency, YAML
+  emission). Full `bunx tsc --noEmit` introduced zero new errors in
+  touched files (the two `v1.permission.list()` TS2339s are pre-existing
+  on main). Browser render verified headless against the live blocked
+  session: card shows "Allowed once" + AUTO badge + bash + timestamp +
+  pattern, at the correct chronological slot among 51 messages.
+- Worktree `feat/permission-synthetic-log` -> rebased onto current
+  `main-nowaker` -> FF-merged -> `scripts/deploy.sh` (dev + prod render
+  checks green) -> pushed both remotes.
+- Deferred follow-up (out of scope, folded into #204): auto-approve and
+  manual reply still mis-route when two opencodes share port 4096
+  (`getServerByPort` returns the first match). Not fixed here because the
+  user folded the port-collision fix into the spawn-per-session
+  architecture (plan-only, #204). The permission log is keyed so it is
+  collision-safe regardless.
+
+### 204. Spawn-per-session opencode + master instance + /servers rework (PLAN ONLY - ai-analysis-requests/SPAWN_PER_SESSION_OPENCODE.md)
+
+User prompt (verbatim):
+
+> i will soon be implementing a spawn-separate-opencode-serve-for-each-session feature. because a single opencode serve slows down to a crawl and loses workers as time goes by. given this, maybe it's best to implement these two right now? the goal is that every session gets its own openportal managed opencode serve instance on a custom port. the instance is kept alive for a certain period of time after final assistant response (say 15 minutes - default - must be configurable in settings), then shut down for no user interaction. if the session is blocked on anything, like opencode question, permission request, anything else that awaits user interaction, or out of credits error with a retry timer, the instance is kept around indefinitely. if there's any error, like api error, anything where things didn't go right, keep it around too because api errors are tricky and not persisted through restarts (they don't land in chat log). additionally, openportal needs to spawn its own 'master' instance which will be used for session listings, and anything that isn't bound to any partiular session. or, for use when session's opencode instance was terminated, but the action to call against the session is something irrelevant like rename session, archive, etc. (but if opencode instance still exists for that session, route these through that instance). after you're done with non-blocking changes / changes that don't require architectural changes like how servers are spawned, prepare a very detailed implementation plan for what i asked now. think how to handle /server page which would probably have to be changed a lot. also consider that i do want opencode detection on local and remote servers. maybe it's possible to connect to opencode api, and through its statistics/diagnostic endpoints, understand what sqlite database its running against, so then openportal knows how to spawn its managed instances, and doesn't need to rely on user-started opencode serve. do not implement - provide a big ass implementation plan.
+
+Design notes:
+
+- Plan-only deliverable. Full implementation plan persisted to
+  `ai-analysis-requests/SPAWN_PER_SESSION_OPENCODE.md` covering: master
+  instance, per-session spawn + lifecycle (15-min idle default,
+  configurable; kept alive indefinitely while blocked on
+  question/permission/credits-retry or after an API error), routing
+  (session -> its instance, fall back to master for session-agnostic ops
+  like rename/archive when the instance is gone), `/servers` page rework,
+  and opencode-DB detection via diagnostic endpoints so openportal can
+  spawn managed instances against the right sqlite without relying on a
+  user-started `opencode serve`.
+- Resolves the port-collision routing bug (#203 follow-up) by giving each
+  managed instance its own port + a serverId-keyed routing layer.
+- DO NOT IMPLEMENT until the user reviews the plan.
