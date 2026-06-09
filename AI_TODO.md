@@ -4774,3 +4774,30 @@ Design notes:
 - Fix: add a plain-left-click handler on each settings tab link that preserves modified-click/new-tab behavior but updates the controlled `settingsTab` state for normal clicks.
 - Preserve permalink behavior by reasserting the current settings tab hash after render. This counters the layout-level `?server=` permalink emission that can rewrite the URL and drop the fragment during hydration.
 - Verified in the feature worktree with Playwright against `http://100.105.229.19:5200/settings#chat`: clicked Appearance, Templates, Diagnostics, and Prompt; each switched the visible panel and left the matching `#tab` hash in the URL with no console errors.
+### 202. Settings file-browser "Show directory size" helper text alignment (DONE - this commit)
+
+User prompt (verbatim):
+
+> Settings: alignment issue.
+>
+> (screenshot of Settings -> Files "View options": the "(may be slow)"
+> hint under the "Show directory size" checkbox wraps starting under the
+> checkbox indicator instead of aligning with the label column)
+
+Design notes:
+
+- The "Show directory size" Checkbox rendered its hint as inline
+  `Show directory size{" "}<span class="text-muted-fg text-xs">(may be slow)</span>`.
+  Because the hint shared the label's flow, when the column was narrow
+  it wrapped back to the checkbox indicator's x-origin (col 1) instead
+  of the label column (col 2).
+- Fix: render the label via `<CheckboxLabel>` and the hint via
+  `<Description>` from `@/components/ui/field`. The shared Checkbox grid
+  (`apps/web/src/components/ui/checkbox.tsx`) places `[slot=label]` at
+  `col-start-2 row-start-1` and `[slot=description]` at
+  `col-start-2 row-start-2`, so the hint now starts under the label
+  column on its own row, regardless of width.
+- Verified in-browser at 375px: hint left edge x=46 (== label), checkbox
+  indicator x=16; toggling the checkbox works; no console errors.
+- Worktree `settings-checkbox-align` -> rebased onto current
+  `main-nowaker` tip -> FF-merged -> deployed -> pushed both remotes.

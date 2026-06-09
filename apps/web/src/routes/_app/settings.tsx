@@ -26,8 +26,9 @@ import {
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Checkbox, CheckboxLabel } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Description } from "@/components/ui/field";
 import { Loader } from "@/components/ui/loader";
 import { toast } from "@/components/ui/toast";
 import {
@@ -1444,8 +1445,8 @@ function FilesSettings() {
             onChange={setShowDirSize}
             data-test="portal-settings-files-dirsize"
           >
-            Show directory size{" "}
-            <span className="text-muted-fg text-xs">(may be slow)</span>
+            <CheckboxLabel>Show directory size</CheckboxLabel>
+            <Description className="text-xs leading-tight">(may be slow)</Description>
           </Checkbox>
         </div>
       </section>
