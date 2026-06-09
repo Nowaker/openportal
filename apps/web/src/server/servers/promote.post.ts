@@ -32,7 +32,7 @@ import { parseBody } from "../lib/validation";
 
 const schema = z.object({
   discoveredId: z.string().min(1),
-  label: z.string().min(1).max(120).optional(),
+  label: z.string().max(120).nullable().optional(),
 });
 
 export default defineHandler(async (event) => {
@@ -84,8 +84,10 @@ export default defineHandler(async (event) => {
     );
   }
   const isEphemeral = match.discoveryHint?.kind === "opencode-desktop";
+  const protocol = "http";
   const server = addServer({
     label: body.label ?? match.label,
+    protocol,
     host: match.host,
     port: match.port,
     ephemeral: isEphemeral,
@@ -106,16 +108,16 @@ export default defineHandler(async (event) => {
   if (!isEphemeral) {
     let creds = match.auth;
     if (!creds) {
-      const cached = getCredStatus(match.host, match.port);
+      const cached = getCredStatus(match.host, match.port, protocol);
       if (cached?.creds) creds = cached.creds;
     }
     if (creds) {
       setAuth(server.id, creds);
-      recordKnownGoodCreds(match.host, match.port, creds);
+      recordKnownGoodCreds(match.host, match.port, creds, protocol);
     } else {
       // No creds yet — kick a probe in the background so the modal
       // either pops with creds-already-known or with mid-flight state.
-      void startCredLookup(match.host, match.port);
+      void startCredLookup(match.host, match.port, protocol);
     }
   }
 

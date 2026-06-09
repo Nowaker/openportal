@@ -19,9 +19,16 @@ export default defineHandler(async (event) => {
   if (!live) {
     return { online: false, reason: "no-live-endpoint" };
   }
-  const online = await probeOpencode(live.host, live.port, live.auth);
+  const online = await probeOpencode(
+    live.host,
+    live.port,
+    live.auth,
+    undefined,
+    live.protocol,
+  );
   return {
     online,
+    protocol: live.protocol,
     host: live.host,
     port: live.port,
   };

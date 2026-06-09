@@ -12,7 +12,11 @@ import {
   resolveLiveEndpoint,
   type LiveEndpoint,
 } from "./server-resolver";
-import { getServerByPort } from "./server-registry";
+import {
+  buildServerOrigin,
+  getServerByPort,
+  type ServerProtocol,
+} from "./server-registry";
 
 const LEGACY_CONFIG_PATH = join(homedir(), ".portal.json");
 
@@ -20,6 +24,7 @@ const clientCache = new Map<string, ReturnType<typeof createOpencodeClient>>();
 const clientCacheV2 = new Map<string, ReturnType<typeof createOpencodeClientV2>>();
 
 interface ResolvedTarget {
+  protocol: ServerProtocol;
   host: string;
   port: number;
   auth?: BasicAuthCreds;
@@ -66,6 +71,7 @@ async function resolveTarget(port: number): Promise<ResolvedTarget> {
       return {
         host: live.host,
         port: live.port,
+        protocol: live.protocol,
         auth: live.auth,
         serverId: server.id,
       };
@@ -73,9 +79,14 @@ async function resolveTarget(port: number): Promise<ResolvedTarget> {
     // Server is configured but no live endpoint yet (rediscovery failed).
     // Return its stored host/port so the request can still attempt and
     // surface a real network error to the client.
-    return { host: server.host, port: server.port, serverId: server.id };
+    return {
+      protocol: server.protocol,
+      host: server.host,
+      port: server.port,
+      serverId: server.id,
+    };
   }
-  return { host: legacyHostnameForPort(port), port };
+  return { protocol: "http", host: legacyHostnameForPort(port), port };
 }
 
 // Public synchronous API: returns the stored hostname for a given port.
@@ -87,6 +98,10 @@ export function getHostnameForPort(port: number): string {
   const server = getServerByPort(port);
   if (server) return server.host;
   return legacyHostnameForPort(port);
+}
+
+export function getProtocolForPort(port: number): ServerProtocol {
+  return getServerByPort(port)?.protocol ?? "http";
 }
 
 // Build a fetch wrapper that injects Basic auth headers. Used for both
@@ -173,7 +188,7 @@ export async function fetchOpencode(
 ): Promise<Response> {
   const tryOnce = async (): Promise<Response> => {
     const target = await resolveTarget(port);
-    const url = `http://${target.host}:${target.port}${path}`;
+    const url = `${buildServerOrigin(target.protocol, target.host, target.port)}${path}`;
     const headers = new Headers(init?.headers);
     if (target.auth && !headers.has("Authorization")) {
       headers.set(
@@ -292,13 +307,13 @@ export function invalidateForPort(port: number): void {
 
 export async function getOpencodeClient(port: number) {
   const target = await resolveTarget(port);
-  const key = `${target.host}:${target.port}`;
+  const key = `${target.protocol}://${target.host}:${target.port}`;
 
   const cached = clientCache.get(key);
   if (cached) return cached;
 
   const client = createOpencodeClient({
-    baseUrl: `http://${target.host}:${target.port}`,
+    baseUrl: buildServerOrigin(target.protocol, target.host, target.port),
     fetch: makeAuthedFetch(target.auth),
   });
 
@@ -308,13 +323,13 @@ export async function getOpencodeClient(port: number) {
 
 export async function getOpencodeClientV2(port: number) {
   const target = await resolveTarget(port);
-  const key = `${target.host}:${target.port}`;
+  const key = `${target.protocol}://${target.host}:${target.port}`;
 
   const cached = clientCacheV2.get(key);
   if (cached) return cached;
 
   const client = createOpencodeClientV2({
-    baseUrl: `http://${target.host}:${target.port}`,
+    baseUrl: buildServerOrigin(target.protocol, target.host, target.port),
     fetch: makeAuthedFetch(target.auth),
   });
 
@@ -324,7 +339,7 @@ export async function getOpencodeClientV2(port: number) {
 
 export async function getOpencodeBaseUrl(port: number): Promise<string> {
   const target = await resolveTarget(port);
-  return `http://${target.host}:${target.port}`;
+  return buildServerOrigin(target.protocol, target.host, target.port);
 }
 
 // opencode's workspace-routing middleware (in
@@ -407,7 +422,7 @@ export function invalidateSessionDirectory(
 // care about ephemeral re-resolution. Returns the stored host:port, never
 // the rediscovered one.
 export function getOpencodeBaseUrlSync(port: number): string {
-  return `http://${getHostnameForPort(port)}:${port}`;
+  return buildServerOrigin(getProtocolForPort(port), getHostnameForPort(port), port);
 }
 
 export function getInstanceDirectory(port: number): string | undefined {
@@ -426,7 +441,7 @@ export function getInstanceDirectory(port: number): string | undefined {
 export function clearClientCache(port?: number) {
   if (port) {
     const target = resolveTargetSync(port);
-    const key = `${target.host}:${target.port}`;
+    const key = `${target.protocol}://${target.host}:${target.port}`;
     clientCache.delete(key);
     clientCacheV2.delete(key);
   } else {
@@ -439,6 +454,13 @@ export function clearClientCache(port?: number) {
 // rediscovery here since cache keys are based on stored host:port.
 function resolveTargetSync(port: number): ResolvedTarget {
   const server = getServerByPort(port);
-  if (server) return { host: server.host, port: server.port, serverId: server.id };
-  return { host: legacyHostnameForPort(port), port };
+  if (server) {
+    return {
+      protocol: server.protocol,
+      host: server.host,
+      port: server.port,
+      serverId: server.id,
+    };
+  }
+  return { protocol: "http", host: legacyHostnameForPort(port), port };
 }

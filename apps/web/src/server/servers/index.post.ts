@@ -22,7 +22,8 @@ import { parseBody } from "../lib/validation";
 // them again.
 
 const addSchema = z.object({
-  label: z.string().min(1).max(120),
+  label: z.string().max(120).nullable().optional(),
+  protocol: z.enum(["http", "https"]).optional(),
   host: z.string().min(1).max(255),
   port: z.int().min(1).max(65535),
   webEndpoint: z.string().min(1).max(2048).optional(),
@@ -43,6 +44,7 @@ export default defineHandler(async (event) => {
   try {
     const server = addServer({
       label: body.label,
+      protocol: body.protocol,
       host: body.host,
       port: body.port,
       webEndpoint: body.webEndpoint,
@@ -51,7 +53,7 @@ export default defineHandler(async (event) => {
     });
     if (body.auth) {
       setAuth(server.id, body.auth);
-      recordKnownGoodCreds(body.host, body.port, body.auth);
+      recordKnownGoodCreds(server.host, server.port, body.auth, server.protocol);
     }
     return { server };
   } catch (e) {

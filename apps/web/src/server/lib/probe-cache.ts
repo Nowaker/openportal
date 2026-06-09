@@ -1,5 +1,6 @@
 import { probeOpencode } from "./server-discovery";
 import type { BasicAuthCreds } from "./server-discovery";
+import type { ServerProtocol } from "./server-registry";
 
 // Cached opencode health probes. Without this cache, every browser
 // poll of /api/instance/self (every 10s by default; every 2s while
@@ -39,8 +40,8 @@ interface ProbeEntry {
 
 const cache = new Map<string, ProbeEntry>();
 
-function keyFor(host: string, port: number): string {
-  return `${host}:${port}`;
+function keyFor(protocol: ServerProtocol, host: string, port: number): string {
+  return `${protocol}://${host}:${port}`;
 }
 
 export interface CachedProbeResult {
@@ -54,8 +55,9 @@ export async function probeOpencodeCached(
   host: string,
   port: number,
   auth?: BasicAuthCreds,
+  protocol: ServerProtocol = "http",
 ): Promise<CachedProbeResult> {
-  const k = keyFor(host, port);
+  const k = keyFor(protocol, host, port);
   const now = Date.now();
   const entry = cache.get(k);
 
@@ -73,7 +75,7 @@ export async function probeOpencodeCached(
   if (entry && !isFresh) {
     const inflight = (async () => {
       try {
-        return await probeOpencode(host, port, auth);
+        return await probeOpencode(host, port, auth, undefined, protocol);
       } catch {
         return false;
       }
@@ -87,7 +89,7 @@ export async function probeOpencodeCached(
 
   let ok = false;
   try {
-    ok = await probeOpencode(host, port, auth);
+    ok = await probeOpencode(host, port, auth, undefined, protocol);
   } catch {
     ok = false;
   }
@@ -96,9 +98,13 @@ export async function probeOpencodeCached(
   return { ok, at, ageMs: 0, fromCache: false };
 }
 
-export function invalidateProbeCache(host?: string, port?: number): void {
+export function invalidateProbeCache(
+  host?: string,
+  port?: number,
+  protocol: ServerProtocol = "http",
+): void {
   if (host !== undefined && port !== undefined) {
-    cache.delete(keyFor(host, port));
+    cache.delete(keyFor(protocol, host, port));
     return;
   }
   cache.clear();

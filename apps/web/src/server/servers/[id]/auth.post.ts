@@ -53,7 +53,13 @@ export default defineHandler(async (event) => {
 
   const creds = { username: body.username, password: body.password };
   if (!body.skipValidation) {
-    const ok = await probeOpencode(server.host, server.port, creds);
+    const ok = await probeOpencode(
+      server.host,
+      server.port,
+      creds,
+      undefined,
+      server.protocol,
+    );
     if (!ok) {
       throw new HTTPError(
         "Server rejected those credentials. Double-check and try again.",
@@ -63,6 +69,6 @@ export default defineHandler(async (event) => {
   }
   setAuth(id, creds);
   invalidateLiveEndpoint(id);
-  recordKnownGoodCreds(server.host, server.port, creds);
+  recordKnownGoodCreds(server.host, server.port, creds, server.protocol);
   return { ok: true, validated: !body.skipValidation };
 });

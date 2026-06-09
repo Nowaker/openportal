@@ -24,6 +24,8 @@ import { configFilePath } from "./portal-paths";
 
 export type ServerKind = "manual" | "discovered-process" | "discovered-mdns";
 
+export type ServerProtocol = "http" | "https";
+
 export type DiscoveryHint = {
   // Used to re-find an ephemeral server after its port changes. For now we
   // only support opencode-desktop, which is matched by the spawned binary
@@ -49,7 +51,8 @@ export interface DirectoriesHistoryEntry {
 
 export interface ConfiguredServer {
   id: string;
-  label: string;
+  label: string | null;
+  protocol: ServerProtocol;
   host: string;
   port: number;
   webEndpoint?: string;
@@ -98,7 +101,7 @@ function normalizeHistory(raw: unknown): DirectoriesHistoryEntry[] {
 
 export interface RawOpenPortalDoc {
   directories?: unknown;
-  servers?: ConfiguredServer[];
+  servers?: unknown;
   activeServerId?: string | null;
   // Any other top-level keys (decoupleOpencode, externalOpencode, etc.) are
   // preserved on write so we don't clobber CLI-only config.
@@ -165,18 +168,80 @@ function writeRaw(doc: RawOpenPortalDoc): void {
   writeFileSync(configFilePath(), JSON.stringify(doc, null, 2) + "\n", "utf-8");
 }
 
-function isServer(s: unknown): s is ConfiguredServer {
-  if (!s || typeof s !== "object") return false;
-  const o = s as Record<string, unknown>;
+function normalizeProtocol(value: unknown): ServerProtocol {
+  return value === "https" ? "https" : "http";
+}
+
+function normalizeLabel(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+export function displayServerLabel(
+  server: Pick<ConfiguredServer, "id" | "label" | "protocol" | "host" | "port">,
+): string {
   return (
-    typeof o.id === "string" &&
-    typeof o.label === "string" &&
-    typeof o.host === "string" &&
-    typeof o.port === "number" &&
-    Number.isInteger(o.port) &&
-    o.port > 0 &&
-    o.port < 65536
+    normalizeLabel(server.label) ??
+    `${normalizeProtocol(server.protocol)}://${server.host}:${server.port} (${server.id})`
   );
+}
+
+export function buildServerOrigin(
+  protocol: ServerProtocol,
+  host: string,
+  port: number,
+): string {
+  const url = new URL(`${normalizeProtocol(protocol)}://openportal.invalid`);
+  url.hostname = host.replace(/^\[|\]$/g, "");
+  url.port = String(port);
+  return url.origin;
+}
+
+function normalizeServer(s: unknown): ConfiguredServer | null {
+  if (!s || typeof s !== "object") return null;
+  const o = s as Record<string, unknown>;
+  if (
+    typeof o.id !== "string" ||
+    typeof o.host !== "string" ||
+    typeof o.port !== "number" ||
+    !Number.isInteger(o.port) ||
+    o.port <= 0 ||
+    o.port >= 65536
+  ) {
+    return null;
+  }
+  if (
+    o.label !== undefined &&
+    o.label !== null &&
+    typeof o.label !== "string"
+  ) {
+    return null;
+  }
+  if (
+    o.protocol !== undefined &&
+    o.protocol !== "http" &&
+    o.protocol !== "https"
+  ) {
+    return null;
+  }
+  return {
+    ...(s as ConfiguredServer),
+    id: o.id,
+    label: normalizeLabel(o.label),
+    protocol: normalizeProtocol(o.protocol),
+    host: o.host,
+    port: o.port,
+    ephemeral: Boolean(o.ephemeral),
+  };
+}
+
+function normalizeServers(raw: unknown): ConfiguredServer[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((s) => {
+    const server = normalizeServer(s);
+    return server ? [server] : [];
+  });
 }
 
 function generateServerId(): string {
@@ -200,8 +265,7 @@ export function normalizeWebEndpoint(
 
 export function listConfiguredServers(): ConfiguredServer[] {
   const doc = readRaw();
-  if (!Array.isArray(doc.servers)) return [];
-  return doc.servers.filter(isServer).map((s) => {
+  return normalizeServers(doc.servers).map((s) => {
     const rawHistory = (s as { directoriesHistory?: unknown })
       .directoriesHistory;
     return {
@@ -237,7 +301,8 @@ export function getServerByPort(port: number): ConfiguredServer | null {
 }
 
 export interface AddServerInput {
-  label: string;
+  label?: string | null;
+  protocol?: ServerProtocol;
   host: string;
   port: number;
   webEndpoint?: string;
@@ -247,21 +312,22 @@ export interface AddServerInput {
 
 export function addServer(input: AddServerInput): ConfiguredServer {
   const doc = readRaw();
-  const servers = Array.isArray(doc.servers)
-    ? doc.servers.filter(isServer)
-    : [];
+  const servers = normalizeServers(doc.servers);
+  const protocol = normalizeProtocol(input.protocol);
+  const host = input.host.trim();
 
   // De-dup on host:port. If a manual entry already exists with the same
   // endpoint, return it instead of creating a phantom duplicate.
   const existing = servers.find(
-    (s) => s.host === input.host && s.port === input.port,
+    (s) => s.host === host && s.port === input.port,
   );
   if (existing) return existing;
 
   const entry: ConfiguredServer = {
     id: generateServerId(),
-    label: input.label,
-    host: input.host,
+    label: normalizeLabel(input.label),
+    protocol,
+    host,
     port: input.port,
     webEndpoint: normalizeWebEndpoint(input.webEndpoint),
     ephemeral: Boolean(input.ephemeral),
@@ -278,17 +344,16 @@ export function updateServer(
   patch: Partial<Omit<ConfiguredServer, "id" | "addedAt">>,
 ): ConfiguredServer | null {
   const doc = readRaw();
-  const servers = Array.isArray(doc.servers)
-    ? doc.servers.filter(isServer)
-    : [];
+  const servers = normalizeServers(doc.servers);
   const idx = servers.findIndex((s) => s.id === id);
   if (idx === -1) return null;
-  const merged: ConfiguredServer = {
+  const merged = normalizeServer({
     ...servers[idx],
     ...patch,
     id: servers[idx].id,
     addedAt: servers[idx].addedAt,
-  };
+  });
+  if (!merged) return null;
   servers[idx] = merged;
   writeRaw({ ...doc, servers });
   return merged;
@@ -296,9 +361,7 @@ export function updateServer(
 
 export function removeServer(id: string): boolean {
   const doc = readRaw();
-  const servers = Array.isArray(doc.servers)
-    ? doc.servers.filter(isServer)
-    : [];
+  const servers = normalizeServers(doc.servers);
   const next = servers.filter((s) => s.id !== id);
   if (next.length === servers.length) return false;
   const update: RawOpenPortalDoc = { ...doc, servers: next };
@@ -310,9 +373,7 @@ export function removeServer(id: string): boolean {
 export function setActiveServer(id: string | null): boolean {
   const doc = readRaw();
   if (id !== null) {
-    const servers = Array.isArray(doc.servers)
-      ? doc.servers.filter(isServer)
-      : [];
+    const servers = normalizeServers(doc.servers);
     if (!servers.find((s) => s.id === id)) return false;
   }
   writeRaw({ ...doc, activeServerId: id });
@@ -337,9 +398,7 @@ export function setServerDirectories(
   directories: ServerDirectoryEntry[],
 ): ConfiguredServer | null {
   const doc = readRaw();
-  const servers = Array.isArray(doc.servers)
-    ? doc.servers.filter(isServer)
-    : [];
+  const servers = normalizeServers(doc.servers);
   const idx = servers.findIndex((s) => s.id === id);
   if (idx === -1) return null;
   const prev = servers[idx];

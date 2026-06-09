@@ -28,7 +28,11 @@ import {
 } from "./server-discovery";
 import { probeSshForCreds, type SshProbeStep } from "./ssh-creds";
 import { probeOpencodeDetailed } from "./server-discovery";
-import { listConfiguredServers } from "./server-registry";
+import {
+  buildServerOrigin,
+  listConfiguredServers,
+  type ServerProtocol,
+} from "./server-registry";
 import { setAuth } from "./auth-store";
 import { invalidateLiveEndpoint } from "./server-resolver";
 
@@ -77,15 +81,16 @@ export interface CredLookupStatus {
 const cache = new Map<string, CredLookupStatus>();
 const inflight = new Map<string, Promise<CredLookupStatus>>();
 
-function key(host: string, port: number): string {
-  return `${host}:${port}`;
+function key(host: string, port: number, protocol: ServerProtocol): string {
+  return `${protocol}://${host}:${port}`;
 }
 
 export function getCredStatus(
   host: string,
   port: number,
+  protocol: ServerProtocol = "http",
 ): CredLookupStatus | undefined {
-  return cache.get(key(host, port));
+  return cache.get(key(host, port, protocol));
 }
 
 // Public, redacted view: never includes the password. Used by the
@@ -93,13 +98,14 @@ export function getCredStatus(
 export function getCredStatusPublic(
   host: string,
   port: number,
+  protocol: ServerProtocol = "http",
 ): {
   state: CredLookupState;
   step?: string;
   message?: string;
   authMode?: CredAuthMode;
 } | undefined {
-  const s = cache.get(key(host, port));
+  const s = cache.get(key(host, port, protocol));
   if (!s) return undefined;
   return {
     state: s.state,
@@ -112,20 +118,25 @@ export function getCredStatusPublic(
 function set(
   host: string,
   port: number,
+  protocol: ServerProtocol,
   patch: Partial<CredLookupStatus> & { state: CredLookupState },
 ): CredLookupStatus {
   const next: CredLookupStatus = {
-    ...(cache.get(key(host, port)) ?? {}),
+    ...(cache.get(key(host, port, protocol)) ?? {}),
     ...patch,
     updatedAt: Date.now(),
   };
-  cache.set(key(host, port), next);
+  cache.set(key(host, port, protocol), next);
   return next;
 }
 
-export function clearCredStatus(host: string, port: number): void {
-  cache.delete(key(host, port));
-  inflight.delete(key(host, port));
+export function clearCredStatus(
+  host: string,
+  port: number,
+  protocol: ServerProtocol = "http",
+): void {
+  cache.delete(key(host, port, protocol));
+  inflight.delete(key(host, port, protocol));
 }
 
 interface RunOptions {
@@ -142,6 +153,7 @@ interface RunOptions {
 async function runProbe(
   host: string,
   port: number,
+  protocol: ServerProtocol,
   options: RunOptions,
 ): Promise<CredLookupStatus> {
   // Step 1: HTTP probe with no auth. Tri-state: success = no auth
@@ -149,13 +161,19 @@ async function runProbe(
   // = bail out with an honest 'server unreachable' rather than SSH-ing
   // in to look for credentials of a process that isn't running.
   if (!options.forceSsh) {
-    set(host, port, {
+    set(host, port, protocol, {
       state: "probing-http",
-      step: `Probing http://${host}:${port}`,
+      step: `Probing ${buildServerOrigin(protocol, host, port)}`,
     });
-    const result = await probeOpencodeDetailed(host, port);
+    const result = await probeOpencodeDetailed(
+      host,
+      port,
+      undefined,
+      undefined,
+      protocol,
+    );
     if (result.ok) {
-      return set(host, port, {
+      return set(host, port, protocol, {
         state: "succeeded",
         step: "Server does not require authentication.",
         creds: undefined,
@@ -163,14 +181,14 @@ async function runProbe(
       });
     }
     if (result.reason === "unreachable") {
-      return set(host, port, {
+      return set(host, port, protocol, {
         state: "failed",
         step: "unreachable",
         message: `Server at ${host}:${port} is unreachable. Is OpenCode running there? Skipping SSH credential probe.`,
       });
     }
     if (result.reason === "other") {
-      return set(host, port, {
+      return set(host, port, protocol, {
         state: "failed",
         step: "unreachable",
         message: `Server at ${host}:${port} returned HTTP ${result.status} (expected 200 or 401). Not running OpenCode? Skipping SSH credential probe.`,
@@ -180,7 +198,7 @@ async function runProbe(
   }
 
   // Step 2: 401 (or forced). Try SSH.
-  set(host, port, {
+  set(host, port, protocol, {
     state: "needs-auth",
     step: "Server requires authentication. Trying SSH to fetch credentials\u2026",
   });
@@ -198,7 +216,7 @@ async function runProbe(
     // Only public-key + keyboard-interactive supported reliably without
     // an extra dep. Tell the user to set up an SSH key — better UX than
     // silent fall-through.
-    return set(host, port, {
+    return set(host, port, protocol, {
       state: "failed",
       step: "ssh-rejected",
       message:
@@ -206,7 +224,7 @@ async function runProbe(
     });
   }
 
-  set(host, port, {
+  set(host, port, protocol, {
     state: "probing-ssh",
     step: "Connecting over SSH\u2026",
   });
@@ -215,7 +233,7 @@ async function runProbe(
     extraOptions: sshExtraOptions,
   });
   if (!sshOutcome.ok) {
-    return set(host, port, {
+    return set(host, port, protocol, {
       state: "failed",
       step: sshOutcome.step,
       message: sshOutcome.message,
@@ -226,7 +244,7 @@ async function runProbe(
   // Belt-and-braces: SSH might have given us creds for a stopped
   // opencode, or there could be two opencodes on the same machine with
   // different creds.
-  set(host, port, {
+  set(host, port, protocol, {
     state: "probing-http",
     step: "Validating credentials against the server\u2026",
   });
@@ -234,9 +252,15 @@ async function runProbe(
     username: sshOutcome.username!,
     password: sshOutcome.password!,
   };
-  const okWithCreds = await probeOpencode(host, port, creds);
+  const okWithCreds = await probeOpencode(
+    host,
+    port,
+    creds,
+    undefined,
+    protocol,
+  );
   if (!okWithCreds) {
-    return set(host, port, {
+    return set(host, port, protocol, {
       state: "failed",
       step: "validation-failed",
       message:
@@ -250,7 +274,11 @@ async function runProbe(
   // entries still need promotion — promote.post.ts reads this same
   // cache and writes auth on its way through.
   const configuredMatch = listConfiguredServers().find(
-    (s) => !s.ephemeral && s.host === host && s.port === port,
+    (s) =>
+      !s.ephemeral &&
+      s.protocol === protocol &&
+      s.host === host &&
+      s.port === port,
   );
   if (configuredMatch) {
     try {
@@ -265,7 +293,7 @@ async function runProbe(
       );
     }
   }
-  return set(host, port, {
+  return set(host, port, protocol, {
     state: "succeeded",
     step: "Got credentials and validated.",
     creds,
@@ -280,12 +308,13 @@ async function runProbe(
 export function startCredLookup(
   host: string,
   port: number,
+  protocol: ServerProtocol = "http",
   options: RunOptions = {},
 ): Promise<CredLookupStatus> {
-  const k = key(host, port);
+  const k = key(host, port, protocol);
   const existing = inflight.get(k);
   if (existing) return existing;
-  const p = runProbe(host, port, options).finally(() => {
+  const p = runProbe(host, port, protocol, options).finally(() => {
     inflight.delete(k);
   });
   inflight.set(k, p);
@@ -295,15 +324,19 @@ export function startCredLookup(
 // Fire-and-forget: kicks off a probe if we don't already have a
 // terminal result. Used by the listing endpoint so the UI's first
 // click on Add finds the answer waiting.
-export function ensureBackgroundCredLookup(host: string, port: number): void {
-  const k = key(host, port);
+export function ensureBackgroundCredLookup(
+  host: string,
+  port: number,
+  protocol: ServerProtocol = "http",
+): void {
+  const k = key(host, port, protocol);
   if (inflight.has(k)) return;
   const cur = cache.get(k);
   if (cur && (cur.state === "succeeded" || cur.state === "failed")) return;
   // Discard the returned promise; the caller doesn't await — this is
   // intentional, the result lands in the cache for the next /api/servers
   // poll to pick up.
-  void startCredLookup(host, port);
+  void startCredLookup(host, port, protocol);
 }
 
 // Used when `addServer` accepts creds (manual add flow) — drop the
@@ -313,8 +346,9 @@ export function recordKnownGoodCreds(
   host: string,
   port: number,
   creds: BasicAuthCreds,
+  protocol: ServerProtocol = "http",
 ): void {
-  set(host, port, {
+  set(host, port, protocol, {
     state: "succeeded",
     step: "Manually supplied credentials.",
     creds,
@@ -326,8 +360,9 @@ export function recordKnownGoodCreds(
 export function basicAuthHeaderFromStatus(
   host: string,
   port: number,
+  protocol: ServerProtocol = "http",
 ): Record<string, string> {
-  const s = cache.get(key(host, port));
+  const s = cache.get(key(host, port, protocol));
   if (!s?.creds) return {};
   return basicAuthHeader(s.creds);
 }

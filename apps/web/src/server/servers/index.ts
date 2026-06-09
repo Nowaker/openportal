@@ -1,9 +1,11 @@
 import { defineHandler } from "nitro/h3";
 import { lookup as dnsLookup } from "dns/promises";
 import {
+  displayServerLabel,
   getActiveServerId,
   listConfiguredServers,
   type ConfiguredServer,
+  type ServerProtocol,
 } from "../lib/server-registry";
 import { discoverAll, probeOpencode } from "../lib/server-discovery";
 import { listInspectFindings } from "../lib/inspect-pool";
@@ -101,7 +103,9 @@ export interface CredLookupSummary {
 
 export interface ServerListEntry {
   id: string;
-  label: string;
+  label: string | null;
+  displayLabel: string;
+  protocol: ServerProtocol;
   host: string;
   port: number;
   webEndpoint?: string;
@@ -157,7 +161,13 @@ async function buildConfiguredEntries(
       const liveHost = live?.host;
       const livePort = live?.port;
       const ok = live
-        ? await probeOpencode(live.host, live.port, live.auth)
+        ? await probeOpencode(
+            live.host,
+            live.port,
+            live.auth,
+            undefined,
+            live.protocol,
+          )
         : false;
       const isActive = server.id === activeId;
       let status: ServerStatus;
@@ -189,7 +199,7 @@ async function buildConfiguredEntries(
       //      need auth and the resolver got through without
       //      Authorization headers.
       let credLookup: CredLookupSummary | undefined = live
-        ? getCredStatusPublic(live.host, live.port)
+        ? getCredStatusPublic(live.host, live.port, live.protocol)
         : undefined;
 
       if (!credLookup && server.ephemeral && live?.auth) {
@@ -205,8 +215,8 @@ async function buildConfiguredEntries(
         !server.ephemeral &&
         !isLoopbackHost(live.host)
       ) {
-        ensureBackgroundCredLookup(live.host, live.port);
-        credLookup = getCredStatusPublic(live.host, live.port);
+        ensureBackgroundCredLookup(live.host, live.port, live.protocol);
+        credLookup = getCredStatusPublic(live.host, live.port, live.protocol);
       }
 
       if (!credLookup && ok) {
@@ -229,6 +239,8 @@ async function buildConfiguredEntries(
       return {
         id: server.id,
         label: server.label,
+        displayLabel: displayServerLabel(server),
+        protocol: server.protocol,
         host: server.host,
         port: server.port,
         webEndpoint: server.webEndpoint,
@@ -258,7 +270,9 @@ export default defineHandler(async () => {
   // host:port, so each running opencode shows up exactly once. Configured
   // entries take precedence (they carry user labels).
   const configuredByHostPort = new Set(
-    configuredEntries.map((c) => `${c.liveHost ?? c.host}:${c.livePort ?? c.port}`),
+    configuredEntries.map(
+      (c) => `${c.liveHost ?? c.host}:${c.livePort ?? c.port}`,
+    ),
   );
   const discoveredEntries: ServerListEntry[] = await Promise.all(
     discovered
@@ -299,6 +313,8 @@ export default defineHandler(async () => {
         return {
           id: d.id,
           label: d.label,
+          displayLabel: d.label,
+          protocol: "http",
           host: d.host,
           port: d.port,
           resolvedAddress,
@@ -347,6 +363,8 @@ export default defineHandler(async () => {
         return {
           id: f.id,
           label: f.label,
+          displayLabel: f.label,
+          protocol: "http",
           host: f.host,
           port: f.port,
           resolvedAddress,

@@ -11,6 +11,7 @@ import { getCredStatusPublic } from "../lib/cred-lookup";
 const schema = z.object({
   host: z.string().min(1),
   port: z.coerce.number().int().min(1).max(65535),
+  protocol: z.enum(["http", "https"]).optional(),
 });
 
 export default defineHandler((event) => {
@@ -19,7 +20,11 @@ export default defineHandler((event) => {
     throw new HTTPError("invalid query", { status: 400 });
   }
   return (
-    getCredStatusPublic(parsed.data.host, parsed.data.port) ?? {
+    getCredStatusPublic(
+      parsed.data.host,
+      parsed.data.port,
+      parsed.data.protocol,
+    ) ?? {
       state: "idle",
     }
   );

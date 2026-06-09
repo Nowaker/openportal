@@ -18,7 +18,11 @@
 
 import { exec, spawn } from "child_process";
 import { promisify } from "util";
-import type { DiscoveryHint } from "./server-registry";
+import {
+  buildServerOrigin,
+  type DiscoveryHint,
+  type ServerProtocol,
+} from "./server-registry";
 
 const execAsync = promisify(exec);
 
@@ -520,8 +524,9 @@ export async function probeOpencode(
   port: number,
   auth?: BasicAuthCreds,
   timeoutMs = 5000,
+  protocol: ServerProtocol = "http",
 ): Promise<boolean> {
-  return (await probeOpencodeDetailed(host, port, auth, timeoutMs)).ok;
+  return (await probeOpencodeDetailed(host, port, auth, timeoutMs, protocol)).ok;
 }
 
 export type ProbeResult =
@@ -541,11 +546,12 @@ export async function probeOpencodeDetailed(
   port: number,
   auth?: BasicAuthCreds,
   timeoutMs = 5000,
+  protocol: ServerProtocol = "http",
 ): Promise<ProbeResult> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`http://${host}:${port}/config/providers`, {
+    const res = await fetch(`${buildServerOrigin(protocol, host, port)}/config/providers`, {
       signal: ctrl.signal,
       headers: basicAuthHeader(auth),
     });

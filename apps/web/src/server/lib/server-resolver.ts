@@ -23,10 +23,12 @@ import {
   getServerById,
   updateEphemeralEndpoint,
   type ConfiguredServer,
+  type ServerProtocol,
 } from "./server-registry";
 import { getAuth } from "./auth-store";
 
 export interface LiveEndpoint {
+  protocol: ServerProtocol;
   host: string;
   port: number;
   auth?: BasicAuthCreds;
@@ -95,6 +97,7 @@ export async function resolveLiveEndpoint(
       updateEphemeralEndpoint(server.id, live.host, live.port);
     }
     const endpoint: LiveEndpoint = {
+      protocol: server.protocol,
       host: live.host,
       port: live.port,
       auth: live.auth,
@@ -108,6 +111,7 @@ export async function resolveLiveEndpoint(
   // its credentials. Servers that don't need auth simply have no entry.
   const stored = getAuth(server.id);
   const endpoint: LiveEndpoint = {
+    protocol: server.protocol,
     host: server.host,
     port: server.port,
     auth: stored,
@@ -130,7 +134,7 @@ export async function probeLive(
   ep: LiveEndpoint,
   timeoutMs?: number,
 ): Promise<boolean> {
-  return probeOpencode(ep.host, ep.port, ep.auth, timeoutMs);
+  return probeOpencode(ep.host, ep.port, ep.auth, timeoutMs, ep.protocol);
 }
 
 // Build the headers a proxy request needs to talk to a live endpoint.

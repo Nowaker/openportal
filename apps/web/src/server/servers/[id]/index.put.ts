@@ -10,6 +10,8 @@ import { invalidateLiveEndpoint } from "../../lib/server-resolver";
 import { parseBody, parseRouteParam } from "../../lib/validation";
 
 const updateSchema = z.object({
+  label: z.string().max(120).nullable().optional(),
+  protocol: z.enum(["http", "https"]).optional(),
   host: z.string().min(1).max(255).optional(),
   port: z.int().min(1).max(65535).optional(),
   webEndpoint: z.string().max(2048).nullable().optional(),
@@ -21,6 +23,8 @@ export default defineHandler(async (event) => {
   if (!existing) throw new HTTPError("Server not found", { status: 404 });
 
   const body = await parseBody(event, updateSchema);
+  const protocol = body.protocol ?? existing.protocol;
+  const label = body.label === undefined ? existing.label : body.label;
   const host = body.host?.trim() ?? existing.host;
   const port = body.port ?? existing.port;
   const webEndpoint =
@@ -29,7 +33,10 @@ export default defineHandler(async (event) => {
       : normalizeWebEndpoint(body.webEndpoint ?? undefined);
 
   const duplicate = listConfiguredServers().find(
-    (s) => s.id !== id && s.host === host && s.port === port,
+    (s) =>
+      s.id !== id &&
+      s.host === host &&
+      s.port === port,
   );
   if (duplicate) {
     throw new HTTPError(
@@ -38,7 +45,7 @@ export default defineHandler(async (event) => {
     );
   }
 
-  const server = updateServer(id, { host, port, webEndpoint });
+  const server = updateServer(id, { label, protocol, host, port, webEndpoint });
   if (!server) throw new HTTPError("Server not found", { status: 404 });
   invalidateLiveEndpoint(id);
   return { server };
