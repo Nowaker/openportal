@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 export interface Instance {
   id: string;
   name: string;
+  protocol?: "http" | "https";
   port: number;
   hostname?: string;
   webEndpoint?: string;

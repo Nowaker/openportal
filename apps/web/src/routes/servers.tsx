@@ -24,6 +24,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 import { PageTitle } from "@/components/ui/typography";
 import { formatFullDateTime } from "@/lib/format-time";
 import { useDateFormatStore } from "@/stores/date-format-store";
@@ -77,9 +83,13 @@ interface CredLookupSummary {
   authMode?: "none" | "discovered" | "manual" | "stored";
 }
 
+type ServerProtocol = "http" | "https";
+
 interface ServerListEntry {
   id: string;
-  label: string;
+  label: string | null;
+  displayLabel: string;
+  protocol: ServerProtocol;
   host: string;
   port: number;
   webEndpoint?: string;
@@ -106,6 +116,8 @@ interface ServerListResponse {
 }
 
 interface ServerUpdatePayload {
+  label: string | null;
+  protocol: ServerProtocol;
   host: string;
   port: number;
   webEndpoint: string | null;
@@ -116,6 +128,21 @@ const fetcher = async (url: string) => {
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
   return res.json();
 };
+
+function serverOrigin(protocol: ServerProtocol, host: string, port: number): string {
+  try {
+    const url = new URL(`${protocol}://openportal.invalid`);
+    url.hostname = host.replace(/^\[|\]$/g, "");
+    url.port = String(port);
+    return url.origin;
+  } catch {
+    return `${protocol}://${host}:${port}`;
+  }
+}
+
+function labelFor(entry: Pick<ServerListEntry, "displayLabel" | "label">): string {
+  return entry.displayLabel || entry.label || "Unnamed server";
+}
 
 export const Route = createFileRoute("/servers")({
   component: ServersPage,
@@ -168,6 +195,7 @@ interface AuthModalTarget {
   // modal handles that by promoting first when the user submits.
   host: string;
   port: number;
+  protocol: ServerProtocol;
   // Display label only.
   label: string;
   // The discoveredId, if this is a discovered server we'll need to
@@ -222,7 +250,8 @@ function ServersPage() {
         if (picked) {
           setInstance({
             id: picked.id,
-            name: picked.label,
+            name: labelFor(picked),
+            protocol: picked.protocol,
             port: picked.port,
             hostname: picked.host,
             webEndpoint: picked.webEndpoint,
@@ -295,7 +324,8 @@ function ServersPage() {
       setAuthModal({
         host: entry.liveHost ?? entry.host,
         port: entry.livePort ?? entry.port,
-        label: entry.label,
+        protocol: entry.protocol,
+        label: labelFor(entry),
         serverId: entry.id,
         activateAfter: true,
       });
@@ -366,7 +396,8 @@ function ServersPage() {
       setAuthModal({
         host: entry.host,
         port: entry.port,
-        label: entry.label,
+        protocol: entry.protocol,
+        label: labelFor(entry),
         discoveredId: entry.id,
         activateAfter: Boolean(options?.activateAfter),
       });
@@ -437,7 +468,8 @@ function ServersPage() {
       if (picked?.isActive) {
         setInstance({
           id: picked.id,
-          name: picked.label,
+          name: labelFor(picked),
+          protocol: picked.protocol,
           port: picked.port,
           hostname: picked.host,
           webEndpoint: picked.webEndpoint,
@@ -501,7 +533,8 @@ function ServersPage() {
               setAuthModal({
                 host: s.liveHost ?? s.host,
                 port: s.livePort ?? s.port,
-                label: s.label,
+                protocol: s.protocol,
+                label: labelFor(s),
                 serverId: s.id,
                 activateAfter: false,
               })
@@ -509,7 +542,7 @@ function ServersPage() {
             onOpen={() => void navigate({ to: "/", search: (prev) => prev })}
             onSave={(patch) => saveServer(s, patch)}
             onConfigureDirs={() =>
-              setDirectoriesTarget({ serverId: s.id, label: s.label })
+              setDirectoriesTarget({ serverId: s.id, label: labelFor(s) })
             }
           />
         ))}
@@ -586,7 +619,7 @@ function ServersPage() {
         title="Remove server?"
         description={
           removeTarget
-            ? `Remove "${data?.servers.find((s) => s.id === removeTarget)?.label ?? removeTarget}" from the registry. Stored credentials for this server (if any) are also cleared. The server itself is not stopped \u2014 only this Portal's reference to it.`
+            ? `Remove "${data?.servers.find((s) => s.id === removeTarget)?.displayLabel ?? removeTarget}" from the registry. Stored credentials for this server (if any) are also cleared. The server itself is not stopped \u2014 only this Portal's reference to it.`
             : ""
         }
         confirmLabel="Remove"
@@ -624,21 +657,7 @@ function ServerCard({
   onSave,
   onOpen,
 }: ServerCardProps) {
-  const [editing, setEditing] = useState(false);
-  const [editHost, setEditHost] = useState(entry.host);
-  const [editPort, setEditPort] = useState(String(entry.port));
-  const [editWebEndpoint, setEditWebEndpoint] = useState(
-    entry.webEndpoint ?? "",
-  );
-  const [editError, setEditError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (editing) return;
-    setEditHost(entry.host);
-    setEditPort(String(entry.port));
-    setEditWebEndpoint(entry.webEndpoint ?? "");
-    setEditError(null);
-  }, [editing, entry.host, entry.port, entry.webEndpoint]);
+  const [editOpen, setEditOpen] = useState(false);
 
   // Cred-lookup hint shown on the card. Same data the Discovered
   // section uses, but rendered here too so the user sees probe
@@ -649,9 +668,10 @@ function ServerCard({
   const configuredCredHint = entry.credLookup
     ? formatCredHint(entry.credLookup)
     : null;
+  const displayLabel = labelFor(entry);
   const liveLabel =
     entry.liveHost && entry.livePort
-      ? `${entry.liveHost}:${entry.livePort}`
+      ? `${entry.protocol}://${entry.liveHost}:${entry.livePort}`
       : null;
   const isLoopback =
     entry.host === "127.0.0.1" ||
@@ -669,7 +689,7 @@ function ServerCard({
   //   green   = reachable (active or online; ephemeral relocated also
   //             counts since the live endpoint is up)
   //   muted   = offline / unknown
-  // We don't tint by isActive alone — a configured-but-offline active
+  // We don't tint by isActive alone - a configured-but-offline active
   // server is "broken right now", not "happy and connected".
   const reachable =
     entry.status === "active" ||
@@ -680,7 +700,188 @@ function ServerCard({
     : "bg-muted/30 text-muted-fg";
   const effectiveWebEndpoint =
     entry.webEndpoint ??
-    `http://${entry.liveHost ?? entry.host}:${entry.livePort ?? entry.port}`;
+    serverOrigin(
+      entry.protocol,
+      entry.liveHost ?? entry.host,
+      entry.livePort ?? entry.port,
+    );
+
+  return (
+    <>
+      <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-bg p-4 shadow-sm">
+        <div
+          className={`flex size-12 shrink-0 items-center justify-center rounded-lg ${iconClasses}`}
+        >
+          <ServerStackIcon className="size-6" />
+        </div>
+        {/*
+          Title row uses min-w-0 so the label can truncate inside the
+          flex column without pushing the pill off-card. The pill sits
+          directly after the label (gap-2) so the visual association is
+          unambiguous: this status describes THIS server. Earlier
+          version used justify-between, which floated the pill far to
+          the right and made it look like it belonged with the action
+          buttons instead.
+        */}
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-medium text-fg truncate">{displayLabel}</span>
+            <StatusPill status={entry.status} />
+          </div>
+          <div className="text-xs text-muted-fg font-mono truncate">
+            ID: {entry.id}
+          </div>
+          <div className="text-xs text-muted-fg font-mono truncate">
+            {entry.protocol}://{entry.host}:{entry.port}
+            {entry.resolvedAddress && entry.resolvedAddress !== entry.host
+              ? ` (${entry.resolvedAddress})`
+              : ""}
+            {liveLabel ? ` -> ${liveLabel}` : ""}
+            {entry.ephemeral ? " · ephemeral" : ""}
+          </div>
+          <div className="text-xs text-muted-fg font-mono truncate">
+            OpenCode Web UI: {effectiveWebEndpoint}
+            {!entry.webEndpoint ? " (default)" : ""}
+          </div>
+          {configuredCredHint && (
+            <div className="flex items-center gap-1.5 text-xs">
+              {configuredCredHint.spinner && (
+                <ArrowPathIcon className="size-3.5 shrink-0 animate-spin text-muted-fg" />
+              )}
+              <span
+                className={
+                  configuredCredHint.tone === "success"
+                    ? "text-emerald-600"
+                    : configuredCredHint.tone === "danger"
+                      ? "text-warning"
+                      : "text-muted-fg"
+                }
+              >
+                {configuredCredHint.text}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            intent="secondary"
+            onPress={() => setEditOpen(true)}
+            isDisabled={busy}
+            aria-label="Edit server address and OpenCode Web UI address"
+          >
+            <PencilSquareIcon className="size-4" />
+          </Button>
+          {entry.isActive && entry.status !== "offline" && (
+            <Button size="sm" intent="primary" onPress={onOpen} isDisabled={busy}>
+              Open
+            </Button>
+          )}
+          {showReconnect && (
+            <Button
+              size="sm"
+              intent="primary"
+              onPress={onUse}
+              isDisabled={busy}
+            >
+              <ArrowPathIcon className="size-4" />
+              Reconnect
+            </Button>
+          )}
+          {!entry.isActive && (
+            <Button size="sm" intent="primary" onPress={onUse} isDisabled={busy}>
+              Open
+            </Button>
+          )}
+          {offlineNeedsAuth && (
+            <Button
+              size="sm"
+              intent="secondary"
+              onPress={onSetCreds}
+              isDisabled={busy}
+            >
+              <KeyIcon className="size-4" />
+            </Button>
+          )}
+          <Button
+            size="sm"
+            intent="secondary"
+            onPress={onConfigureDirs}
+            isDisabled={busy}
+            aria-label="Configure workspace directories"
+          >
+            <FolderOpenIcon className="size-4" />
+          </Button>
+          <Button
+            size="sm"
+            intent="secondary"
+            onPress={onProbe}
+            isDisabled={busy}
+          >
+            <ArrowPathIcon className="size-4" />
+          </Button>
+          <Button
+            size="sm"
+            intent="secondary"
+            onPress={onRemove}
+            isDisabled={busy}
+          >
+            <TrashIcon className="size-4" />
+          </Button>
+        </div>
+      </div>
+      <ServerEditModal
+        entry={entry}
+        busy={busy}
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSave={onSave}
+      />
+    </>
+  );
+}
+
+function ServerEditModal({
+  entry,
+  busy,
+  isOpen,
+  onClose,
+  onSave,
+}: {
+  entry: ServerListEntry;
+  busy: boolean;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (patch: ServerUpdatePayload) => Promise<void>;
+}) {
+  const [editLabel, setEditLabel] = useState(entry.label ?? "");
+  const [editProtocol, setEditProtocol] = useState<ServerProtocol>(
+    entry.protocol,
+  );
+  const [editHost, setEditHost] = useState(entry.host);
+  const [editPort, setEditPort] = useState(String(entry.port));
+  const [editWebEndpoint, setEditWebEndpoint] = useState(
+    entry.webEndpoint ?? "",
+  );
+  const [editError, setEditError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setEditLabel(entry.label ?? "");
+    setEditProtocol(entry.protocol);
+    setEditHost(entry.host);
+    setEditPort(String(entry.port));
+    setEditWebEndpoint(entry.webEndpoint ?? "");
+    setEditError(null);
+  }, [
+    entry.host,
+    entry.id,
+    entry.label,
+    entry.port,
+    entry.protocol,
+    entry.webEndpoint,
+    isOpen,
+  ]);
 
   const saveEdit = async () => {
     const nextHost = editHost.trim();
@@ -696,200 +897,134 @@ function ServerCard({
     setEditError(null);
     try {
       await onSave({
+        label: editLabel.trim() || null,
+        protocol: editProtocol,
         host: nextHost,
         port: nextPort,
         webEndpoint: editWebEndpoint.trim() || null,
       });
-      setEditing(false);
+      onClose();
     } catch (e) {
       setEditError(e instanceof Error ? e.message : "save failed");
     }
   };
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-bg p-4 shadow-sm">
-      <div
-        className={`flex size-12 shrink-0 items-center justify-center rounded-lg ${iconClasses}`}
-      >
-        <ServerStackIcon className="size-6" />
-      </div>
-      {/*
-        Title row uses min-w-0 so the label can truncate inside the
-        flex column without pushing the pill off-card. The pill sits
-        directly after the label (gap-2) so the visual association is
-        unambiguous: this status describes THIS server. Earlier
-        version used justify-between, which floated the pill far to
-        the right and made it look like it belonged with the action
-        buttons instead.
-      */}
-      <div className="flex flex-1 flex-col gap-1 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-medium text-fg truncate">{entry.label}</span>
-          <StatusPill status={entry.status} />
-        </div>
-        <div className="text-xs text-muted-fg font-mono truncate">
-          ID: {entry.id}
-        </div>
-        {editing ? (
-          <div className="grid gap-2 pt-1 sm:grid-cols-[minmax(0,1fr)_6rem]">
-            <label className="text-xs text-muted-fg">
-              Host
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      isDismissable
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/50"
+    >
+      <Modal className="outline-none w-full max-w-lg">
+        <PrimitiveDialog className="relative outline-none rounded-xl bg-bg shadow-2xl border border-border/50 p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">Edit server</h2>
+              <p className="text-xs text-muted-fg">
+                Blank label uses the automatic fallback shown in the server list.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded p-1 text-muted-fg hover:bg-muted/40 hover:text-fg"
+            >
+              <XMarkIcon className="size-4" />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <label className="block text-sm">
+              <div className="text-muted-fg mb-1">Label (optional)</div>
               <Input
-                required
-                value={editHost}
-                onChange={(e) => setEditHost(e.target.value)}
-                className="mt-1 font-mono"
+                value={editLabel}
+                onChange={(e) => setEditLabel(e.target.value)}
+                placeholder={entry.displayLabel}
               />
             </label>
-            <label className="text-xs text-muted-fg">
-              Port
-              <Input
-                required
-                value={editPort}
-                onChange={(e) => setEditPort(e.target.value)}
-                inputMode="numeric"
-                className="mt-1 font-mono"
-              />
-            </label>
-            <label className="text-xs text-muted-fg sm:col-span-2">
-              OpenCode web endpoint (optional)
+
+            <div className="grid gap-3 sm:grid-cols-[9rem_minmax(0,1fr)_7rem]">
+              <label className="block text-sm">
+                <div className="text-muted-fg mb-1">Protocol</div>
+                <Select
+                  selectedKey={editProtocol}
+                  onSelectionChange={(key) => {
+                    if (key === "http" || key === "https") {
+                      setEditProtocol(key);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="font-mono" />
+                  <SelectContent>
+                    <SelectItem id="http" textValue="http">
+                      http
+                    </SelectItem>
+                    <SelectItem id="https" textValue="https">
+                      https
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="block text-sm">
+                <div className="text-muted-fg mb-1">Host</div>
+                <Input
+                  required
+                  value={editHost}
+                  onChange={(e) => setEditHost(e.target.value)}
+                  className="font-mono"
+                />
+              </label>
+              <label className="block text-sm">
+                <div className="text-muted-fg mb-1">Port</div>
+                <Input
+                  required
+                  value={editPort}
+                  onChange={(e) => setEditPort(e.target.value)}
+                  inputMode="numeric"
+                  className="font-mono"
+                />
+              </label>
+            </div>
+
+            <label className="block text-sm">
+              <div className="text-muted-fg mb-1">
+                OpenCode Web UI address{" "}
+                <span className="text-muted-fg/70">(optional)</span>
+              </div>
               <Input
                 value={editWebEndpoint}
                 onChange={(e) => setEditWebEndpoint(e.target.value)}
-                placeholder={`http://${entry.host}:${entry.port}`}
-                className="mt-1 font-mono"
+                placeholder={serverOrigin(
+                  editProtocol,
+                  editHost || entry.host,
+                  Number(editPort) || entry.port,
+                )}
+                className="font-mono"
               />
             </label>
-            {editError && (
-              <div className="text-xs text-danger-subtle-fg sm:col-span-2">
-                {editError}
-              </div>
-            )}
           </div>
-        ) : (
-          <>
-            <div className="text-xs text-muted-fg font-mono truncate">
-              {entry.host}:{entry.port}
-              {entry.resolvedAddress && entry.resolvedAddress !== entry.host
-                ? ` (${entry.resolvedAddress})`
-                : ""}
-              {liveLabel ? ` → ${liveLabel}` : ""}
-              {entry.ephemeral ? " · ephemeral" : ""}
+
+          {editError && (
+            <div className="rounded-md bg-danger-subtle p-2 text-sm text-danger-subtle-fg">
+              {editError}
             </div>
-            <div className="text-xs text-muted-fg font-mono truncate">
-              Web UI: {effectiveWebEndpoint}
-              {!entry.webEndpoint ? " (default)" : ""}
-            </div>
-          </>
-        )}
-        {configuredCredHint && (
-          <div className="flex items-center gap-1.5 text-xs">
-            {configuredCredHint.spinner && (
-              <ArrowPathIcon className="size-3.5 shrink-0 animate-spin text-muted-fg" />
-            )}
-            <span
-              className={
-                configuredCredHint.tone === "success"
-                  ? "text-emerald-600"
-                  : configuredCredHint.tone === "danger"
-                    ? "text-warning"
-                    : "text-muted-fg"
-              }
-            >
-              {configuredCredHint.text}
-            </span>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button intent="secondary" onPress={onClose} isDisabled={busy}>
+              Cancel
+            </Button>
+            <Button intent="primary" onPress={saveEdit} isDisabled={busy}>
+              {busy ? "Saving..." : "Save"}
+            </Button>
           </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {editing ? (
-          <>
-            <Button
-              size="sm"
-              intent="primary"
-              onPress={saveEdit}
-              isDisabled={busy}
-            >
-              Save
-            </Button>
-            <Button
-              size="sm"
-              intent="secondary"
-              onPress={() => setEditing(false)}
-              isDisabled={busy}
-            >
-              <XMarkIcon className="size-4" />
-            </Button>
-          </>
-        ) : (
-          <Button
-            size="sm"
-            intent="secondary"
-            onPress={() => setEditing(true)}
-            isDisabled={busy}
-            aria-label="Edit server address and web endpoint"
-          >
-            <PencilSquareIcon className="size-4" />
-          </Button>
-        )}
-        {entry.isActive && entry.status !== "offline" && (
-          <Button size="sm" intent="primary" onPress={onOpen} isDisabled={busy}>
-            Open
-          </Button>
-        )}
-        {showReconnect && (
-          <Button
-            size="sm"
-            intent="primary"
-            onPress={onUse}
-            isDisabled={busy}
-          >
-            <ArrowPathIcon className="size-4" />
-            Reconnect
-          </Button>
-        )}
-        {!entry.isActive && (
-          <Button size="sm" intent="primary" onPress={onUse} isDisabled={busy}>
-            Open
-          </Button>
-        )}
-        {offlineNeedsAuth && (
-          <Button
-            size="sm"
-            intent="secondary"
-            onPress={onSetCreds}
-            isDisabled={busy}
-          >
-            <KeyIcon className="size-4" />
-          </Button>
-        )}
-        <Button
-          size="sm"
-          intent="secondary"
-          onPress={onConfigureDirs}
-          isDisabled={busy}
-          aria-label="Configure workspace directories"
-        >
-          <FolderOpenIcon className="size-4" />
-        </Button>
-        <Button
-          size="sm"
-          intent="secondary"
-          onPress={onProbe}
-          isDisabled={busy}
-        >
-          <ArrowPathIcon className="size-4" />
-        </Button>
-        <Button
-          size="sm"
-          intent="secondary"
-          onPress={onRemove}
-          isDisabled={busy}
-        >
-          <TrashIcon className="size-4" />
-        </Button>
-      </div>
-    </div>
+        </PrimitiveDialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 
@@ -929,7 +1064,7 @@ function DiscoveredCard({
       */}
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-medium text-fg truncate">{entry.label}</span>
+          <span className="font-medium text-fg truncate">{labelFor(entry)}</span>
         </div>
         <div className="text-xs text-muted-fg font-mono truncate">
           {entry.host}:{entry.port}
@@ -1107,9 +1242,9 @@ function ManualAddCard({
   const [open, setOpen] = useState(false);
   const [host, setHost] = useState("127.0.0.1");
   const [port, setPort] = useState("4096");
+  const [protocol, setProtocol] = useState<ServerProtocol>("http");
   const [webEndpoint, setWebEndpoint] = useState("");
-  const [label, setLabel] = useState("127.0.0.1:4096");
-  const [labelDirty, setLabelDirty] = useState(false);
+  const [label, setLabel] = useState("");
   const [ephemeral, setEphemeral] = useState(false);
   // submitting carries which submit-button is in flight so each one
   // can show its own "Adding..." text without spinning the other.
@@ -1153,12 +1288,6 @@ function ManualAddCard({
     return () => cancelAnimationFrame(raf);
   }, [open]);
 
-  // Auto-derive label from host:port until the user edits it.
-  useEffect(() => {
-    if (labelDirty) return;
-    setLabel(`${host}:${port}`);
-  }, [host, port, labelDirty]);
-
   // Shared handler for the two submit buttons. `activateAfter=true` is
   // the "Add & open" variant: after a successful POST we bind the
   // Portal to the new server and navigate to /.
@@ -1174,7 +1303,8 @@ function ManualAddCard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: label || `${host}:${port}`,
+          label: label.trim() || null,
+          protocol,
           host,
           port: Number(port),
           webEndpoint: webEndpoint.trim() || undefined,
@@ -1289,7 +1419,8 @@ function ManualAddCard({
     setErr(null);
     try {
       const body: Record<string, unknown> = {
-        label: `${host}:${finding.port}`,
+        label: null,
+        protocol: "http",
         host,
         port: finding.port,
         webEndpoint: webEndpoint.trim() || undefined,
@@ -1391,7 +1522,28 @@ function ManualAddCard({
       {/* Port, Label, Ephemeral are anchored to the top half of the
           form so they stay in a predictable position. Inspect
           progress and results flow underneath. */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-[9rem_7rem_minmax(0,1fr)]">
+        <label className="text-sm">
+          <div className="text-muted-fg mb-1">Protocol</div>
+          <Select
+            selectedKey={protocol}
+            onSelectionChange={(key) => {
+              if (key === "http" || key === "https") {
+                setProtocol(key);
+              }
+            }}
+          >
+            <SelectTrigger className="font-mono" />
+            <SelectContent>
+              <SelectItem id="http" textValue="http">
+                http
+              </SelectItem>
+              <SelectItem id="https" textValue="https">
+                https
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </label>
         <label className="text-sm">
           <div className="text-muted-fg mb-1">Port</div>
           <input
@@ -1411,11 +1563,8 @@ function ManualAddCard({
           </div>
           <input
             value={label}
-            onChange={(e) => {
-              setLabel(e.target.value);
-              setLabelDirty(true);
-            }}
-            placeholder={`${host}:${port}`}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder={`${protocol}://${host}:${port}`}
             className="w-full rounded-md border border-border bg-bg px-2 py-1.5"
           />
         </label>
@@ -1423,7 +1572,7 @@ function ManualAddCard({
 
       <label className="text-sm block">
         <div className="text-muted-fg mb-1">
-          OpenCode web endpoint{" "}
+          OpenCode Web UI address{" "}
           <span className="text-muted-fg/70 normal-case">
             (optional)
           </span>
@@ -1431,7 +1580,7 @@ function ManualAddCard({
         <Input
           value={webEndpoint}
           onChange={(e) => setWebEndpoint(e.target.value)}
-          placeholder={`http://${host}:${port}`}
+          placeholder={serverOrigin(protocol, host, Number(port) || 4096)}
           className="font-mono"
         />
       </label>
@@ -1612,27 +1761,31 @@ interface AuthModalProps {
 function useCredLookup(
   host: string | null,
   port: number | null,
+  protocol: ServerProtocol | null,
 ): {
   status: CredLookupSummary;
   refresh: () => Promise<void>;
 } {
   const [status, setStatus] = useState<CredLookupSummary>({ state: "idle" });
   const refresh = useCallback(async () => {
-    if (!host || !port) return;
+    if (!host || !port || !protocol) return;
     try {
-      const res = await fetch(
-        `/api/servers/cred-lookup?host=${encodeURIComponent(host)}&port=${port}`,
-      );
+      const params = new URLSearchParams({
+        host,
+        port: String(port),
+        protocol,
+      });
+      const res = await fetch(`/api/servers/cred-lookup?${params}`);
       if (!res.ok) return;
       const next = (await res.json()) as CredLookupSummary;
       setStatus(next);
     } catch {
       // Network blip; keep last status.
     }
-  }, [host, port]);
+  }, [host, port, protocol]);
 
   useEffect(() => {
-    if (!host || !port) {
+    if (!host || !port || !protocol) {
       setStatus({ state: "idle" });
       return;
     }
@@ -1653,7 +1806,7 @@ function useCredLookup(
     // We intentionally re-run polling whenever the (host, port) keys
     // change, but not when `status` updates — the loop above stays
     // open continuously while alive.
-  }, [host, port, refresh]);
+  }, [host, port, protocol, refresh]);
 
   return { status, refresh };
 }
@@ -1693,7 +1846,11 @@ function AuthModalBody({
   onClose: () => void;
   onSuccess: AuthModalProps["onSuccess"];
 }) {
-  const { status, refresh } = useCredLookup(target.host, target.port);
+  const { status, refresh } = useCredLookup(
+    target.host,
+    target.port,
+    target.protocol,
+  );
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("opencode");
   const [submitting, setSubmitting] = useState(false);
@@ -1713,9 +1870,13 @@ function AuthModalBody({
     void fetch("/api/servers/cred-lookup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ host: target.host, port: target.port }),
+      body: JSON.stringify({
+        host: target.host,
+        port: target.port,
+        protocol: target.protocol,
+      }),
     });
-  }, [target.host, target.port]);
+  }, [target.host, target.port, target.protocol]);
 
   // When the probe transitions to `succeeded` AND the user hasn't
   // typed: apply silently. If the user has typed, surface a "Got
@@ -1821,6 +1982,7 @@ function AuthModalBody({
       body: JSON.stringify({
         host: target.host,
         port: target.port,
+        protocol: target.protocol,
         forceSsh: true,
         sshUser: sshUser || undefined,
       }),
@@ -1843,7 +2005,7 @@ function AuthModalBody({
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Authenticate to {target.label}</h2>
         <p className="text-xs text-muted-fg font-mono">
-          {target.host}:{target.port}
+          {target.protocol}://{target.host}:{target.port}
         </p>
       </div>
 
@@ -1937,7 +2099,7 @@ function AuthModalBody({
               type="submit"
               isDisabled={submitting || password.length === 0}
             >
-              {submitting ? "Saving…" : "Save"}
+              {submitting ? "Saving..." : "Save"}
             </Button>
           </div>
         </div>
@@ -2057,6 +2219,19 @@ function normalizeEntries(
   );
 }
 
+function advancedEntryIndexes(entries: DirEntry[]): Set<number> {
+  const indexes = new Set<number>();
+  entries.forEach((entry, index) => {
+    if (
+      typeof entry.level === "number" ||
+      (entry.level1 !== undefined && entry.level1.length > 0)
+    ) {
+      indexes.add(index);
+    }
+  });
+  return indexes;
+}
+
 function entriesToJson(entries: DirEntry[]): string {
   return JSON.stringify(
     entries.map((e) => {
@@ -2157,6 +2332,7 @@ function DirectoriesModalBody({
     const initial = normalizeEntries(data.directories);
     setEntries(initial);
     setJsonText(entriesToJson(initial));
+    setExpandedAdv(advancedEntryIndexes(initial));
     seededRef.current = true;
   }, [data]);
 
@@ -2236,6 +2412,7 @@ function DirectoriesModalBody({
     try {
       const next = parseJsonEntries(jsonText);
       setEntries(next);
+      setExpandedAdv(advancedEntryIndexes(next));
       setJsonError(null);
       resetDrafts();
       setMode("form");
@@ -2255,6 +2432,7 @@ function DirectoriesModalBody({
     const normalized = normalizeEntries(snapshot);
     setEntries(normalized);
     setJsonText(entriesToJson(normalized));
+    setExpandedAdv(advancedEntryIndexes(normalized));
     setJsonError(null);
     resetDrafts();
     setMode("form");
@@ -2269,6 +2447,7 @@ function DirectoriesModalBody({
       try {
         payload = parseJsonEntries(jsonText);
         setEntries(payload);
+        setExpandedAdv(advancedEntryIndexes(payload));
         setJsonError(null);
         resetDrafts();
       } catch (e) {
@@ -2556,7 +2735,7 @@ function DirectoriesModalBody({
           Cancel
         </Button>
         <Button intent="primary" onPress={save} isDisabled={saving || isLoading}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? "Saving..." : "Save"}
         </Button>
       </div>
     </>

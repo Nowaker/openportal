@@ -96,6 +96,7 @@ export interface SelfInstance {
   id: string;
   name: string;
   directory: string;
+  protocol?: "http" | "https";
   port: number;
   hostname: string;
   webEndpoint?: string;

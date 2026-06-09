@@ -508,10 +508,8 @@ function AppLayout() {
     if (!instance?.id) return;
     if (search.server === instance.id) return;
     void navigate({
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        server: instance.id,
-      }),
+      to: ".",
+      search: { server: instance.id },
       replace: true,
     });
   }, [hydrated, instance?.id, search.server, navigate]);
@@ -524,12 +522,16 @@ function AppLayout() {
         !instance ||
         instance.port !== self.port ||
         instance.id !== self.id ||
+        instance.name !== self.name ||
+        instance.hostname !== self.hostname ||
+        instance.protocol !== self.protocol ||
         instance.webEndpoint !== self.webEndpoint
       ) {
         setInstance({
           id: self.id,
           name: self.name,
           port: self.port,
+          protocol: self.protocol,
           hostname: typeof self.hostname === "string" ? self.hostname : undefined,
           webEndpoint:
             typeof self.webEndpoint === "string" ? self.webEndpoint : undefined,
