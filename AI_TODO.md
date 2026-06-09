@@ -4762,3 +4762,15 @@ Design notes:
 - Implement the correct OpenCode Web link generation in OpenPortal based on that source analysis.
 - Verify against a real deployed OpenCode Web UI URL if possible.
 
+### 201. Settings tab links must switch panes and preserve hash permalinks (DONE - this commit)
+
+User prompt (verbatim):
+
+> clicking the links to tabs in the settings has no effect at the moment. fix it.
+
+Design notes:
+
+- Root cause: settings tabs were converted to real `<a href="#tab">` links for browser semantics, but react-aria href tabs do not drive the controlled tab selection through `onSelectionChange`. Plain clicks updated or touched the URL without changing the selected pane.
+- Fix: add a plain-left-click handler on each settings tab link that preserves modified-click/new-tab behavior but updates the controlled `settingsTab` state for normal clicks.
+- Preserve permalink behavior by reasserting the current settings tab hash after render. This counters the layout-level `?server=` permalink emission that can rewrite the URL and drop the fragment during hydration.
+- Verified in the feature worktree with Playwright against `http://100.105.229.19:5200/settings#chat`: clicked Appearance, Templates, Diagnostics, and Prompt; each switched the visible panel and left the matching `#tab` hash in the URL with no console errors.
