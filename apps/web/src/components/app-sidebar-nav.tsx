@@ -119,9 +119,21 @@ import {
 import { cascadeIdsToAncestors } from "@/lib/project-path";
 import type { Session } from "@opencode-ai/sdk";
 
+function base64UrlEncode(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
 function buildOpenCodeWebSessionHref(
-  instance: { hostname?: string; port: number; webEndpoint?: string } | null,
+  instance: {
+    hostname?: string;
+    protocol?: "http" | "https";
+    port: number;
+    webEndpoint?: string;
+  } | null,
   sessionId: string | undefined,
+  directory: string | null | undefined,
 ): string | null {
   if (!instance || !sessionId) return null;
   const fallbackHost =
@@ -130,11 +142,15 @@ function buildOpenCodeWebSessionHref(
       : typeof window !== "undefined"
         ? window.location.hostname
         : "127.0.0.1";
-  const base = instance.webEndpoint || `http://${fallbackHost}:${instance.port}`;
+  const base =
+    instance.webEndpoint ||
+    `${instance.protocol ?? "http"}://${fallbackHost}:${instance.port}`;
   try {
     const url = new URL(base);
-    if (!url.pathname.endsWith("/")) url.pathname += "/";
-    return new URL(`session/${encodeURIComponent(sessionId)}`, url).toString();
+    const prefix = url.pathname.replace(/\/+$/, "");
+    const dirSlug = base64UrlEncode(directory || "x");
+    url.pathname = `${prefix}/${dirSlug}/session/${encodeURIComponent(sessionId)}`;
+    return url.toString();
   } catch {
     return null;
   }
@@ -331,9 +347,13 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
     shouldThrow: false,
   });
   const sessionId = sessionMatch?.params?.id;
-  const openCodeWebHref = buildOpenCodeWebSessionHref(instance, sessionId);
   const sessions: Session[] = sessionsData ?? [];
   const currentSession = sessions.find((s) => s.id === sessionId);
+  const openCodeWebHref = buildOpenCodeWebSessionHref(
+    instance,
+    sessionId,
+    currentSession?.directory,
+  );
   // New-session route: the topbar should mirror the actual-session layout
   // ('{projectLabel}: New session') instead of falling through to the
   // instance name ('opencode'), which gives the user no signal about
