@@ -15,10 +15,8 @@ import {
   getOpencodeClient,
   getOpencodeClientV2,
 } from "./opencode-client";
-import {
-  recordPermissionDecision,
-  type PermissionDecision,
-} from "./permission-audit";
+import { recordResolved } from "./permission-log";
+import { getServerByPort } from "./server-registry";
 
 export type ReplyDecision = "once" | "always" | "reject";
 
@@ -41,26 +39,12 @@ export async function replyToPermission(
   decision: ReplyDecision,
   options: ReplyOptions = {},
 ): Promise<unknown> {
-  let snapshot: PermissionDecision | null = null;
+  let match: UpstreamPermission | null = null;
   try {
     const v1 = await getOpencodeClient(port);
     const list = await v1.permission.list();
     const all = (list.data ?? []) as UpstreamPermission[];
-    const match = all.find((p) => p.id === requestId);
-    if (match) {
-      snapshot = {
-        requestId: match.id,
-        sessionId: match.sessionID,
-        messageId: match.tool?.messageID,
-        callId: match.tool?.callID,
-        decision,
-        decidedAt: Date.now(),
-        patterns: Array.isArray(match.patterns) ? match.patterns : [],
-        permissionType: typeof match.type === "string" ? match.type : "",
-        toolName: match.tool?.name,
-        auto: options.auto === true,
-      };
-    }
+    match = all.find((p) => p.id === requestId) ?? null;
   } catch {
     // Best-effort capture - never block the reply.
   }
@@ -72,8 +56,19 @@ export async function replyToPermission(
     message: options.message,
   });
 
-  if (snapshot) {
-    recordPermissionDecision(port, snapshot);
+  if (match) {
+    recordResolved({
+      serverId: getServerByPort(port)?.id ?? null,
+      sessionId: match.sessionID,
+      requestId: match.id,
+      messageId: match.tool?.messageID ?? null,
+      callId: match.tool?.callID ?? null,
+      toolName: match.tool?.name ?? null,
+      permissionType: typeof match.type === "string" ? match.type : null,
+      patterns: Array.isArray(match.patterns) ? match.patterns : [],
+      decision,
+      auto: options.auto === true,
+    });
   }
 
   return result.data;

@@ -1134,58 +1134,61 @@ function QuestionAnswerForm({
   );
 }
 
-interface PastPermissionDecision {
+interface PermissionEventView {
   requestId: string;
-  sessionId: string;
-  messageId?: string;
-  callId?: string;
-  decision: "once" | "always" | "reject";
-  decidedAt: number;
+  tool: string | null;
+  type: string | null;
   patterns: string[];
-  permissionType: string;
-  toolName?: string;
-  auto?: boolean;
+  title: string | null;
+  decision: "once" | "always" | "reject" | null;
+  auto: boolean;
+  askedAt: number;
+  decidedAt: number | null;
 }
 
-function PastPermissionDecisionPill({
-  decision,
-}: {
-  decision: PastPermissionDecision;
-}) {
+function PermissionLogCard({ event }: { event: PermissionEventView }) {
   const dateFormat = useDateFormatStore((s) => s.format);
-  const isReject = decision.decision === "reject";
+  const isReject = event.decision === "reject";
   const label =
-    decision.decision === "always"
+    event.decision === "always"
       ? "Allowed always"
-      : decision.decision === "once"
+      : event.decision === "once"
         ? "Allowed once"
-        : "Rejected";
+        : event.decision === "reject"
+          ? "Rejected"
+          : "Awaiting decision";
   const palette = isReject
     ? "border-danger/40 bg-danger/10 text-danger"
-    : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600";
-  const firstPattern = decision.patterns[0];
+    : event.decision
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
+      : "border-amber-500/40 bg-amber-500/10 text-amber-600";
+  const toolLabel = event.tool || event.type || "permission";
   return (
     <div
-      className={`rounded-md border ${palette} px-3 py-2 text-xs space-y-1`}
+      className={`mx-auto w-full max-w-2xl rounded-md border ${palette} px-3 py-2 text-xs space-y-1`}
     >
       <div className="flex items-center gap-1.5 font-medium">
-        <CheckIcon className="size-3.5 shrink-0" />
+        <ShieldCheckIcon className="size-3.5 shrink-0" />
         <span>{label}</span>
-        {decision.auto && (
+        {event.auto && (
           <span className="rounded bg-violet-500/15 px-1 py-0 text-[9px] font-semibold uppercase tracking-wide text-violet-500">
             auto
           </span>
         )}
-        <span className="text-muted-fg/70 font-normal">
-          ({decision.permissionType || "permission"})
+        <span className="font-mono text-muted-fg/70 font-normal">
+          {toolLabel}
         </span>
         <span className="ml-auto text-[10px] text-muted-fg/70 font-normal tabular-nums">
-          {formatMessageTime(decision.decidedAt, dateFormat)}
+          {formatMessageTime(event.decidedAt ?? event.askedAt, dateFormat)}
         </span>
       </div>
-      {firstPattern && (
-        <div className="text-muted-fg break-all">
-          Path: <span className="font-mono">{firstPattern}</span>
+      {event.patterns.length > 0 && (
+        <div className="space-y-0.5 text-muted-fg break-all">
+          {event.patterns.map((p, i) => (
+            <div key={i} className="font-mono">
+              {p}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -2786,16 +2789,10 @@ const MessageItem = memo(function MessageItem({
       : null;
 
   const hasHeaderRow = textContent || fileParts.length > 0;
-  const pastPermissionDecisionsForBelow =
-    ((message.info as { _permissionDecisions?: PastPermissionDecision[] })
-      ._permissionDecisions ?? []).filter(
-      (d) => !messagePermissions.some((p) => p.id === d.requestId),
-    );
   const hasEventOnlyRows =
     !hasHeaderRow &&
     (toolCalls.length > 0 ||
       messagePermissions.length > 0 ||
-      pastPermissionDecisionsForBelow.length > 0 ||
       compactionParts.length > 0 ||
       !!errorDescription);
   const renderMetaStack = (className: string) => (
@@ -2903,6 +2900,13 @@ const MessageItem = memo(function MessageItem({
     (message.info as { _synthetic?: boolean })._synthetic === true &&
     typeof (message.info as { _btw_index?: unknown })._btw_index === "number";
   const btwIndex = (message.info as { _btw_index?: number })._btw_index;
+  const permissionEvent = (message.info as {
+    _permissionEvent?: PermissionEventView;
+  })._permissionEvent;
+  const isPermissionEvent =
+    (message.info as { _synthetic?: boolean })._synthetic === true &&
+    !!permissionEvent &&
+    typeof permissionEvent === "object";
   const syntheticSource = messageAny.metadata?.source ?? "synthetic";
   const syntheticTag =
     syntheticSource === "stuck-detector-plugin"
@@ -2921,6 +2925,19 @@ const MessageItem = memo(function MessageItem({
     : "bg-primary/15 border-t border-b border-primary/30 [[data-role=user]+&]:border-t-0";
   const btwAnswerBgClass =
     "bg-primary/[0.06] border-t border-b border-primary/15";
+  if (isPermissionEvent && permissionEvent) {
+    return (
+      <div
+        className="relative px-3 py-2"
+        data-role="permission-event"
+        data-message-id={message.info.id}
+        data-test={`portal-msg-${message.info.id}`}
+        id={`msg-${message.info.id}`}
+      >
+        <PermissionLogCard event={permissionEvent} />
+      </div>
+    );
+  }
   return (
     <div
       className={`${decoration} relative px-3 py-3 ${
@@ -3119,13 +3136,6 @@ const MessageItem = memo(function MessageItem({
               port={port}
               onResolved={onPermissionResolved}
             />
-          ))}
-        </div>
-      )}
-      {pastPermissionDecisionsForBelow.length > 0 && (
-        <div className={`${textContent ? "mt-2 ml-6" : ""} space-y-1.5`}>
-          {pastPermissionDecisionsForBelow.map((d) => (
-            <PastPermissionDecisionPill key={d.requestId} decision={d} />
           ))}
         </div>
       )}

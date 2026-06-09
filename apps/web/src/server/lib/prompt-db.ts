@@ -9,6 +9,7 @@ import opencode_msg_id_0003 from "./migrations/0003_opencode_message_id.sql?raw"
 import cache_0004 from "./migrations/0004_message_session_cache.sql?raw";
 import synthetic_0005 from "./migrations/0005_synthetic_messages.sql?raw";
 import synthetic_completed_0006 from "./migrations/0006_synthetic_messages_completed.sql?raw";
+import permission_events_0007 from "./migrations/0007_permission_events.sql?raw";
 
 interface Migration {
   version: number;
@@ -24,6 +25,7 @@ const MIGRATIONS: Migration[] = [
   { version: 4, sql: cache_0004 },
   { version: 5, sql: synthetic_0005 },
   { version: 6, sql: synthetic_completed_0006 },
+  { version: 7, sql: permission_events_0007 },
 ];
 
 const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

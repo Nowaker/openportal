@@ -27,6 +27,7 @@ import { basicAuthHeader } from "../lib/server-discovery";
 import { getEffectiveAutoApprove } from "../lib/auto-approve-state";
 import { replyToPermission } from "../lib/permission-reply";
 import { getOpencodeClient } from "../lib/opencode-client";
+import { recordAsked } from "../lib/permission-log";
 
 const RECONCILE_INTERVAL_MS = 30_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -56,6 +57,7 @@ interface PendingPermission {
 // fire (request in both the list snapshot AND the SSE buffer) only sends
 // one reply.
 async function reconcilePendingPermissions(
+  serverId: string,
   port: number,
   signal: AbortSignal,
   alreadyFired: Set<string>,
@@ -78,6 +80,7 @@ async function reconcilePendingPermissions(
   for (const p of pending) {
     if (signal.aborted) return;
     if (typeof p.id !== "string" || typeof p.sessionID !== "string") continue;
+    recordAsked({ serverId, sessionId: p.sessionID, requestId: p.id });
     if (alreadyFired.has(p.id)) continue;
     if (!getEffectiveAutoApprove(p.sessionID)) continue;
     alreadyFired.add(p.id);
@@ -97,6 +100,7 @@ async function reconcilePendingPermissions(
 }
 
 async function processStream(
+  serverId: string,
   port: number,
   body: ReadableStream<Uint8Array>,
   signal: AbortSignal,
@@ -127,6 +131,7 @@ async function processStream(
           ) {
             const sessionId = ev.properties.sessionID;
             const requestId = ev.properties.id;
+            recordAsked({ serverId, sessionId, requestId });
             if (alreadyFired.has(requestId)) continue;
             if (getEffectiveAutoApprove(sessionId)) {
               alreadyFired.add(requestId);
@@ -182,8 +187,8 @@ async function runConnection(
       }
       retry = 0;
       const alreadyFired = new Set<string>();
-      await reconcilePendingPermissions(port, signal, alreadyFired);
-      await processStream(port, res.body, signal, alreadyFired);
+      await reconcilePendingPermissions(serverId, port, signal, alreadyFired);
+      await processStream(serverId, port, res.body, signal, alreadyFired);
       if (signal.aborted) return;
       throw new Error("SSE stream ended");
     } catch (err) {

@@ -20,6 +20,10 @@ import {
   listSynthetic,
   type SyntheticMessageRow,
 } from "../../../../lib/synthetic-messages";
+import {
+  listResolvedForSession,
+  toSyntheticPermissionMessage,
+} from "../../../../lib/permission-log";
 
 const DEFAULT_INITIAL_LIMIT = 50;
 const MAX_LIMIT = 1000;
@@ -272,7 +276,10 @@ async function loadFullMessages(
   if (real === null) real = [];
   stampTurnStartTimes(real);
   const synthRows = listSynthetic(id);
-  const synthMessages = synthRows.map(toSyntheticChatMessage);
+  const synthMessages = [
+    ...synthRows.map(toSyntheticChatMessage),
+    ...listResolvedForSession(id).map(toSyntheticPermissionMessage),
+  ];
   if (visible.length === 0) {
     return interleaveByCreated(real, synthMessages);
   }

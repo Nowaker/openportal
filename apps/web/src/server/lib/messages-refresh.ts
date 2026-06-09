@@ -42,7 +42,6 @@ import { stashDataUrl, hasCachedThumb } from "./blob-cache";
 import { setCachedMessages } from "./messages-cache";
 import { parseOmoBlocks } from "../../lib/omo-injection";
 import { putOmoBody } from "./omo-strip-cache";
-import { getDecisionsForMessage } from "./permission-audit";
 import { getToolOutputMaxBytes } from "./instance-settings-state";
 import {
   getContentSettings,
@@ -145,29 +144,10 @@ async function doFetchAndCache(
   stripUserMessageSummary(stripped);
   stripPartBloat(stripped);
   stripOmoFromUserText(stripped, sessionId);
-  attachPermissionDecisions(stripped, port, sessionId);
   rewriteImageDataUrls(stripped, sessionId);
   const arr = Array.isArray(stripped) ? stripped : [];
   setCachedMessages(sessionId, arr);
   return arr;
-}
-
-function attachPermissionDecisions(
-  messages: unknown,
-  port: number,
-  sessionId: string,
-): void {
-  if (!Array.isArray(messages)) return;
-  for (const msg of messages) {
-    if (!msg || typeof msg !== "object") continue;
-    const m = msg as { info?: { id?: string } };
-    const messageId = m.info?.id;
-    if (!messageId) continue;
-    const decisions = getDecisionsForMessage(port, sessionId, messageId);
-    if (decisions.length === 0) continue;
-    (m.info as { _permissionDecisions?: unknown })._permissionDecisions =
-      decisions;
-  }
 }
 
 // Replace OMO injection bodies inside user-text parts with compact
