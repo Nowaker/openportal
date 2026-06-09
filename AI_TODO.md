@@ -4882,3 +4882,57 @@ Design notes:
 - Resolves the port-collision routing bug (#203 follow-up) by giving each
   managed instance its own port + a serverId-keyed routing layer.
 - DO NOT IMPLEMENT until the user reviews the plan.
+
+### 205. DB-derived in-progress indicator (load-immune) + register the poller (DONE - 06f8b5d)
+
+User prompt (verbatim):
+
+> i think that openportal-driven status indicators are totally broken. there is currently multiple sessions running (check sqlite) and none is showing as in progress - some are showing as green/complete.
+> there is one session blocked on permissions ask - it's showing as green/complete.
+>
+> must fix it comprehensively. fix must work in polling mode and sse mode of openportal.
+>
+> my current mode: polling.
+> now switched to sse, will check if this session turns to active.
+
+Design notes:
+
+- Root cause: under heavy multi-session load opencode's runtime HTTP
+  surface (`/event` SSE + `/session/status`) starves (event loop pegged
+  ~96-106% CPU, LLM 429s), so the SSE-fed `busy` flag stays falsely
+  false and active sessions rendered green/review-needed. Portal had no
+  load-immune source for "in progress".
+- Fix: portal derives in-progress directly from opencode's shared SQLite
+  (`~/.local/share/opencode/opencode.db`, opened read-only) - a session
+  with an unfinished assistant turn (role=assistant, time.completed null)
+  within a freshness window is in-progress.
+  - `apps/web/src/server/lib/opencode-db.ts` - read-only DB handle +
+    `queryInFlightSessionIds(windowMs)`.
+  - `apps/web/src/server/plugins/db-status-poller.ts` - polls every few
+    seconds, fans the in-flight set across local configured servers via
+    `applyDbInFlight()`.
+  - `indicator-state.ts` - new `db_in_flight` field + `applyDbInFlight()`
+    (reconciles every cached entry to the complete in-flight set; seeds
+    fresh entries for sessions portal hasn't seen).
+  - `session-status.ts` + `use-opencode.ts` - `db_in_flight` folded into
+    `runtimeBusy` alongside `busy` and `stuck_verdict==="in-progress"`.
+  - Works in BOTH browser modes (SSE + polling) because both read the
+    same server-side indicator state; the browser leg only changes
+    push-vs-pull of already-correct state.
+- THE BUG that made it inert on first deploy: the poller file landed in
+  commit `ba38c99` but was NEVER registered in `nitro.config.ts` (Nitro
+  does not auto-scan `server/plugins/`; it reads the explicit `plugins:`
+  array). It compiled as a dead route chunk and its setInterval never
+  ran -> 0 db_in_flight despite 16+ in-flight in the DB. Commit
+  `06f8b5d` adds the one-line registration. Verified live: prod
+  `/api/indicators` shows db_in_flight fanned across both local servers
+  (13 DB sessions x 2 servers = 26 entries), zero poller errors,
+  busy=true still 0 (SSE still starved - exactly why the DB signal was
+  needed).
+- NOT fixed (separate limitation, flagged to user): permission/question
+  -blocked indicator. Pending permissions live ONLY in opencode's
+  in-memory `pending: Map` (permission/index.ts) - never written to the
+  DB - and the SSE path that would carry them is starved under load. A
+  load-immune fix needs an opencode change to persist pending
+  permission/question to the DB (or accept the stuck-detector as the
+  cross-process signal). Queue as a follow-up.
