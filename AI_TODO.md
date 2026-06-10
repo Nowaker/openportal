@@ -4992,7 +4992,7 @@ Design notes:
   confirmed.
 - Worktree `fix/stale-banner-compact` -> rebased onto current
   `main-nowaker` tip -> FF-merged -> deployed -> pushed both remotes.
-### 208. Thinking timer refresh interval settings (PENDING - implement configurable desktop/mobile cadence)
+### 208. Thinking timer refresh interval settings (DONE - 351562a)
 
 User prompt (verbatim):
 
