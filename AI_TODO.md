@@ -5004,7 +5004,7 @@ Design notes:
 - Add Performance settings controls and use the active device type to select the timer cadence.
 
 
-### 209. Ctrl+K global workspace session search + unified Sessions section + match-priority sort (PENDING - worktree feat/ctrlk-global-search)
+### 209. Ctrl+K global workspace session search + unified Sessions section + match-priority sort (DONE - 59e8b6e)
 
 User prompt (verbatim):
 
