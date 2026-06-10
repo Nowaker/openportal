@@ -4992,3 +4992,14 @@ Design notes:
   confirmed.
 - Worktree `fix/stale-banner-compact` -> rebased onto current
   `main-nowaker` tip -> FF-merged -> deployed -> pushed both remotes.
+### 208. Thinking timer refresh interval settings (PENDING - implement configurable desktop/mobile cadence)
+
+User prompt (verbatim):
+
+> currently the timer updates every 15 seconds. Update it to to be configurable in settings for desktop and mobile, default 1s and 5s.
+
+Design notes:
+- The visible "Thinking... Ns ago" staleness timer in `apps/web/src/routes/_app/session/$id.tsx` currently uses a hardcoded 15s fast cadence.
+- Add instance settings for desktop and mobile refresh seconds with defaults desktop=1, mobile=5.
+- Add Performance settings controls and use the active device type to select the timer cadence.
+

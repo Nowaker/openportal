@@ -10,12 +10,18 @@ export interface PlatformStrategies {
 
 interface StrategyState extends PlatformStrategies {
   pollingIntervalSec: number | undefined;
+  timerRefreshDesktopSec: number | undefined;
+  timerRefreshMobileSec: number | undefined;
   setDesktop: (s: UpdateStrategy) => void;
   setMobile: (s: UpdateStrategy) => void;
   setPollingIntervalSec: (n: number | undefined) => void;
+  setTimerRefreshDesktopSec: (n: number | undefined) => void;
+  setTimerRefreshMobileSec: (n: number | undefined) => void;
 }
 
 export const DEFAULT_POLLING_INTERVAL_SEC = 3;
+export const DEFAULT_TIMER_REFRESH_DESKTOP_SEC = 1;
+export const DEFAULT_TIMER_REFRESH_MOBILE_SEC = 5;
 
 // Per-platform defaults: desktop favors latency over battery; mobile
 // favors battery over latency. Both can be overridden in Settings.
@@ -33,13 +39,17 @@ export const useUpdateStrategyStore = create<StrategyState>()(
       desktop: DEFAULTS.desktop,
       mobile: DEFAULTS.mobile,
       pollingIntervalSec: undefined,
+      timerRefreshDesktopSec: undefined,
+      timerRefreshMobileSec: undefined,
       setDesktop: (s) => set({ desktop: s }),
       setMobile: (s) => set({ mobile: s }),
       setPollingIntervalSec: (n) => set({ pollingIntervalSec: n }),
+      setTimerRefreshDesktopSec: (n) => set({ timerRefreshDesktopSec: n }),
+      setTimerRefreshMobileSec: (n) => set({ timerRefreshMobileSec: n }),
     }),
     {
       name: "openportal-update-strategy",
-      version: 2,
+      version: 3,
       migrate: (persisted: unknown, fromVersion) => {
         // v0 -> v1 migration. The previous store ("opencode-streaming-mode")
         // was a single boolean `enabled` toggle. New users get the per-
@@ -55,9 +65,13 @@ export const useUpdateStrategyStore = create<StrategyState>()(
               desktop: s,
               mobile: s,
               pollingIntervalSec: undefined,
+              timerRefreshDesktopSec: undefined,
+              timerRefreshMobileSec: undefined,
               setDesktop: () => {},
               setMobile: () => {},
               setPollingIntervalSec: () => {},
+              setTimerRefreshDesktopSec: () => {},
+              setTimerRefreshMobileSec: () => {},
             };
           }
         }
@@ -66,6 +80,16 @@ export const useUpdateStrategyStore = create<StrategyState>()(
           return {
             ...(persisted as object),
             pollingIntervalSec: undefined,
+            timerRefreshDesktopSec: undefined,
+            timerRefreshMobileSec: undefined,
+          } as StrategyState;
+        }
+        // v2 -> v3: add Thinking timer refresh cadence fields.
+        if (fromVersion === 2 && persisted && typeof persisted === "object") {
+          return {
+            ...(persisted as object),
+            timerRefreshDesktopSec: undefined,
+            timerRefreshMobileSec: undefined,
           } as StrategyState;
         }
         return persisted as StrategyState;

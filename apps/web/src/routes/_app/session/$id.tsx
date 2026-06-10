@@ -131,6 +131,7 @@ import { toast } from "@/components/ui/toast";
 import { useMarkViewed } from "@/hooks/use-last-viewed";
 import { useComposerMaxHeight } from "@/hooks/use-composer-max-height";
 import { usePullState } from "@/hooks/use-pull-to-refresh";
+import { useTimerRefreshIntervalMs } from "@/hooks/use-timer-refresh-interval";
 import { useBreadcrumb } from "@/contexts/breadcrumb-context";
 import {
   useFirstSessionMessage,
@@ -1801,26 +1802,19 @@ const ToolCallItem = memo(function ToolCallItem({
 // user a clear signal something is wrong without having to know the
 // expected latency for their model.
 //
-// Refresh cadence: every 15s for the first minute (so the user sees
-// "15s ago" / "30s ago" / "45s ago" instead of nothing for the
-// suspicious-but-not-yet-broken window), then every 60s once we tip into
-// the minutes / hours / days range. The interval is torn down on unmount.
-//
-// We pick the cadence based on the CURRENT staleness, then the effect
-// re-runs whenever that bucket changes - so the timer rate self-adjusts
-// as the gap grows. No tight 1Hz polling on mobile.
+// Refresh cadence follows Settings -> Performance so desktop can keep this
+// staleness signal live without forcing the same 1Hz timer on mobile.
 function ThinkingStaleness({ messages }: { messages: MessageWithParts[] }) {
   const [now, setNow] = useState(() => Date.now());
+  const refreshIntervalMs = useTimerRefreshIntervalMs();
   const last = messages[messages.length - 1];
   const lastTime = last?.info.time.created;
   const elapsed = lastTime ? now - lastTime : 0;
-  const useFastTick = elapsed < 60_000;
 
   useEffect(() => {
-    const period = useFastTick ? 15_000 : 60_000;
-    const id = window.setInterval(() => setNow(Date.now()), period);
+    const id = window.setInterval(() => setNow(Date.now()), refreshIntervalMs);
     return () => window.clearInterval(id);
-  }, [useFastTick]);
+  }, [refreshIntervalMs]);
 
   if (!lastTime) return null;
   // Don't render until at least 15s has passed; below that the user has
@@ -1829,8 +1823,7 @@ function ThinkingStaleness({ messages }: { messages: MessageWithParts[] }) {
 
   let label: string;
   if (elapsed < 60_000) {
-    // 15 / 30 / 45 second buckets.
-    const seconds = Math.floor(elapsed / 15_000) * 15;
+    const seconds = Math.floor(elapsed / 1000);
     label = `${seconds}s ago`;
   } else {
     const minutes = Math.floor(elapsed / 60_000);

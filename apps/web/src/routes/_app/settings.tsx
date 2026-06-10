@@ -53,6 +53,8 @@ import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
 import {
   useUpdateStrategyStore,
   DEFAULT_POLLING_INTERVAL_SEC,
+  DEFAULT_TIMER_REFRESH_DESKTOP_SEC,
+  DEFAULT_TIMER_REFRESH_MOBILE_SEC,
   type UpdateStrategy,
 } from "@/stores/update-strategy-store";
 import {
@@ -1264,6 +1266,18 @@ function LiveUpdatesSetting() {
   const setPollingIntervalSec = useUpdateStrategyStore(
     (s) => s.setPollingIntervalSec,
   );
+  const timerRefreshDesktopSec = useUpdateStrategyStore(
+    (s) => s.timerRefreshDesktopSec,
+  );
+  const timerRefreshMobileSec = useUpdateStrategyStore(
+    (s) => s.timerRefreshMobileSec,
+  );
+  const setTimerRefreshDesktopSec = useUpdateStrategyStore(
+    (s) => s.setTimerRefreshDesktopSec,
+  );
+  const setTimerRefreshMobileSec = useUpdateStrategyStore(
+    (s) => s.setTimerRefreshMobileSec,
+  );
 
   const showPollingInterval = desktop === "polling" || mobile === "polling";
 
@@ -1296,7 +1310,113 @@ function LiveUpdatesSetting() {
           onChange={setPollingIntervalSec}
         />
       )}
+
+      <TimerRefreshIntervalSetting
+        desktopSec={timerRefreshDesktopSec}
+        mobileSec={timerRefreshMobileSec}
+        onDesktopChange={setTimerRefreshDesktopSec}
+        onMobileChange={setTimerRefreshMobileSec}
+      />
     </div>
+  );
+}
+
+function TimerRefreshIntervalSetting({
+  desktopSec,
+  mobileSec,
+  onDesktopChange,
+  onMobileChange,
+}: {
+  desktopSec: number | undefined;
+  mobileSec: number | undefined;
+  onDesktopChange: (n: number | undefined) => void;
+  onMobileChange: (n: number | undefined) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Thinking timer refresh</p>
+      <p className="text-xs text-muted-fg">
+        How often the "Thinking... Ns ago" staleness timer refreshes while a
+        response is running. Desktop defaults to {DEFAULT_TIMER_REFRESH_DESKTOP_SEC}s;
+        mobile defaults to {DEFAULT_TIMER_REFRESH_MOBILE_SEC}s.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TimerRefreshInput
+          label="Desktop"
+          value={desktopSec}
+          defaultValue={DEFAULT_TIMER_REFRESH_DESKTOP_SEC}
+          onChange={onDesktopChange}
+        />
+        <TimerRefreshInput
+          label="Mobile"
+          value={mobileSec}
+          defaultValue={DEFAULT_TIMER_REFRESH_MOBILE_SEC}
+          onChange={onMobileChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TimerRefreshInput({
+  label,
+  value,
+  defaultValue,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  defaultValue: number;
+  onChange: (n: number | undefined) => void;
+}) {
+  const effective = value ?? defaultValue;
+  const [draft, setDraft] = useState<string>(String(effective));
+
+  useEffect(() => {
+    setDraft(String(effective));
+  }, [effective]);
+
+  const commit = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      onChange(undefined);
+      setDraft(String(defaultValue));
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setDraft(String(effective));
+      return;
+    }
+    const next = Math.max(1, parsed);
+    onChange(next === defaultValue ? undefined : next);
+    setDraft(String(next));
+  };
+
+  return (
+    <label className="space-y-1 text-xs text-muted-fg">
+      <span>{label}</span>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          inputMode="decimal"
+          min={1}
+          step={1}
+          className="max-w-[8rem] font-mono"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit((e.target as HTMLInputElement).value);
+            }
+          }}
+          aria-label={`Thinking timer refresh interval on ${label.toLowerCase()} in seconds`}
+        />
+        <span>seconds</span>
+      </div>
+    </label>
   );
 }
 
