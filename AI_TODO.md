@@ -5003,3 +5003,28 @@ Design notes:
 - Add instance settings for desktop and mobile refresh seconds with defaults desktop=1, mobile=5.
 - Add Performance settings controls and use the active device type to select the timer cadence.
 
+
+### 209. Ctrl+K global workspace session search + unified Sessions section + match-priority sort (PENDING - worktree feat/ctrlk-global-search)
+
+User prompt (verbatim):
+
+> ^K must be a GLOBAL (limited to open workspaces, here ~/projekty and ~/sync/something/...) session search. not just "recent". no need for "pinned" section, then "recent" section. "Sessions" is the section, it's just that sorting prioritizes pins. however when searching, full string matches should be sorted higher priority than fuzzy match + being pinned. order priorities: full match, pinned, non-pinned, fuzzy pinned, fuzzy non-pinned.
+
+Design notes:
+- File: apps/web/src/components/cmd.tsx (Ctrl+K palette).
+- Scope: search ALL current-server sessions (useAllSessions, scope=all) whose directory is under a configured workspace baseDir (portalConfig.baseDirs). Drop the 300 "recent" cap for query searches; keep a render cap only for the empty-query state (DOM sanity).
+- Single "Sessions" section (remove the separate Pinned + Recent sections). Pins prioritized via sort, not a separate section.
+- Sort buckets (highest first), from the prose "full string matches > fuzzy + pinned": full+pinned, full+non-pinned, fuzzy+pinned, fuzzy+non-pinned. "full" = typed query is a contiguous case-insensitive substring of title or project label; "fuzzy" = scoreItem matched (non-null) but not a contiguous substring. Within a bucket: score desc, then activity desc. Empty query: pinned (pin order) then non-pinned (activity desc).
+- Keep the ses_ id-query bypass (exact/prefix on session.id ranks top).
+- Assumption: single active server (this user's setup); "global" = across that server's workspaces, not cross-server fan-out.
+
+Refinement (follow-up prompt, same task #209):
+
+> of course ^K view should be trimmed, doesn't need to show all these sessions at once. performance reason. json search in memory; display a reasonable most recent sessions (no filter) or matches (especially important in 1, 2, 3 letter matches). fuzzy or not.
+>
+> - no filter: pinned ones -> sort by recent activity -> non-pinned ones. limit to N.
+> - filter: full match pinned, full match non-pinned, fuzzy pinned, fuzzy non-pinned - still limit to N.
+
+- Search runs over the full in-memory workspace session set; only the top N rows render (DISPLAY_LIMIT = 50) in BOTH states, for performance.
+- No-filter ordering SUPERSEDES the pin-order note above: pinned-first then non-pinned, each by recent activity desc, combined list capped at N.
+- Filter ordering confirmed: full+pinned, full+non-pinned, fuzzy+pinned, fuzzy+non-pinned, capped at N. Matters most for 1-3 letter queries that match many rows.

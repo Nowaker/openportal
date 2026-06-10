@@ -69,6 +69,10 @@ function hrefWithCurrentSearch(
   return `${pathname}${search ? `?${search}` : ""}`;
 }
 
+// Ctrl+K searches the full in-memory session set but renders only the top
+// N for performance - the palette is a quick-jump surface, not a browser.
+const DISPLAY_LIMIT = 50;
+
 export default function Cmd() {
   const isOpen = useCmdStore((s) => s.isOpen);
   const setIsOpen = useCmdStore((s) => s.setOpen);
@@ -91,53 +95,12 @@ export default function Cmd() {
   const instances: InstanceData[] = instancesData?.instances ?? [];
   const currentSessionId = params.id as string | undefined;
 
-  // Split into a Pinned section (rendered first, in user-defined pin order
-  // from drag-reorder in the topbar/sidebar) and a Recent section (the
-  // rest, sorted by last-activity desc). When the search query is empty,
-  // pinned sessions surface at the top - matching the user's mental
-  // 'these are the ones I care about' grouping. When the user types,
-  // react-aria's fuzzy filter narrows BOTH sections (pinned items get
-  // hidden from Pinned if they don't match, same for Recent).
-  // Combined cap of ~300 so the DOM stays manageable on huge histories;
-  // pinned never gets capped because it's bounded by user behaviour
-  // (you don't typically pin 100 sessions).
+  // Ctrl+K is a single "Sessions" list, not split Pinned/Recent sections.
+  // Pins influence sort order only (pinned-first, then by recent activity).
   const pinnedIds = useMemo(
     () => new Set(pinnedData?.sessions ?? []),
     [pinnedData?.sessions],
   );
-  const sessionsById = useMemo(() => {
-    const map = new Map<string, Session>();
-    for (const s of sessions) map.set(s.id, s);
-    return map;
-  }, [sessions]);
-  const pinnedSessions = useMemo(() => {
-    const order = pinnedData?.sessions ?? [];
-    const arr: Session[] = [];
-    for (const id of order) {
-      const s = sessionsById.get(id);
-      if (s) arr.push(s);
-    }
-    return arr;
-  }, [pinnedData?.sessions, sessionsById]);
-  // Session-id prefix queries (`ses_...`) bypass the 300-session cap
-  // applied to the Recent list. Without this, pasting a known session
-  // ID never matched if that session was outside the 300 most-recent
-  // ones - the user's verbatim bug report (#69 in AI_TODO.md):
-  // 'i paste ses_229d7083fffem6lkaEj69adZ7H and my match is the
-  // session with that session id'. Exact / prefix match on session.id
-  // is a precise filter; even at 10k+ sessions the work stays bounded.
-  const trimmedQuery = query.trim();
-  const isIdQuery = trimmedQuery.toLowerCase().startsWith("ses_");
-  const recentSessions = useMemo(() => {
-    const sorted = [...sessions]
-      .filter((s) => !pinnedIds.has(s.id))
-      .sort((a, b) => {
-        const ta = sessionActivityTime(a) ?? 0;
-        const tb = sessionActivityTime(b) ?? 0;
-        return tb - ta;
-      });
-    return isIdQuery ? sorted : sorted.slice(0, 300);
-  }, [sessions, pinnedIds, isIdQuery]);
 
   const baseDirs = portalConfig?.baseDirs ?? [];
   const homeDir = portalConfig?.home ?? "";
@@ -154,52 +117,102 @@ export default function Cmd() {
       : display.replace(/^\//, "");
   };
 
-  // Rank sessions by query relevance when the user is typing. Empty
-  // query keeps the natural Pinned/Recent ordering. With a query, items
-  // are sorted by score desc so an exact title hit beats a fuzzy hit.
-  // Items that fail to score (no match) are dropped from rendering -
-  // react-aria's own filter still runs as a second-pass safety net but
-  // our custom scorer is the primary filter when a query is present.
-  const rankSessions = (
-    list: Session[],
-  ): Array<{ session: Session; match: MatchResult }> => {
+  // Global search scope: every session whose directory is under a
+  // configured workspace baseDir. Sessions outside an open workspace are
+  // excluded; with no baseDirs configured we fall back to all sessions.
+  const workspaceSessions = useMemo(() => {
+    if (baseDirs.length === 0) return sessions;
+    return sessions.filter((s) => {
+      const dir = (s as { directory?: string }).directory;
+      if (!dir) return false;
+      return baseDirs.some((b) => {
+        const base = b.path.replace(/\/+$/, "");
+        return dir === base || dir.startsWith(base + "/");
+      });
+    });
+  }, [sessions, baseDirs]);
+
+  // One ranked "Sessions" list. Sort tiers (highest first), encoding the
+  // user's spec "full string matches > fuzzy + pinned":
+  //   0 full+pinned, 1 full+non-pinned, 2 fuzzy+pinned, 3 fuzzy+non-pinned.
+  // "full" = the query is a contiguous case-insensitive substring of the
+  // title or project label; "fuzzy" = scoreItem matched but not contiguous.
+  // ses_ queries match on session id (tier -1, ranks top). Empty query:
+  // pinned then non-pinned, both by recent activity desc. Both states
+  // render at most DISPLAY_LIMIT rows.
+  const ranked = useMemo((): Array<{
+    session: Session;
+    match: MatchResult;
+  }> => {
     const trimmed = query.trim();
-    const out: Array<{ session: Session; match: MatchResult }> = [];
-    const idQuery = trimmed.toLowerCase().startsWith("ses_")
-      ? trimmed.toLowerCase()
-      : null;
-    for (const s of list) {
+    const q = trimmed.toLowerCase();
+    const idQuery = q.startsWith("ses_") ? q : null;
+    const emptyMatch: MatchResult = {
+      score: 0,
+      titleRanges: [],
+      projectRanges: [],
+    };
+
+    if (!trimmed) {
+      const sorted = [...workspaceSessions].sort((a, b) => {
+        const ap = pinnedIds.has(a.id);
+        const bp = pinnedIds.has(b.id);
+        if (ap !== bp) return ap ? -1 : 1;
+        return (sessionActivityTime(b) ?? 0) - (sessionActivityTime(a) ?? 0);
+      });
+      return sorted.slice(0, DISPLAY_LIMIT).map((session) => ({
+        session,
+        match: emptyMatch,
+      }));
+    }
+
+    const out: Array<{
+      session: Session;
+      match: MatchResult;
+      bucket: number;
+    }> = [];
+    for (const s of workspaceSessions) {
       const title = s.title || `Session ${s.id.slice(0, 8)}`;
       const project = projectLabelForSession(s);
-      const titleMatch = scoreItem(title, project, trimmed);
-      const idIndex = idQuery === null ? -1 : s.id.toLowerCase().indexOf(idQuery);
-      const idMatch =
-        idIndex >= 0
-          ? {
-              score: (idIndex === 0 ? 10_000 : 9_000) + idQuery!.length,
-              titleRanges: [] as Array<[number, number]>,
-              projectRanges: [] as Array<[number, number]>,
-            }
-          : null;
-      const m = idMatch ?? titleMatch;
-      if (m) out.push({ session: s, match: m });
-    }
-    if (trimmed) {
-      out.sort((a, b) => b.match.score - a.match.score);
-    }
-    return out;
-  };
+      const pinned = pinnedIds.has(s.id);
 
-  const rankedPinned = useMemo(
-    () => rankSessions(pinnedSessions),
+      if (idQuery) {
+        const idx = s.id.toLowerCase().indexOf(idQuery);
+        if (idx < 0) continue;
+        out.push({
+          session: s,
+          match: {
+            score: (idx === 0 ? 10_000 : 9_000) + idQuery.length,
+            titleRanges: [],
+            projectRanges: [],
+          },
+          bucket: -1,
+        });
+        continue;
+      }
+
+      const m = scoreItem(title, project, trimmed);
+      if (!m) continue;
+      const isFull =
+        title.toLowerCase().includes(q) || project.toLowerCase().includes(q);
+      const bucket = isFull ? (pinned ? 0 : 1) : pinned ? 2 : 3;
+      out.push({ session: s, match: m, bucket });
+    }
+
+    out.sort((a, b) => {
+      if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+      if (b.match.score !== a.match.score) return b.match.score - a.match.score;
+      return (
+        (sessionActivityTime(b.session) ?? 0) -
+        (sessionActivityTime(a.session) ?? 0)
+      );
+    });
+
+    return out
+      .slice(0, DISPLAY_LIMIT)
+      .map(({ session, match }) => ({ session, match }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pinnedSessions, query, baseDirs.join("|"), homeDir],
-  );
-  const rankedRecent = useMemo(
-    () => rankSessions(recentSessions),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [recentSessions, query, baseDirs.join("|"), homeDir],
-  );
+  }, [workspaceSessions, query, pinnedIds, baseDirs, homeDir]);
 
   const renderSessionItem = (
     session: Session,
@@ -333,18 +346,10 @@ export default function Cmd() {
     >
       <CommandMenuSearch placeholder="Jump to session, action, or theme..." />
       <CommandMenuList>
-        {rankedPinned.length > 0 && (
-          <CommandMenuSection label="Pinned">
-            {rankedPinned.map(({ session, match }) =>
-              renderSessionItem(session, true, match),
-            )}
-          </CommandMenuSection>
-        )}
-
-        {rankedRecent.length > 0 && (
-          <CommandMenuSection label={rankedPinned.length > 0 ? "Recent" : "Sessions"}>
-            {rankedRecent.map(({ session, match }) =>
-              renderSessionItem(session, false, match),
+        {ranked.length > 0 && (
+          <CommandMenuSection label="Sessions">
+            {ranked.map(({ session, match }) =>
+              renderSessionItem(session, pinnedIds.has(session.id), match),
             )}
           </CommandMenuSection>
         )}
