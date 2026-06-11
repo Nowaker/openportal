@@ -662,6 +662,7 @@ function spawnedSubsessionId(part: ToolPart): string | null {
   const tool = (part.tool || "").toLowerCase();
   const isSubsessionTool =
     tool === "task" ||
+    tool === "call_omo_agent" ||
     tool.includes("session_create") ||
     tool.includes("session_fork") ||
     tool.includes("session_children") ||

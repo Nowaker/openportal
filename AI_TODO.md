@@ -5096,3 +5096,15 @@ User prompt (verbatim):
 Design notes:
 - `FlagCheckbox` tooltip in `apps/web/src/components/tools-settings.tsx` revealed on `group-hover` AND `group-focus-within`; on mobile a tap focuses the checkbox, latching the tooltip open and covering adjacent rows.
 - Fix: gate the reveal on `sm:` (`sm:group-hover:block sm:group-focus-within:block`); the tooltip stays `hidden` below the `sm` breakpoint, so it is hover-only on desktop and never appears on mobile.
+
+### 214. Subsession links: support call_omo_agent task/session output variant (DONE - this commit)
+
+User prompt (verbatim):
+
+> I noticed this session has a different variation of subsession call that we currently don't support - no clickable link. Support it.
+
+Design notes:
+- Target session: `ses_14a1b0ae6ffe5g51Px4UfZV1Ue` on server `srv-2dy1srwz`.
+- Observed unsupported tool output shape: `call_omo_agent` reports `Task ID: bg_...` and `Session ID: ses_...`; existing UI handled normal `task` / session tool names and lower-case `background_task_id`/`session_id` metadata pairs.
+- Extend background-task-to-session resolver patterns and treat `call_omo_agent` tool parts as subsession-spawning rows so the rendered tool row exposes a real `/session/<id>` anchor.
+

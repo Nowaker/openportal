@@ -22,6 +22,8 @@ const IdResolversContext = createContext<IdResolvers>(NULL_RESOLVERS);
 const FULL_SES_MIN_CHARS = 20;
 
 const TASK_METADATA_PAIR_REGEXES = [
+  /Task ID:\s*(bg_[A-Za-z0-9]{6,32})[\s\S]{0,600}?Session ID:\s*(ses_[A-Za-z0-9]{20,32})/g,
+  /Session ID:\s*(ses_[A-Za-z0-9]{20,32})[\s\S]{0,600}?Task ID:\s*(bg_[A-Za-z0-9]{6,32})/g,
   /background_task_id:\s*(bg_[A-Za-z0-9]{6,32})[\s\S]{0,200}?session_id:\s*(ses_[A-Za-z0-9]{20,32})/g,
   /session_id:\s*(ses_[A-Za-z0-9]{20,32})[\s\S]{0,200}?background_task_id:\s*(bg_[A-Za-z0-9]{6,32})/g,
   /Background Task ID:\s*(bg_[A-Za-z0-9]{6,32})[\s\S]{0,600}?session_id:\s*(ses_[A-Za-z0-9]{20,32})/g,
