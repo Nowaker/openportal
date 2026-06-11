@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseOmoBlocks } from "./omo-injection";
+import { parseOmoBlocks, userTextFromOmoBlocks } from "./omo-injection";
 
 describe("parseOmoBlocks system-reminder wrappers", () => {
   test("keeps a background task reminder as one collapsed omo block", () => {
@@ -105,5 +105,51 @@ Please address this message and continue with your tasks.
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.kind).toBe("omo");
     expect(blocks[0]?.summary).toBe("[BACKGROUND TASK RESULT READY]");
+  });
+});
+
+describe("userTextFromOmoBlocks", () => {
+  test("drops a leading stripped marker, keeps the user prose", () => {
+    const meta = encodeURIComponent(
+      JSON.stringify({
+        id: "0.0",
+        header: "[search-mode]",
+        summary: "MAXIMIZE SEARCH EFFORT.",
+        bytes: 317,
+      }),
+    );
+    const text = `<!--OMO-STRIPPED:${meta}-->\nSeparate the concept of pins and favorites.`;
+
+    expect(userTextFromOmoBlocks(parseOmoBlocks(text))).toBe(
+      "Separate the concept of pins and favorites.",
+    );
+  });
+
+  test("returns a plain message verbatim when no OMO block is present", () => {
+    const text = "just a normal prompt\n\nwith a blank line";
+
+    expect(userTextFromOmoBlocks(parseOmoBlocks(text))).toBe(text);
+  });
+
+  test("returns empty string for a message that is only an OMO directive", () => {
+    const text = `<system-reminder>
+[BACKGROUND TASK RESULT READY]
+**ID:** \`bg_6b6a9cf0\`
+</system-reminder>
+<!-- OMO_INTERNAL_INITIATOR -->`;
+
+    expect(userTextFromOmoBlocks(parseOmoBlocks(text))).toBe("");
+  });
+
+  test("keeps the real user text wrapped in system-reminder boilerplate", () => {
+    const userText = "fix the hash-permalink crash";
+    const text = `<system-reminder>
+The user sent the following message:
+${userText}
+
+Please address this message and continue with your tasks.
+</system-reminder>`;
+
+    expect(userTextFromOmoBlocks(parseOmoBlocks(text))).toBe(userText);
   });
 });

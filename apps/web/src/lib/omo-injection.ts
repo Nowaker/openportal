@@ -619,6 +619,22 @@ function isOnlyWhitespace(s: string): boolean {
   return /^[\s-]*$/.test(s);
 }
 
+// Drops OMO directive blocks, keeping only user-authored text. Two
+// non-obvious invariants: when no OMO block is present the result equals
+// the input verbatim (so normal messages copy unchanged - only the
+// seam left by a removed OMO block gets newline-normalized + trimmed);
+// and template wrappers are NOT this function's job - the caller strips
+// them before parseOmoBlocks runs and re-appends them verbatim after.
+export function userTextFromOmoBlocks(blocks: OmoBlock[]): string {
+  const hasOmo = blocks.some((b) => b.kind === "omo");
+  const userText = blocks
+    .filter((b) => b.kind === "user")
+    .map((b) => b.text)
+    .join("");
+  if (!hasOmo) return userText;
+  return userText.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function parseOmoBlocks(text: string): OmoBlock[] {
   if (!text) return [{ kind: "user", text }];
 

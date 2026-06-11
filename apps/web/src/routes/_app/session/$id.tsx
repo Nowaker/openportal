@@ -30,12 +30,12 @@ import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
 import { OmoBlockView } from "@/components/omo-block-view";
 import { TemplateBlockView } from "@/components/template-block-view";
-import { parsePromptWithTemplates } from "@/lib/prompt-template-format";
+import { buildPromptWithTemplates, parsePromptWithTemplates } from "@/lib/prompt-template-format";
 import { ThinkingSelect } from "@/components/thinking-select";
 import { MessageInfoModal } from "@/components/message-info-modal";
 import { ForkDialog } from "@/components/fork-dialog";
 import { ArchivedSessionOverlay } from "@/components/archived-session-overlay";
-import { parseOmoBlocks } from "@/lib/omo-injection";
+import { parseOmoBlocks, userTextFromOmoBlocks } from "@/lib/omo-injection";
 import {
   FileMentionPopover,
   useFileMention,
@@ -2735,6 +2735,13 @@ const MessageItem = memo(function MessageItem({
         : parseOmoBlocks(parsedTemplates?.userText ?? textContent),
     [isAssistant, parsedTemplates, textContent],
   );
+  const copyText = useMemo(() => {
+    if (isAssistant) return textContent;
+    const userAuthored = userTextFromOmoBlocks(omoBlocks);
+    return parsedTemplates
+      ? buildPromptWithTemplates(userAuthored, parsedTemplates.templates)
+      : userAuthored;
+  }, [isAssistant, omoBlocks, parsedTemplates, textContent]);
   const messagePermissions = pendingPermissions.filter(
     (perm) => perm.tool?.messageID === message.info.id,
   );
@@ -2842,7 +2849,7 @@ const MessageItem = memo(function MessageItem({
           </>
         ) : null
       }
-      copyText={showCopy && textContent ? textContent : null}
+      copyText={showCopy && copyText ? copyText : null}
       trailing={
         showInfoIconRow && !isPending ? (
           <button
