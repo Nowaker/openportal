@@ -646,6 +646,43 @@ the drag misbehaviour you actually wanted to fix.
 This rule is permanent. Reviewers may revert any `select-none`
 addition without further discussion.
 
+### List stability under inline toggles (mandatory)
+
+Toggling an inline control on a list row - a checkbox, switch,
+enable/disable, star, pin flag, any per-row boolean - MUST NOT change
+that row's position in the list. The user is frequently mid-interaction,
+clicking several controls on the same row in a row; if the row jumps to a
+new slot after the first click, the next click lands on the wrong row (or
+on empty space). It is one of the most infuriating UX failures in the app.
+
+Hard rules:
+
+- A row's display position MUST derive from a key that is STABLE under
+  the toggle: a declaration index, an insertion order, an explicit
+  user-chosen order, or an alphabetical key on a field the toggle does
+  not change. NEVER derive display order from the very state the
+  checkbox mutates (e.g. "checked rows first", "enabled rows on top",
+  "init templates grouped above the rest").
+- If you want grouping/sorting by a toggled flag, compute it ONCE
+  (on mount / on data load) and freeze it in component state; reseed
+  only when the set of rows changes (add/remove), never on a flag flip.
+  A re-sort on reload is acceptable; a re-sort on click is not.
+- Reordering a row is allowed ONLY in response to an explicit reorder
+  gesture - a drag, an explicit "move up/down" control, or the user
+  changing an explicit sort selector. Never as a side effect of toggling
+  an unrelated per-row flag.
+- This applies to every list surface: settings template flags, sidebar
+  entries, pinned items, server lists, permission rows, file rows, and
+  any future list with per-row toggles.
+
+Why: see the template Settings flag list, where "Init-first" sorting made
+a row leap to the top of the section the instant you ticked Init, so
+ticking "Default on" right after missed. The fix froze the display order
+in local state and only lets drag reorder it.
+
+Reviewers may revert any change that reintroduces toggle-driven reordering
+without further discussion.
+
 ### Loading feedback (mandatory)
 
 Any UI that awaits data MUST show a visible loading indicator while
