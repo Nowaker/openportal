@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -41,6 +41,7 @@ function useResolvedTools(): ResolvedTool[] {
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const defaultOnInitIds = useToolsStore((s) => s.defaultOnInitIds);
   const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
   return useMemo(
     () =>
@@ -52,6 +53,7 @@ function useResolvedTools(): ResolvedTool[] {
         systemOverrides,
         customTools,
         projectInitOrder,
+        defaultOnInitIds,
         slashCommandIds,
       }),
     [
@@ -62,6 +64,7 @@ function useResolvedTools(): ResolvedTool[] {
       systemOverrides,
       customTools,
       projectInitOrder,
+      defaultOnInitIds,
       slashCommandIds,
     ],
   );
@@ -80,9 +83,20 @@ function makeCustomId(name: string, taken: Set<string>): string {
   return `custom.${base}-${Date.now().toString(36)}`;
 }
 
-// Inline checkbox cluster on the left side of every row. Three flags
-// per template, three columns. Fixed widths keep the columns aligned
-// vertically across rows regardless of template name length.
+const FLAG_HELP = {
+  burger: "Visible in the topbar templates menu.",
+  init: "Shown in the new-session template list.",
+  defaultOn:
+    "Pre-checked when the new-session template list opens. You can still uncheck it for that session.",
+  slash:
+    "Available in composer slash autocomplete as /template <name>; accepting it inserts the template body.",
+  outside:
+    "Promoted out of the hamburger into the title bar as its own desktop icon button.",
+};
+
+// Inline checkbox used in compact template flag groups. The custom
+// group-hover tooltip appears instantly; native title tooltips wait too
+// long and do not match the rest of OpenPortal's overlay styling.
 function FlagCheckbox({
   label,
   checked,
@@ -98,10 +112,9 @@ function FlagCheckbox({
 }) {
   return (
     <label
-      className={`inline-flex w-14 items-center gap-1 text-[10px] uppercase tracking-wide text-muted-fg ${
+      className={`group relative flex w-20 items-center gap-1 text-[11px] tracking-wide text-muted-fg ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
-      title={title}
     >
       <input
         type="checkbox"
@@ -112,8 +125,45 @@ function FlagCheckbox({
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
-      {label}
+      <span>{label}</span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden w-64 rounded-md border border-(--tooltip-border) [--tooltip-border:var(--color-muted-fg)]/30 bg-overlay px-2 py-1 text-xs normal-case tracking-normal text-overlay-fg shadow-md group-hover:block group-focus-within:block"
+      >
+        {title}
+      </span>
     </label>
+  );
+}
+
+function TemplateTitleBlock({
+  name,
+  description,
+  badge,
+  scope,
+  className = "",
+}: {
+  name: string;
+  description?: string;
+  badge?: ReactNode;
+  scope?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`min-w-0 flex-1 px-2 ${className}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-medium text-sm">{name}</span>
+        {scope && (
+          <span className="text-[10px] text-muted-fg/70 font-mono">
+            {scope}
+          </span>
+        )}
+        {badge}
+      </div>
+      {description && (
+        <p className="text-xs text-muted-fg mt-0.5">{description}</p>
+      )}
+    </div>
   );
 }
 
@@ -188,6 +238,7 @@ function SystemToolRow({
   const setBurgerVisible = useToolsStore((s) => s.setBurgerVisible);
   const setFullyDisabled = useToolsStore((s) => s.setFullyDisabled);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
+  const toggleDefaultOnInit = useToolsStore((s) => s.toggleDefaultOnInit);
   const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const setOutsideBurger = useToolsStore((s) => s.setOutsideBurger);
   const setTemplateIcon = useToolsStore((s) => s.setTemplateIcon);
@@ -224,9 +275,9 @@ function SystemToolRow({
         isDragOver ? "border-primary/40 bg-primary/5" : ""
       } ${isDisabled ? "opacity-50" : ""}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-start gap-2 sm:flex-nowrap sm:items-center">
         <Bars3Icon
-          className={`size-4 shrink-0 ${
+          className={`size-4 shrink-0 mt-1 sm:mt-0 ${
             draggable && !isDisabled
               ? "text-muted-fg cursor-grab active:cursor-grabbing"
               : "text-muted-fg/30"
@@ -239,52 +290,66 @@ function SystemToolRow({
                 : "Mark as Init to enable drag-reorder"
           }
         />
-        <FlagCheckbox
-          label="Burger"
-          title="Show in the topbar templates menu"
-          checked={tool.isInBurger && !isDisabled}
-          disabled={isDisabled}
-          onChange={(next) => setBurgerVisible(tool.id, next)}
-        />
-        <FlagCheckbox
-          label="Init"
-          title="Pre-checked in the new-session picker"
-          checked={tool.isInit && !isDisabled}
-          disabled={isDisabled}
-          onChange={(next) => toggleProjectInit(tool.id, next)}
-        />
-        <FlagCheckbox
-          label="Slash"
-          title="Available as /template <name> slash command in composers"
-          checked={tool.isSlash && !isDisabled}
-          disabled={isDisabled}
-          onChange={(next) => toggleSlashCommand(tool.id, next)}
-        />
-        <FlagCheckbox
-          label="Outside"
-          title="Render as its own icon button in the title bar (desktop, session routes)"
-          checked={tool.isOutsideBurger && !isDisabled}
-          disabled={isDisabled}
-          onChange={(next) => setOutsideBurger(tool.id, next)}
-        />
+        <div className="flex shrink-0 items-start gap-3">
+          <div className="space-y-1">
+            <FlagCheckbox
+              label="Burger"
+              title={FLAG_HELP.burger}
+              checked={tool.isInBurger && !isDisabled}
+              disabled={isDisabled}
+              onChange={(next) => setBurgerVisible(tool.id, next)}
+            />
+            <FlagCheckbox
+              label="Outside"
+              title={FLAG_HELP.outside}
+              checked={tool.isOutsideBurger && !isDisabled}
+              disabled={isDisabled}
+              onChange={(next) => setOutsideBurger(tool.id, next)}
+            />
+          </div>
+          <div className="space-y-1">
+            <FlagCheckbox
+              label="Init"
+              title={FLAG_HELP.init}
+              checked={tool.isInit && !isDisabled}
+              disabled={isDisabled}
+              onChange={(next) => toggleProjectInit(tool.id, next)}
+            />
+            <FlagCheckbox
+              label="Default on"
+              title={FLAG_HELP.defaultOn}
+              checked={tool.isDefaultOn && tool.isInit && !isDisabled}
+              disabled={isDisabled || !tool.isInit}
+              onChange={(next) => toggleDefaultOnInit(tool.id, next)}
+            />
+          </div>
+          <FlagCheckbox
+            label="Slash"
+            title={FLAG_HELP.slash}
+            checked={tool.isSlash && !isDisabled}
+            disabled={isDisabled}
+            onChange={(next) => toggleSlashCommand(tool.id, next)}
+          />
+        </div>
         {tool.isOutsideBurger && !isDisabled && (
           <TemplateIconPicker
             value={tool.iconId}
             onChange={(ic) => setTemplateIcon(tool.id, ic)}
           />
         )}
-        <div className="min-w-0 flex-1 px-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm">{tool.name}</span>
-            {tool.isOverridden && (
+        <TemplateTitleBlock
+          className="hidden sm:block"
+          name={tool.name}
+          description={tool.description}
+          badge={
+            tool.isOverridden ? (
               <span className="text-[10px] uppercase tracking-wide text-warning-subtle-fg bg-warning-subtle px-1.5 py-0.5 rounded">
                 Edited
               </span>
-            )}
-          </div>
-          <p className="text-xs text-muted-fg mt-0.5">{tool.description}</p>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
+            ) : null
+          }
+        />
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
           <Button
             size="xs"
             intent="outline"
@@ -314,6 +379,18 @@ function SystemToolRow({
           )}
         </div>
       </div>
+      <TemplateTitleBlock
+        className="sm:hidden"
+        name={tool.name}
+        description={tool.description}
+        badge={
+          tool.isOverridden ? (
+            <span className="text-[10px] uppercase tracking-wide text-warning-subtle-fg bg-warning-subtle px-1.5 py-0.5 rounded">
+              Edited
+            </span>
+          ) : null
+        }
+      />
       {editing && !isDisabled && (
         <div className="space-y-2 pt-2 border-t border-border/50">
           <div className="flex items-start gap-3">
@@ -380,6 +457,7 @@ function CustomToolRow({
 }: ToolRowProps) {
   const setBurgerVisible = useToolsStore((s) => s.setBurgerVisible);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
+  const toggleDefaultOnInit = useToolsStore((s) => s.toggleDefaultOnInit);
   const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const setOutsideBurger = useToolsStore((s) => s.setOutsideBurger);
   const setTemplateIcon = useToolsStore((s) => s.setTemplateIcon);
@@ -420,9 +498,9 @@ function CustomToolRow({
         isDragOver ? "border-primary/40 bg-primary/5" : ""
       }`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-start gap-2 sm:flex-nowrap sm:items-center">
         <Bars3Icon
-          className={`size-4 shrink-0 ${
+          className={`size-4 shrink-0 mt-1 sm:mt-0 ${
             draggable
               ? "text-muted-fg cursor-grab active:cursor-grabbing"
               : "text-muted-fg/30"
@@ -433,45 +511,55 @@ function CustomToolRow({
               : "Mark as Init to enable drag-reorder"
           }
         />
-        <FlagCheckbox
-          label="Burger"
-          title="Show in the topbar templates menu"
-          checked={tool.isInBurger}
-          onChange={(next) => setBurgerVisible(tool.id, next)}
-        />
-        <FlagCheckbox
-          label="Init"
-          title="Pre-checked in the new-session picker"
-          checked={tool.isInit}
-          onChange={(next) => toggleProjectInit(tool.id, next)}
-        />
-        <FlagCheckbox
-          label="Slash"
-          title="Available as /template <name> slash command in composers"
-          checked={tool.isSlash}
-          onChange={(next) => toggleSlashCommand(tool.id, next)}
-        />
-        <FlagCheckbox
-          label="Outside"
-          title="Render as its own icon button in the title bar (desktop, session routes)"
-          checked={tool.isOutsideBurger}
-          onChange={(next) => setOutsideBurger(tool.id, next)}
-        />
+        <div className="flex shrink-0 items-start gap-3">
+          <div className="space-y-1">
+            <FlagCheckbox
+              label="Burger"
+              title={FLAG_HELP.burger}
+              checked={tool.isInBurger}
+              onChange={(next) => setBurgerVisible(tool.id, next)}
+            />
+            <FlagCheckbox
+              label="Outside"
+              title={FLAG_HELP.outside}
+              checked={tool.isOutsideBurger}
+              onChange={(next) => setOutsideBurger(tool.id, next)}
+            />
+          </div>
+          <div className="space-y-1">
+            <FlagCheckbox
+              label="Init"
+              title={FLAG_HELP.init}
+              checked={tool.isInit}
+              onChange={(next) => toggleProjectInit(tool.id, next)}
+            />
+            <FlagCheckbox
+              label="Default on"
+              title={FLAG_HELP.defaultOn}
+              checked={tool.isDefaultOn && tool.isInit}
+              disabled={!tool.isInit}
+              onChange={(next) => toggleDefaultOnInit(tool.id, next)}
+            />
+          </div>
+          <FlagCheckbox
+            label="Slash"
+            title={FLAG_HELP.slash}
+            checked={tool.isSlash}
+            onChange={(next) => toggleSlashCommand(tool.id, next)}
+          />
+        </div>
         {tool.isOutsideBurger && (
           <TemplateIconPicker
             value={tool.iconId}
             onChange={(ic) => setTemplateIcon(tool.id, ic)}
           />
         )}
-        <div className="min-w-0 flex-1 px-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm">{tool.name}</span>
-          </div>
-          {tool.description && (
-            <p className="text-xs text-muted-fg mt-0.5">{tool.description}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <TemplateTitleBlock
+          className="hidden sm:block"
+          name={tool.name}
+          description={tool.description}
+        />
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
           <Button
             size="xs"
             intent="outline"
@@ -488,6 +576,11 @@ function CustomToolRow({
           </Button>
         </div>
       </div>
+      <TemplateTitleBlock
+        className="sm:hidden"
+        name={tool.name}
+        description={tool.description}
+      />
       {editing && (
         <div className="space-y-2 pt-2 border-t border-border/50">
           <div className="space-y-1">
@@ -567,6 +660,7 @@ function AddCustomTool({
     prompt?: string;
     burger?: boolean;
     init?: boolean;
+    defaultOn?: boolean;
     slash?: boolean;
   };
   onCreated?: () => void;
@@ -574,6 +668,7 @@ function AddCustomTool({
   const upsertCustomTool = useToolsStore((s) => s.upsertCustomTool);
   const setBurgerVisible = useToolsStore((s) => s.setBurgerVisible);
   const toggleProjectInit = useToolsStore((s) => s.toggleProjectInit);
+  const toggleDefaultOnInit = useToolsStore((s) => s.toggleDefaultOnInit);
   const toggleSlashCommand = useToolsStore((s) => s.toggleSlashCommand);
   const tools = useResolvedTools();
   const [open, setOpen] = useState(Boolean(initialValues));
@@ -584,6 +679,9 @@ function AddCustomTool({
   const [prompt, setPrompt] = useState(initialValues?.prompt ?? "");
   const [burger, setBurger] = useState(initialValues?.burger ?? true);
   const [init, setInit] = useState(initialValues?.init ?? false);
+  const [defaultOn, setDefaultOn] = useState(
+    initialValues?.defaultOn ?? initialValues?.init ?? false,
+  );
   const [slash, setSlash] = useState(initialValues?.slash ?? false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -596,6 +694,7 @@ function AddCustomTool({
     setPrompt(initialValues.prompt ?? "");
     setBurger(initialValues.burger ?? true);
     setInit(initialValues.init ?? false);
+    setDefaultOn(initialValues.defaultOn ?? initialValues.init ?? false);
     setSlash(initialValues.slash ?? false);
     setError(null);
   }, [initialValues]);
@@ -615,6 +714,7 @@ function AddCustomTool({
     setPrompt("");
     setBurger(true);
     setInit(false);
+    setDefaultOn(false);
     setSlash(false);
     setError(null);
   };
@@ -641,7 +741,10 @@ function AddCustomTool({
         prompt,
       });
       if (!burger) setBurgerVisible(id, false);
-      if (init) toggleProjectInit(id, true);
+      if (init) {
+        toggleProjectInit(id, true);
+        if (defaultOn) toggleDefaultOnInit(id, true);
+      }
       if (slash) toggleSlashCommand(id, true);
       reset();
       onCreated?.();
@@ -686,22 +789,34 @@ function AddCustomTool({
         <span className="text-xs font-medium text-muted-fg w-32 shrink-0">
           Flags
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-3">
           <FlagCheckbox
             label="Burger"
-            title="Show in the topbar templates menu (YAML enabled)"
+            title={FLAG_HELP.burger}
             checked={burger}
             onChange={setBurger}
           />
-          <FlagCheckbox
-            label="Init"
-            title="Pre-checked in the new-session picker"
-            checked={init}
-            onChange={setInit}
-          />
+          <div className="space-y-1">
+            <FlagCheckbox
+              label="Init"
+              title={FLAG_HELP.init}
+              checked={init}
+              onChange={(next) => {
+                setInit(next);
+                if (!next) setDefaultOn(false);
+              }}
+            />
+            <FlagCheckbox
+              label="Default on"
+              title={FLAG_HELP.defaultOn}
+              checked={defaultOn && init}
+              disabled={!init}
+              onChange={setDefaultOn}
+            />
+          </div>
           <FlagCheckbox
             label="Slash"
-            title="Available as /template <name> in composers"
+            title={FLAG_HELP.slash}
             checked={slash}
             onChange={setSlash}
           />
@@ -846,7 +961,7 @@ function FsTemplateRow({
 }: {
   template: FsTemplate;
   onToggle: (
-    field: "enabled" | "init" | "slash",
+    field: "enabled" | "init" | "defaultOn" | "slash",
     next: boolean,
   ) => Promise<void>;
   onSaveEdit: (next: {
@@ -896,39 +1011,43 @@ function FsTemplateRow({
 
   return (
     <div className="rounded-md border border-border bg-bg p-2 space-y-2">
-      <div className="flex items-center gap-2">
-        <FlagCheckbox
-          label="Burger"
-          title="Show in the topbar templates menu (maps to YAML 'enabled')"
-          checked={template.enabled}
-          onChange={(v) => void onToggle("enabled", v)}
-        />
-        <FlagCheckbox
-          label="Init"
-          title="Pre-checked in the new-session picker"
-          checked={template.init}
-          onChange={(v) => void onToggle("init", v)}
-        />
-        <FlagCheckbox
-          label="Slash"
-          title="Available as /template <name> slash command in composers"
-          checked={template.slash}
-          onChange={(v) => void onToggle("slash", v)}
-        />
-        <div className="min-w-0 flex-1 px-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm">{template.name}</span>
-            <span className="text-[10px] text-muted-fg/70 font-mono">
-              {template.scope}
-            </span>
+      <div className="flex flex-wrap items-start gap-2 sm:flex-nowrap sm:items-center">
+        <div className="flex shrink-0 items-start gap-3">
+          <FlagCheckbox
+            label="Burger"
+            title={FLAG_HELP.burger}
+            checked={template.enabled}
+            onChange={(v) => void onToggle("enabled", v)}
+          />
+          <div className="space-y-1">
+            <FlagCheckbox
+              label="Init"
+              title={FLAG_HELP.init}
+              checked={template.init}
+              onChange={(v) => void onToggle("init", v)}
+            />
+            <FlagCheckbox
+              label="Default on"
+              title={FLAG_HELP.defaultOn}
+              checked={template.defaultOn && template.init}
+              disabled={!template.init}
+              onChange={(v) => void onToggle("defaultOn", v)}
+            />
           </div>
-          {template.description && (
-            <p className="text-xs text-muted-fg mt-0.5">
-              {template.description}
-            </p>
-          )}
+          <FlagCheckbox
+            label="Slash"
+            title={FLAG_HELP.slash}
+            checked={template.slash}
+            onChange={(v) => void onToggle("slash", v)}
+          />
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <TemplateTitleBlock
+          className="hidden sm:block"
+          name={template.name}
+          description={template.description}
+          scope={template.scope}
+        />
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
           <Button
             size="xs"
             intent="outline"
@@ -950,6 +1069,12 @@ function FsTemplateRow({
           </Button>
         </div>
       </div>
+      <TemplateTitleBlock
+        className="sm:hidden"
+        name={template.name}
+        description={template.description}
+        scope={template.scope}
+      />
       {editing && (
         <div className="space-y-2 pt-2 border-t border-border/50">
           <div className="space-y-1">
@@ -1039,6 +1164,7 @@ function NewFsTemplateForm({
     prompt?: string;
     enabled?: boolean;
     init?: boolean;
+    defaultOn?: boolean;
     slash?: boolean;
   };
 }) {
@@ -1053,6 +1179,9 @@ function NewFsTemplateForm({
   const [prompt, setPrompt] = useState(initialValues?.prompt ?? "");
   const [enabled, setEnabled] = useState(initialValues?.enabled ?? true);
   const [init, setInit] = useState(initialValues?.init ?? false);
+  const [defaultOn, setDefaultOn] = useState(
+    initialValues?.defaultOn ?? initialValues?.init ?? false,
+  );
   const [slash, setSlash] = useState(initialValues?.slash ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1083,6 +1212,7 @@ function NewFsTemplateForm({
         description: description.trim() || undefined,
         enabled,
         init,
+        defaultOn: init && defaultOn,
         slash,
         order: 0,
         prompt,
@@ -1166,22 +1296,34 @@ function NewFsTemplateForm({
         <span className="text-xs font-medium text-muted-fg w-32 shrink-0">
           Flags
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-3">
           <FlagCheckbox
             label="Burger"
-            title="Show in the topbar templates menu (YAML enabled)"
+            title={FLAG_HELP.burger}
             checked={enabled}
             onChange={setEnabled}
           />
-          <FlagCheckbox
-            label="Init"
-            title="Pre-checked in the new-session picker"
-            checked={init}
-            onChange={setInit}
-          />
+          <div className="space-y-1">
+            <FlagCheckbox
+              label="Init"
+              title={FLAG_HELP.init}
+              checked={init}
+              onChange={(next) => {
+                setInit(next);
+                if (!next) setDefaultOn(false);
+              }}
+            />
+            <FlagCheckbox
+              label="Default on"
+              title={FLAG_HELP.defaultOn}
+              checked={defaultOn && init}
+              disabled={!init}
+              onChange={setDefaultOn}
+            />
+          </div>
           <FlagCheckbox
             label="Slash"
-            title="Available as /template <name> in composers"
+            title={FLAG_HELP.slash}
             checked={slash}
             onChange={setSlash}
           />
@@ -1255,7 +1397,7 @@ function FsTemplatesSection() {
 
   const handleToggle = async (
     template: FsTemplate,
-    field: "enabled" | "init" | "slash",
+    field: "enabled" | "init" | "defaultOn" | "slash",
     next: boolean,
   ) => {
     await writeFsTemplate({
@@ -1264,6 +1406,12 @@ function FsTemplatesSection() {
       description: template.description,
       enabled: field === "enabled" ? next : template.enabled,
       init: field === "init" ? next : template.init,
+      defaultOn:
+        field === "init"
+          ? next && template.defaultOn
+          : field === "defaultOn"
+            ? next
+            : template.defaultOn,
       slash: field === "slash" ? next : template.slash,
       order: template.order,
       prompt: template.prompt,
@@ -1280,6 +1428,7 @@ function FsTemplatesSection() {
       description: next.description || undefined,
       enabled: template.enabled,
       init: template.init,
+      defaultOn: template.defaultOn,
       slash: template.slash,
       order: template.order,
       prompt: next.prompt,
@@ -1312,7 +1461,7 @@ function FsTemplatesSection() {
           Templates stored next to your code at{" "}
           <code>&lt;workspace&gt;/&lt;…&gt;/.vibekick/templates/&lt;slug&gt;.md</code>.
           Each file&apos;s YAML frontmatter carries its flags (burger /
-          init / slash) and ordering. The backend caches the scan in
+          init / defaultOn / slash) and ordering. The backend caches the scan in
           memory and rebuilds it every 5 minutes; flag toggles update
           the cache in place (no rescan). Hit Refresh to force a fresh
           disk scan now.
@@ -1388,6 +1537,7 @@ function FsTemplatesSection() {
                   prompt: duplicateSource.prompt,
                   enabled: duplicateSource.enabled,
                   init: duplicateSource.init,
+                  defaultOn: duplicateSource.defaultOn,
                   slash: duplicateSource.slash,
                 }
               : undefined
@@ -1413,25 +1563,30 @@ export function ToolsSettings() {
     <div className="space-y-8">
       <section className="space-y-2">
         <p className="text-xs text-muted-fg">
-          Templates appear in the topbar action menu. Four flags per template
-          control where it shows up:
+          Templates can appear in the topbar menu, the new-session picker,
+          and composer slash autocomplete. These flags control where each
+          template shows up:
         </p>
         <ul className="text-xs text-muted-fg list-disc pl-5 space-y-0.5">
           <li>
-            <strong>Burger</strong> — visible in the topbar templates menu.
+            <strong>Burger</strong> - visible in the topbar templates menu.
           </li>
           <li>
-            <strong>Init</strong> — shown and checked in the new-session
-            picker, then prepended (in drag order below) to the first
+            <strong>Init</strong> - shown in the new-session template list.
+            Checked rows are prepended (in drag order below) to the first
             prompt on submit.
           </li>
           <li>
-            <strong>Slash</strong> — appears in the composer
+            <strong>Default on</strong> - pre-checked when the new-session
+            template list opens. You can still uncheck it for that session.
+          </li>
+          <li>
+            <strong>Slash</strong> - appears in the composer
             &quot;/&quot; autocomplete as <code>/template Full name</code>.
             Accepting it replaces the token with the template body.
           </li>
           <li>
-            <strong>Outside</strong> — promoted out of the hamburger into
+            <strong>Outside</strong> - promoted out of the hamburger into
             the title bar as its own icon button (desktop, session routes).
             Pick the icon with the selector that appears when enabled.
           </li>

@@ -5028,3 +5028,28 @@ Refinement (follow-up prompt, same task #209):
 - Search runs over the full in-memory workspace session set; only the top N rows render (DISPLAY_LIMIT = 50) in BOTH states, for performance.
 - No-filter ordering SUPERSEDES the pin-order note above: pinned-first then non-pinned, each by recent activity desc, combined list capped at N.
 - Filter ordering confirmed: full+pinned, full+non-pinned, fuzzy+pinned, fuzzy+non-pinned, capped at N. Matters most for 1-3 letter queries that match many rows.
+
+### 210. Templates: separate Init from default-on and polish flag layout (DONE - this commit)
+
+User prompt (verbatim):
+
+> Templates
+> In settings, when INIT is true, it's an init template to show in new session template list like https://portal.desktop.ts.nowaker.net:8443/session/new?server=srv-2dy1srwz&directory=%2Fhome%2Fnowaker%2Fprojekty%2Fwebapps%2Fportal
+> Below INIT checkbox in settings add second checkbox, disabled if INIT false, named DEFAULT ON.
+>
+> If default on, then new session list defaults on for this init template. Otherwise, it's default off but can still be checkboxed. Of course default true ones can still be unchecked on the new session page.
+>
+> BURGER should have OUTSIDE below it. Not as a separate column.
+>
+> Let's replace INIT, BURGER etc caps with normal caps.
+>
+> Add on mouse over instant tooltip with explanation. Same as is printed before the list.
+>
+> On mobile, the template title and description eg "Create PR
+> Push the current branch and open a pull request via gh." should go one line below all the checkboxes row. Desktop stay as is.
+
+Design notes:
+- Split init-list membership from new-session default checked state for local templates.
+- Add filesystem template `defaultOn` frontmatter/API support so filesystem init templates can also be default on/off.
+- Polish Settings template flag layout: normal-case labels, tooltip explanations, Burger/Outside stacked, Init/Default on stacked, mobile title/description below flags.
+- Update new-session picker so init templates appear when Init is true, but only Default on templates start selected.

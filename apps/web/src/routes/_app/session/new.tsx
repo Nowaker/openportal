@@ -98,11 +98,12 @@ function dataUrlToBlob(dataUrl: string): Blob {
 // Picker item shape that fits both ResolvedTool (stock + custom from
 // the local tools-store) and FsTemplate (filesystem-backed) without
 // inheriting all their other fields. The picker only needs id (for
-// the checkbox identity + drag drop), name (for display), and prompt
-// (for the on-submit prepend). Anything else stays on the source.
+// the checkbox identity + drag drop), name/description (for display),
+// and prompt (for the on-submit prepend). Anything else stays on the source.
 interface InitPickerItem {
   id: string;
   name: string;
+  description?: string;
   prompt: string;
 }
 
@@ -135,6 +136,7 @@ function NewSessionPage() {
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const defaultOnInitIds = useToolsStore((s) => s.defaultOnInitIds);
   const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
 
   const tools = useMemo(
@@ -145,6 +147,7 @@ function NewSessionPage() {
         systemOverrides,
         customTools,
         projectInitOrder,
+        defaultOnInitIds,
         slashCommandIds,
       }),
     [
@@ -153,6 +156,7 @@ function NewSessionPage() {
       systemOverrides,
       customTools,
       projectInitOrder,
+      defaultOnInitIds,
       slashCommandIds,
     ],
   );
@@ -184,24 +188,40 @@ function NewSessionPage() {
     const localInit: InitPickerItem[] = projectInitOrder
       .map((id) => local.find((t) => t.id === id))
       .filter((t): t is ResolvedTool => Boolean(t))
-      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        prompt: t.prompt,
+      }));
     const fsInit: InitPickerItem[] = fsTemplates
       .filter((t) => t.init)
       .sort(
         (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
       )
-      .map((t) => ({ id: t.id, name: t.name, prompt: t.prompt }));
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        prompt: t.prompt,
+      }));
     return [...localInit, ...fsInit];
   }, [tools, projectInitOrder, fsTemplates]);
 
-  const [order, setOrder] = useState<InitPickerItem[]>(initialOrder);
-  const [selected, setSelected] = useState<Set<string>>(() => {
-    const initIds = new Set<string>(projectInitOrder);
-    for (const t of fsTemplates) {
-      if (t.init) initIds.add(t.id);
+  const defaultSelectedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const id of defaultOnInitIds) {
+      if (projectInitOrder.includes(id)) ids.add(id);
     }
-    return initIds;
-  });
+    for (const t of fsTemplates) {
+      if (t.init && t.defaultOn) ids.add(t.id);
+    }
+    return ids;
+  }, [defaultOnInitIds, projectInitOrder, fsTemplates]);
+
+  const [order, setOrder] = useState<InitPickerItem[]>(initialOrder);
+  const [selected, setSelected] = useState<Set<string>>(() => defaultSelectedIds);
+  const selectionTouchedRef = useRef(false);
   const dragSourceIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -209,9 +229,13 @@ function NewSessionPage() {
 
   useEffect(() => {
     setOrder(initialOrder);
-  }, [initialOrder]);
+    if (!selectionTouchedRef.current) {
+      setSelected(defaultSelectedIds);
+    }
+  }, [initialOrder, defaultSelectedIds]);
 
   const toggle = (id: string) => {
+    selectionTouchedRef.current = true;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -268,7 +292,7 @@ function NewSessionPage() {
   const fileMention = useFileMention();
   const slashCommand = useSlashCommand();
   const { data: commandsData } = useCommands();
-  const [, setFileResults] = useState<{ path: string; name: string }[]>([]);
+  const [fileResults, setFileResults] = useState<string[]>([]);
   // Template-slash entries injected alongside opencode commands. Each
   // carries its body so the onSelect handler can expand the matching
   // /template <name> token into the template body with \n\n padding,
@@ -583,7 +607,7 @@ function NewSessionPage() {
         navigate({
           to: "/session/$id",
           params: { id: sessionId },
-          search: (prev) => prev,
+          search: { server: instanceId ?? undefined },
         });
       } catch (err) {
         setError(
@@ -833,7 +857,7 @@ function NewSessionPage() {
                 Init templates
               </h2>
               <p className="text-[11px] text-muted-fg/80">
-                Checked = prepended on submit. Drag to reorder.
+                Default-on templates start checked. Drag to reorder; checked templates are prepended on submit.
               </p>
             </div>
             <div className="space-y-1">
@@ -885,11 +909,16 @@ function NewSessionPage() {
                           onChange={() => toggle(tool.id)}
                           className="size-4 accent-primary shrink-0"
                         />
-                        <span className="truncate">
-                          {tool.name}
+                        <span className="min-w-0 sm:truncate">
+                          <span className="font-medium">{tool.name}</span>
                           {isModified && (
                             <span className="ml-1 text-accent/80 text-xs">
                               + modifications
+                            </span>
+                          )}
+                          {tool.description && (
+                            <span className="hidden text-xs text-muted-fg sm:ml-2 sm:inline">
+                              {tool.description}
                             </span>
                           )}
                         </span>
@@ -912,6 +941,11 @@ function NewSessionPage() {
                         )}
                       </button>
                     </div>
+                    {tool.description && (
+                      <p className="border-t border-border/40 px-8 py-1 text-xs text-muted-fg sm:hidden">
+                        {tool.description}
+                      </p>
+                    )}
                     {isExpanded && (
                       <div className="border-t border-border/60 p-2 bg-muted/10 space-y-1">
                         <div className="flex items-center justify-between">
@@ -1227,7 +1261,10 @@ function NewSessionPage() {
                       filteredCommands.length,
                     );
                     if (slashHandled) return;
-                    const mentionHandled = fileMention.handleKeyDown(e);
+                    const mentionHandled = fileMention.handleKeyDown(
+                      e,
+                      fileResults.length,
+                    );
                     if (mentionHandled) return;
                     onKeyDown(e);
                   }}
