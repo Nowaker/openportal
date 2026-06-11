@@ -5075,3 +5075,27 @@ Design notes:
 - `userTextFromOmoBlocks` invariants: when no OMO block is present, returns the input verbatim (normal messages copy unchanged); only an OMO-bearing message gets `\n{3,}` -> `\n\n` seam normalization + trim; a pure-OMO message yields `""` which hides the copy button (nothing user-authored to copy).
 - Templates preserved verbatim: when `parsePromptWithTemplates` returns a parse, `buildPromptWithTemplates(userAuthored, parsed.templates)` rebuilds the `\n\n---\n\n` separator + preamble + each `# /template "Name":` block byte-for-byte (the build/parse pair round-trips on the template portion). Result: a templates-only message (no OMO) round-trips identically to the prior raw-copy behavior. The four new test cases cover stripped-marker + prose, no-OMO passthrough, pure-OMO empty, and system-reminder boilerplate with embedded user text.
 - Verification: bun test omo-injection (11/11 pass), full `bunx tsc --noEmit` showed 32 pre-existing errors and **0** mentioning the three edited files, scripts/build.sh + scripts/deploy.sh + manual prod render check (live `srv-2dy1srwz`/4096 backend, 7 messages / 5 toolcalls, zero console errors / 5xx / runtime exceptions). Deploy ran with `DEPLOY_SKIP_SESSION_RENDER_CHECK=1` because the dev sandbox opencode (4998) unit is absent on this machine and the dev gate's Chromium render check rejects any 5xx; prod render check was run manually against the live backend so the bundle still got real end-to-end render verification.
+
+### 212. New project dialog must create subfolders from sidebar plus button (DONE - this commit) [loser-bump: originally #210; bumped to #212 because origin/main-nowaker landed its own #210/#211 first]
+
+User prompt (verbatim):
+
+> New project + button from navbar under projekty/nowaker didn't create a subfolder
+
+Design notes:
+- Reproduced the production failure with `POST /api/fs/mkdir` using the dialog's legacy payload shape `{ parent, name }`: HTTP 400 `{"error":"path required"}`.
+- Root cause: the active Nitro route `apps/web/src/server/fs/mkdir.post.ts` only accepted `{ path }`, while `CreateProjectModal` and the template-backed `FolderBrowser` still sent `{ parent, name, gitInit? }`.
+- Fix the active route to accept both contracts, preserve existing file-browser `{ path }` callers, keep workspace-scope validation in `resolveScopedPath`, and keep git-init support for the project-create flow.
+- Improve `CreateProjectModal` error parsing so route `{ error }` responses render useful text instead of only `HTTP <status>`.
+
+
+### 213. Worktree runner must install dependencies on first setup (DONE - this commit) [loser-bump: originally #211; bumped to #213 because origin/main-nowaker landed its own #210/#211 first]
+
+User prompt (verbatim):
+
+> If this is a systemic issue with worktree setup scripts, fix it so deps always get installed on setup
+
+Design notes:
+- Fresh git worktrees do not contain `node_modules`, and `scripts/run-worktree.sh` built immediately without ensuring dependencies existed.
+- Add a dependency setup step before build/CLI compilation that runs `bun install --no-save` when `node_modules/.openportal-worktree-install.stamp` is missing or older than the root/app/CLI package manifests or `bun.lock`.
+- `--no-save` is required because this repo has floating ranges such as `nitro: latest`; plain `bun install` can rewrite `bun.lock` during a worktree launch, while `--frozen-lockfile` currently fails on the existing lockfile under this Bun version.

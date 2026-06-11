@@ -31,6 +31,15 @@ mkdir -p "$ISO_DIR" "$DB_DIR"
 
 cd "$WORKTREE_DIR"
 
+# Fresh git worktrees do not carry node_modules. Install before any build step,
+# but never save package or lockfile changes from a worktree launch.
+INSTALL_STATE="node_modules/.openportal-worktree-install.stamp"
+if [[ ! -f "$INSTALL_STATE" || "bun.lock" -nt "$INSTALL_STATE" || "package.json" -nt "$INSTALL_STATE" || "apps/web/package.json" -nt "$INSTALL_STATE" || "packages/cli/package.json" -nt "$INSTALL_STATE" ]]; then
+  echo "[worktree-runner] installing dependencies..."
+  bun install --no-save
+  touch "$INSTALL_STATE"
+fi
+
 # Build the web bundle if missing or forced. scripts/build.sh handles
 # the asset-retention dance (snapshot, wipe, build, re-layer, prune).
 if [[ ! -f "apps/web/.output/server/index.mjs" || "${REBUILD:-0}" == "1" ]]; then

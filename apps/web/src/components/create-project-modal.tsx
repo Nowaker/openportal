@@ -74,7 +74,11 @@ function Body({
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        throw new Error((j as { message?: string }).message ?? `HTTP ${r.status}`);
+        throw new Error(
+          (j as { error?: string; message?: string }).error ??
+            (j as { message?: string }).message ??
+            `HTTP ${r.status}`,
+        );
       }
       const data = (await r.json()) as { path: string };
       onCreated(data.path);
