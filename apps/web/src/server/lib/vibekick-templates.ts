@@ -13,7 +13,7 @@ import { dirname, join, relative, resolve, sep } from "path";
 // Filesystem-backed prompt templates that live next to project code at
 // `<workspace>/<…subpath…>/.vibekick/templates/<slug>.md`. Each file
 // carries a YAML frontmatter header (name, description, enabled, init,
-// slash, order) plus the prompt body. The filesystem is the source of
+// defaultOn, slash, order) plus the prompt body. The filesystem is the source of
 // truth - reading + writing round-trips through this module.
 //
 // .vibekick/ is the canonical directory because OpenPortal is being
@@ -26,6 +26,7 @@ export interface FsTemplate {
   description?: string;
   enabled: boolean;
   init: boolean;
+  defaultOn: boolean;
   slash: boolean;
   order: number;
   prompt: string;
@@ -39,6 +40,7 @@ export interface FsTemplateInput {
   description?: string;
   enabled: boolean;
   init: boolean;
+  defaultOn: boolean;
   slash: boolean;
   order: number;
   prompt: string;
@@ -142,6 +144,7 @@ function serializeFrontmatter(t: FsTemplateInput): string {
   }
   lines.push(`enabled: ${t.enabled ? "true" : "false"}`);
   lines.push(`init: ${t.init ? "true" : "false"}`);
+  lines.push(`defaultOn: ${t.defaultOn ? "true" : "false"}`);
   lines.push(`slash: ${t.slash ? "true" : "false"}`);
   lines.push(`order: ${Math.trunc(t.order)}`);
   return `---\n${lines.join("\n")}\n---\n${t.prompt.replace(/^\n+/, "")}\n`;
@@ -182,6 +185,7 @@ function readTemplateFile(
       : undefined;
   const enabled = meta.enabled === undefined ? true : meta.enabled === true;
   const init = meta.init === true;
+  const defaultOn = init && meta.defaultOn !== false;
   const slash = meta.slash === true;
   const order =
     typeof meta.order === "number" && Number.isFinite(meta.order)
@@ -194,6 +198,7 @@ function readTemplateFile(
     description,
     enabled,
     init,
+    defaultOn,
     slash,
     order,
     prompt: body.replace(/^\n+/, "").replace(/\n+$/, ""),

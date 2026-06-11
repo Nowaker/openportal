@@ -6,6 +6,7 @@ export interface FsTemplate {
   description?: string;
   enabled: boolean;
   init: boolean;
+  defaultOn: boolean;
   slash: boolean;
   order: number;
   prompt: string;
@@ -66,6 +67,7 @@ export async function writeFsTemplate(input: {
   description?: string;
   enabled: boolean;
   init: boolean;
+  defaultOn: boolean;
   slash: boolean;
   order: number;
   prompt: string;

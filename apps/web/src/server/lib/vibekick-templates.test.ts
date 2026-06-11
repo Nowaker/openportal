@@ -38,6 +38,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
       description: "Round-trip test",
       enabled: true,
       init: true,
+      defaultOn: true,
       slash: false,
       order: 5,
       prompt: "Do the thing.\nThen the other thing.",
@@ -46,6 +47,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
     expect(written.description).toBe("Round-trip test");
     expect(written.enabled).toBe(true);
     expect(written.init).toBe(true);
+    expect(written.defaultOn).toBe(true);
     expect(written.slash).toBe(false);
     expect(written.order).toBe(5);
     expect(written.prompt).toBe("Do the thing.\nThen the other thing.");
@@ -58,7 +60,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
     expect(all[0].name).toBe("Foo > Bar");
   });
 
-  test("missing optional fields default to enabled:true, init:false, slash:false, order:0", () => {
+  test("missing optional fields default to enabled:true, init:false, defaultOn:false, slash:false, order:0", () => {
     const location = join(
       workspaceRoot,
       ".vibekick",
@@ -71,6 +73,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
     expect(all).toHaveLength(1);
     expect(all[0].enabled).toBe(true);
     expect(all[0].init).toBe(false);
+    expect(all[0].defaultOn).toBe(false);
     expect(all[0].slash).toBe(false);
     expect(all[0].order).toBe(0);
     expect(all[0].name).toBe("Bare");
@@ -96,6 +99,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
       name: "Root",
       enabled: true,
       init: false,
+      defaultOn: false,
       slash: false,
       order: 0,
       prompt: "root body",
@@ -115,6 +119,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
         name: "Deep",
         enabled: true,
         init: false,
+        defaultOn: false,
         slash: false,
         order: 0,
         prompt: "deep body",
@@ -131,6 +136,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
       name: "A high order",
       enabled: true,
       init: false,
+      defaultOn: false,
       slash: false,
       order: 10,
       prompt: "a",
@@ -139,6 +145,7 @@ describe("writeTemplate + scanWorkspaceTemplates", () => {
       name: "B low order",
       enabled: true,
       init: false,
+      defaultOn: false,
       slash: false,
       order: 1,
       prompt: "b",
@@ -156,6 +163,7 @@ describe("deleteTemplate", () => {
       name: "ToDelete",
       enabled: true,
       init: false,
+      defaultOn: false,
       slash: false,
       order: 0,
       prompt: "x",
@@ -175,6 +183,7 @@ describe("templatesForDirectory", () => {
       name: "Root",
       enabled: true,
       init: false,
+      defaultOn: false,
       slash: false,
       order: 0,
       prompt: "r",
@@ -184,6 +193,7 @@ describe("templatesForDirectory", () => {
       name: "Project",
       enabled: true,
       init: false,
+      defaultOn: false,
       slash: false,
       order: 0,
       prompt: "p",
@@ -195,6 +205,7 @@ describe("templatesForDirectory", () => {
         name: "Mid",
         enabled: true,
         init: false,
+        defaultOn: false,
         slash: false,
         order: 0,
         prompt: "m",
