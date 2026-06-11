@@ -5075,3 +5075,24 @@ Design notes:
 - `userTextFromOmoBlocks` invariants: when no OMO block is present, returns the input verbatim (normal messages copy unchanged); only an OMO-bearing message gets `\n{3,}` -> `\n\n` seam normalization + trim; a pure-OMO message yields `""` which hides the copy button (nothing user-authored to copy).
 - Templates preserved verbatim: when `parsePromptWithTemplates` returns a parse, `buildPromptWithTemplates(userAuthored, parsed.templates)` rebuilds the `\n\n---\n\n` separator + preamble + each `# /template "Name":` block byte-for-byte (the build/parse pair round-trips on the template portion). Result: a templates-only message (no OMO) round-trips identically to the prior raw-copy behavior. The four new test cases cover stripped-marker + prose, no-OMO passthrough, pure-OMO empty, and system-reminder boilerplate with embedded user text.
 - Verification: bun test omo-injection (11/11 pass), full `bunx tsc --noEmit` showed 32 pre-existing errors and **0** mentioning the three edited files, scripts/build.sh + scripts/deploy.sh + manual prod render check (live `srv-2dy1srwz`/4096 backend, 7 messages / 5 toolcalls, zero console errors / 5xx / runtime exceptions). Deploy ran with `DEPLOY_SKIP_SESSION_RENDER_CHECK=1` because the dev sandbox opencode (4998) unit is absent on this machine and the dev gate's Chromium render check rejects any 5xx; prod render check was run manually against the live backend so the bundle still got real end-to-end render verification.
+
+### 212. List rows must not reorder when their checkboxes are toggled (DONE - this commit)
+
+User prompt (verbatim):
+
+> Do not reorder elements when they're on the list and their checkboxes enabled/disabled. It's the most stupid thing in the world when  I want to click several checkboxes on the item but the shit changes its position. Make it a project wide rule in agentsmd.
+
+Design notes:
+- Root cause: `UnifiedToolList` in `apps/web/src/components/tools-settings.tsx` sorted Init-marked rows first (in `projectInitOrder`), so ticking Init made the row leap to the top of its section and the next click (e.g. Default on) missed.
+- Fix: new `useStableRowOrder` hook freezes display order in local state, seeded from a stable key (system = declaration order, custom = alphabetical), reseeded ONLY when the template id-set changes (add/remove), never on a flag toggle. Drag still reorders both the visual list and `projectInitOrder` (prompt concat order); drag is the only allowed reorder gesture.
+- Codified as a binding project-wide rule in portal `AGENTS.md` -> "List stability under inline toggles (mandatory)".
+
+### 213. Flag tooltip must be desktop-only (mobile tap latches it open over other rows) (DONE - this commit)
+
+User prompt (verbatim):
+
+> Remove on mouse over label on mobile, it sucks because it activates on click and stays around and, covers other elements. Make it desktop only.
+
+Design notes:
+- `FlagCheckbox` tooltip in `apps/web/src/components/tools-settings.tsx` revealed on `group-hover` AND `group-focus-within`; on mobile a tap focuses the checkbox, latching the tooltip open and covering adjacent rows.
+- Fix: gate the reveal on `sm:` (`sm:group-hover:block sm:group-focus-within:block`); the tooltip stays `hidden` below the `sm` breakpoint, so it is hover-only on desktop and never appears on mobile.

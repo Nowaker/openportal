@@ -126,9 +126,12 @@ function FlagCheckbox({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>{label}</span>
+      {/* Desktop-only: revealed on hover/focus at sm+. On mobile a tap
+          focuses the checkbox, which would latch the tooltip open and
+          cover adjacent rows, so it stays hidden below sm. */}
       <span
         role="tooltip"
-        className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden w-64 rounded-md border border-(--tooltip-border) [--tooltip-border:var(--color-muted-fg)]/30 bg-overlay px-2 py-1 text-xs normal-case tracking-normal text-overlay-fg shadow-md group-hover:block group-focus-within:block"
+        className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden w-64 rounded-md border border-(--tooltip-border) [--tooltip-border:var(--color-muted-fg)]/30 bg-overlay px-2 py-1 text-xs normal-case tracking-normal text-overlay-fg shadow-md sm:group-hover:block sm:group-focus-within:block"
       >
         {title}
       </span>
@@ -844,42 +847,103 @@ function AddCustomTool({
   );
 }
 
+// Row order MUST NOT derive from projectInitOrder: toggling Init mutates
+// it, which made rows jump mid-click (AGENTS.md "List stability under
+// inline toggles"). Order is frozen in state, reseeded only on add/remove.
+function useStableRowOrder(
+  list: ResolvedTool[],
+  alpha: boolean,
+): {
+  rows: ResolvedTool[];
+  orderIds: string[];
+  setOrderIds: (ids: string[]) => void;
+} {
+  const byId = useMemo(
+    () => new Map(list.map((t) => [t.id, t] as const)),
+    [list],
+  );
+  const seedIds = useMemo(() => {
+    const arr = alpha
+      ? [...list].sort((a, b) => a.name.localeCompare(b.name))
+      : list;
+    return arr.map((t) => t.id);
+  }, [list, alpha]);
+  // Changes on add/remove only, not on flag toggle (same id set).
+  const idsKey = useMemo(
+    () => [...byId.keys()].sort().join(" "),
+    [byId],
+  );
+  const [orderIds, setOrderIds] = useState<string[]>(seedIds);
+  useEffect(() => {
+    setOrderIds((prev) => {
+      const present = new Set(byId.keys());
+      const kept = prev.filter((id) => present.has(id));
+      const keptSet = new Set(kept);
+      const added = seedIds.filter((id) => !keptSet.has(id));
+      const next = [...kept, ...added];
+      const same =
+        next.length === prev.length && next.every((id, i) => id === prev[i]);
+      return same ? prev : next;
+    });
+    // Intentionally keyed on membership only - see comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+  const rows = useMemo(
+    () =>
+      orderIds
+        .map((id) => byId.get(id))
+        .filter((t): t is ResolvedTool => Boolean(t)),
+    [orderIds, byId],
+  );
+  return { rows, orderIds, setOrderIds };
+}
+
 function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
   const reorderProjectInit = useToolsStore((s) => s.reorderProjectInit);
 
-  const systemTools = tools.filter((t) => t.kind === "system");
-  const customTools = tools.filter((t) => t.kind === "custom");
+  const systemTools = useMemo(
+    () => tools.filter((t) => t.kind === "system"),
+    [tools],
+  );
+  const customTools = useMemo(
+    () => tools.filter((t) => t.kind === "custom"),
+    [tools],
+  );
 
-  const sortTools = (list: ResolvedTool[]): ResolvedTool[] => {
-    const initIds = new Set(projectInitOrder);
-    const initRows = projectInitOrder
-      .map((id) => list.find((t) => t.id === id))
-      .filter((t): t is ResolvedTool => Boolean(t));
-    const otherRows = list
-      .filter((t) => !initIds.has(t.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return [...initRows, ...otherRows];
-  };
-
-  const sortedSystem = sortTools(systemTools);
-  const sortedCustom = sortTools(customTools);
+  const sortedSystem = useStableRowOrder(systemTools, true);
+  const sortedCustom = useStableRowOrder(customTools, true);
 
   const dragSourceIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
+  // Drag is the only allowed reorder gesture: it moves the visual row and
+  // rewrites projectInitOrder (the prompt concatenation order) to match.
   const handleDrop = (targetId: string) => {
     const sourceId = dragSourceIdRef.current;
     dragSourceIdRef.current = null;
     setDragOverId(null);
     if (!sourceId || sourceId === targetId) return;
-    const order = projectInitOrder.slice();
-    const fromIdx = order.indexOf(sourceId);
-    const toIdx = order.indexOf(targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const [moved] = order.splice(fromIdx, 1);
-    order.splice(toIdx, 0, moved);
-    reorderProjectInit(order);
+    const moveWithin = (ids: string[]): string[] | null => {
+      const fromIdx = ids.indexOf(sourceId);
+      const toIdx = ids.indexOf(targetId);
+      if (fromIdx === -1 || toIdx === -1) return null;
+      const next = ids.slice();
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    };
+    const nextSystem = moveWithin(sortedSystem.orderIds);
+    if (nextSystem) sortedSystem.setOrderIds(nextSystem);
+    const nextCustom = moveWithin(sortedCustom.orderIds);
+    if (nextCustom) sortedCustom.setOrderIds(nextCustom);
+    const initSet = new Set(projectInitOrder);
+    const systemIds = nextSystem ?? sortedSystem.orderIds;
+    const customIds = nextCustom ?? sortedCustom.orderIds;
+    reorderProjectInit([
+      ...systemIds.filter((id) => initSet.has(id)),
+      ...customIds.filter((id) => initSet.has(id)),
+    ]);
   };
 
   const renderRow = (tool: ResolvedTool) => {
@@ -925,7 +989,7 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
             the shipped version. Disable to hide everywhere.
           </p>
         </div>
-        <div className="space-y-1.5">{sortedSystem.map(renderRow)}</div>
+        <div className="space-y-1.5">{sortedSystem.rows.map(renderRow)}</div>
       </section>
       <section className="space-y-2">
         <div>
@@ -938,13 +1002,13 @@ function UnifiedToolList({ tools }: { tools: ResolvedTool[] }) {
           </p>
         </div>
         <div className="space-y-1.5">
-          {sortedCustom.length === 0 ? (
+          {sortedCustom.rows.length === 0 ? (
             <p className="text-xs italic text-muted-fg/70">
               No custom templates yet. Use the &quot;+ Add custom
               template&quot; button at the bottom.
             </p>
           ) : (
-            sortedCustom.map(renderRow)
+            sortedCustom.rows.map(renderRow)
           )}
         </div>
       </section>
