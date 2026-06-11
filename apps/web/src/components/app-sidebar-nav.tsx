@@ -264,6 +264,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
   const systemOverrides = useToolsStore((s) => s.systemOverrides);
   const customTools = useToolsStore((s) => s.customTools);
   const projectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const defaultOnInitIds = useToolsStore((s) => s.defaultOnInitIds);
   const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
   const resolvedTools = useMemo(
     () =>
@@ -275,6 +276,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
         systemOverrides,
         customTools,
         projectInitOrder,
+        defaultOnInitIds,
         slashCommandIds,
       }),
     [
@@ -285,6 +287,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
       systemOverrides,
       customTools,
       projectInitOrder,
+      defaultOnInitIds,
       slashCommandIds,
     ],
   );

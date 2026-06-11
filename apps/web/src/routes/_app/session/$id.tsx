@@ -4216,6 +4216,7 @@ function SessionPage() {
   const slashToolSystemOverrides = useToolsStore((s) => s.systemOverrides);
   const slashToolCustom = useToolsStore((s) => s.customTools);
   const slashProjectInitOrder = useToolsStore((s) => s.projectInitOrder);
+  const slashDefaultOnInitIds = useToolsStore((s) => s.defaultOnInitIds);
   const slashCommandIds = useToolsStore((s) => s.slashCommandIds);
   const slashResolvedTools = useMemo(
     () =>
@@ -4225,6 +4226,7 @@ function SessionPage() {
         systemOverrides: slashToolSystemOverrides,
         customTools: slashToolCustom,
         projectInitOrder: slashProjectInitOrder,
+        defaultOnInitIds: slashDefaultOnInitIds,
         slashCommandIds,
       }),
     [
@@ -4233,6 +4235,7 @@ function SessionPage() {
       slashToolSystemOverrides,
       slashToolCustom,
       slashProjectInitOrder,
+      slashDefaultOnInitIds,
       slashCommandIds,
     ],
   );

@@ -19,6 +19,7 @@ export type ResolvedTool =
       enabled: boolean;
       isOverridden: boolean;
       isInit: boolean;
+      isDefaultOn: boolean;
       isSlash: boolean;
     })
   | (CustomTool & {
@@ -29,6 +30,7 @@ export type ResolvedTool =
       isDisabled: boolean;
       enabled: boolean;
       isInit: boolean;
+      isDefaultOn: boolean;
       isSlash: boolean;
     });
 
@@ -73,13 +75,15 @@ interface ToolsPersistedState {
   customTools: CustomTool[];
 
   // Tool ids designated as "Init" templates with explicit ordering.
-  // On new-session create, the picker pre-checks these and concatenates
-  // their bodies (in this order) as the first submitted prompt. Stored
-  // as ORDERED array so drag-drop reordering in Settings is the source
-  // of truth for concatenation order. Note: non-init non-disabled
-  // templates ALSO appear in the new-session picker (unchecked); the
-  // init flag just controls the default-checked state.
+  // Init controls whether a template appears in the new-session picker
+  // and where it appears. It does NOT decide whether the checkbox starts
+  // selected; defaultOnInitIds below owns that.
   projectInitOrder: string[];
+
+  // Init template ids that start checked in the new-session picker.
+  // A template may be Init but not Default on, which keeps it visible
+  // but unchecked until the user opts in for that one session.
+  defaultOnInitIds: string[];
 
   // Tool ids designated as slash commands. When the user types
   // "/template <q>" in any composer, these tools appear in the slash
@@ -104,6 +108,7 @@ interface ToolsState extends ToolsPersistedState {
   upsertCustomTool: (tool: CustomTool) => void;
   removeCustomTool: (id: string) => void;
   toggleProjectInit: (id: string, enabled: boolean) => void;
+  toggleDefaultOnInit: (id: string, enabled: boolean) => void;
   reorderProjectInit: (order: string[]) => void;
   toggleSlashCommand: (id: string, enabled: boolean) => void;
 }
@@ -121,6 +126,7 @@ export function resolveToolsFromState(
     | "systemOverrides"
     | "customTools"
     | "projectInitOrder"
+    | "defaultOnInitIds"
     | "slashCommandIds"
   > &
     Partial<Pick<ToolsPersistedState, "outsideBurgerIds" | "iconOverrides">>,
@@ -130,6 +136,7 @@ export function resolveToolsFromState(
   const outsideSet = new Set(state.outsideBurgerIds ?? []);
   const iconMap = state.iconOverrides ?? {};
   const initSet = new Set(state.projectInitOrder);
+  const defaultOnSet = new Set(state.defaultOnInitIds);
   const slashSet = new Set(state.slashCommandIds);
   const resolveFlags = (id: string) => {
     const isInBurger = !burgerHidden.has(id);
@@ -146,6 +153,7 @@ export function resolveToolsFromState(
       // !isDisabled directly.
       enabled: isInBurger && !isDisabled,
       isInit: initSet.has(id),
+      isDefaultOn: defaultOnSet.has(id),
       isSlash: slashSet.has(id),
     };
   };
@@ -186,6 +194,7 @@ export const useToolsStore = create<ToolsState>()(
       systemOverrides: {},
       customTools: [],
       projectInitOrder: [],
+      defaultOnInitIds: [],
       slashCommandIds: [],
 
       setBurgerVisible: (id, visible) =>
@@ -268,6 +277,7 @@ export const useToolsStore = create<ToolsState>()(
             outsideBurgerIds: state.outsideBurgerIds.filter((d) => d !== id),
             iconOverrides,
             projectInitOrder: state.projectInitOrder.filter((p) => p !== id),
+            defaultOnInitIds: state.defaultOnInitIds.filter((p) => p !== id),
             slashCommandIds: state.slashCommandIds.filter((p) => p !== id),
           };
         }),
@@ -279,6 +289,19 @@ export const useToolsStore = create<ToolsState>()(
               ? state.projectInitOrder
               : [...state.projectInitOrder, id]
             : state.projectInitOrder.filter((x) => x !== id),
+          defaultOnInitIds: enabled
+            ? state.defaultOnInitIds
+            : state.defaultOnInitIds.filter((x) => x !== id),
+        })),
+
+      toggleDefaultOnInit: (id, enabled) =>
+        set((state) => ({
+          defaultOnInitIds:
+            enabled && state.projectInitOrder.includes(id)
+              ? state.defaultOnInitIds.includes(id)
+                ? state.defaultOnInitIds
+                : [...state.defaultOnInitIds, id]
+              : state.defaultOnInitIds.filter((x) => x !== id),
         })),
 
       reorderProjectInit: (order) =>
@@ -307,8 +330,20 @@ export const useToolsStore = create<ToolsState>()(
         systemOverrides: state.systemOverrides,
         customTools: state.customTools,
         projectInitOrder: state.projectInitOrder,
+        defaultOnInitIds: state.defaultOnInitIds,
         slashCommandIds: state.slashCommandIds,
       }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<ToolsPersistedState> | undefined;
+        if (!saved) return current;
+        return {
+          ...current,
+          ...saved,
+          defaultOnInitIds: Array.isArray(saved.defaultOnInitIds)
+            ? saved.defaultOnInitIds
+            : (saved.projectInitOrder ?? current.projectInitOrder),
+        };
+      },
     },
   ),
 );
