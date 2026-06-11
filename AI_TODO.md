@@ -5053,3 +5053,25 @@ Design notes:
 - Add filesystem template `defaultOn` frontmatter/API support so filesystem init templates can also be default on/off.
 - Polish Settings template flag layout: normal-case labels, tooltip explanations, Burger/Outside stacked, Init/Default on stacked, mobile title/description below flags.
 - Update new-session picker so init templates appear when Init is true, but only Default on templates start selected.
+
+### 211. Copy-message button strips OMO directive wrappers (DONE - 3f1d3a5)
+
+User prompt (verbatim):
+
+> Copy message button copies this when OMO wrapper is present:
+>
+> ```
+> <!--OMO-STRIPPED:%7B%22id%22%3A%220.0%22%2C%22header%22%3A%22%5Bsearch-mode%5D%22%2C%22summary%22%3A%22MAXIMIZE%20SEARCH%20EFFORT.%20Launch%20multiple%20background%20agents%20IN%20PARALLEL%3A%22%2C%22bytes%22%3A317%2C%22segments%22%3A%5B%7B%22header%22%3A%22%5Bsearch-mode%5D%22%2C%22summary%22%3A%22MAXIMIZE%20SEARCH%20EFFORT.%20Launch%20multiple%20background%20agents%20IN%20PARALLEL%3A%22%7D%5D%7D-->
+> Separate the concept of pins (two types) and favorites. [... Snipped]
+> ```
+>
+> Don't copy OMO wrapper contents. Treat like they're not there.
+> However, user selected templates (which also use wrappers similar to OMO) should be copied - as they currently are.  No change here.
+
+Design notes:
+- Files: `apps/web/src/lib/omo-injection.ts` (new export `userTextFromOmoBlocks`), `apps/web/src/routes/_app/session/$id.tsx` (new `copyText` memo + call-site swap), `apps/web/src/lib/omo-injection.test.ts` (+4 cases).
+- `MessageItem` previously handed `MessageMetaStack` the raw `textContent = getMessageContent(message.parts)`, so the clipboard kept every OMO wrapper the user never typed (stripped marker, TODO-CONTINUATION, search-mode preamble, system-reminder, ...).
+- The chat render path already strips OMO via `parseOmoBlocks(parsedTemplates?.userText ?? textContent)`; copy now reuses that exact memoized `omoBlocks` and joins the `kind: "user"` block texts.
+- `userTextFromOmoBlocks` invariants: when no OMO block is present, returns the input verbatim (normal messages copy unchanged); only an OMO-bearing message gets `\n{3,}` -> `\n\n` seam normalization + trim; a pure-OMO message yields `""` which hides the copy button (nothing user-authored to copy).
+- Templates preserved verbatim: when `parsePromptWithTemplates` returns a parse, `buildPromptWithTemplates(userAuthored, parsed.templates)` rebuilds the `\n\n---\n\n` separator + preamble + each `# /template "Name":` block byte-for-byte (the build/parse pair round-trips on the template portion). Result: a templates-only message (no OMO) round-trips identically to the prior raw-copy behavior. The four new test cases cover stripped-marker + prose, no-OMO passthrough, pure-OMO empty, and system-reminder boilerplate with embedded user text.
+- Verification: bun test omo-injection (11/11 pass), full `bunx tsc --noEmit` showed 32 pre-existing errors and **0** mentioning the three edited files, scripts/build.sh + scripts/deploy.sh + manual prod render check (live `srv-2dy1srwz`/4096 backend, 7 messages / 5 toolcalls, zero console errors / 5xx / runtime exceptions). Deploy ran with `DEPLOY_SKIP_SESSION_RENDER_CHECK=1` because the dev sandbox opencode (4998) unit is absent on this machine and the dev gate's Chromium render check rejects any 5xx; prod render check was run manually against the live backend so the bundle still got real end-to-end render verification.
