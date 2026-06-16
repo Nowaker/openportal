@@ -74,6 +74,29 @@ export OPENPORTAL_DEPLOY_LOCK_HELD=1
 OUTPUT_DIR="$repo_root/apps/web/.output"
 RELEASED_DIR="$repo_root/apps/web/.output-released"
 
+# Reads the SPA entry hash baked into the prebuilt HTML shell. Vite emits
+# multiple `/assets/index-<hash>.js` references in server/index.mjs - the
+# real page entry plus tiny re-export chunks - so `grep | head -1` lands
+# on whichever one Vite ordered first and is wrong as often as right. The
+# authoritative entry is the `<script type="module" src=...>` tag inside
+# the pre-rendered HTML shell at server/_chunks/renderer-template.mjs;
+# that is exactly what dev/prod return to browsers, so anchoring the
+# probe to it matches the user-visible bundle exactly. Falls back to the
+# old "first hash in index.mjs" pattern only if the renderer template
+# doesn't exist (older build layouts), so future Nitro/Vite reshuffles
+# can't strand the deploy.
+extract_html_entry() {
+  local root="$1"
+  local renderer="$root/server/_chunks/renderer-template.mjs"
+  if [ -f "$renderer" ]; then
+    grep -aoE '<script[^>]+src=\\"/assets/index-[A-Za-z0-9_-]+\.js\\"' "$renderer" \
+      | grep -aoE '/assets/index-[A-Za-z0-9_-]+\.js' \
+      | head -1
+    return
+  fi
+  grep -oE '/assets/index-[^"]+\.js' "$root/server/index.mjs" | head -1
+}
+
 probe() {
   local label="$1"
   local url="$2"
@@ -119,9 +142,9 @@ check_session_render() {
 echo "===== build ====="
 bash scripts/build.sh
 
-current_entry="$(grep -oE '/assets/index-[^"]+\.js' "$OUTPUT_DIR/server/index.mjs" | head -1)"
+current_entry="$(extract_html_entry "$OUTPUT_DIR")"
 if [ -z "$current_entry" ]; then
-  echo "FATAL: could not determine current entry from .output/server/index.mjs" >&2
+  echo "FATAL: could not determine current entry from $OUTPUT_DIR" >&2
   exit 1
 fi
 expected_hash="$(printf '%s' "$current_entry" | grep -oE 'index-[A-Za-z0-9_-]+\.js')"
@@ -143,7 +166,7 @@ echo "===== promote .output -> .output-released ====="
 # .output-released ends up with every retained asset hash plus the
 # current ones.
 rsync -a --delete "$OUTPUT_DIR/" "$RELEASED_DIR/"
-released_entry="$(grep -oE '/assets/index-[^"]+\.js' "$RELEASED_DIR/server/index.mjs" | head -1)"
+released_entry="$(extract_html_entry "$RELEASED_DIR")"
 if [ -z "$released_entry" ] || ! printf '%s' "$released_entry" | grep -qF "$expected_hash"; then
   echo "FATAL: promote left .output-released with mismatched entry: $released_entry" >&2
   exit 1

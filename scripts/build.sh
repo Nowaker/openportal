@@ -104,13 +104,20 @@ if [ "$PRUNED" -gt 0 ]; then
   echo "build.sh: pruned $PRUNED file(s) older than $RETENTION_DAYS days"
 fi
 
-# 6. Report. The current entry is whichever index-*.js the freshly
-#    built .output/server/index.mjs references - newest by mtime
-#    isn't reliable when retention restored older files.
+# 6. Report. The authoritative entry is the <script type="module" src=>
+#    in the pre-rendered HTML shell at server/_chunks/renderer-template.mjs.
+#    server/index.mjs contains the entry AND tiny re-export chunks under
+#    the same /assets/index-*.js name pattern, so `grep | head -1` there
+#    lands on whichever Vite ordered first - not the user-visible bundle.
+RENDERER="$OUTPUT/server/_chunks/renderer-template.mjs"
 SERVER_INDEX="$OUTPUT/server/index.mjs"
-if [ -f "$SERVER_INDEX" ]; then
-  CURRENT_ENTRY=$(grep -oE '/assets/index-[^"]+\.js' "$SERVER_INDEX" | head -1)
+if [ -f "$RENDERER" ]; then
+  CURRENT_ENTRY=$(grep -aoE '<script[^>]+src=\\"/assets/index-[A-Za-z0-9_-]+\.js\\"' "$RENDERER" \
+    | grep -aoE '/assets/index-[A-Za-z0-9_-]+\.js' | head -1)
   echo "build.sh: build complete. Current entry: ${CURRENT_ENTRY:-(unknown)}"
+elif [ -f "$SERVER_INDEX" ]; then
+  CURRENT_ENTRY=$(grep -oE '/assets/index-[^"]+\.js' "$SERVER_INDEX" | head -1)
+  echo "build.sh: build complete. Current entry (legacy): ${CURRENT_ENTRY:-(unknown)}"
 else
   echo "build.sh: build complete. (server bundle not found)"
 fi
