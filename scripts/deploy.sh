@@ -139,39 +139,139 @@ check_session_render() {
   OPENPORTAL_RENDER_CHECK_URL="$url" bun scripts/check-session-renders.ts
 }
 
+# Just the index-<hash>.js token of the authoritative HTML entry. Tolerant:
+# echoes empty (never errors under set -e) if .output is mid-rebuild and has
+# no entry yet.
+extract_hash() {
+  extract_html_entry "$1" 2>/dev/null | grep -oE 'index-[A-Za-z0-9_-]+\.js' || true
+}
+
+# The index-<hash>.js a running server currently returns in its HTML shell.
+read_served_hash() {
+  curl -sS --max-time 5 "$1" 2>/dev/null \
+    | grep -oE 'src="/assets/index-[A-Za-z0-9_-]+\.js"' \
+    | grep -oE 'index-[A-Za-z0-9_-]+\.js' | head -1 || true
+}
+
+# Poll a URL until it returns the SAME non-empty entry twice in a row (server
+# fully up AND not mid-swap). Echoes the stable hash, or empty on timeout.
+wait_served_stable() {
+  local url="$1" max="${2:-25}" prev="" cur="" i=0
+  while [ "$i" -lt "$max" ]; do
+    cur="$(read_served_hash "$url")"
+    if [ -n "$cur" ] && [ "$cur" = "$prev" ]; then
+      printf '%s' "$cur"
+      return 0
+    fi
+    prev="$cur"
+    i=$((i + 1))
+    sleep 1
+  done
+  printf ''
+}
+
+# Why a convergence loop instead of "build, then probe dev for the build-time
+# hash": apps/web/.output is a machine-global singleton. scripts/build.sh and
+# scripts/deploy.sh serialize on $DEPLOY_LOCK, but a raw `bun run build` run
+# directly (against AGENTS.md advice, but it happens with many parallel
+# sessions) does NOT take the lock and rewrites .output to a fresh hash mid-
+# deploy. The old probe demanded dev serve the exact hash captured right after
+# our build; an out-of-band rebuild during the ~10s dev restart changed it, so
+# the probe failed every time under load and prod could never advance.
+#
+# Instead: restart dev, read whatever hash it actually stabilizes on, and only
+# proceed if .output on disk STILL equals that hash (nothing rewrote it since
+# dev booted). Every build comes from the same committed working tree, so any
+# fresh consistent build is equally valid to ship. We render-verify that exact
+# build, promote it, then re-check the promoted entry to catch a rewrite that
+# landed mid-rsync. A render-check failure is a real broken build -> abort
+# (never promote). A hash mismatch is just a race -> retry. Bounded by
+# DEPLOY_GATE_ATTEMPTS so a relentless build storm fails loudly, not forever.
+# Sets PROMOTED_HASH on success.
+PROMOTED_HASH=""
+gate_and_promote() {
+  local attempts="${DEPLOY_GATE_ATTEMPTS:-6}" n=0 served disk rel
+  while [ "$n" -lt "$attempts" ]; do
+    n=$((n + 1))
+    echo "===== dev gate attempt $n/$attempts (restart dev, serves apps/web/.output) ====="
+    systemctl --user restart openportal-dev.service
+    served="$(wait_served_stable "$DEV_URL" 25)"
+    if [ -z "$served" ]; then
+      echo "  dev did not stabilize on an entry within 25s; retrying" >&2
+      continue
+    fi
+    disk="$(extract_hash "$OUTPUT_DIR")"
+    if [ "$served" != "$disk" ]; then
+      echo "  inconsistent: dev serves $served but $OUTPUT_DIR is $disk now" >&2
+      echo "  (an out-of-band 'bun run build' rewrote .output during the dev restart) - retrying" >&2
+      continue
+    fi
+    echo "  dev serves $served and .output still matches - render-verifying"
+    if ! check_session_render "dev" "$DEV_URL"; then
+      echo "FATAL: dev render check failed for $served - the build is broken, not a race." >&2
+      echo "       Refusing to promote; .output-released untouched, prod stays on its last release." >&2
+      exit 1
+    fi
+    echo "===== promote .output ($served) -> .output-released ====="
+    # rsync -a --delete mirrors .output (including build.sh's retained assets)
+    # into the released dir prod serves. The re-check below catches an out-of-
+    # band rebuild that lands mid-rsync (released entry would differ).
+    rsync -a --delete "$OUTPUT_DIR/" "$RELEASED_DIR/"
+    rel="$(extract_hash "$RELEASED_DIR")"
+    if [ "$rel" != "$served" ]; then
+      echo "  promote torn: .output-released entry $rel != verified $served - retrying" >&2
+      continue
+    fi
+    PROMOTED_HASH="$served"
+    echo "  promoted + verified: .output-released entry = $served"
+    return 0
+  done
+  echo "FATAL: could not capture a consistent, render-verified build in $attempts attempts." >&2
+  echo "       An out-of-band 'bun run build' (not scripts/build.sh / scripts/deploy.sh, which" >&2
+  echo "       both hold the $DEPLOY_LOCK flock) is thrashing $OUTPUT_DIR through the dev gate." >&2
+  echo "       Re-run once the build storm subsides, or raise DEPLOY_GATE_ATTEMPTS." >&2
+  exit 1
+}
+
+# DEPLOY_SKIP_DEV path: promote whatever .output is now, with only a torn-
+# rsync guard (no render verification - the safety net the operator opted out
+# of). Still loops to dodge a mid-rsync rewrite.
+promote_direct() {
+  local attempts="${DEPLOY_GATE_ATTEMPTS:-6}" n=0 disk rel
+  while [ "$n" -lt "$attempts" ]; do
+    n=$((n + 1))
+    disk="$(extract_hash "$OUTPUT_DIR")"
+    if [ -z "$disk" ]; then
+      echo "  $OUTPUT_DIR has no entry yet; retrying" >&2
+      sleep 1
+      continue
+    fi
+    rsync -a --delete "$OUTPUT_DIR/" "$RELEASED_DIR/"
+    rel="$(extract_hash "$RELEASED_DIR")"
+    if [ "$rel" = "$disk" ]; then
+      PROMOTED_HASH="$disk"
+      echo "  promoted $disk (no dev verification)"
+      return 0
+    fi
+    echo "  promote torn ($rel != $disk); retrying" >&2
+  done
+  echo "FATAL: could not promote a consistent $OUTPUT_DIR in $attempts attempts." >&2
+  exit 1
+}
+
 echo "===== build ====="
 bash scripts/build.sh
 
-current_entry="$(extract_html_entry "$OUTPUT_DIR")"
-if [ -z "$current_entry" ]; then
-  echo "FATAL: could not determine current entry from $OUTPUT_DIR" >&2
-  exit 1
-fi
-expected_hash="$(printf '%s' "$current_entry" | grep -oE 'index-[A-Za-z0-9_-]+\.js')"
-echo "build entry: $current_entry"
-
+# Dev gate + promote both live in gate_and_promote() (see its header).
 if [ "${DEPLOY_SKIP_DEV:-0}" != "1" ]; then
   seed_render_check_session "dev" "$HOME/.local/share/openportal-dev/openportal.db"
-  echo "===== dev restart (serves apps/web/.output) ====="
-  systemctl --user restart openportal-dev.service
-  probe "dev" "$DEV_URL" "$expected_hash" 15
-  check_session_render "dev" "$DEV_URL"
+  gate_and_promote
+else
+  echo "===== DEPLOY_SKIP_DEV=1: promote current build WITHOUT dev verification (NOT RECOMMENDED) ====="
+  promote_direct
 fi
-
-echo "===== promote .output -> .output-released ====="
-# rsync -a preserves perms/links/times. --delete drops files from
-# .output-released that are not in .output (so the released dir mirrors
-# the build exactly). Asset retention is layered INSIDE .output by
-# scripts/build.sh, so the rsync copies the retained files too -
-# .output-released ends up with every retained asset hash plus the
-# current ones.
-rsync -a --delete "$OUTPUT_DIR/" "$RELEASED_DIR/"
-released_entry="$(extract_html_entry "$RELEASED_DIR")"
-if [ -z "$released_entry" ] || ! printf '%s' "$released_entry" | grep -qF "$expected_hash"; then
-  echo "FATAL: promote left .output-released with mismatched entry: $released_entry" >&2
-  exit 1
-fi
-echo "released entry: $released_entry"
+expected_hash="$PROMOTED_HASH"
+echo "promoted entry: $expected_hash"
 
 echo "===== prod restart (serves apps/web/.output-released) ====="
 seed_render_check_session "prod" "$HOME/.local/share/openportal/openportal.db"
@@ -180,7 +280,6 @@ probe "prod" "$PROD_URL" "$expected_hash" 60
 check_session_render "prod" "$PROD_URL"
 
 echo "===== deploy ok ====="
-echo "entry:    $current_entry"
-echo "released: $released_entry"
+echo "entry:    $expected_hash"
 echo "dev:      $DEV_URL"
 echo "prod:     $PROD_URL"
