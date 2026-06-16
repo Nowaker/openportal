@@ -5239,3 +5239,16 @@ Design notes:
 - `flock` releases on fd close (incl. crash/kill), so a dead deploy never strands the lock.
 - `deploy.sh` exports `OPENPORTAL_DEPLOY_LOCK_HELD=1` before calling `build.sh`; `build.sh` skips re-locking when set (re-locking the held fd self-deadlocks). Direct `build.sh` runs still self-lock.
 - Verified: flock serialization (second worker blocks then acquires on release), nested deploy→build skips lock, direct build acquires. Developed in worktree `portal-deploy-lock`, rebased onto `main-nowaker`, FF-merge, deploy, push both remotes.
+
+### 221. deploy.sh: anchor entry-hash probe to the prebuilt HTML shell (DONE - 88871ac)
+
+User prompt (verbatim):
+
+> look holistically into deploy.sh. what does it have that is causing issues in concurrent environments that push new commits to main-nowaker and want them deploy? resolve those problems somehow.
+
+Design notes:
+
+- Surfaced during validation of the #220 flock fix: every deploy attempt that hour failed at the dev probe even with the lock held uncontested. Root cause was orthogonal to concurrency - `deploy.sh` and `build.sh` extracted the "current entry" with `grep -oE '/assets/index-[^"]+\.js' .output/server/index.mjs | head -1`. Vite emits the real SPA entry AND tiny per-chunk re-export shims under the same `/assets/index-*.js` name pattern (e.g. a 77-byte `index-lf9ZJDkU.js` containing `import {Dt as e,...} from "./index-Bd1b9raF.js";`), so `head -1` lands on whichever Vite ordered first. The deploy then probed dev for a hash that never appears in any HTML and timed out at 15s. The earlier-observed "deploy war" with mystery hashes (CNcAdoNV / D135GgH7 / Dg8Ae6Xg / lf9ZJDkU) was each session chasing its own phantom shim.
+- Fix: extract from `apps/web/.output/server/_chunks/renderer-template.mjs`, which holds the pre-rendered HTML shell containing the authoritative `<script type="module" crossorigin src="/assets/index-<hash>.js">` tag returned to browsers. Both scripts now anchor to that template; they fall back to the legacy `index.mjs | head -1` only if the renderer template is missing (older build layouts), so future Nitro/Vite reshuffles can't strand the deploy.
+- Verified: extracted entry matches what dev/prod serve to browsers; clean deploy through to `===== deploy ok =====` with dev + prod probes green and render-checks at 7 messages / 5 toolcalls; prod confirmed serving the new commit (X-OpenPortal-Commit-Sha: 88871acd6292).
+- Process note: bad-staging incident during commit prep. `git add scripts/build.sh scripts/deploy.sh` succeeded but the working tree had 16 unrelated apps/web files pre-staged in the index by another concurrent session (visible as `M ` not ` M` in `git status --short`). The first commit attempt swept them all into mine. Resolution: `git reset --soft HEAD~1` to drop the commit, mass `git reset HEAD apps/web/src/*` to unstage their files cleanly back to the working tree, recommit only mine. Reinforces AGENTS.md's "always inspect the index, not just the working tree" rule before commit.
