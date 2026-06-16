@@ -42,6 +42,35 @@ PROD_URL="${DEPLOY_PROD_URL:-http://100.105.229.19:5000/}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+# A deploy mutates machine-global singletons: the shared
+# apps/web/.output build dir (wiped + rebuilt by build.sh),
+# apps/web/.output-released, the openportal-dev + openportal systemd
+# services, and prod's SQLite DB. Two deploys at once - parallel
+# sessions that each merged a commit to main-nowaker and ran this
+# script - delete each other's .output mid-build (leaving it with no
+# index.html) and each one's dev probe waits for a hash the other just
+# overwrote. Serialize on a machine-global flock: the second deploy
+# waits for the first to finish, then builds the now-current working
+# tree (which already contains the earlier deploy's merged commit) and
+# ships it. Last deploy wins; no commit is dropped. flock releases the
+# lock when the fd closes - including on crash or kill - so a dead
+# deploy never strands the lock. build.sh takes the same lock when run
+# directly; the exported flag below tells the build.sh we invoke to
+# skip re-locking (it would self-deadlock on the held fd).
+DEPLOY_LOCK="${OPENPORTAL_DEPLOY_LOCK:-/tmp/openportal-deploy.lock}"
+DEPLOY_LOCK_WAIT="${OPENPORTAL_DEPLOY_LOCK_WAIT:-900}"
+exec 9>"$DEPLOY_LOCK"
+if ! flock -n 9; then
+  echo "deploy.sh: another deploy holds $DEPLOY_LOCK; waiting up to ${DEPLOY_LOCK_WAIT}s..."
+  if ! flock -w "$DEPLOY_LOCK_WAIT" 9; then
+    echo "deploy.sh: timed out after ${DEPLOY_LOCK_WAIT}s waiting for the deploy lock" >&2
+    echo "deploy.sh: if no deploy is actually running, remove $DEPLOY_LOCK or raise OPENPORTAL_DEPLOY_LOCK_WAIT" >&2
+    exit 1
+  fi
+fi
+echo "deploy.sh: acquired deploy lock ($DEPLOY_LOCK)"
+export OPENPORTAL_DEPLOY_LOCK_HELD=1
+
 OUTPUT_DIR="$repo_root/apps/web/.output"
 RELEASED_DIR="$repo_root/apps/web/.output-released"
 

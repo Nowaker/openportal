@@ -26,6 +26,27 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# build.sh wipes + rebuilds the shared apps/web/.output dir. Two builds
+# running at once (parallel sessions, or a direct build.sh racing a
+# deploy) delete each other's output mid-build and leave .output with no
+# index.html. Serialize on the same machine-global flock deploy.sh uses.
+# When deploy.sh invokes us it already holds the lock and exports
+# OPENPORTAL_DEPLOY_LOCK_HELD=1; re-locking the held fd here would
+# self-deadlock, so we skip the lock in that case and inherit deploy.sh's.
+if [ "${OPENPORTAL_DEPLOY_LOCK_HELD:-}" != "1" ]; then
+  DEPLOY_LOCK="${OPENPORTAL_DEPLOY_LOCK:-/tmp/openportal-deploy.lock}"
+  DEPLOY_LOCK_WAIT="${OPENPORTAL_DEPLOY_LOCK_WAIT:-900}"
+  exec 9>"$DEPLOY_LOCK"
+  if ! flock -n 9; then
+    echo "build.sh: another build/deploy holds $DEPLOY_LOCK; waiting up to ${DEPLOY_LOCK_WAIT}s..."
+    if ! flock -w "$DEPLOY_LOCK_WAIT" 9; then
+      echo "build.sh: timed out after ${DEPLOY_LOCK_WAIT}s waiting for the build lock" >&2
+      exit 1
+    fi
+  fi
+  echo "build.sh: acquired build lock ($DEPLOY_LOCK)"
+fi
+
 OUTPUT="apps/web/.output"
 ASSETS="$OUTPUT/public/assets"
 SNAPSHOT="/tmp/openportal-asset-snapshot.$$"
