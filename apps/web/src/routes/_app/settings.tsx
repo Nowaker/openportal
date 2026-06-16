@@ -1340,7 +1340,7 @@ function TimerRefreshIntervalSetting({
         response is running. Desktop defaults to {DEFAULT_TIMER_REFRESH_DESKTOP_SEC}s;
         mobile defaults to {DEFAULT_TIMER_REFRESH_MOBILE_SEC}s.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid max-w-lg gap-3 sm:grid-cols-2">
         <TimerRefreshInput
           label="Desktop"
           value={desktopSec}
@@ -1396,24 +1396,26 @@ function TimerRefreshInput({
   return (
     <label className="space-y-1 text-xs text-muted-fg">
       <span>{label}</span>
-      <div className="flex items-center gap-2">
-        <Input
-          type="number"
-          inputMode="decimal"
-          min={1}
-          step={1}
-          className="max-w-[8rem] font-mono"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={(e) => commit(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commit((e.target as HTMLInputElement).value);
-            }
-          }}
-          aria-label={`Thinking timer refresh interval on ${label.toLowerCase()} in seconds`}
-        />
+      <div className="flex w-fit items-center gap-2">
+        <span className="block w-24 shrink-0">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={1}
+            step={1}
+            className="font-mono"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={(e) => commit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit((e.target as HTMLInputElement).value);
+              }
+            }}
+            aria-label={`Thinking timer refresh interval on ${label.toLowerCase()} in seconds`}
+          />
+        </span>
         <span>seconds</span>
       </div>
     </label>
