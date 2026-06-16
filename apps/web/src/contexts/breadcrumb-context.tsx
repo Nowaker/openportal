@@ -1,8 +1,17 @@
 import { createContext, useContext, useState, useCallback } from "react";
 
+export interface PageTitleAction {
+  onClick: () => void;
+  title: string;
+  ariaLabel: string;
+  disabled?: boolean;
+}
+
 interface BreadcrumbContextValue {
   pageTitle: string | null;
   setPageTitle: (title: string | null) => void;
+  pageTitleAction: PageTitleAction | null;
+  setPageTitleAction: (action: PageTitleAction | null) => void;
 }
 
 const BreadcrumbContext = createContext<BreadcrumbContextValue | null>(null);
@@ -13,13 +22,21 @@ export function BreadcrumbProvider({
   children: React.ReactNode;
 }) {
   const [pageTitle, setPageTitleState] = useState<string | null>(null);
+  const [pageTitleAction, setPageTitleActionState] =
+    useState<PageTitleAction | null>(null);
 
   const setPageTitle = useCallback((title: string | null) => {
     setPageTitleState(title);
   }, []);
 
+  const setPageTitleAction = useCallback((action: PageTitleAction | null) => {
+    setPageTitleActionState(action);
+  }, []);
+
   return (
-    <BreadcrumbContext.Provider value={{ pageTitle, setPageTitle }}>
+    <BreadcrumbContext.Provider
+      value={{ pageTitle, setPageTitle, pageTitleAction, setPageTitleAction }}
+    >
       {children}
     </BreadcrumbContext.Provider>
   );

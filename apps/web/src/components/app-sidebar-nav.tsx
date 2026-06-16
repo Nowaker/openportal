@@ -91,6 +91,7 @@ import {
   useQuestions,
   usePermissions,
   useConfig,
+  usePortalConfig,
 } from "@/hooks/use-opencode";
 import { useLastViewed } from "@/hooks/use-last-viewed";
 import { useSessionErrorStore } from "@/stores/session-error-store";
@@ -116,7 +117,12 @@ import {
   recordFailedAttempt,
   recordPendingSubmission,
 } from "@/lib/pending-prompts";
-import { cascadeIdsToAncestors } from "@/lib/project-path";
+import {
+  cascadeIdsToAncestors,
+  findContainingBase,
+  resolveProjectPath,
+  type BaseDirEntry,
+} from "@/lib/project-path";
 import type { Session } from "@opencode-ai/sdk";
 
 function base64UrlEncode(value: string): string {
@@ -237,6 +243,22 @@ function hrefWithCurrentSearch(
   return `${pathname}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
 }
 
+function sidebarRevealKeys(projectPath: string, baseDirs: BaseDirEntry[]): string[] {
+  const keys: string[] = [];
+  const normalized = projectPath.replace(/\/+$/, "");
+  const base = findContainingBase(normalized, baseDirs);
+  let cursor = normalized;
+  while (cursor) {
+    keys.unshift(cursor);
+    const slash = cursor.lastIndexOf("/");
+    if (slash <= 0) break;
+    cursor = cursor.slice(0, slash);
+    if (base && cursor === base.path) break;
+    if (base && !cursor.startsWith(base.path + "/")) break;
+  }
+  return keys;
+}
+
 interface AppSidebarNavProps {
   bannerSlot?: React.ReactNode;
 }
@@ -248,10 +270,16 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
   const { open: openInVscode, modalElement: vscodeModal } = useVscodeOpener();
   const instanceId = instance?.id ?? null;
   const resolveModel = useModelStore((s) => s.resolveModel);
-  const { setIsOpenOnMobile } = useSidebar();
-  const { pageTitle } = useBreadcrumb();
+  const {
+    isMobile: sidebarIsMobile,
+    setDesktopMode,
+    setIsOpenOnMobile,
+  } = useSidebar();
+  const { pageTitle, pageTitleAction } = useBreadcrumb();
   const navigate = useNavigate();
   const expandKey = useSidebarExpandStore((s) => s.expand);
+  const { data: portalConfig } = usePortalConfig();
+  const baseDirs = portalConfig?.baseDirs ?? [];
   const { data: sessionsData, mutate: mutateSessions } = useSessions();
   // Subscribe to the raw store slices and derive the resolved list via
   // useMemo. Calling s.enabledTools() inside the Zustand selector returns
@@ -379,7 +407,10 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
   const systemMessagesUnread = useSystemMessagesStore((s) => s.unreadCount);
   const directoryForLabel =
     currentSession?.directory ?? newSessionDirectory ?? undefined;
-  const projectLabel = projectLabelFromDirectory(directoryForLabel);
+  const projectDirectoryForLabel = directoryForLabel
+    ? resolveProjectPath(directoryForLabel, baseDirs)
+    : undefined;
+  const projectLabel = projectLabelFromDirectory(projectDirectoryForLabel);
   // Subagent sessions: opencode sets parentID on child sessions and appends
   // a `(@<agent> subagent)` marker to the title. The marker carries the
   // AGENT TYPE (e.g. "general"); the meaningful per-session label is the
@@ -859,21 +890,29 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
             <span className="min-w-0 overflow-x-auto whitespace-nowrap text-sm font-medium text-fg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sessionTitle ? (
                 <>
-                  {projectLabel && directoryForLabel && (
+                  {projectLabel && projectDirectoryForLabel && (
                     <button
                       type="button"
                       onClick={() => {
-                        const dir = directoryForLabel;
+                        const dir = projectDirectoryForLabel;
                         if (!dir) return;
-                        expandKey(dir);
-                        setIsOpenOnMobile(true);
+                        for (const key of sidebarRevealKeys(dir, baseDirs)) {
+                          expandKey(key);
+                        }
+                        if (sidebarIsMobile) {
+                          setIsOpenOnMobile(true);
+                        } else {
+                          setDesktopMode("full");
+                        }
                         requestAnimationFrame(() => {
-                          const el = document.querySelector(
-                            `[data-project-dir="${CSS.escape(dir)}"]`,
-                          );
-                          el?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "center",
+                          requestAnimationFrame(() => {
+                            const el = document.querySelector(
+                              `[data-project-dir="${CSS.escape(dir)}"]`,
+                            );
+                            el?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "center",
+                            });
                           });
                         });
                       }}
@@ -883,7 +922,7 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                       {projectLabel}
                     </button>
                   )}
-                  {projectLabel && directoryForLabel && (
+                  {projectLabel && projectDirectoryForLabel && (
                     <span className="text-muted-fg">: </span>
                   )}
                   {isSubagent ? (
@@ -902,10 +941,36 @@ export function AppSidebarNav({ bannerSlot }: AppSidebarNavProps = {}) {
                         </span>
                       )}
                       <span className="text-muted-fg">: </span>
-                      {subagentTaskTitle ?? sessionTitle}
+                      {pageTitleAction ? (
+                        <button
+                          type="button"
+                          onClick={pageTitleAction.onClick}
+                          disabled={pageTitleAction.disabled}
+                          title={pageTitleAction.title}
+                          aria-label={pageTitleAction.ariaLabel}
+                          className="text-fg hover:underline underline-offset-2 disabled:cursor-wait disabled:text-muted-fg disabled:no-underline"
+                        >
+                          {subagentTaskTitle ?? sessionTitle}
+                        </button>
+                      ) : (
+                        subagentTaskTitle ?? sessionTitle
+                      )}
                     </>
                   ) : (
-                    sessionTitle
+                    pageTitleAction ? (
+                      <button
+                        type="button"
+                        onClick={pageTitleAction.onClick}
+                        disabled={pageTitleAction.disabled}
+                        title={pageTitleAction.title}
+                        aria-label={pageTitleAction.ariaLabel}
+                        className="text-fg hover:underline underline-offset-2 disabled:cursor-wait disabled:text-muted-fg disabled:no-underline"
+                      >
+                        {sessionTitle}
+                      </button>
+                    ) : (
+                      sessionTitle
+                    )
                   )}
                 </>
               ) : showPageTitle ? (

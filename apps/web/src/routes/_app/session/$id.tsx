@@ -132,7 +132,7 @@ import { useMarkViewed } from "@/hooks/use-last-viewed";
 import { useComposerMaxHeight } from "@/hooks/use-composer-max-height";
 import { usePullState } from "@/hooks/use-pull-to-refresh";
 import { useTimerRefreshIntervalMs } from "@/hooks/use-timer-refresh-interval";
-import { useBreadcrumb } from "@/contexts/breadcrumb-context";
+import { useBreadcrumb, type PageTitleAction } from "@/contexts/breadcrumb-context";
 import {
   useFirstSessionMessage,
   useMessagesAfter,
@@ -233,6 +233,7 @@ const INITIAL_MESSAGE_LIMIT = 50;
 //
 // Cursor/selection is preserved across the splice.
 const SMART_CLEAR_SUBSTRING_MIN = 40;
+const CHAT_SCROLL_HISTORY_KEY = "__openportalChatScrollTop";
 
 function smartPostSubmitClear(
   textarea: HTMLTextAreaElement,
@@ -286,6 +287,19 @@ function readPermalinkFromHash(): string | null {
   } catch {
     return id;
   }
+}
+
+function readChatScrollTopFromHistoryState(state: unknown): number | null {
+  if (!state || typeof state !== "object") return null;
+  const value = (state as Record<string, unknown>)[CHAT_SCROLL_HISTORY_KEY];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function copyHistoryState(): Record<string, unknown> {
+  if (typeof window === "undefined") return {};
+  const state: unknown = window.history.state;
+  if (!state || typeof state !== "object" || Array.isArray(state)) return {};
+  return { ...(state as Record<string, unknown>) };
 }
 
 type PermissionReply = "once" | "always" | "reject";
@@ -3618,12 +3632,6 @@ function SessionPage() {
     () => readPermalinkFromHash(),
   );
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onHash = () => setPermalinkTarget(readPermalinkFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-  useEffect(() => {
     setPermalinkTarget(readPermalinkFromHash());
   }, [sessionId]);
 
@@ -3641,9 +3649,7 @@ function SessionPage() {
     { enabled: permalinkMode, onlyUser: onlyUserMessages },
   );
 
-  const firstSession = useFirstSessionMessage(sessionId, {
-    enabled: !permalinkMode,
-  });
+  const firstSession = useFirstSessionMessage(sessionId);
   const firstMessage = firstSession.message;
   const firstTotal = onlyUserMessages
     ? firstSession.totalUserCount
@@ -3912,7 +3918,7 @@ function SessionPage() {
   const thinkingEffort = resolveThinking(sessionId);
   const enterKeyAction = useComposerStore((s) => s.enterKeyAction);
   const { isMobile } = useMediaQuery();
-  const { setPageTitle } = useBreadcrumb();
+  const { setPageTitle, setPageTitleAction } = useBreadcrumb();
 
   const sessions: Session[] = sessionsData ?? [];
   const currentSession = sessions.find((s) => s.id === sessionId);
@@ -4607,6 +4613,76 @@ function SessionPage() {
   // MutationObserver) won't fight the target scroll as the before /
   // after / latest windows fill in.
   const permalinkScrolledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncPermalinkTarget = () => setPermalinkTarget(readPermalinkFromHash());
+    const onPopState = (event: PopStateEvent) => {
+      const target = readPermalinkFromHash();
+      const scrollTop = readChatScrollTopFromHistoryState(event.state);
+      if (scrollTop !== null) {
+        permalinkScrolledRef.current = target;
+      }
+      setPermalinkTarget(target);
+      if (scrollTop === null) return;
+      requestAnimationFrame(() => {
+        const container = chatContainerRef.current;
+        if (!container) return;
+        container.scrollTop = Math.max(0, scrollTop);
+        isStuckToBottomRef.current = false;
+        setShowJumpToBottom(true);
+      });
+    };
+    window.addEventListener("hashchange", syncPermalinkTarget);
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("hashchange", syncPermalinkTarget);
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, []);
+
+  const handleSessionTitleClick = useCallback(() => {
+    const targetMessageId = firstMessage?.info.id;
+    if (!targetMessageId || typeof window === "undefined") return;
+    const container = chatContainerRef.current;
+    const previousState = copyHistoryState();
+    window.history.replaceState(
+      {
+        ...previousState,
+        [CHAT_SCROLL_HISTORY_KEY]: container?.scrollTop ?? 0,
+      },
+      "",
+      window.location.href,
+    );
+
+    const url = new URL(window.location.href);
+    url.hash = `msg-${encodeURIComponent(targetMessageId)}`;
+    const targetState = copyHistoryState();
+    delete targetState[CHAT_SCROLL_HISTORY_KEY];
+    window.history.pushState(targetState, "", url.toString());
+    permalinkScrolledRef.current = null;
+    setPermalinkTarget(targetMessageId);
+  }, [firstMessage?.info.id]);
+
+  const pageTitleAction = useMemo<PageTitleAction | null>(() => {
+    if (!currentSession?.title) return null;
+    const hasInitialPrompt = !!firstMessage?.info.id;
+    return {
+      onClick: handleSessionTitleClick,
+      disabled: !hasInitialPrompt,
+      title: hasInitialPrompt
+        ? "Jump to the initial prompt"
+        : "Initial prompt is still loading",
+      ariaLabel: hasInitialPrompt
+        ? "Jump to the initial prompt"
+        : "Initial prompt is still loading",
+    };
+  }, [currentSession?.title, firstMessage?.info.id, handleSessionTitleClick]);
+
+  useEffect(() => {
+    setPageTitleAction(pageTitleAction);
+    return () => setPageTitleAction(null);
+  }, [pageTitleAction, setPageTitleAction]);
+
   useLayoutEffect(() => {
     if (!permalinkMode) {
       permalinkScrolledRef.current = null;

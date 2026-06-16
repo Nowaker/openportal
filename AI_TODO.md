@@ -5127,3 +5127,76 @@ Design notes:
 - Deliberately left as-is: files.tsx handleClose `window.location.href = "/"` is the last fallback of a multi-branch close handler (postMessage -> window.close -> history.back -> home), not a navigation link. Pinned session tabs, the subsession jump menu, the top-right hamburger, and the footer profile menu already use real hrefs for navigation and onAction only for mutations / transient non-URL-backed drawers (System messages).
 - Verified: worktree tsc clean for every touched file; Playwright link QA on :5200; deployed + live-QA on prod.
 
+
+### 215. Session title click jumps to initial prompt with browser-history scroll restore (DONE - this commit)
+
+User prompt (verbatim):
+
+> [search-mode]
+> MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+> - explore agents (codebase patterns, file structures, ast-grep)
+> - librarian agents (remote repos, official docs, GitHub examples)
+> Plus direct tools: Grep, ripgrep (rg), ast-grep (sg)
+> NEVER stop at first result - be exhaustive.
+>
+> ---
+>
+> Clicking on the session name should scroll the chat history to the initial prompt. Remember that this is an action that must be stored in history, so clicking back gets me back to where my previous scroll level/area was.
+>
+> This applies to session view screen only.
+>
+> ---
+>
+> User has explicitly requested these extra rules to apply in this very session - obey diligently:
+>
+> # /template "git worktree -> main -> deploy -> push":
+>
+> Create a git worktree. Develop and test there (when possible). Merge to the primary branch when done. Deploy the application and make sure it works. Push afterwards.
+> Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> When delegating to a subagent, you must pass this instruction in the prompt.
+>
+> Remember to obey project's AGENTS.md and always append to AI_TODO.md.
+> When delegating, you must pass absolute path to project's AGENTS.md.
+
+Design notes:
+
+- Session-view-only behavior: the active session title in the top bar is a button; project labels and non-session page titles are unaffected.
+- Reuses the existing `#msg-<id>` permalink/scroll machinery for the first user prompt returned by `/messages?first=1`.
+- Wired through a new `PageTitleAction` context on the breadcrumb provider so the session route owns the behavior while `app-sidebar-nav.tsx` renders it.
+- Title click stashes the chat container `scrollTop` in `history.state` then `history.pushState`es the `#msg-<id>` hash; a `popstate` handler restores the saved scroll on Back (pushState does not fire `hashchange`).
+- Developed in worktree `portal-session-title-initial-prompt`, rebased onto local `main-nowaker`, FF-merged, deployed via `scripts/deploy.sh`, pushed to both remotes.
+
+### 217. Project title click reveals hidden sidebar path and restores hidden navbar (DONE - this commit)
+
+User prompt (verbatim):
+
+> continue + fix these issues:
+> 1. when i click the project name (e.g. portal), but this project is collapsed behind another directory (e.g. ~/webapps/portal) in a multi-level setup like on this server, nothing happens.
+> 2. when i click the project name, but the navbar is hidden, nothing happens. navbar should open to its last opened size.
+>
+> 1. Remember to obey project's AGENTS.md and always append to AI_TODO.md (only if present in the project).
+> 2. Create a fresh git worktree from the LOCAL primary branch. <- if your current code wasn't integrated yet, you should rebase
+> 3. Develop on the worktree.
+> 4. Test on the worktree (to the extent possible).
+>   - Remember to perform any testing that involves image analysis in a subagent to protect your context. (If you're driving Chrome but only look at HTML outputs by specific CSS selectors, no need for a subagent)
+> 5. Rebase your branch to the latest commit from LOCAL primary branch.
+> 6. Fast-forward merge to the primary branch LOCALLY when done.
+>   - Never drop ANY commits that you find on the main branch when integrating your worktree back in. You must integrate your work back CLEANLY.
+> 7. If certain subset of testing couldn't be tested from the worktree, test it from the primary branch.
+>   - If more changes need to be introduced, start from point 2.
+> 8. Push, deploy and validate deployment.
+>   - For DreamHost project, CI/CD handles deployment most of the time. If so, follow CI/CD and/or Kubernetes status, then test. Otherwise, deploy yourself.
+>
+> - Pass absolute path to this project's AGENTS.md and target project's AGENT.md.
+>   - Sometimes, you may spawn a session in one project, asking to make changes in a different directory - this ensures the rules of origin and target are obeyed.
+> - Pass any ad-hoc rules the user defined in the original prompt (like this one).
+> - Pass this session ID and name - if known to you.
+> - If a subagent task is marked as canceled or timeouted, don't trust the error that the task cannot be use reactivated. Use `~/projekty/nowaker/opencode-tools/prompt.ts --help` to reactivate the subagent via OpenCode API and let it continue from where it left off. DO NOT PERFORM ITS TASK. Re-ping it as many times as needed.
+>   - If native tools prevent you from retrieving its progress or final response, use `~/projekty/nowaker/opencode-tools/dump-messages.ts <session-id> --include-session --number 1 --reverse --detailed`
+
+Design notes:
+
+- Topbar project label now resolves the session directory to its project path via `resolveProjectPath()` before rendering/clicking, so the label matches the sidebar tree node.
+- `sidebarRevealKeys()` walks from the project path up to its containing base dir and `expand()`s every ancestor tree key, so a project collapsed behind multi-level parents is revealed.
+- When the desktop sidebar is hidden, the click calls `setDesktopMode("full")` to reopen it at its persisted width; on mobile it opens the mobile sheet (`setIsOpenOnMobile(true)`).
+- Folded into the session-title worktree; rebased onto local `main-nowaker`, FF-merged, deployed, pushed to both remotes.
