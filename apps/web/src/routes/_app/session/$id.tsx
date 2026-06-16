@@ -1268,7 +1268,7 @@ function PermissionRequestForm({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reply }),
+          body: JSON.stringify({ reply, sessionId: permission.sessionID }),
         },
       );
 
@@ -4405,7 +4405,9 @@ function SessionPage() {
     }
 
     try {
-      const response = await fetch(`/api/opencode/${port}/permissions`);
+      const response = await fetch(
+        `/api/opencode/${port}/permissions?sessionId=${encodeURIComponent(sessionId)}`,
+      );
       if (!response.ok) return;
       const raw = await response.json();
       const data: PermissionRequest[] = Array.isArray(raw) ? raw : [];
