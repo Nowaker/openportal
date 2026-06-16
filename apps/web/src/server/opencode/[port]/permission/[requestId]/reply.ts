@@ -11,6 +11,9 @@ const permissionReplySchema = z.object({
   reply: z.enum(["once", "always", "reject"]),
   message: z.string().optional(),
   auto: z.boolean().optional(),
+  // The session whose directory scopes this permission in opencode.
+  // Required so the reply reaches the correct per-directory instance.
+  sessionId: z.string().optional(),
 });
 
 export default defineHandler(async (event) => {
@@ -21,5 +24,6 @@ export default defineHandler(async (event) => {
   return replyToPermission(port, requestId, body.reply, {
     message: body.message,
     auto: body.auto,
+    sessionId: body.sessionId,
   });
 });

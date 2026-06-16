@@ -1,55 +1,49 @@
-// Backend auto-approve worker. Opens a server-owned SSE connection to
-// each configured opencode server's /event endpoint and watches for
-// `permission.asked` events. On match, looks up the effective
-// auto-approve setting for the session (override-then-global), and
-// when true, fires the reply with `auto: true` so the audit pill
-// reflects "auto" provenance.
+// Backend auto-approve worker.
 //
-// Lives independent of any browser tab: that is the entire point of
-// the refactor. The previous design auto-approved client-side from a
-// polling loop, which silently broke whenever the user closed the
-// chat tab.
+// opencode 1.16.x scopes pending permissions per-directory (InstanceState),
+// and its /event stream is location-filtered: handlers/event.ts does
+// `Stream.filter(e => e.location.directory === subscribed directory)`. A
+// bare /event subscription (no ?directory=) therefore only ever sees events
+// for opencode's process.cwd instance and NEVER receives permission.asked
+// from a project-directory session. The previous SSE-on-bare-/event design
+// was consequently blind to virtually every real permission ask, so
+// auto-approve never fired. Likewise GET /permission without ?directory=
+// resolves the cwd instance (empty / cold-init hang).
 //
-// Reconciliation: every 30s the worker enumerates listConfiguredServers()
-// and starts/stops per-server connections so newly added servers come
-// online without an openportal restart and removed servers free their
-// SSE socket.
+// This worker instead POLLS GET /permission?directory=<dir> for each active
+// directory of each configured server, every POLL_INTERVAL_MS. For each
+// pending permission it records the ask (for the durable chat-log synthetic
+// message) and, when the effective auto-approve flag is on for the session,
+// replies via the V1 reply route scoped to that directory (replyToPermission
+// threads the directory and records the resolution). The active-directory
+// set is refreshed from the session list every DIR_REFRESH_INTERVAL_MS.
 //
-// Reconnect: per-server loop catches stream errors and re-resolves the
-// live endpoint (via resolveLiveTarget) before retrying with capped
-// exponential backoff. opencode-desktop's port shifts on every relaunch
-// are handled transparently.
+// Lives independent of any browser tab - that is the entire point.
 
 import { definePlugin } from "nitro";
-import {
-  buildServerOrigin,
-  listConfiguredServers,
-} from "../lib/server-registry";
-import { resolveLiveEndpointById } from "../lib/server-resolver";
-import { basicAuthHeader } from "../lib/server-discovery";
+import { listConfiguredServers } from "../lib/server-registry";
 import { getEffectiveAutoApprove } from "../lib/auto-approve-state";
-import { replyToPermission } from "../lib/permission-reply";
+import { replyToPermission, type KnownPermission } from "../lib/permission-reply";
 import { recordAsked } from "../lib/permission-log";
 import { fetchOpencode } from "../lib/opencode-client";
+import { getCachedSessions } from "../lib/sessions-cache";
 
-const RECONCILE_INTERVAL_MS = 30_000;
-const RECONNECT_BASE_DELAY_MS = 1_000;
-const RECONNECT_MAX_DELAY_MS = 30_000;
-
-interface ConnHandle {
-  controller: AbortController;
-}
-
-const conns = new Map<string, ConnHandle>();
-
-interface PermissionAskedFrame {
-  type?: string;
-  properties?: { id?: unknown; sessionID?: unknown };
-}
+const POLL_INTERVAL_MS = 2_000;
+const DIR_REFRESH_INTERVAL_MS = 30_000;
+const DIR_RECENCY_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface PendingPermission {
   id?: unknown;
   sessionID?: unknown;
+  permission?: unknown;
+  patterns?: unknown;
+  metadata?: { description?: unknown } | null;
+  tool?: { messageID?: unknown; callID?: unknown; name?: unknown } | null;
+}
+
+interface SessionLike {
+  directory?: unknown;
+  time?: { updated?: unknown; created?: unknown } | null;
 }
 
 function permissionsFromResponse(body: unknown): PendingPermission[] {
@@ -60,219 +54,166 @@ function permissionsFromResponse(body: unknown): PendingPermission[] {
   return Array.isArray(data) ? (data as PendingPermission[]) : [];
 }
 
-// Drain any permission asks that already arrived in opencode before our SSE
-// stream went live. SSE only delivers events fired AFTER subscription, so
-// without this every openportal restart leaves prior `permission.asked`
-// frames unanswered until the next restart of opencode itself. Caller
-// passes a dedup set shared with processStream so a race-window double
-// fire (request in both the list snapshot AND the SSE buffer) only sends
-// one reply.
-async function reconcilePendingPermissions(
+function asStr(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+// requestIds already auto-replied to, so a permission still listed in the
+// brief window before opencode reaps it is not replied to twice. Replied
+// permissions vanish from the list, so this set only needs to cover the
+// poll-overlap window; growth is negligible.
+const autoFired = new Set<string>();
+
+const dirCache = new Map<string, { dirs: string[]; ts: number }>();
+
+async function activeDirectories(
   serverId: string,
   port: number,
-  signal: AbortSignal,
-  alreadyFired: Set<string>,
+): Promise<string[]> {
+  const cached = dirCache.get(serverId);
+  if (cached && Date.now() - cached.ts < DIR_REFRESH_INTERVAL_MS) {
+    return cached.dirs;
+  }
+
+  let sessions: SessionLike[] = [];
+  const fromCache = getCachedSessions(port) as SessionLike[] | null;
+  if (fromCache && fromCache.length > 0) {
+    sessions = fromCache;
+  } else {
+    try {
+      const res = await fetchOpencode(
+        port,
+        "/experimental/session?archived=true&limit=10000",
+      );
+      if (res.ok) {
+        const body = await res.json().catch(() => null);
+        if (Array.isArray(body)) sessions = body as SessionLike[];
+      }
+    } catch {
+      // leave empty - next refresh retries
+    }
+  }
+
+  const cutoff = Date.now() - DIR_RECENCY_MS;
+  const set = new Set<string>();
+  for (const s of sessions) {
+    const dir = asStr(s?.directory);
+    if (!dir) continue;
+    const updated =
+      typeof s?.time?.updated === "number"
+        ? s.time.updated
+        : typeof s?.time?.created === "number"
+          ? s.time.created
+          : Date.now();
+    if (updated >= cutoff) set.add(dir);
+  }
+  const dirs = [...set];
+  dirCache.set(serverId, { dirs, ts: Date.now() });
+  return dirs;
+}
+
+async function pollDirectory(
+  serverId: string,
+  port: number,
+  directory: string,
 ): Promise<void> {
-  if (signal.aborted) return;
-  let pending: PendingPermission[];
+  let pending: PendingPermission[] = [];
   try {
-    const res = await fetchOpencode(port, "/permission");
+    const res = await fetchOpencode(
+      port,
+      `/permission?directory=${encodeURIComponent(directory)}`,
+    );
     pending = res.ok
       ? permissionsFromResponse(await res.json().catch(() => null))
       : [];
-  } catch (err) {
-    console.warn(
-      `[auto-approve-worker] reconcile list failed (port=${port}):`,
-      err instanceof Error ? err.message : err,
-    );
+  } catch {
     return;
   }
-  if (signal.aborted) return;
-  let fired = 0;
+
   for (const p of pending) {
-    if (signal.aborted) return;
-    if (typeof p.id !== "string" || typeof p.sessionID !== "string") continue;
-    recordAsked({ serverId, sessionId: p.sessionID, requestId: p.id });
-    if (alreadyFired.has(p.id)) continue;
-    if (!getEffectiveAutoApprove(p.sessionID)) continue;
-    alreadyFired.add(p.id);
-    fired++;
-    void replyToPermission(port, p.id, "once", { auto: true }).catch((err) =>
+    const requestId = asStr(p.id);
+    const sessionId = asStr(p.sessionID);
+    if (!requestId || !sessionId) continue;
+
+    const patterns = Array.isArray(p.patterns)
+      ? p.patterns.filter((x): x is string => typeof x === "string")
+      : [];
+    recordAsked({
+      serverId,
+      sessionId,
+      requestId,
+      permissionType: asStr(p.permission),
+      patterns,
+      callId: asStr(p.tool?.callID),
+      messageId: asStr(p.tool?.messageID),
+      toolName: asStr(p.tool?.name),
+      title: asStr(p.metadata?.description),
+    });
+
+    if (autoFired.has(requestId)) continue;
+    if (!getEffectiveAutoApprove(sessionId)) continue;
+    autoFired.add(requestId);
+
+    const known: KnownPermission = {
+      id: requestId,
+      sessionID: sessionId,
+      permission: asStr(p.permission) ?? undefined,
+      patterns,
+      metadata: { description: asStr(p.metadata?.description) ?? undefined },
+      tool: {
+        messageID: asStr(p.tool?.messageID) ?? undefined,
+        callID: asStr(p.tool?.callID) ?? undefined,
+        name: asStr(p.tool?.name) ?? undefined,
+      },
+    };
+    void replyToPermission(port, requestId, "once", {
+      auto: true,
+      sessionId,
+      directory,
+      known,
+    }).catch((err) => {
+      autoFired.delete(requestId);
       console.warn(
-        `[auto-approve-worker] reconcile reply failed (port=${port} req=${p.id}):`,
-        err instanceof Error ? err.message : err,
-      ),
-    );
-  }
-  if (fired > 0) {
-    console.log(
-      `[auto-approve-worker] reconciled ${fired} pending permission(s) on port=${port}`,
-    );
-  }
-}
-
-async function processStream(
-  serverId: string,
-  port: number,
-  body: ReadableStream<Uint8Array>,
-  signal: AbortSignal,
-  alreadyFired: Set<string>,
-): Promise<void> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  try {
-    while (!signal.aborted) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      buffer += decoder.decode(value, { stream: true });
-      let nl: number;
-      while ((nl = buffer.indexOf("\n\n")) !== -1) {
-        const frame = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 2);
-        const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
-        if (!dataLine) continue;
-        const json = dataLine.slice(5).trim();
-        if (!json) continue;
-        try {
-          const ev = JSON.parse(json) as PermissionAskedFrame;
-          if (
-            ev?.type === "permission.asked" &&
-            typeof ev.properties?.sessionID === "string" &&
-            typeof ev.properties?.id === "string"
-          ) {
-            const sessionId = ev.properties.sessionID;
-            const requestId = ev.properties.id;
-            recordAsked({ serverId, sessionId, requestId });
-            if (alreadyFired.has(requestId)) continue;
-            if (getEffectiveAutoApprove(sessionId)) {
-              alreadyFired.add(requestId);
-              void replyToPermission(port, requestId, "once", {
-                auto: true,
-              }).catch((err) =>
-                console.warn(
-                  `[auto-approve-worker] reply failed (port=${port} req=${requestId}):`,
-                  err instanceof Error ? err.message : err,
-                ),
-              );
-            }
-          }
-        } catch {
-          /* malformed frame; ignore */
-        }
-      }
-    }
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {
-      /* noop */
-    }
-  }
-}
-
-async function runConnection(
-  serverId: string,
-  port: number,
-  signal: AbortSignal,
-): Promise<void> {
-  let retry = 0;
-  while (!signal.aborted) {
-    try {
-      const target = await resolveLiveEndpointById(serverId);
-      if (!target) {
-        throw new Error(`server ${serverId} no longer in registry`);
-      }
-      const url = `${buildServerOrigin(target.protocol, target.host, target.port)}/event`;
-      console.log(
-        `[auto-approve-worker] connecting server=${serverId} -> ${url}`,
-      );
-      const res = await fetch(url, {
-        signal,
-        headers: {
-          Accept: "text/event-stream",
-          ...basicAuthHeader(target.auth),
-        },
-      });
-      if (!res.ok || !res.body) {
-        throw new Error(`SSE upstream returned ${res.status}`);
-      }
-      retry = 0;
-      const alreadyFired = new Set<string>();
-      await reconcilePendingPermissions(serverId, port, signal, alreadyFired);
-      await processStream(serverId, port, res.body, signal, alreadyFired);
-      if (signal.aborted) return;
-      throw new Error("SSE stream ended");
-    } catch (err) {
-      if (signal.aborted) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      const delay = Math.min(
-        RECONNECT_BASE_DELAY_MS * 2 ** Math.min(retry, 5),
-        RECONNECT_MAX_DELAY_MS,
-      );
-      console.warn(
-        `[auto-approve-worker] server=${serverId} disconnected (${msg}); retry in ${delay}ms`,
-      );
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(resolve, delay);
-          signal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(t);
-              reject(new Error("aborted"));
-            },
-            { once: true },
-          );
-        });
-      } catch {
-        return;
-      }
-      retry++;
-    }
-  }
-}
-
-function reconcile(): void {
-  let servers: { id: string; port: number }[] = [];
-  try {
-    servers = listConfiguredServers().map((s) => ({ id: s.id, port: s.port }));
-  } catch (err) {
-    console.warn(
-      `[auto-approve-worker] reconcile read failed:`,
-      err instanceof Error ? err.message : err,
-    );
-    return;
-  }
-
-  const seen = new Set<string>();
-  for (const srv of servers) {
-    seen.add(srv.id);
-    if (conns.has(srv.id)) continue;
-    const controller = new AbortController();
-    conns.set(srv.id, { controller });
-    runConnection(srv.id, srv.port, controller.signal).catch((err) => {
-      console.warn(
-        `[auto-approve-worker] connection loop crashed for ${srv.id}:`,
+        `[auto-approve-worker] reply failed (port=${port} req=${requestId}):`,
         err instanceof Error ? err.message : err,
       );
     });
   }
-  for (const id of [...conns.keys()]) {
-    if (!seen.has(id)) {
-      const handle = conns.get(id);
-      handle?.controller.abort();
-      conns.delete(id);
-      console.log(
-        `[auto-approve-worker] dropping server=${id} (no longer configured)`,
+}
+
+async function pollServer(serverId: string, port: number): Promise<void> {
+  const dirs = await activeDirectories(serverId, port);
+  await Promise.all(
+    dirs.map((d) => pollDirectory(serverId, port, d).catch(() => {})),
+  );
+}
+
+let ticking = false;
+async function tick(): Promise<void> {
+  if (ticking) return;
+  ticking = true;
+  try {
+    let servers: { id: string; port: number }[];
+    try {
+      servers = listConfiguredServers().map((s) => ({ id: s.id, port: s.port }));
+    } catch (err) {
+      console.warn(
+        `[auto-approve-worker] server list read failed:`,
+        err instanceof Error ? err.message : err,
       );
+      return;
     }
+    await Promise.all(
+      servers.map((s) => pollServer(s.id, s.port).catch(() => {})),
+    );
+  } finally {
+    ticking = false;
   }
 }
 
 export default definePlugin(() => {
-  reconcile();
-  const timer = setInterval(reconcile, RECONCILE_INTERVAL_MS);
+  void tick();
+  const timer = setInterval(() => void tick(), POLL_INTERVAL_MS);
   if (typeof timer === "object" && timer && "unref" in timer) {
     (timer as { unref?: () => void }).unref?.();
   }
