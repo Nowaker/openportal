@@ -95,10 +95,17 @@ export function TextSelectionMenu({
         sel.anchorOffset === range.startOffset;
 
       const GAP = 6;
+      const MARGIN = 8;
       const top = isForward ? lastRect.top - GAP : firstRect.bottom + GAP;
-      const left = isForward
-        ? Math.max(8, lastRect.right - 120)
-        : Math.max(8, firstRect.left);
+      const rawLeft = isForward ? lastRect.right - 120 : firstRect.left;
+      // Clamp left into the viewport: the menu is position:fixed, so a
+      // far-right selection would otherwise push it past the right edge and
+      // trigger horizontal page scroll. menuRef gives the real width after
+      // first render; 240 is a safe over-estimate before then.
+      const viewportWidth = document.documentElement.clientWidth;
+      const menuWidth = menuRef.current?.offsetWidth ?? 240;
+      const maxLeft = Math.max(MARGIN, viewportWidth - menuWidth - MARGIN);
+      const left = Math.min(Math.max(MARGIN, rawLeft), maxLeft);
       setPos({ top, left, flipUp: isForward, text });
     };
 

@@ -5200,3 +5200,15 @@ Design notes:
 - `sidebarRevealKeys()` walks from the project path up to its containing base dir and `expand()`s every ancestor tree key, so a project collapsed behind multi-level parents is revealed.
 - When the desktop sidebar is hidden, the click calls `setDesktopMode("full")` to reopen it at its persisted width; on mobile it opens the mobile sheet (`setIsOpenOnMobile(true)`).
 - Folded into the session-title worktree; rebased onto local `main-nowaker`, FF-merged, deployed, pushed to both remotes.
+### 218. Text-selection menu overflows viewport right edge on far-right selections (DONE - this commit)
+
+User prompt (verbatim):
+
+> current task: screenshot. far right text selections go behind the screen and cause horizontal scrolling. fix.
+
+Design notes:
+- Builds on the earlier direction-aware vertical placement of the chat text-selection menu (Copy / Quote inline / Quote block) in `apps/web/src/components/text-selection-menu.tsx`.
+- Bug: the `left` coordinate was computed as `lastRect.right - 120` (forward drag) or `firstRect.left` (backward drag) with only a left-edge `Math.max(8, ...)` floor and NO right-edge clamp. The menu is `position: fixed` and ~232px wide, so a selection near the right edge of the viewport pushed the menu past `clientWidth`, extending the page and triggering horizontal scroll.
+- Fix: clamp `left` into `[MARGIN, viewportWidth - menuWidth - MARGIN]` with `MARGIN=8`. `viewportWidth = document.documentElement.clientWidth`; `menuWidth = menuRef.current?.offsetWidth ?? 240` (real measured width after first render, safe over-estimate before). `left = Math.min(Math.max(MARGIN, rawLeft), maxLeft)`.
+- Verified end-to-end in a real browser on the worktree (port 5210, session `ses_19897fcbfffeVl7vIfNEFose3d`): a selection reaching `bestRight=1523` in a 544px viewport produced `menu.right=536 <= clientWidth=544`, `horizontalScroll=false`, clamped to exactly `maxLeft = 544 - 232 - 8 = 304`. Non-overflow selections pass through unclamped (`Math.min` is a no-op when `rawLeft < maxLeft`). Full `bunx tsc --noEmit` clean for the edited file (only pre-existing baseline errors in unrelated files).
+
