@@ -6,10 +6,11 @@ import { ModelPickerContent } from "@/components/model-picker-content";
 import { shortenModelName } from "@/lib/model-name";
 import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
-import { useAgents, useProviders } from "@/hooks/use-opencode";
+import { useAgents } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
+import { useVisibleProviders } from "@/hooks/use-visible-providers";
 
 interface ProviderRaw {
   id: string;
@@ -64,7 +65,7 @@ interface ModelSelectProps {
 }
 
 export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
-  const { data: rawData, isLoading } = useProviders();
+  const { data: rawData, isLoading } = useVisibleProviders();
 
   const resolvedKey = useModelStore((s) =>
     s.resolveModelKey(sessionId ?? null, instanceId ?? null),

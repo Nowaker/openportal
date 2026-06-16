@@ -5,6 +5,7 @@ import { AccentSelector } from "@/components/accent-selector";
 import { ContentVisibilityTable } from "@/components/content-visibility-table";
 import { ModelAutoSwitchSettings } from "@/components/model-auto-switch-settings";
 import { DiagnosticsPanel } from "@/components/diagnostics-panel";
+import { ModelsSettings } from "@/components/models-settings";
 import { NotificationsSettings } from "@/components/notifications-settings";
 import { StuckDetectorScanningSettings } from "@/components/stuck-detector-scanning-settings";
 import { StuckRecoverySettings } from "@/components/stuck-recovery-settings";
@@ -24,6 +25,7 @@ import {
   EyeIcon,
   FolderIcon,
   WrenchScrewdriverIcon,
+  CpuChipIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Checkbox, CheckboxLabel } from "@/components/ui/checkbox";
@@ -46,7 +48,8 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
-import { useAgents, useProviders, useSessions } from "@/hooks/use-opencode";
+import { useAgents, useSessions } from "@/hooks/use-opencode";
+import { useVisibleProviders } from "@/hooks/use-visible-providers";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
@@ -1833,7 +1836,7 @@ function PermissionsSettings() {
 function SettingsPage() {
   const { fontFamily, setFontFamily, ligatures, setLigatures } = useTheme();
   const { setPageTitle } = useBreadcrumb();
-  const { data: rawProviders, isLoading: providersLoading } = useProviders();
+  const { data: rawProviders, isLoading: providersLoading } = useVisibleProviders();
   const instance = useInstanceStore((s) => s.instance);
   const instanceId = instance?.id ?? null;
   // Settings is "set the default for this server". With the layered store,
@@ -1874,6 +1877,7 @@ function SettingsPage() {
     return [
       "appearance",
       "prompt",
+      "models",
       "composer",
       "chat",
       "files",
@@ -1897,6 +1901,7 @@ function SettingsPage() {
         [
           "appearance",
           "prompt",
+          "models",
           "composer",
           "chat",
           "files",
@@ -1989,6 +1994,10 @@ function SettingsPage() {
           <Tab id="prompt" href="#prompt" onClick={handleTabLinkClick} data-test="portal-settings-tab-prompt">
             <PencilSquareIcon className="size-4" data-slot="icon" />
             Prompt
+          </Tab>
+          <Tab id="models" href="#models" onClick={handleTabLinkClick} data-test="portal-settings-tab-models">
+            <CpuChipIcon className="size-4" data-slot="icon" />
+            Models
           </Tab>
           <Tab id="composer" href="#composer" onClick={handleTabLinkClick} data-test="portal-settings-tab-composer">
             <ChatBubbleLeftEllipsisIcon className="size-4" data-slot="icon" />
@@ -2198,6 +2207,24 @@ function SettingsPage() {
             <section>
               <TtsSetting />
             </section>
+          </div>
+        </TabPanel>
+
+        <TabPanel id="models" className="pt-6">
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-sm font-semibold">Visible models</h3>
+              <p className="text-xs text-muted-fg">
+                Which models appear in this server&apos;s model picker.
+                Hidden models stay configured on the server; they just
+                don&apos;t clutter the picker. By default, the most
+                recent release per family (within six months) is visible
+                and older releases are hidden &mdash; mirroring opencode&apos;s
+                own Settings &rarr; Models behaviour. Toggle anything to
+                set an explicit override.
+              </p>
+            </div>
+            <ModelsSettings />
           </div>
         </TabPanel>
 
