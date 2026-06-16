@@ -165,6 +165,21 @@ msg_e6580ef5b...), you're already late. Stop, sync, then resume.
 | `main-nowaker` (`~/projekty/webapps/portal`) | systemd unit `openportal.service` on port 5000 | `bash scripts/deploy.sh` (full cycle) or `bash ~/projekty/webapps/portal-runtime/start-or-restart.sh` (registry-aware restart). NEVER use `scripts/run-worktree.sh` on the main repo. |
 | Any other worktree (`~/projekty/webapps/portal-<feature>`) | foreground process from `bash scripts/run-worktree.sh` on port 5200 (default) or arg | `bash scripts/run-worktree.sh [PORT]`. Ctrl+C to stop. NEVER touch systemd from a worktree. |
 
+**AI-session caveat (binding):** `run-worktree.sh` ends in `exec env -i ... bun ...` — it is a BLOCKING foreground process. An AI agent that calls `bash scripts/run-worktree.sh` inline in a Bash tool call will hang until its timeout, then leave the bun process orphaned. From an AI session, ALWAYS background + log to a file, e.g.:
+
+```bash
+cd ~/projekty/webapps/portal-<feature>
+nohup bash scripts/run-worktree.sh > /tmp/portal-worktree-<feature>.log 2>&1 &
+disown
+sleep 6   # give the build + bind time
+curl -sS -o /dev/null -w "%{http_code}\n" http://100.105.229.19:5200/
+tail -n 60 /tmp/portal-worktree-<feature>.log
+```
+
+Then to stop: `pkill -f "wt-<INSTANCE_TAG>"` (the `--name wt-...` arg is the unique marker) or `kill <pid>` from the disown'd job. NEVER use this on the main repo at `~/projekty/webapps/portal` (see prod row above).
+
+**Fresh worktree dependencies:** git worktree shares `.git` only — `node_modules/` is per-working-directory, so a brand-new worktree has none. BEFORE the first `run-worktree.sh` (or any direct build), run `bun install --frozen-lockfile` from the worktree root. Symptom of skipping it: `scripts/build.sh` fails immediately because `turbo` / nitro deps are unresolvable. `bun install` in a worktree is fast (5-20s) because the global bun cache is shared.
+
 The worktree script lives in-tree (`scripts/run-worktree.sh`) so every
 worktree has it without sibling-runtime-dir setup. It:
 
