@@ -5212,3 +5212,16 @@ Design notes:
 - Fix: clamp `left` into `[MARGIN, viewportWidth - menuWidth - MARGIN]` with `MARGIN=8`. `viewportWidth = document.documentElement.clientWidth`; `menuWidth = menuRef.current?.offsetWidth ?? 240` (real measured width after first render, safe over-estimate before). `left = Math.min(Math.max(MARGIN, rawLeft), maxLeft)`.
 - Verified end-to-end in a real browser on the worktree (port 5210, session `ses_19897fcbfffeVl7vIfNEFose3d`): a selection reaching `bestRight=1523` in a 544px viewport produced `menu.right=536 <= clientWidth=544`, `horizontalScroll=false`, clamped to exactly `maxLeft = 544 - 232 - 8 = 304`. Non-overflow selections pass through unclamped (`Math.min` is a no-op when `rawLeft < maxLeft`). Full `bunx tsc --noEmit` clean for the edited file (only pre-existing baseline errors in unrelated files).
 
+
+### 219. Model selector dropdown: desktop hover details panel (DONE - this commit)
+
+User prompt (verbatim):
+
+> onmouseover on model name in the model selector expanded dropdown must show extra information about the model on the right. desktop only.
+
+Design notes:
+
+- Add a desktop-only details pane to `ModelPickerContent` while the model selector popover is expanded.
+- Hover/focus on a model row should update the pane with provider, supported input types, reasoning support, and context limit using the existing providers feed.
+- Mobile keeps the current one-column dropdown so no tap-hover state latches over rows.
+- Develop in worktree `portal-model-hover-details`, rebase onto local `main-nowaker`, FF-merge, deploy, and push both remotes.
