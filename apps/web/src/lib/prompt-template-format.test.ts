@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   PROMPT_TEMPLATE_PREAMBLE,
   buildPromptWithTemplates,
+  insertSlashTemplate,
   parsePromptWithTemplates,
 } from "./prompt-template-format";
 
@@ -113,5 +114,68 @@ describe("parsePromptWithTemplates", () => {
     ]);
     const parsed = parsePromptWithTemplates(built);
     expect(parsed!.userText).toBe("first line\n\nsecond para");
+  });
+});
+
+describe("insertSlashTemplate", () => {
+  test("inlining an empty composer matches the checkbox build", () => {
+    const token = "/template Pull";
+    const { newValue, cursorPos } = insertSlashTemplate(
+      token,
+      0,
+      token.length,
+      { name: "Pull", body: "git pull then summarize" },
+    );
+    expect(newValue).toBe(
+      buildPromptWithTemplates("", [
+        { name: "Pull", body: "git pull then summarize" },
+      ]),
+    );
+    expect(cursorPos).toBe(0);
+  });
+
+  test("keeps trailing user text as the prompt body", () => {
+    const value = "/template Pull\nship it";
+    const { newValue, cursorPos } = insertSlashTemplate(
+      value,
+      0,
+      "/template Pull".length,
+      { name: "Pull", body: "pull body" },
+    );
+    expect(newValue).toBe(
+      buildPromptWithTemplates("ship it", [{ name: "Pull", body: "pull body" }]),
+    );
+    expect(cursorPos).toBe("ship it".length);
+  });
+
+  test("accumulates a second template under one preamble, like two checkboxes", () => {
+    const first = insertSlashTemplate("/template Pull", 0, "/template Pull".length, {
+      name: "Pull",
+      body: "pull body",
+    }).newValue;
+    const second = insertSlashTemplate(`/${first}`, 0, 1, {
+      name: "Push",
+      body: "push body",
+    }).newValue;
+    expect(second).toBe(
+      buildPromptWithTemplates("", [
+        { name: "Pull", body: "pull body" },
+        { name: "Push", body: "push body" },
+      ]),
+    );
+  });
+
+  test("re-selecting the same template replaces its body without duplicating", () => {
+    const first = insertSlashTemplate("/template Pull", 0, "/template Pull".length, {
+      name: "Pull",
+      body: "v1",
+    }).newValue;
+    const again = insertSlashTemplate(`/${first}`, 0, 1, {
+      name: "Pull",
+      body: "v2",
+    }).newValue;
+    expect(again).toBe(
+      buildPromptWithTemplates("", [{ name: "Pull", body: "v2" }]),
+    );
   });
 });

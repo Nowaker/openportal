@@ -30,7 +30,7 @@ import { AgentSelect } from "@/components/agent-select";
 import { ModelSelect } from "@/components/model-select";
 import { OmoBlockView } from "@/components/omo-block-view";
 import { TemplateBlockView } from "@/components/template-block-view";
-import { buildPromptWithTemplates, parsePromptWithTemplates } from "@/lib/prompt-template-format";
+import { buildPromptWithTemplates, parsePromptWithTemplates, insertSlashTemplate } from "@/lib/prompt-template-format";
 import { ThinkingSelect } from "@/components/thinking-select";
 import { MessageInfoModal } from "@/components/message-info-modal";
 import { ForkDialog } from "@/components/fork-dialog";
@@ -44,7 +44,6 @@ import {
   SlashCommandPopover,
   useSlashCommand,
   useCommands,
-  expandTemplateAtSlash,
 } from "@/components/slash-command-popover";
 import {
   resolveToolsFromState,
@@ -4374,6 +4373,40 @@ function SessionPage() {
     slashExtras,
   ]);
 
+  // Shared by click + Enter/Tab: templates inline via the same preamble format as the new-session checkbox flow.
+  const applySlashSelect = (commandName: string) => {
+    const current = textareaRef.current?.value ?? "";
+    const template = templateSlashEntries.find((t) => t.name === commandName);
+    if (template && slashCommand.slashStart !== null) {
+      const slashStart = slashCommand.slashStart;
+      const firstNewline = current.indexOf("\n", slashStart);
+      const endOfCommand = firstNewline === -1 ? current.length : firstNewline;
+      const tokenLen = endOfCommand - slashStart;
+      const { newValue, cursorPos } = insertSlashTemplate(
+        current,
+        slashStart,
+        tokenLen,
+        { name: template.name.replace(/^template /, ""), body: template.body },
+      );
+      if (textareaRef.current) {
+        textareaRef.current.value = newValue;
+        setHasContent(newValue.length > 0);
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+      }
+      slashCommand.close();
+      return;
+    }
+    const newValue = slashCommand.handleSelect(commandName, current);
+    if (textareaRef.current) {
+      textareaRef.current.value = newValue;
+      setHasContent(newValue.length > 0);
+      textareaRef.current.focus();
+      const cursorPos = newValue.length;
+      textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+    }
+  };
+
   const connectionStatus = useConnectionMonitor();
   // When opencode is down, useSessionMessages naturally fails (the
   // /api/opencode/{port}/session/{id}/messages proxy returns 502/500).
@@ -6186,48 +6219,7 @@ function SessionPage() {
               selectedIndex={slashCommand.selectedIndex}
               onSelectedIndexChange={slashCommand.setSelectedIndex}
               onClose={slashCommand.close}
-              onSelect={(commandName) => {
-                const current = textareaRef.current?.value ?? "";
-                // Template-slash selection: expand the /template <name>
-                // token into the template body with \n\n padding
-                // instead of routing through the opencode-command
-                // pipeline.
-                const template = templateSlashEntries.find(
-                  (t) => t.name === commandName,
-                );
-                if (template && slashCommand.slashStart !== null) {
-                  const slashStart = slashCommand.slashStart;
-                  const firstNewline = current.indexOf("\n", slashStart);
-                  const endOfCommand =
-                    firstNewline === -1 ? current.length : firstNewline;
-                  const tokenLen = endOfCommand - slashStart;
-                  const { newValue, cursorPos } = expandTemplateAtSlash(
-                    current,
-                    slashStart,
-                    tokenLen,
-                    template.body,
-                  );
-                  if (textareaRef.current) {
-                    textareaRef.current.value = newValue;
-                    setHasContent(newValue.length > 0);
-                    textareaRef.current.focus();
-                    textareaRef.current.setSelectionRange(cursorPos, cursorPos);
-                  }
-                  slashCommand.close();
-                  return;
-                }
-                const newValue = slashCommand.handleSelect(
-                  commandName,
-                  current,
-                );
-                if (textareaRef.current) {
-                  textareaRef.current.value = newValue;
-                  setHasContent(newValue.length > 0);
-                  textareaRef.current.focus();
-                  const cursorPos = newValue.length;
-                  textareaRef.current.setSelectionRange(cursorPos, cursorPos);
-                }
-              }}
+              onSelect={applySlashSelect}
             />
             <form onSubmit={handleSubmit} className="w-full flex-1 min-h-0 flex flex-col">
               <input
@@ -6412,21 +6404,7 @@ function SessionPage() {
                           const selectedCmd =
                             filteredCommands[slashCommand.selectedIndex];
                           if (selectedCmd) {
-                            const current =
-                              textareaRef.current?.value ?? "";
-                            const newValue = slashCommand.handleSelect(
-                              selectedCmd.name,
-                              current,
-                            );
-                            if (textareaRef.current) {
-                              textareaRef.current.value = newValue;
-                              setHasContent(newValue.length > 0);
-                              const cursorPos = newValue.length;
-                              textareaRef.current.setSelectionRange(
-                                cursorPos,
-                                cursorPos,
-                              );
-                            }
+                            applySlashSelect(selectedCmd.name);
                           }
                         }
                         return;

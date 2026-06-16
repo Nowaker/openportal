@@ -34,7 +34,6 @@ import {
   SlashCommandPopover,
   useSlashCommand,
   useCommands,
-  expandTemplateAtSlash,
 } from "@/components/slash-command-popover";
 import { useSWRConfig } from "swr";
 import { mutate as mutateSWR } from "swr";
@@ -55,7 +54,7 @@ import {
   useToolsStore,
   type ResolvedTool,
 } from "@/stores/tools-store";
-import { buildPromptWithTemplates } from "@/lib/prompt-template-format";
+import { buildPromptWithTemplates, insertSlashTemplate } from "@/lib/prompt-template-format";
 import {
   clearPendingSubmission,
   recordFailedAttempt,
@@ -804,6 +803,42 @@ function NewSessionPage() {
     }
   };
 
+  // Shared by click + Enter/Tab: templates inline via the same preamble format as the checkbox picker above.
+  const applySlashSelect = (commandName: string) => {
+    const current = textareaRef.current?.value ?? "";
+    const template = templateSlashEntries.find((t) => t.name === commandName);
+    if (template && slashCommand.slashStart !== null) {
+      const slashStart = slashCommand.slashStart;
+      const firstNewline = current.indexOf("\n", slashStart);
+      const endOfCommand = firstNewline === -1 ? current.length : firstNewline;
+      const tokenLen = endOfCommand - slashStart;
+      const { newValue, cursorPos } = insertSlashTemplate(
+        current,
+        slashStart,
+        tokenLen,
+        { name: template.name.replace(/^template /, ""), body: template.body },
+      );
+      if (textareaRef.current) {
+        textareaRef.current.value = newValue;
+        setText(newValue);
+        scheduleDraftSave(newValue);
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+      }
+      slashCommand.close();
+      return;
+    }
+    const newValue = slashCommand.handleSelect(commandName, current);
+    if (textareaRef.current) {
+      textareaRef.current.value = newValue;
+      setText(newValue);
+      scheduleDraftSave(newValue);
+      textareaRef.current.focus();
+      const cursorPos = newValue.length;
+      textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+    }
+  };
+
   if (!directory) {
     return (
       <div className="flex flex-1 min-h-0 items-center justify-center text-muted-fg">
@@ -1150,46 +1185,7 @@ function NewSessionPage() {
             selectedIndex={slashCommand.selectedIndex}
             onSelectedIndexChange={slashCommand.setSelectedIndex}
             onClose={slashCommand.close}
-            onSelect={(commandName) => {
-              const current = textareaRef.current?.value ?? "";
-              const template = templateSlashEntries.find(
-                (t) => t.name === commandName,
-              );
-              if (template && slashCommand.slashStart !== null) {
-                const slashStart = slashCommand.slashStart;
-                const firstNewline = current.indexOf("\n", slashStart);
-                const endOfCommand =
-                  firstNewline === -1 ? current.length : firstNewline;
-                const tokenLen = endOfCommand - slashStart;
-                const { newValue, cursorPos } = expandTemplateAtSlash(
-                  current,
-                  slashStart,
-                  tokenLen,
-                  template.body,
-                );
-                if (textareaRef.current) {
-                  textareaRef.current.value = newValue;
-                  setText(newValue);
-                  scheduleDraftSave(newValue);
-                  textareaRef.current.focus();
-                  textareaRef.current.setSelectionRange(cursorPos, cursorPos);
-                }
-                slashCommand.close();
-                return;
-              }
-              const newValue = slashCommand.handleSelect(
-                commandName,
-                current,
-              );
-              if (textareaRef.current) {
-                textareaRef.current.value = newValue;
-                setText(newValue);
-                scheduleDraftSave(newValue);
-                textareaRef.current.focus();
-                const cursorPos = newValue.length;
-                textareaRef.current.setSelectionRange(cursorPos, cursorPos);
-              }
-            }}
+            onSelect={applySlashSelect}
           />
           <form
             onSubmit={(e) => {
@@ -1260,7 +1256,17 @@ function NewSessionPage() {
                       e,
                       filteredCommands.length,
                     );
-                    if (slashHandled) return;
+                    if (slashHandled) {
+                      if (
+                        (e.key === "Enter" || e.key === "Tab") &&
+                        filteredCommands.length > 0
+                      ) {
+                        const selectedCmd =
+                          filteredCommands[slashCommand.selectedIndex];
+                        if (selectedCmd) applySlashSelect(selectedCmd.name);
+                      }
+                      return;
+                    }
                     const mentionHandled = fileMention.handleKeyDown(
                       e,
                       fileResults.length,

@@ -422,30 +422,6 @@ interface UseSlashCommandResult {
   setSelectedIndex: (index: number) => void;
 }
 
-// Expand a `/<name>` token at slashStart..slashStart+1+name.length with
-// `body`, ensuring the body sits between at least 2 newlines on each
-// side (clamped to 2 - the user's spec: "padding up to 2x \n before
-// and after so proper spacing is added before/after content"). Returns
-// the new textarea value and the cursor position immediately after the
-// inserted body.
-export function expandTemplateAtSlash(
-  value: string,
-  slashStart: number,
-  slashTokenLength: number,
-  body: string,
-): { newValue: string; cursorPos: number } {
-  const before = value.slice(0, slashStart);
-  const tail = value.slice(slashStart + slashTokenLength);
-  const after = tail.replace(/^\s+/, "");
-  const trailingNl = (before.match(/\n*$/) ?? [""])[0].length;
-  const leadingPad =
-    before.length === 0 ? "" : "\n".repeat(Math.max(0, 2 - trailingNl));
-  const afterPad = after.length === 0 ? "" : "\n\n";
-  const newValue = `${before}${leadingPad}${body}${afterPad}${after}`;
-  const cursorPos = (before + leadingPad + body).length;
-  return { newValue, cursorPos };
-}
-
 export function useSlashCommand(): UseSlashCommandResult {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");

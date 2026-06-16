@@ -58,6 +58,27 @@ export function parsePromptWithTemplates(
   return { userText, templates: blocks };
 }
 
+// Re-parses existing block so repeated selections accumulate under one preamble, like ticking several checkboxes.
+export function insertSlashTemplate(
+  value: string,
+  slashStart: number,
+  slashTokenLength: number,
+  template: PromptTemplateBlock,
+): { newValue: string; cursorPos: number } {
+  const before = value.slice(0, slashStart);
+  const tail = value.slice(slashStart + slashTokenLength);
+  const remainder = `${before}${tail}`;
+  const parsed = parsePromptWithTemplates(remainder);
+  const userText = parsed ? parsed.userText : remainder;
+  const existing = parsed ? parsed.templates : [];
+  const merged = [
+    ...existing.filter((t) => t.name !== template.name),
+    template,
+  ];
+  const newValue = buildPromptWithTemplates(userText, merged);
+  return { newValue, cursorPos: userText.trim().length };
+}
+
 function escapeTitle(title: string): string {
   return title.replace(/"/g, '\\"');
 }
