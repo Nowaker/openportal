@@ -5108,3 +5108,22 @@ Design notes:
 - Observed unsupported tool output shape: `call_omo_agent` reports `Task ID: bg_...` and `Session ID: ses_...`; existing UI handled normal `task` / session tool names and lower-case `background_task_id`/`session_id` metadata pairs.
 - Extend background-task-to-session resolver patterns and treat `call_omo_agent` tool parts as subsession-spawning rows so the rendered tool row exposes a real `/session/<id>` anchor.
 
+### 216. Sidebar/overlay navigation triggers must be real links (DONE - this commit)
+
+User prompt (verbatim):
+
+> links in the hamburger in top right aren't links but should be.
+> open dir / live msgs / open ses not links.
+> look closely and carefully for other elements in the app that should be a link.
+
+Design notes:
+- "Open directory" and "Open session" in the left sidebar (and its desktop rail) rendered as react-aria press buttons (onPress -> open modal / open Ctrl+K palette) and exposed no href: no right-click / middle-click / open-in-new-tab / copy-link. "Live messages" was already a real `<a>` (SidebarItem href) and is unchanged.
+- Made both overlays URL-addressable per the "everything is a permalink" rule:
+  - Folder browser (Open directory): app-sidebar.tsx drives FolderBrowserDialog open state via useHashOpen("open-directory"). The expanded SidebarItem gets href="#open-directory" + a plain-left-click handler (preventDefault -> setBrowserOpen(true)); modified clicks fall through so a new tab loads #open-directory and opens the picker. The desktop rail tile (sidebar-rail-layout.tsx) is a plain `<a href="#open-directory">` whose native hashchange opens the dialog; the now-unused onOpenDirectory prop was removed.
+  - Cmd palette (Open session): cmd.tsx mirrors the palette open state into the URL fragment #search (replaceState, with a single-slot-hash guard so it never stomps #open-directory) and opens on a fresh load carrying #search. The "Open session" SidebarItem and the empty-state "find a session" became href="#search" links with the same plain-click handler; useCmdStore stays the in-app open bus.
+- Broader audit (explore agents across components/ + routes/) found and fixed two more pure-navigation-as-button offenders:
+  - instances.tsx ("Other Portals"): rows used a GridList onAction -> window.open. Each row is now a real react-aria link (href={buildWebUrl} target=_blank rel=noopener), so middle-click / copy-link work.
+  - servers.tsx ServerCard: the active-server "Open" button used onPress -> navigate("/"). Now a TanStack `<Link to="/" search={(prev)=>prev}>` styled via buttonStyles; the unused onOpen prop was removed.
+- Deliberately left as-is: files.tsx handleClose `window.location.href = "/"` is the last fallback of a multi-branch close handler (postMessage -> window.close -> history.back -> home), not a navigation link. Pinned session tabs, the subsession jump menu, the top-right hamburger, and the footer profile menu already use real hrefs for navigation and onAction only for mutations / transient non-URL-backed drawers (System messages).
+- Verified: worktree tsc clean for every touched file; Playwright link QA on :5200; deployed + live-QA on prod.
+

@@ -16,6 +16,7 @@ import {
 import { mutate as globalSWRMutate } from "swr";
 import { useSystemMessagesStore } from "@/stores/system-messages-store";
 import { useCmdStore } from "@/stores/cmd-store";
+import { useHashOpen } from "@/hooks/use-hash-open";
 import {
   Cog6ToothIcon,
   PlusIcon,
@@ -1472,7 +1473,7 @@ export default function AppSidebar(
     }
   }
 
-  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useHashOpen("open-directory");
   const [archiveConfirmSession, setArchiveConfirmSession] = useState<{
     id: string;
     title: string;
@@ -1554,7 +1555,6 @@ export default function AppSidebar(
             errorSessionIds={errorSessionIds}
             lastViewedMap={lastViewedMap}
             currentSessionId={currentSessionId}
-            onOpenDirectory={() => setBrowserOpen(true)}
             onSelectSession={() => setIsOpenOnMobile(false)}
           />
         ) : (
@@ -1562,7 +1562,19 @@ export default function AppSidebar(
             <SidebarSection>
               <SidebarItem
                 tooltip="Open directory"
-                onPress={() => setBrowserOpen(true)}
+                href="#open-directory"
+                onClick={(e) => {
+                  if (
+                    e.metaKey ||
+                    e.ctrlKey ||
+                    e.shiftKey ||
+                    e.altKey ||
+                    e.button !== 0
+                  )
+                    return;
+                  e.preventDefault();
+                  setBrowserOpen(true);
+                }}
                 className="cursor-pointer gap-x-2"
               >
                 <FolderOpenIcon className="size-4 shrink-0" data-slot="icon" />
@@ -1586,7 +1598,17 @@ export default function AppSidebar(
               </SidebarItem>
               <SidebarItem
                 tooltip="Open session (Ctrl/Cmd+K)"
-                onPress={() => {
+                href="#search"
+                onClick={(e) => {
+                  if (
+                    e.metaKey ||
+                    e.ctrlKey ||
+                    e.shiftKey ||
+                    e.altKey ||
+                    e.button !== 0
+                  )
+                    return;
+                  e.preventDefault();
                   setIsOpenOnMobile(false);
                   useCmdStore.getState().open();
                 }}

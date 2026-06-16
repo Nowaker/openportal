@@ -77,7 +77,6 @@ export interface SidebarRailLayoutProps {
   errorSessionIds: Set<string>;
   lastViewedMap: Record<string, number>;
   currentSessionId: string | undefined;
-  onOpenDirectory: () => void;
   onSelectSession: () => void;
 }
 
@@ -90,7 +89,6 @@ export function SidebarRailLayout({
   errorSessionIds,
   lastViewedMap,
   currentSessionId,
-  onOpenDirectory,
   onSelectSession,
 }: SidebarRailLayoutProps) {
   const { setDesktopMode } = useSidebar();
@@ -157,7 +155,7 @@ export function SidebarRailLayout({
       <RailTile
         seedKey="__open_directory__"
         label="Open directory"
-        onClick={onOpenDirectory}
+        href="#open-directory"
         contentOverride={
           <span className="flex size-full items-center justify-center rounded-md bg-sidebar-accent/30 text-sidebar-fg/80 ring-1 ring-sidebar-border">
             <FolderPlusIcon className="size-5" />

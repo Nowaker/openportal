@@ -299,6 +299,38 @@ export default function Cmd() {
     setIsOpen(false);
   }, [location.pathname]);
 
+  // Permalink bridge: the palette's open state is mirrored into the URL
+  // fragment `#search` so the "Open session" trigger can be a real link
+  // (right-click / open-in-new-tab / Ctrl+click) and a fresh load carrying
+  // `#search` opens the palette. replaceState (not push) keeps this
+  // frequently-toggled quick-switcher out of the history stack.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setIsOpen(window.location.hash === "#search");
+    sync();
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+    };
+  }, [setIsOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const cur = window.location.hash;
+    // The URL fragment holds at most one overlay id; never stomp a hash
+    // owned by a different overlay (e.g. #open-directory) when closing.
+    if (isOpen ? cur === "#search" : cur !== "#search") return;
+    const url = new URL(window.location.href);
+    url.hash = isOpen ? "#search" : "";
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [isOpen]);
+
   async function handleNewSession() {
     setCreating(true);
     setIsOpen(false);

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { usePollMs } from "@/hooks/use-opencode";
@@ -21,7 +21,7 @@ import {
   ModalOverlay,
   Dialog as PrimitiveDialog,
 } from "react-aria-components";
-import { Button } from "@/components/ui/button";
+import { Button, buttonStyles } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -539,7 +539,6 @@ function ServersPage() {
                 activateAfter: false,
               })
             }
-            onOpen={() => void navigate({ to: "/", search: (prev) => prev })}
             onSave={(patch) => saveServer(s, patch)}
             onConfigureDirs={() =>
               setDirectoriesTarget({ serverId: s.id, label: labelFor(s) })
@@ -641,9 +640,6 @@ interface ServerCardProps {
   onSetCreds: () => void;
   onConfigureDirs: () => void;
   onSave: (patch: ServerUpdatePayload) => Promise<void>;
-  // Navigate into the bound app for THIS server (only meaningful when
-  // entry.isActive and entry.status is not offline).
-  onOpen: () => void;
 }
 
 function ServerCard({
@@ -655,7 +651,6 @@ function ServerCard({
   onSetCreds,
   onConfigureDirs,
   onSave,
-  onOpen,
 }: ServerCardProps) {
   const [editOpen, setEditOpen] = useState(false);
 
@@ -773,9 +768,13 @@ function ServerCard({
             <PencilSquareIcon className="size-4" />
           </Button>
           {entry.isActive && entry.status !== "offline" && (
-            <Button size="sm" intent="primary" onPress={onOpen} isDisabled={busy}>
+            <Link
+              to="/"
+              search={(prev) => prev}
+              className={buttonStyles({ intent: "primary", size: "sm" })}
+            >
               Open
-            </Button>
+            </Link>
           )}
           {showReconnect && (
             <Button
