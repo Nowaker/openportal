@@ -134,11 +134,15 @@ export default function Cmd() {
 
   // One ranked "Sessions" list. Sort tiers (highest first), encoding the
   // user's spec "full string matches > fuzzy + pinned":
-  //   0 full+pinned, 1 full+non-pinned, 2 fuzzy+pinned, 3 fuzzy+non-pinned.
+  //   0 full+pinned, 1 full+non-pinned, 2 fuzzy+pinned, 3 fuzzy+non-pinned,
+  //   4 id-only+pinned, 5 id-only+non-pinned.
   // "full" = the query is a contiguous case-insensitive substring of the
   // title or project label; "fuzzy" = scoreItem matched but not contiguous.
-  // ses_ queries match on session id (tier -1, ranks top). Empty query:
-  // pinned then non-pinned, both by recent activity desc. Both states
+  // ses_ queries match on session id (tier -1, ranks top). A bare fragment
+  // that hits neither title nor project falls back to a session-id substring
+  // match (tiers 4/5) so "17641" finds ses_176410872... the same way a title
+  // fragment does, without ever displacing a real title/project hit. Empty
+  // query: pinned then non-pinned, both by recent activity desc. Both states
   // render at most DISPLAY_LIMIT rows.
   const ranked = useMemo((): Array<{
     session: Session;
@@ -192,11 +196,20 @@ export default function Cmd() {
       }
 
       const m = scoreItem(title, project, trimmed);
-      if (!m) continue;
-      const isFull =
-        title.toLowerCase().includes(q) || project.toLowerCase().includes(q);
-      const bucket = isFull ? (pinned ? 0 : 1) : pinned ? 2 : 3;
-      out.push({ session: s, match: m, bucket });
+      if (m) {
+        const isFull =
+          title.toLowerCase().includes(q) || project.toLowerCase().includes(q);
+        const bucket = isFull ? (pinned ? 0 : 1) : pinned ? 2 : 3;
+        out.push({ session: s, match: m, bucket });
+        continue;
+      }
+      const idIdx = s.id.toLowerCase().indexOf(q);
+      if (idIdx < 0) continue;
+      out.push({
+        session: s,
+        match: { score: 1_000 - idIdx, titleRanges: [], projectRanges: [] },
+        bucket: pinned ? 4 : 5,
+      });
     }
 
     out.sort((a, b) => {
