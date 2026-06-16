@@ -5225,3 +5225,17 @@ Design notes:
 - Hover/focus on a model row should update the pane with provider, supported input types, reasoning support, and context limit using the existing providers feed.
 - Mobile keeps the current one-column dropdown so no tap-hover state latches over rows.
 - Develop in worktree `portal-model-hover-details`, rebase onto local `main-nowaker`, FF-merge, deploy, and push both remotes.
+
+### 220. deploy.sh/build.sh: serialize concurrent deploys on a machine-global flock (DONE - 01451ed)
+
+User prompt (verbatim):
+
+> look holistically into deploy.sh. what does it have that is causing issues in concurrent environments that push new commits to main-nowaker and want them deploy? resolve those problems somehow.
+
+Design notes:
+
+- Root cause: `scripts/deploy.sh` and `scripts/build.sh` mutate machine-global singletons with no mutual exclusion - the shared `apps/web/.output` build dir, `.output-released`, the `openportal-dev` + `openportal` systemd services, and prod's SQLite seed. Two parallel sessions that each merged a commit to `main-nowaker` and ran `deploy.sh` race: `build.sh`'s `rm -rf .output` in one deploy fires mid-build in the other, leaving `.output` without `index.html`, and each deploy's dev probe waits up to 15s for an asset hash the other just overwrote. Both abort; prod stays on the pre-merge bundle and neither merged commit ships. Observed live as the "deploy war" (5 churning asset hashes).
+- Fix: both scripts acquire a machine-global `flock` at startup (`/tmp/openportal-deploy.lock`, override `OPENPORTAL_DEPLOY_LOCK`). Second deploy waits up to `OPENPORTAL_DEPLOY_LOCK_WAIT=900s`, then builds the now-current working tree (already contains the earlier deploy's merged commit) and ships it - last deploy wins, no merged commit dropped.
+- `flock` releases on fd close (incl. crash/kill), so a dead deploy never strands the lock.
+- `deploy.sh` exports `OPENPORTAL_DEPLOY_LOCK_HELD=1` before calling `build.sh`; `build.sh` skips re-locking when set (re-locking the held fd self-deadlocks). Direct `build.sh` runs still self-lock.
+- Verified: flock serialization (second worker blocks then acquires on release), nested deploy→build skips lock, direct build acquires. Developed in worktree `portal-deploy-lock`, rebased onto `main-nowaker`, FF-merge, deploy, push both remotes.
