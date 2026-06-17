@@ -15,7 +15,7 @@ import {
   type RawModel,
   type RawProvider,
 } from "@/lib/model-visibility";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
@@ -271,16 +271,14 @@ function ProviderSection({
                   {m.id}
                 </div>
               </div>
-              <Switch
+              <Checkbox
                 isSelected={visible}
                 onChange={(v) =>
                   void onToggle(providerId, m.id, v, defaultVisible)
                 }
-                hideLabel
+                className="shrink-0"
                 aria-label={`Toggle visibility of ${m.name ?? m.id}`}
-              >
-                {m.name ?? m.id}
-              </Switch>
+              />
             </div>
           );
         })}

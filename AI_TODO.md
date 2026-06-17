@@ -5285,3 +5285,21 @@ Design notes:
 - New unit tests in `prompt-template-format.test.ts`: empty user text + single template, token followed by trailing user text, accumulation-parity (two sequential slash selects produce the same value as one `buildPromptWithTemplates` call with both templates), and dedup of identical-name selections. 4 new tests, 17 total pass.
 - Full `bunx tsc --noEmit` from `apps/web/` after rebase onto the new `main-nowaker` tip (e9a8a40): 29 baseline pre-existing errors, zero in any of the 5 files I touched.
 - Process: worktree `portal-slash-template` branched from local main, committed on `fix/slash-template-enter-inline`, rebased onto fresh `origin/main-nowaker` (6 commits had landed during the session — all deploy/permissions/AI_TODO, no overlap), FF-merged into `main-nowaker`. Concurrent uncommitted server `.ts` work in the main worktree (16 files from another session) was left untouched throughout.
+
+### 224. Models settings: model on/off control must reuse an existing toggle style, not a bespoke Switch (DONE - this commit)
+
+User prompt (verbatim):
+
+> model on/off toggle must be visually consistent with all other toggles like this in the app. currently, you invented a new style.
+
+Clarification (verbatim):
+
+> "The existing in-app toggle pattern is a labeled checkbox-style control for settings flags" - not necessarily; Theresa a pill like component in the hamburger for mcps, and I've seen it elsewhere too. Your call; just make it most consistent, if you want checkbox it's fine too.
+
+Design notes:
+
+- Root cause: the Models visibility screen (#219 / 30caa08) shipped each model row with the `Switch` component from `apps/web/src/components/ui/switch.tsx` - a rounded sliding pill. `rg "components/ui/switch"` confirms that component is imported by exactly ONE file: `models-settings.tsx`. Nothing else in the app renders that pill, so it read as a brand-new visual style on a Settings screen - exactly the "you invented a new style" complaint.
+- The established Settings on/off primitive is the shared `Checkbox` (`apps/web/src/components/ui/checkbox.tsx`): rounded square + check, primary fill. Used by `stuck-detector-scanning-settings.tsx`, `model-auto-switch-settings.tsx`, `notifications-settings.tsx`. The only other "toggle-like" control is the bespoke 5-state MCP pill in `app-sidebar-nav.tsx` McpRow, purpose-built for the multi-state (on/off/needs-auth/failed) hamburger list - not a reusable on/off, so not a fit here.
+- Decision (user blessed checkbox explicitly): replace `Switch` with `Checkbox` in each model row. Row layout unchanged (name + id on the left, control on the right); the control is now visually identical to every other Settings checkbox.
+- Change: `models-settings.tsx` import swapped `Switch` -> `Checkbox`; the per-row `<Switch hideLabel isSelected onChange>{name}</Switch>` became `<Checkbox isSelected onChange className="shrink-0" aria-label=...>` (no visible child - the model name stays the row's left label; aria-label carries the accessible name). `onChange` keeps the same `(v) => onToggle(...)` boolean signature. `ui/switch.tsx` is now unreferenced but left in place (harmless opencode-parity component).
+- Verified on live prod (bundle index-BzxuU-Nh.js): full `bunx tsc --noEmit` from `apps/web/` introduced zero new errors in the edited file (only the ~30 pre-existing baseline errors in untouched files remain). `scripts/deploy.sh` green - dev gate render-check + prod promote + prod render-check all ok. Headless CDP DOM probe of /settings#models: 127 model rows, ALL rendering the shared Checkbox (`<input type="checkbox">` under `<label data-slot="control">` carrying a `[data-slot="indicator"]`); zero `role="switch"` elements and zero sliding-pill switches on the screen; provider headers (Anthropic / Anthropic (alt) / Google / OpenAI / OpenAI (alt) / OpenCode Zen) intact; no console errors, no 5xx.
