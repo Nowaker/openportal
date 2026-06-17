@@ -5303,3 +5303,26 @@ Design notes:
 - Decision (user blessed checkbox explicitly): replace `Switch` with `Checkbox` in each model row. Row layout unchanged (name + id on the left, control on the right); the control is now visually identical to every other Settings checkbox.
 - Change: `models-settings.tsx` import swapped `Switch` -> `Checkbox`; the per-row `<Switch hideLabel isSelected onChange>{name}</Switch>` became `<Checkbox isSelected onChange className="shrink-0" aria-label=...>` (no visible child - the model name stays the row's left label; aria-label carries the accessible name). `onChange` keeps the same `(v) => onToggle(...)` boolean signature. `ui/switch.tsx` is now unreferenced but left in place (harmless opencode-parity component).
 - Verified on live prod (bundle index-BzxuU-Nh.js): full `bunx tsc --noEmit` from `apps/web/` introduced zero new errors in the edited file (only the ~30 pre-existing baseline errors in untouched files remain). `scripts/deploy.sh` green - dev gate render-check + prod promote + prod render-check all ok. Headless CDP DOM probe of /settings#models: 127 model rows, ALL rendering the shared Checkbox (`<input type="checkbox">` under `<label data-slot="control">` carrying a `[data-slot="indicator"]`); zero `role="switch"` elements and zero sliding-pill switches on the screen; provider headers (Anthropic / Anthropic (alt) / Google / OpenAI / OpenAI (alt) / OpenCode Zen) intact; no console errors, no 5xx.
+
+### 225. Session-title click scrolls in-place to the initial prompt, no permalink view (DONE - this commit)
+
+User prompt (verbatim):
+
+> It works. Ish. First click on the session title scrolls back to the prompt. But subsequent ones do not.
+>
+> I suspect it's got something to do with "Permalink view msg_e7bbe2901001... (message 1 of 180) Return to live view".
+>
+> There should be no "permalink view" that is some special case. It should STILL be the live view. Still the same content that was already there, just scroll to that message. If message not loaded, load that chunk and put it where it belongs in the chat log view. There's already a proper gap handling between messages. Scrolling to the top one should be no different from scrolling to some of the middle one.
+>
+> Also, look at previous prompt preview bubble that shows when previous prompt is outside of the viewport. It doesn't cause any special view. Just scrolls. Clicking the session name should do the same. Notice that currently, chat view always loads the very first prompt anyway, so it makes things very easy for you.
+>
+> Start from a worktree as always.
+
+Design notes:
+
+- Bug: `handleSessionTitleClick` in `apps/web/src/routes/_app/session/$id.tsx` entered the windowed permalink mode (`setPermalinkTarget(firstId)` + pushed a `#msg-<id>` hash). The first click scrolled via the permalink `useLayoutEffect`; subsequent clicks no-opped because `permalinkTarget` / `permalinkScrolledRef` were already pinned to that id (same-value `setState` bails, and the layout effect's `[permalinkMode, permalinkTarget, messages.length]` deps never change). It also surfaced the "Permalink view ... Return to live view" banner - a special view the user does not want.
+- Fix: the title click is now a plain scroll within the live view, identical to the previous/next-prompt jump bubble the user cited. It reuses the existing `scrollToUserNode` helper (moved above the handler so the callback can depend on it) targeting the first prompt's DOM node, which is ALWAYS rendered (`firstHeaderShown` pins the "first prompt + last N" header at the top even when the recent window is far ahead). No permalink mode, no banner, no windowed loader.
+- History / Back still satisfies #215: the click saves the pre-jump `scrollTop` onto the current entry (replaceState) and pushes a single marked entry (`JUMP_TO_FIRST_HISTORY_KEY`); the existing popstate handler restores the saved scroll on Back. The marker makes repeated clicks re-scroll WITHOUT stacking extra Back entries.
+- Scope: the general far-back message permalink (`#msg-<id>` from copy-link-to-message) still uses the windowed `useSessionMessagesAround` loader + banner, which is correct for arbitrary messages thousands back that genuinely are not loaded. Only the session-title jump changed - the first prompt is always loaded, per the user's hint.
+- Verified end-to-end in worktree `portal-session-title-scroll` (branch `fix/session-title-scroll`, port 5200) via Playwright against a 602-message session: from bottom (scrollTop 6211) click1 -> 0, reset to 6211, repeat click2 -> 0 (the reported bug, now fixed), browser Back -> 6211 (prior scroll restored); the "Permalink view" banner never appeared on any step. `bunx tsc --noEmit` from `apps/web/`: 29 pre-existing baseline errors, zero in `session/$id.tsx`. `scripts/build.sh` green.
+- Process: branched from `origin/main-nowaker` (6b6e78c), committed on `fix/session-title-scroll`, rebased onto the fresh `origin/main-nowaker` tip, FF-merged into `main-nowaker`, deployed via `scripts/deploy.sh`, pushed to both remotes.

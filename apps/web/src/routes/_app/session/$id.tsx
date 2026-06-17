@@ -233,6 +233,9 @@ const INITIAL_MESSAGE_LIMIT = 50;
 // Cursor/selection is preserved across the splice.
 const SMART_CLEAR_SUBSTRING_MIN = 40;
 const CHAT_SCROLL_HISTORY_KEY = "__openportalChatScrollTop";
+// Marks the history entry pushed by a session-title jump, so repeated clicks
+// re-scroll without stacking a new Back entry on each one.
+const JUMP_TO_FIRST_HISTORY_KEY = "__openportalJumpedToFirstPrompt";
 
 function smartPostSubmitClear(
   textarea: HTMLTextAreaElement,
@@ -4675,28 +4678,49 @@ function SessionPage() {
     };
   }, []);
 
-  const handleSessionTitleClick = useCallback(() => {
-    const targetMessageId = firstMessage?.info.id;
-    if (!targetMessageId || typeof window === "undefined") return;
+  const scrollToUserNode = useCallback((node: HTMLElement) => {
     const container = chatContainerRef.current;
-    const previousState = copyHistoryState();
-    window.history.replaceState(
-      {
-        ...previousState,
-        [CHAT_SCROLL_HISTORY_KEY]: container?.scrollTop ?? 0,
-      },
-      "",
-      window.location.href,
-    );
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const targetTop =
+      node.getBoundingClientRect().top - containerRect.top + container.scrollTop;
+    container.scrollTo({
+      top: Math.max(0, targetTop - 8),
+      behavior: "smooth",
+    });
+    isStuckToBottomRef.current = false;
+  }, []);
 
-    const url = new URL(window.location.href);
-    url.hash = `msg-${encodeURIComponent(targetMessageId)}`;
-    const targetState = copyHistoryState();
-    delete targetState[CHAT_SCROLL_HISTORY_KEY];
-    window.history.pushState(targetState, "", url.toString());
-    permalinkScrolledRef.current = null;
-    setPermalinkTarget(targetMessageId);
-  }, [firstMessage?.info.id]);
+  // The first prompt is always rendered (the "first prompt + last N" header
+  // pins it at the top even when the recent window is far ahead), so jumping
+  // to it is a plain scroll in the live view - never the windowed permalink
+  // mode. A single Back restores the pre-jump scroll; repeated clicks
+  // re-scroll without stacking history entries.
+  const handleSessionTitleClick = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const targetMessageId = firstMessage?.info.id;
+    const node =
+      (targetMessageId
+        ? document.getElementById(`msg-${targetMessageId}`)
+        : null) ?? container.querySelector<HTMLElement>('[data-role="user"]');
+    if (!node) return;
+
+    const currentState = copyHistoryState();
+    if (currentState[JUMP_TO_FIRST_HISTORY_KEY] !== true) {
+      window.history.replaceState(
+        { ...currentState, [CHAT_SCROLL_HISTORY_KEY]: container.scrollTop },
+        "",
+        window.location.href,
+      );
+      const jumpState = { ...currentState };
+      delete jumpState[CHAT_SCROLL_HISTORY_KEY];
+      jumpState[JUMP_TO_FIRST_HISTORY_KEY] = true;
+      window.history.pushState(jumpState, "", window.location.href);
+    }
+    scrollToUserNode(node);
+  }, [firstMessage?.info.id, scrollToUserNode]);
 
   const pageTitleAction = useMemo<PageTitleAction | null>(() => {
     if (!currentSession?.title) return null;
@@ -4764,19 +4788,6 @@ function SessionPage() {
   // "go back further in history". We trigger the full load and remember
   // to scroll to the new topmost user message once the data lands.
   const pendingLoadAndScrollRef = useRef<"first-user" | null>(null);
-
-  const scrollToUserNode = useCallback((node: HTMLElement) => {
-    const container = chatContainerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const targetTop =
-      node.getBoundingClientRect().top - containerRect.top + container.scrollTop;
-    container.scrollTo({
-      top: Math.max(0, targetTop - 8),
-      behavior: "smooth",
-    });
-    isStuckToBottomRef.current = false;
-  }, []);
 
   const handleJumpUserPrompt = useCallback(
     (direction: "previous" | "next") => {
