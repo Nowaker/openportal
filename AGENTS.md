@@ -17,6 +17,34 @@ These statements OVERRIDE the global personal rules in
   Force-push only on feature branches as the global rule still says,
   never on `main-nowaker` or other protected branches.
 
+## DRY is law (binding, project-wide)
+
+Consistency and code reuse are the top priority in this codebase. Every
+feature, behaviour, and rule has ONE implementation, reused everywhere it
+applies. The user must NEVER have to request the same change twice because
+the same logic was copy-pasted across surfaces.
+
+- **Second use = extract.** The moment a behaviour that exists on one
+  surface is needed on another, lift it into a shared
+  function/hook/component and route BOTH through it in the same change.
+  Never clone, never reimplement per location.
+- **Fix once, inherit everywhere.** Fix the shared implementation so every
+  caller gets the fix. If the logic was duplicated, de-duplicate it AS PART
+  OF the fix.
+- **Collapse duplication you touch.** Find copy-pasted logic while working
+  nearby? Unify it to one source of truth, then point all callers at it.
+- **A fix covers ALL its locations.** "Fix the issue" means everywhere it
+  exists, not just the surface that was reported. Grep for sibling call
+  sites before declaring done.
+
+The test: a behaviour change or bug fix must require editing exactly ONE
+place. If it needs two, the code is wrong — unify first, then change.
+
+Applies to everything: UI components, hooks, matching/sorting/formatting
+logic, server handlers, validation, and the rules in this file. Domain
+sections below (e.g. "Session search (shared matching kernel)") are
+INSTANCES of this rule, not the rule itself.
+
 ## Analysis / deep-explanation requests
 
 When the user asks for an analysis, a deep explanation, or a survey
@@ -977,7 +1005,8 @@ revert any of these without re-reproducing the bug.
 ### Session search (shared matching kernel — mandatory)
 
 Every surface that searches/filters sessions by title or id (Ctrl+K
-palette `cmd.tsx`, sidebar tree `app-sidebar.tsx`, any future one) MUST
+palette `cmd.tsx`, sidebar tree `app-sidebar.tsx`, refire picker
+`prompts.tsx`, any future one) MUST
 match through the single kernel `matchSession()` in
 `apps/web/src/lib/fuzzy-rank.tsx`. NEVER inline per-surface title/id
 matching — that is how the same fix had to be requested twice.
