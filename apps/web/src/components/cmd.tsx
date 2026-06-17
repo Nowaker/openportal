@@ -18,7 +18,12 @@ import {
 import { usePinnedSessions } from "@/hooks/use-pinned-sessions";
 import { useInstanceStore } from "@/stores/instance-store";
 import { resolveProjectPath } from "@/lib/project-path";
-import { HighlightedText, scoreItem, type MatchResult } from "@/lib/fuzzy-rank";
+import {
+  HighlightedText,
+  matchSession,
+  type MatchResult,
+  type SessionMatchTier,
+} from "@/lib/fuzzy-rank";
 import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import IconBox from "@/components/icons/box-icon";
@@ -40,6 +45,21 @@ import { formatAbsoluteAndRelative, formatMessageTime } from "@/lib/format-time"
 function sessionActivityTime(session: Session): number | undefined {
   const time = session.time as { created?: number; updated?: number } | undefined;
   return time?.updated ?? time?.created;
+}
+
+// Map a shared-kernel match tier + pinned flag to this list's sort bucket
+// (lowest renders first). See the `ranked` memo comment for the legend.
+function sessionMatchBucket(tier: SessionMatchTier, pinned: boolean): number {
+  switch (tier) {
+    case "id-exact":
+      return -1;
+    case "full":
+      return pinned ? 0 : 1;
+    case "fuzzy":
+      return pinned ? 2 : 3;
+    case "id-fuzzy":
+      return pinned ? 4 : 5;
+  }
 }
 
 interface InstanceData {
@@ -132,25 +152,17 @@ export default function Cmd() {
     });
   }, [sessions, baseDirs]);
 
-  // One ranked "Sessions" list. Sort tiers (highest first), encoding the
-  // user's spec "full string matches > fuzzy + pinned":
-  //   0 full+pinned, 1 full+non-pinned, 2 fuzzy+pinned, 3 fuzzy+non-pinned,
-  //   4 id-only+pinned, 5 id-only+non-pinned.
-  // "full" = the query is a contiguous case-insensitive substring of the
-  // title or project label; "fuzzy" = scoreItem matched but not contiguous.
-  // ses_ queries match on session id (tier -1, ranks top). A bare fragment
-  // that hits neither title nor project falls back to a session-id substring
-  // match (tiers 4/5) so "17641" finds ses_176410872... the same way a title
-  // fragment does, without ever displacing a real title/project hit. Empty
-  // query: pinned then non-pinned, both by recent activity desc. Both states
-  // render at most DISPLAY_LIMIT rows.
+  // One ranked "Sessions" list. matchSession() (shared kernel in
+  // lib/fuzzy-rank, see AGENTS.md "Session search") decides IF/HOW a query
+  // matches; this memo only maps the returned tier x pinned into a sort
+  // bucket (lowest first): -1 id-exact (ses_ query); 0/1 full pinned/not;
+  // 2/3 fuzzy pinned/not; 4/5 bare-id-fragment pinned/not. Empty query:
+  // pinned then non-pinned by recent activity. Renders <= DISPLAY_LIMIT rows.
   const ranked = useMemo((): Array<{
     session: Session;
     match: MatchResult;
   }> => {
     const trimmed = query.trim();
-    const q = trimmed.toLowerCase();
-    const idQuery = q.startsWith("ses_") ? q : null;
     const emptyMatch: MatchResult = {
       score: 0,
       titleRanges: [],
@@ -178,37 +190,12 @@ export default function Cmd() {
     for (const s of workspaceSessions) {
       const title = s.title || `Session ${s.id.slice(0, 8)}`;
       const project = projectLabelForSession(s);
-      const pinned = pinnedIds.has(s.id);
-
-      if (idQuery) {
-        const idx = s.id.toLowerCase().indexOf(idQuery);
-        if (idx < 0) continue;
-        out.push({
-          session: s,
-          match: {
-            score: (idx === 0 ? 10_000 : 9_000) + idQuery.length,
-            titleRanges: [],
-            projectRanges: [],
-          },
-          bucket: -1,
-        });
-        continue;
-      }
-
-      const m = scoreItem(title, project, trimmed);
-      if (m) {
-        const isFull =
-          title.toLowerCase().includes(q) || project.toLowerCase().includes(q);
-        const bucket = isFull ? (pinned ? 0 : 1) : pinned ? 2 : 3;
-        out.push({ session: s, match: m, bucket });
-        continue;
-      }
-      const idIdx = s.id.toLowerCase().indexOf(q);
-      if (idIdx < 0) continue;
+      const match = matchSession({ title, project, id: s.id }, trimmed);
+      if (!match) continue;
       out.push({
         session: s,
-        match: { score: 1_000 - idIdx, titleRanges: [], projectRanges: [] },
-        bucket: pinned ? 4 : 5,
+        match,
+        bucket: sessionMatchBucket(match.tier, pinnedIds.has(s.id)),
       });
     }
 

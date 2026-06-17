@@ -111,6 +111,66 @@ export function scoreItem(
   return { score: total, titleRanges, projectRanges };
 }
 
+export type SessionMatchTier = "id-exact" | "full" | "fuzzy" | "id-fuzzy";
+
+export interface SessionMatch extends MatchResult {
+  tier: SessionMatchTier;
+}
+
+// Single source of truth for "does this query match this session, and how".
+// EVERY session-search surface (Ctrl+K palette, sidebar filter, future ones)
+// MUST match through here so id/title behaviour is identical everywhere - see
+// AGENTS.md "Session search (shared matching kernel)".
+//   - ses_-prefixed query: explicit id search. Substring match on the full
+//     id (tier "id-exact", ranks above all text hits); no title/project
+//     fallback - an id query is an id query.
+//   - otherwise: fuzzy title/project via scoreItem (tier "full" when the
+//     query is a contiguous substring of title/project, else "fuzzy").
+//   - title/project miss: bare id-fragment fallback - substring match on the
+//     id (tier "id-fuzzy", ranks below every text hit) so a pasted "17641"
+//     finds ses_176410872... exactly like a title fragment, without ever
+//     displacing a real title/project match.
+// `project` is optional: surfaces that match project separately (the sidebar
+// matches it at the group level) omit it; the matching policy is unchanged.
+export function matchSession(
+  fields: { title: string; project?: string; id: string },
+  rawQuery: string,
+): SessionMatch | null {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return null;
+
+  const id = fields.id.toLowerCase();
+  const project = fields.project ?? "";
+
+  if (q.startsWith("ses_")) {
+    const idx = id.indexOf(q);
+    if (idx < 0) return null;
+    return {
+      score: (idx === 0 ? 10_000 : 9_000) + q.length,
+      titleRanges: [],
+      projectRanges: [],
+      tier: "id-exact",
+    };
+  }
+
+  const m = scoreItem(fields.title, project, rawQuery);
+  if (m) {
+    const isFull =
+      fields.title.toLowerCase().includes(q) ||
+      project.toLowerCase().includes(q);
+    return { ...m, tier: isFull ? "full" : "fuzzy" };
+  }
+
+  const idIdx = id.indexOf(q);
+  if (idIdx < 0) return null;
+  return {
+    score: 1_000 - idIdx,
+    titleRanges: [],
+    projectRanges: [],
+    tier: "id-fuzzy",
+  };
+}
+
 function mergeRanges(
   ranges: Array<[number, number]>,
 ): Array<[number, number]> {

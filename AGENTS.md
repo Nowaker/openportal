@@ -974,6 +974,28 @@ revert any of these without re-reproducing the bug.
   JS-driven PTR via `usePullToRefresh` is the only path without a
   layout refactor.
 
+### Session search (shared matching kernel — mandatory)
+
+Every surface that searches/filters sessions by title or id (Ctrl+K
+palette `cmd.tsx`, sidebar tree `app-sidebar.tsx`, any future one) MUST
+match through the single kernel `matchSession()` in
+`apps/web/src/lib/fuzzy-rank.tsx`. NEVER inline per-surface title/id
+matching — that is how the same fix had to be requested twice.
+
+One policy, one source of truth:
+
+- `ses_`-prefixed query → explicit id substring search (tier `id-exact`).
+- otherwise → fuzzy title/project via `scoreItem` (`full` when contiguous,
+  else `fuzzy`).
+- title/project miss → bare id-fragment substring fallback (`id-fuzzy`),
+  so `17641` finds `ses_176410872…` exactly like a title fragment.
+
+A consumer calls `matchSession(...)`; if it ranks, it maps the returned
+`tier` (see `sessionMatchBucket` in `cmd.tsx`). It does NOT reimplement
+matching. New matching behaviour = change the kernel once; every surface
+inherits it. `project` is optional — omit it where project is matched
+separately (the sidebar matches it at the group level).
+
 ### Notifications
 
 - First-load banner asks for permission. States: hidden /

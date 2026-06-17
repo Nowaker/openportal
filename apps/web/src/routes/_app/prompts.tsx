@@ -30,6 +30,7 @@ import { TemplateBlockView } from "@/components/template-block-view";
 import { parsePromptWithTemplates } from "@/lib/prompt-template-format";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useSessions } from "@/hooks/use-opencode";
+import { matchSession } from "@/lib/fuzzy-rank";
 import type { Session } from "@opencode-ai/sdk";
 import {
   formatAbsoluteAndRelative,
@@ -784,13 +785,15 @@ function RefireModal({
     sessionsResp ?? [];
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (q.length === 0) return sessions.slice(0, 50);
+    if (search.trim().length === 0) return sessions.slice(0, 50);
     return sessions
-      .filter((s) => {
-        const hay = `${s.title ?? ""} ${s.id} ${s.directory ?? ""}`.toLowerCase();
-        return hay.includes(q);
-      })
+      .filter(
+        (s) =>
+          matchSession(
+            { title: s.title ?? "", project: s.directory ?? "", id: s.id },
+            search,
+          ) !== null,
+      )
       .slice(0, 50);
   }, [sessions, search]);
 

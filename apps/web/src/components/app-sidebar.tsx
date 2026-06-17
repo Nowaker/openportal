@@ -27,6 +27,7 @@ import useMediaQuery from "@/hooks/use-media-query";
 import { Avatar } from "@/components/ui/avatar";
 import { Link as UILink } from "@/components/ui/link";
 import { toast } from "@/components/ui/toast";
+import { matchSession } from "@/lib/fuzzy-rank";
 
 import {
   Menu,
@@ -641,14 +642,13 @@ function ProjectsList({
   const { data: pinnedData } = usePinnedSessions();
   const hasMatchingPin = useMemo(() => {
     if (!searchQuery) return false;
-    const q = searchQuery.toLowerCase();
-    const isIdQuery = q.startsWith("ses_");
     const pinnedIds = pinnedData?.sessions ?? [];
     for (const id of pinnedIds) {
       const s = sessions.find((x) => x.id === id);
       if (!s) continue;
-      if ((s.title ?? "").toLowerCase().includes(q)) return true;
-      if (isIdQuery && s.id.toLowerCase().startsWith(q)) return true;
+      if (matchSession({ title: s.title ?? "", id: s.id }, searchQuery)) {
+        return true;
+      }
     }
     return false;
   }, [pinnedData, sessions, searchQuery]);
@@ -721,12 +721,8 @@ function ProjectsList({
   const filteredGroups = useMemo<ProjectBin[]>(() => {
     if (!searchQuery) return groups;
     const q = searchQuery.toLowerCase();
-    const isIdQuery = q.startsWith("ses_");
-    const matchesSession = (s: Session): boolean => {
-      if ((s.title ?? "").toLowerCase().includes(q)) return true;
-      if (isIdQuery && s.id.toLowerCase().startsWith(q)) return true;
-      return false;
-    };
+    const matchesSession = (s: Session): boolean =>
+      matchSession({ title: s.title ?? "", id: s.id }, searchQuery) !== null;
     const out: ProjectBin[] = [];
     for (const g of groups) {
       const projectMatches = projectBasename(g.dir)
