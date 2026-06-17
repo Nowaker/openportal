@@ -5339,3 +5339,59 @@ Design notes:
 - Root cause is the original Models screen (#219), not the #224 Checkbox swap; the empty-state branch (`providers.length === 0`) predates it. The toggle correlation is incidental - interacting + tab navigation triggers the revalidation that returns empty.
 - Fix (`apps/web/src/components/models-settings.tsx`): pin the last non-empty providers per server in a ref and render from it whenever the live value is transiently empty. Honors the project's binding "never clear loaded content" invariant. Keyed by serverId so a real server switch does not show stale models. The shared `useProviders` hook (use-opencode.ts) was NOT touched - it carries another session's uncommitted changes; the screen-level pin is the safe, self-contained fix.
 - Verified before/after with the same empty-`/providers` interception: unfixed dev 5 -> 0 (blanked); fixed dev 5 -> 5 (`emptiedProvidersOnce: true`, `blanked: false`); fixed prod 127 -> 127. `bunx tsc --noEmit` from `apps/web/`: zero new errors in the edited file (only the ~30 pre-existing baseline). `scripts/deploy.sh` green (dev gate + prod promote + both render-checks); prod serves index-CEzKDcrJ.js.
+
+### 227. fs: read files anywhere opencode can, gated by opencode permissions (DONE - this commit)
+
+User prompt (verbatim):
+
+> https://portal.desktop.ts.nowaker.net:8443/session/ses_132d50fadffeQNjyym3jgjO7tt?server=srv-2dy1srwz#files:%2Fhome%2Fnowaker%2F.config%2Fopencode%2Fopencode.jsonc  - Path is outside the configured base directories. since opencode can write pretty much anywhere, openportal should read pretty much anywhere. let's make openportal read opencode config (via api) for file permissions + project level opencode config. evaluate and merge both according to opencode rules (maybe opencode sdk has some tools to "merge" configs, so we don't build such logic ourselves? opencode src in ~/webapps/opencode). openportal should deny reading what's denied to opencode itself. ask is effectively allow because openportal is user operated.
+
+(Accompanied by the standard worktree workflow rules: obey AGENTS.md +
+append AI_TODO; fresh worktree off local main; develop + test on the
+worktree; rebase onto local primary; FF-merge back; deploy + validate.)
+
+Design notes:
+
+- Problem: the file browser hard-gated every read on the configured
+  base-directory allowlist (resolveScopedPath in fs-security.ts,
+  duplicated inline in fs/list.ts), so ~/.config/opencode/opencode.jsonc
+  and anything else outside the bases was unreachable even though
+  opencode itself can read it.
+- Model (verified against opencode src + live /config): opencode's
+  `permission` is an object whose `read` / `external_directory` keys are
+  glob->effect maps (allow|ask|deny). Conversion to a flat ruleset
+  preserves key order; evaluation is last-match-wins via Wildcard.match
+  (`*` matches across `/`, anchored). The read tool matches the basename
+  for absolute reads / the project-relative path for in-project reads,
+  and does NOT assert external_directory (only mutations do). Defaults:
+  read=allow, external_directory=ask.
+- New apps/web/src/server/lib/opencode-permissions.ts fetches the active
+  server's merged config via fetchOpencode(getActiveServer().port,
+  /config?directory=<base>), extracts ONLY the read + external_directory
+  subtrees server-side (never forwards/logs/caches the rest of /config -
+  it embeds provider apiKeys), 2s TTL. Ports opencode's wildcard matcher
+  + ordered last-match evaluator + ~/$HOME expansion verbatim;
+  replaceAll/findLast avoided (apps/web tsconfig lib predates them).
+- fs-security.ts gains evaluateReadAccess(path) -> {decision:
+  allow|deny|legacy, ...}: realpath-canonicalize first (symlink-bypass
+  guard), `read` rule by basename / project-relative, external_directory
+  by absolute path for out-of-base paths; deny if either denies, else
+  allow (ask == allow). Oracle-reviewed: external_directory deny-list IS
+  applied to reads (UI users can click anything, unlike opencode's
+  intent-bounded read tool) and a config-fetch failure fails CLOSED to
+  the legacy base-dir allowlist.
+- read/raw/browse/list endpoints route through evaluateReadAccess;
+  allow-mode does real directory listings (browse anywhere), legacy-mode
+  preserves the prior virtual-bridge fail-closed behavior. Writes
+  (write/touch/mkdir) unchanged. DRY: the shared base-dir helpers now
+  live once in fs-security.ts.
+- Verified live (31 read + 146 external_directory rules) via a driver
+  script + HTTP curl against the worktree on :5200: opencode.jsonc ->
+  ALLOW; .env / id_rsa / credentials / /etc/shadow -> DENY; ~/.config ->
+  full real listing. 13 unit tests
+  (opencode-permissions.test.ts) pass. bunx tsc --noEmit from apps/web
+  introduced zero new errors in any touched file (only the ~30
+  pre-existing baseline errors remain).
+- Worktree feat/fs-opencode-read-permissions; committed, rebased onto
+  origin/main-nowaker, FF-merged into main-nowaker, deployed via
+  scripts/deploy.sh, validated on prod, pushed to origin + github.

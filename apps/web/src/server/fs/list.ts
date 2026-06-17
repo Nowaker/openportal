@@ -1,59 +1,36 @@
 import { defineHandler, getQuery } from "nitro/h3";
 import { readdir, lstat } from "fs/promises";
-import { resolve, dirname } from "path";
+import { dirname } from "path";
 import { homedir } from "os";
 import { readPortalConfig } from "../lib/portal-config";
-
-function expandTilde(p: string): string {
-  if (p === "~") return homedir();
-  if (p.startsWith("~/")) return homedir() + p.slice(1);
-  return p;
-}
-
-function isUnderAny(target: string, bases: string[]): boolean {
-  if (bases.length === 0) return true;
-  return bases.some((b) => target === b || target.startsWith(b + "/"));
-}
-
-function isAncestorOfAny(target: string, bases: string[]): boolean {
-  if (target === "/") return bases.some((b) => b.startsWith("/"));
-  return bases.some((b) => b.startsWith(target + "/"));
-}
+import {
+  evaluateReadAccess,
+  isAncestorOfAny,
+  isUnderAny,
+} from "../lib/fs-security";
 
 export default defineHandler(async (event) => {
   const query = getQuery(event);
-  const config = readPortalConfig();
-  const bases = config.directories;
-
+  const bases = readPortalConfig().directories;
   const rawPath = (query.path as string) || (bases[0] ?? homedir());
-  const expanded = expandTilde(rawPath);
 
-  let path: string;
-  try {
-    path = resolve(expanded);
-  } catch {
-    return { error: "Invalid path", path: rawPath };
+  const access = await evaluateReadAccess(rawPath);
+  if (access.decision === "deny") {
+    return { error: access.error, path: access.path };
   }
+  const path = access.path;
 
-  if (
-    bases.length > 0 &&
-    !isUnderAny(path, bases) &&
-    !isAncestorOfAny(path, bases)
-  ) {
-    return {
-      error: `Path is outside the configured base directories.`,
-      path,
-    };
-  }
-
-  const inside = isUnderAny(path, bases);
-
-  if (!inside && bases.length > 0) {
+  // Legacy fail-closed mode (opencode permission config unavailable): keep the
+  // prior base-directory behavior - a path above a base renders as a virtual
+  // bridge listing only the bases beneath it; a path neither under nor an
+  // ancestor of any base is rejected.
+  if (access.decision === "legacy" && bases.length > 0 && !access.insideBase) {
+    if (!access.isAncestor) {
+      return { error: "Path is outside the configured base directories.", path };
+    }
     const stripPrefix = path === "/" ? 1 : path.length + 1;
-    const isUnderTarget = (b: string) =>
-      path === "/" ? b.startsWith("/") : b.startsWith(path + "/");
     const virtual = bases
-      .filter(isUnderTarget)
+      .filter((b) => (path === "/" ? b.startsWith("/") : b.startsWith(path + "/")))
       .map((b) => ({ name: b.slice(stripPrefix), isDir: true }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -107,17 +84,22 @@ export default defineHandler(async (event) => {
     .map((e) => ({ name: e.name, isDir: true }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // In allow mode the parent is freely navigable ("read anywhere"); in legacy
+  // mode keep it scoped to the bases so the picker can't walk above the
+  // allowlist.
   const parent = path === "/" ? null : dirname(path);
-  const parentInScope =
-    parent === null
-      ? null
-      : isUnderAny(parent, bases) || isAncestorOfAny(parent, bases)
-        ? parent
-        : null;
+  const parentScoped =
+    access.decision === "legacy"
+      ? parent === null
+        ? null
+        : isUnderAny(parent, bases) || isAncestorOfAny(parent, bases)
+          ? parent
+          : null
+      : parent;
 
   return {
     path,
-    parent: parentInScope,
+    parent: parentScoped,
     home: homedir(),
     entries,
   };

@@ -7,7 +7,7 @@ import {
 import { createReadStream } from "node:fs";
 import { lstat } from "node:fs/promises";
 
-import { resolveScopedPath } from "../lib/fs-security";
+import { evaluateReadAccess } from "../lib/fs-security";
 
 // Inline-renderable media. Anything else falls through to
 // application/octet-stream with attachment disposition so the browser
@@ -73,12 +73,16 @@ export default defineHandler(async (event) => {
     setResponseStatus(event, 400);
     return "path query required";
   }
-  const scope = resolveScopedPath(rawPath);
-  if (!scope.ok) {
+  const access = await evaluateReadAccess(rawPath);
+  if (access.decision === "deny") {
     setResponseStatus(event, 403);
-    return scope.error ?? "denied";
+    return access.error ?? "denied";
   }
-  const path = scope.path;
+  if (access.decision === "legacy" && !access.insideBase) {
+    setResponseStatus(event, 403);
+    return "Path is outside the configured base directories.";
+  }
+  const path = access.path;
   let stat;
   try {
     stat = await lstat(path);

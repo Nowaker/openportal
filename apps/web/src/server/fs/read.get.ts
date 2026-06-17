@@ -1,7 +1,7 @@
 import { defineHandler, getQuery } from "nitro/h3";
 import { readFile, lstat, stat as statFollow } from "node:fs/promises";
 
-import { resolveScopedPath } from "../lib/fs-security";
+import { evaluateReadAccess } from "../lib/fs-security";
 
 const MAX_TEXT_BYTES = 5 * 1024 * 1024;
 
@@ -239,11 +239,17 @@ export default defineHandler(async (event) => {
   if (rawPath.length === 0) {
     return { error: "path query required" };
   }
-  const scope = resolveScopedPath(rawPath);
-  if (!scope.ok) {
-    return { error: scope.error, path: scope.path };
+  const access = await evaluateReadAccess(rawPath);
+  if (access.decision === "deny") {
+    return { error: access.error, path: access.path };
   }
-  const path = scope.path;
+  if (access.decision === "legacy" && !access.insideBase) {
+    return {
+      error: "Path is outside the configured base directories.",
+      path: access.path,
+    };
+  }
+  const path = access.path;
 
   let stat;
   try {

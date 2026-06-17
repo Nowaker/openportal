@@ -3,7 +3,7 @@ import { readdir, lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 
-import { resolveScopedPath } from "../lib/fs-security";
+import { evaluateReadAccess } from "../lib/fs-security";
 import { readPortalConfig } from "../lib/portal-config";
 
 interface Entry {
@@ -83,13 +83,29 @@ export default defineHandler(async (event) => {
   const rawPath = (query.path as string) || (bases[0] ?? homedir());
   const showHidden = query.show_hidden === "1" || query.show_hidden === "true";
   const withDirSize = query.with_dir_size === "1" || query.with_dir_size === "true";
-  const scope = resolveScopedPath(rawPath);
-  if (!scope.ok) {
-    return { error: scope.error, path: scope.path };
+  const access = await evaluateReadAccess(rawPath);
+  if (access.decision === "deny") {
+    return {
+      error: access.error,
+      path: access.path,
+      parent: access.path === "/" ? null : dirname(access.path),
+      home: homedir(),
+    };
   }
-  const path = scope.path;
+  const path = access.path;
 
-  if (bases.length > 0 && scope.insideBase === false) {
+  // Legacy fail-closed mode (opencode permission config unavailable): keep the
+  // prior base-directory behavior - a path above a base renders as a virtual
+  // bridge listing only the bases beneath it; a path neither under nor an
+  // ancestor of any base is rejected.
+  if (
+    access.decision === "legacy" &&
+    bases.length > 0 &&
+    access.insideBase === false
+  ) {
+    if (!access.isAncestor) {
+      return { error: "Path is outside the configured base directories.", path };
+    }
     const stripPrefix = path === "/" ? 1 : path.length + 1;
     const virtual = bases
       .filter((b) =>
