@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useProviders } from "@/hooks/use-opencode";
 import { useInstanceStore } from "@/stores/instance-store";
 import {
@@ -35,10 +35,28 @@ export function ModelsSettings() {
   const [filter, setFilter] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
 
-  const providers: RawProvider[] = useMemo(() => {
+  const liveProviders: RawProvider[] = useMemo(() => {
     const raw = data as { providers?: RawProvider[] } | undefined;
     return raw?.providers ?? [];
   }, [data]);
+
+  // keepPreviousData shields loading/error but NOT a successful empty
+  // /providers response (opencode flaking on /config/providers, then a
+  // global revalidation), which would blank an already-loaded list -
+  // violating the "never clear loaded content" invariant. Hence the
+  // per-server last-good pin below.
+  const lastGood = useRef<{ serverId: string | null; providers: RawProvider[] }>(
+    { serverId: null, providers: [] },
+  );
+  if (liveProviders.length > 0) {
+    lastGood.current = { serverId, providers: liveProviders };
+  }
+  const providers: RawProvider[] =
+    liveProviders.length > 0
+      ? liveProviders
+      : lastGood.current.serverId === serverId
+        ? lastGood.current.providers
+        : [];
 
   const latestSet = useMemo(
     () => computeLatestSet(providers),

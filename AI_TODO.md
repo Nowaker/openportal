@@ -5326,3 +5326,16 @@ Design notes:
 - Scope: the general far-back message permalink (`#msg-<id>` from copy-link-to-message) still uses the windowed `useSessionMessagesAround` loader + banner, which is correct for arbitrary messages thousands back that genuinely are not loaded. Only the session-title jump changed - the first prompt is always loaded, per the user's hint.
 - Verified end-to-end in worktree `portal-session-title-scroll` (branch `fix/session-title-scroll`, port 5200) via Playwright against a 602-message session: from bottom (scrollTop 6211) click1 -> 0, reset to 6211, repeat click2 -> 0 (the reported bug, now fixed), browser Back -> 6211 (prior scroll restored); the "Permalink view" banner never appeared on any step. `bunx tsc --noEmit` from `apps/web/`: 29 pre-existing baseline errors, zero in `session/$id.tsx`. `scripts/build.sh` green.
 - Process: branched from `origin/main-nowaker` (6b6e78c), committed on `fix/session-title-scroll`, rebased onto the fresh `origin/main-nowaker` tip, FF-merged into `main-nowaker`, deployed via `scripts/deploy.sh`, pushed to both remotes.
+
+### 226. Models settings: disabling a model checkbox blanks the entire list (DONE - this commit)
+
+User prompt (verbatim):
+
+> disabling the checkbox in settings for mode sometimes causes the entire list to go blank. most of the time. fix it.
+
+Design notes:
+
+- Repro (headless CDP): the toggle path itself is sound - 10 toggles (desktop mouse + mobile touch on prod's 127 models) never blanked and threw nothing. The blank comes from `useProviders()` going empty. Confirmed by intercepting one `/providers` refetch to return `{providers:[]}` (200) and forcing a remount-revalidation (tab-switch past the 5s dedupingInterval): the list collapsed 5 -> 0 with "no providers configured". SWR `keepPreviousData` only guards loading/error, NOT a successful EMPTY response, so opencode flaking on `/config/providers` (cf. #104) during any revalidation replaces the populated list with [].
+- Root cause is the original Models screen (#219), not the #224 Checkbox swap; the empty-state branch (`providers.length === 0`) predates it. The toggle correlation is incidental - interacting + tab navigation triggers the revalidation that returns empty.
+- Fix (`apps/web/src/components/models-settings.tsx`): pin the last non-empty providers per server in a ref and render from it whenever the live value is transiently empty. Honors the project's binding "never clear loaded content" invariant. Keyed by serverId so a real server switch does not show stale models. The shared `useProviders` hook (use-opencode.ts) was NOT touched - it carries another session's uncommitted changes; the screen-level pin is the safe, self-contained fix.
+- Verified before/after with the same empty-`/providers` interception: unfixed dev 5 -> 0 (blanked); fixed dev 5 -> 5 (`emptiedProvidersOnce: true`, `blanked: false`); fixed prod 127 -> 127. `bunx tsc --noEmit` from `apps/web/`: zero new errors in the edited file (only the ~30 pre-existing baseline). `scripts/deploy.sh` green (dev gate + prod promote + both render-checks); prod serves index-CEzKDcrJ.js.
