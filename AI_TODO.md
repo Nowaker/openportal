@@ -5395,3 +5395,31 @@ Design notes:
 - Worktree feat/fs-opencode-read-permissions; committed, rebased onto
   origin/main-nowaker, FF-merged into main-nowaker, deployed via
   scripts/deploy.sh, validated on prod, pushed to origin + github.
+
+### 228. Directory Context AGENTS.md injections: collapse with OMO wrapper (DONE - 4a7ffcd)
+
+User prompt (verbatim):
+
+> sometimes user prompt will see an injections of agents.md into their prompt, making it unreadable.
+>
+> ```
+> [Directory Context: /home/nowaker/projekty/nowaker/opencode-tools/AGENTS.md]
+> a lot of content here
+>
+> ---
+>
+> user prompt here
+> ```
+>
+> since `---` can also be in user prompt, it's ambiguous - no way to tell where exactly the injection ends.
+> i guess the best way to tell is to read that agents.md on openportal backend side and determine where exactly the injection ends.
+> but if no match (e.g. agents md changed since then), then use the heuristic - the first `---` is considered the agentsmd injection end.
+>
+>
+> purpose of this detection: use the same wrapping technique as the omo wrapper to make it look nice.
+
+Design notes:
+
+- Extend the existing OMO collapse pipeline instead of adding a second renderer: `[Directory Context: .../AGENTS.md]` becomes a collapsed OMO wrapper, so chat rendering, copy-stripping, sticky prompt overlays, and server-side lazy body stripping inherit the behavior.
+- Server-side stripping passes a resolver that reads the referenced `AGENTS.md` and uses exact content matching to find the real injection delimiter even when the AGENTS file itself contains `---` lines.
+- If the referenced file cannot be read or no exact match is found, fall back to the first delimiter line after the Directory Context header, matching the user-specified heuristic.

@@ -38,6 +38,7 @@
 // (message.removed, session.deleted) clear cache entries.
 
 import { fetchOpencode, getOpencodeClient } from "./opencode-client";
+import { readFileSync } from "node:fs";
 import { stashDataUrl, hasCachedThumb } from "./blob-cache";
 import { setCachedMessages } from "./messages-cache";
 import { parseOmoBlocks } from "../../lib/omo-injection";
@@ -171,7 +172,9 @@ function stripOmoFromUserText(messages: unknown, sessionId: string): void {
       const part = parts[pIdx] as { type?: string; text?: unknown };
       if (part?.type !== "text" || typeof part.text !== "string") continue;
       const original = part.text;
-      const blocks = parseOmoBlocks(original);
+      const blocks = parseOmoBlocks(original, {
+        directoryContextResolver: readDirectoryContextSource,
+      });
       if (!blocks.some((b) => b.kind === "omo")) continue;
       let blockIdx = 0;
       const out: string[] = [];
@@ -193,6 +196,17 @@ function stripOmoFromUserText(messages: unknown, sessionId: string): void {
       }
       (part as { text: string }).text = out.join("");
     }
+  }
+}
+
+function readDirectoryContextSource(filePath: string): string | null {
+  if (filePath.includes("\0") || !filePath.endsWith("/AGENTS.md")) {
+    return null;
+  }
+  try {
+    return readFileSync(filePath, "utf8");
+  } catch {
+    return null;
   }
 }
 
@@ -239,7 +253,9 @@ function stripOnePartBloat(
       delete p.metadata.anthropic.signature;
     }
     const inner = (
-      p.data as { metadata?: { anthropic?: { signature?: unknown } } } | undefined
+      p.data as
+        | { metadata?: { anthropic?: { signature?: unknown } } }
+        | undefined
     )?.metadata?.anthropic;
     if (inner && "signature" in inner) delete inner.signature;
     applyTextRule(p, content.rules.reasoning, "reasoning");
@@ -264,7 +280,13 @@ function stripOnePartBloat(
     const meta = state.metadata as Record<string, unknown> | undefined;
     if (meta && typeof meta === "object") {
       applyValueRule(meta, "output", outputRule, outputCap, "tool-call-output");
-      for (const k of ["description", "diff", "filediff", "filepath", "preview"]) {
+      for (const k of [
+        "description",
+        "diff",
+        "filediff",
+        "filepath",
+        "preview",
+      ]) {
         if (k in meta) delete meta[k];
       }
     }
