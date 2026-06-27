@@ -44,6 +44,10 @@ export interface OmoBlock {
   ref?: { blockId: string; bytes: number };
 }
 
+export interface OmoParseOptions {
+  directoryContextResolver?: (path: string) => string | null | undefined;
+}
+
 interface ExtractedUserMessage {
   wrapperText: string;
   userText: string;
@@ -62,14 +66,13 @@ const INITIATOR_CATCHERS: InitiatorCatcher[] = [
       body.match(/\[Status: \d+\/\d+ completed, \d+ remaining\]/)?.[0],
   },
   {
-    headerRegex: /\[SYSTEM DIRECTIVE: OH-MY-OPENCODE - CONTEXT WINDOW MONITOR\]/,
-    extractSummary: (body) =>
-      body.match(/\[Context Status: [^\]]+\]/)?.[0],
+    headerRegex:
+      /\[SYSTEM DIRECTIVE: OH-MY-OPENCODE - CONTEXT WINDOW MONITOR\]/,
+    extractSummary: (body) => body.match(/\[Context Status: [^\]]+\]/)?.[0],
   },
   {
     headerRegex: /\[BACKGROUND TASK COMPLETED\]/,
-    extractSummary: (body) =>
-      body.match(/^\*+ID:\*+\s+`([^`]+)`/m)?.[1],
+    extractSummary: (body) => body.match(/^\*+ID:\*+\s+`([^`]+)`/m)?.[1],
   },
 ];
 
@@ -78,7 +81,8 @@ const STRIPPED_MARKER_REGEX = /<!--OMO-STRIPPED:([^>]+)-->/g;
 const USER_TASK_REGEX = /<user-task>\s*([\s\S]*?)\s*<\/user-task>/g;
 const AUTO_SLASH_REGEX = /<auto-slash-command>[\s\S]*?<\/auto-slash-command>/g;
 const ULTRAWORK_REGEX = /<ultrawork-mode>[\s\S]*?<\/ultrawork-mode>/g;
-const COMMAND_INSTR_REGEX = /<command-instruction>[\s\S]*?<\/command-instruction>/g;
+const COMMAND_INSTR_REGEX =
+  /<command-instruction>[\s\S]*?<\/command-instruction>/g;
 const ORPHAN_SYSTEM_REMINDER_TAIL_REGEX =
   /\n+\s*Please address this message and continue with your tasks\.\s*<\/system-reminder>/g;
 const SEARCH_MODE_REGEX =
@@ -91,6 +95,8 @@ const CATEGORY_REMINDER_REGEX =
   /^\[Category\+Skill Reminder\][\s\S]*?(?=\n\n[^\s\[<]|$)/gm;
 const AGENT_USAGE_REMINDER_REGEX =
   /^\[Agent Usage Reminder\][\s\S]*?(?=\n\n[^\s\[<]|$)/gm;
+const DIRECTORY_CONTEXT_HEADER_REGEX =
+  /^\[Directory Context:\s*([^\]\n]+)\]\r?\n/gm;
 
 function firstLine(s: string): string {
   return s.split("\n", 1)[0] ?? "";
@@ -139,7 +145,8 @@ function collectUserTaskRanges(text: string): UserTaskRange[] {
     if (m.index === undefined) continue;
     const wholeStart = m.index;
     const wholeEnd = wholeStart + m[0].length;
-    const contentStart = wholeStart + m[0].indexOf(">", wholeStart - wholeStart) + 1;
+    const contentStart =
+      wholeStart + m[0].indexOf(">", wholeStart - wholeStart) + 1;
     const realContentStart = wholeStart + "<user-task>".length;
     const realContentEnd = wholeEnd - "</user-task>".length;
     out.push({
@@ -219,7 +226,8 @@ function findLastInjectionHeaderOffset(segment: string): number {
 
 function headerLineAt(text: string, headerStart: number): string {
   const eol = text.indexOf("\n", headerStart);
-  const slice = eol < 0 ? text.slice(headerStart) : text.slice(headerStart, eol);
+  const slice =
+    eol < 0 ? text.slice(headerStart) : text.slice(headerStart, eol);
   return slice;
 }
 
@@ -288,14 +296,15 @@ function collectStrippedMarkerRanges(text: string): Range[] {
     if (!blockId) continue;
     const header = meta.header || "OMO directive";
     const summary = meta.summary || undefined;
-    const segments = Array.isArray(meta.segments) && meta.segments.length > 0
-      ? meta.segments
-          .filter((s) => s && typeof (s as OmoSegment).header === "string")
-          .map((s) => ({
-            header: (s as OmoSegment).header,
-            summary: (s as OmoSegment).summary,
-          }))
-      : [{ header, summary }];
+    const segments =
+      Array.isArray(meta.segments) && meta.segments.length > 0
+        ? meta.segments
+            .filter((s) => s && typeof (s as OmoSegment).header === "string")
+            .map((s) => ({
+              header: (s as OmoSegment).header,
+              summary: (s as OmoSegment).summary,
+            }))
+        : [{ header, summary }];
     out.push({
       start: m.index,
       end: m.index + m[0].length,
@@ -326,8 +335,61 @@ function collectOrphanSystemReminderTailRanges(text: string): Range[] {
   return out;
 }
 
-function collectAllOmoRanges(text: string): Range[] {
+function collectDirectoryContextRanges(
+  text: string,
+  resolver: OmoParseOptions["directoryContextResolver"],
+): Range[] {
+  const out: Range[] = [];
+  for (const m of text.matchAll(DIRECTORY_CONTEXT_HEADER_REGEX)) {
+    if (m.index === undefined) continue;
+    const path = (m[1] ?? "").trim();
+    if (!path) continue;
+    const contentStart = m.index + m[0].length;
+    const exactEnd = findExactDirectoryContextEnd(
+      text,
+      contentStart,
+      resolver?.(path) ?? null,
+    );
+    const end = exactEnd ?? findFirstFenceLineEnd(text, contentStart);
+    if (end === null || end <= contentStart) continue;
+    const summary = path;
+    out.push({
+      start: m.index,
+      end,
+      header: "[Directory Context]",
+      summary,
+      priority: 5,
+      segments: [{ header: "[Directory Context]", summary }],
+    });
+  }
+  return out;
+}
+
+function findExactDirectoryContextEnd(
+  text: string,
+  contentStart: number,
+  source: string | null,
+): number | null {
+  if (!source || !text.startsWith(source, contentStart)) return null;
+  const afterSource = contentStart + source.length;
+  const rest = text.slice(afterSource);
+  const fence = rest.match(/^(?:\r?\n)*[ \t]*---[ \t]*(?:\r?\n|$)/);
+  return afterSource + (fence ? fence[0].length : 0);
+}
+
+function findFirstFenceLineEnd(text: string, start: number): number | null {
+  const fence = /^[ \t]*---[ \t]*(?:\r?\n|$)/gm;
+  fence.lastIndex = start;
+  const m = fence.exec(text);
+  return m ? m.index + m[0].length : null;
+}
+
+function collectAllOmoRanges(text: string, options: OmoParseOptions): Range[] {
   const stripped = collectStrippedMarkerRanges(text);
+  const directoryContext = collectDirectoryContextRanges(
+    text,
+    options.directoryContextResolver,
+  );
   const initiator = collectInitiatorRanges(text);
   const ultrawork = collectXmlRanges(
     text,
@@ -353,7 +415,11 @@ function collectAllOmoRanges(text: string): Range[] {
     text,
     COMMAND_INSTR_REGEX,
     "<command-instruction>",
-    (body) => firstLine(body.replace(/^<command-instruction>\s*/, "").trim()).slice(0, 120),
+    (body) =>
+      firstLine(body.replace(/^<command-instruction>\s*/, "").trim()).slice(
+        0,
+        120,
+      ),
     2,
   );
   const systemReminder = collectSystemReminderRanges(text);
@@ -363,7 +429,8 @@ function collectAllOmoRanges(text: string): Range[] {
     SEARCH_MODE_REGEX,
     "[search-mode]",
     (body) =>
-      body.match(/MAXIMIZE SEARCH EFFORT[^\n]*/)?.[0] ?? "(search-mode preamble)",
+      body.match(/MAXIMIZE SEARCH EFFORT[^\n]*/)?.[0] ??
+      "(search-mode preamble)",
   );
   const analyzeMode = collectLineRanges(
     text,
@@ -376,8 +443,7 @@ function collectAllOmoRanges(text: string): Range[] {
     text,
     MANDATORY_PARAMS_REGEX,
     "MANDATORY params",
-    (body) =>
-      body.match(/^MANDATORY ([a-z_]+) params:/)?.[1] ?? undefined,
+    (body) => body.match(/^MANDATORY ([a-z_]+) params:/)?.[1] ?? undefined,
   );
   const catReminder = collectLineRanges(
     text,
@@ -394,6 +460,7 @@ function collectAllOmoRanges(text: string): Range[] {
 
   return [
     ...stripped,
+    ...directoryContext,
     ...initiator,
     ...ultrawork,
     ...autoSlash,
@@ -447,7 +514,9 @@ function collectSystemReminderRanges(text: string): Range[] {
 
     let end = coreEnd;
     const trailing = text.slice(end);
-    const initiatorMatch = trailing.match(/^\s*<!-- OMO_INTERNAL_INITIATOR -->/);
+    const initiatorMatch = trailing.match(
+      /^\s*<!-- OMO_INTERNAL_INITIATOR -->/,
+    );
     if (initiatorMatch) {
       end += initiatorMatch[0].length;
     }
@@ -461,7 +530,10 @@ function collectSystemReminderRanges(text: string): Range[] {
     const summary =
       extracted?.summary ??
       blockText.match(/\[[A-Z][^\]\n]+\]/)?.[0] ??
-      firstLine(blockText.replace(/^<system-reminder>\s*/, "").trim()).slice(0, 120);
+      firstLine(blockText.replace(/^<system-reminder>\s*/, "").trim()).slice(
+        0,
+        120,
+      );
 
     out.push({
       start,
@@ -480,7 +552,9 @@ function collectSystemReminderRanges(text: string): Range[] {
   return out;
 }
 
-function extractUserMessageFromSystemReminder(coreBody: string): ExtractedUserMessage | undefined {
+function extractUserMessageFromSystemReminder(
+  coreBody: string,
+): ExtractedUserMessage | undefined {
   const openTag = "<system-reminder>";
   const closeTag = "</system-reminder>";
   if (!coreBody.startsWith(openTag) || !coreBody.endsWith(closeTag)) {
@@ -495,7 +569,8 @@ function extractUserMessageFromSystemReminder(coreBody: string): ExtractedUserMe
 
   const leading = match[1] ?? "";
   const userText = match[2] ?? "";
-  const summary = match[3] ?? "Please address this message and continue with your tasks.";
+  const summary =
+    match[3] ?? "Please address this message and continue with your tasks.";
   if (!userText.trim() || isStandaloneOmoPayload(userText)) {
     return undefined;
   }
@@ -515,7 +590,9 @@ function isStandaloneOmoPayload(text: string): boolean {
   return ranges[0]!.start === 0 && ranges[0]!.end === trimmed.length;
 }
 
-function collectFencedCodeBlockRanges(text: string): Array<{ start: number; end: number }> {
+function collectFencedCodeBlockRanges(
+  text: string,
+): Array<{ start: number; end: number }> {
   const out: Array<{ start: number; end: number }> = [];
   const fenceRegex = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*$/gm;
   let open: { start: number; marker: string } | null = null;
@@ -601,8 +678,8 @@ function consolidateAdjacent(ranges: Range[], text: string): Range[] {
         header: r.priority > last.priority ? r.header : last.header,
         summary:
           r.priority > last.priority
-            ? r.summary ?? last.summary
-            : last.summary ?? r.summary,
+            ? (r.summary ?? last.summary)
+            : (last.summary ?? r.summary),
         priority: Math.max(last.priority, r.priority),
         segments: [...last.segments, ...r.segments],
         ref: last.ref ?? r.ref,
@@ -635,7 +712,10 @@ export function userTextFromOmoBlocks(blocks: OmoBlock[]): string {
   return userText.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function parseOmoBlocks(text: string): OmoBlock[] {
+export function parseOmoBlocks(
+  text: string,
+  options: OmoParseOptions = {},
+): OmoBlock[] {
   if (!text) return [{ kind: "user", text }];
 
   const allUserTasks: UserTaskRange[] = [];
@@ -650,8 +730,9 @@ export function parseOmoBlocks(text: string): OmoBlock[] {
   }
 
   const codeBlockRanges = collectFencedCodeBlockRanges(text);
-  const rawOmo = collectAllOmoRanges(text).filter(
-    (r) => !codeBlockRanges.some((cr) => r.start >= cr.start && r.end <= cr.end),
+  const rawOmo = collectAllOmoRanges(text, options).filter(
+    (r) =>
+      !codeBlockRanges.some((cr) => r.start >= cr.start && r.end <= cr.end),
   );
 
   // <user-task> instances INSIDE another OMO wrapper (e.g. inside
@@ -685,7 +766,7 @@ export function parseOmoBlocks(text: string): OmoBlock[] {
     }
     blocks.push({
       kind: "omo",
-      text: r.ref ? "" : r.textOverride ?? text.slice(r.start, r.end),
+      text: r.ref ? "" : (r.textOverride ?? text.slice(r.start, r.end)),
       header: r.header,
       summary: r.summary,
       segments: r.segments,
@@ -716,8 +797,7 @@ function userTaskContentOnly(
   userTasks: UserTaskRange[],
 ): string {
   const relevant = userTasks.filter(
-    (ut) =>
-      ut.start >= chunkStartAbs && ut.end <= chunkStartAbs + chunk.length,
+    (ut) => ut.start >= chunkStartAbs && ut.end <= chunkStartAbs + chunk.length,
   );
   if (relevant.length === 0) return chunk;
   let out = "";

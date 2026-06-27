@@ -34,7 +34,9 @@ Please address this message and continue with your tasks.
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.kind).toBe("omo");
     expect(blocks[0]?.summary).toBe("[BACKGROUND TASK RESULT READY]");
-    expect(blocks[0]?.text).toContain("Please address this message and continue with your tasks.");
+    expect(blocks[0]?.text).toContain(
+      "Please address this message and continue with your tasks.",
+    );
   });
 
   test("extracts real user text from the user-message system-reminder boilerplate", () => {
@@ -50,13 +52,16 @@ Please address this message and continue with your tasks.
 
     expect(blocks).toHaveLength(2);
     expect(blocks[0]?.kind).toBe("omo");
-    expect(blocks[0]?.summary).toBe("Please address this message and continue with your tasks.");
+    expect(blocks[0]?.summary).toBe(
+      "Please address this message and continue with your tasks.",
+    );
     expect(blocks[0]?.text).not.toContain(userText);
     expect(blocks[1]).toEqual({ kind: "user", text: userText });
   });
 
   test("does not collapse a system-reminder cited inside a fenced code block", () => {
-    const text = "when i cite some code, it shouldn't be omo-wrapped:\n\n```\n<system-reminder>\n[BACKGROUND TASK RESULT READY]\nsome content here\n</system-reminder>\n\n```\n\nthat's the citation.";
+    const text =
+      "when i cite some code, it shouldn't be omo-wrapped:\n\n```\n<system-reminder>\n[BACKGROUND TASK RESULT READY]\nsome content here\n</system-reminder>\n\n```\n\nthat's the citation.";
 
     const blocks = parseOmoBlocks(text);
 
@@ -66,7 +71,8 @@ Please address this message and continue with your tasks.
   });
 
   test("still detects a real system-reminder outside the fenced code block", () => {
-    const text = "```\n<system-reminder>\ncited example\n</system-reminder>\n```\n\n<system-reminder>\n[BACKGROUND TASK RESULT READY]\nreal one\n</system-reminder>";
+    const text =
+      "```\n<system-reminder>\ncited example\n</system-reminder>\n```\n\n<system-reminder>\n[BACKGROUND TASK RESULT READY]\nreal one\n</system-reminder>";
 
     const blocks = parseOmoBlocks(text);
 
@@ -77,7 +83,8 @@ Please address this message and continue with your tasks.
   });
 
   test("ignores orphan reminder tail inside fenced code blocks", () => {
-    const text = "```\n<system-reminder>\nfoo\n</system-reminder>\n```\n\nnormal user prose continues here.";
+    const text =
+      "```\n<system-reminder>\nfoo\n</system-reminder>\n```\n\nnormal user prose continues here.";
 
     const blocks = parseOmoBlocks(text);
 
@@ -105,6 +112,50 @@ Please address this message and continue with your tasks.
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.kind).toBe("omo");
     expect(blocks[0]?.summary).toBe("[BACKGROUND TASK RESULT READY]");
+  });
+});
+
+describe("parseOmoBlocks directory context wrappers", () => {
+  test("uses the referenced AGENTS.md contents to find the real delimiter", () => {
+    const path = "/workspace/project/AGENTS.md";
+    const agents = `# Rules\n\nThis file can contain markdown fences.\n\n---\n\nStill AGENTS content.\n`;
+    const userText = "actual user request";
+    const text = `[Directory Context: ${path}]\n${agents}\n---\n${userText}`;
+
+    const blocks = parseOmoBlocks(text, {
+      directoryContextResolver: (p) => (p === path ? agents : null),
+    });
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.kind).toBe("omo");
+    expect(blocks[0]?.header).toBe("[Directory Context]");
+    expect(blocks[0]?.summary).toBe(path);
+    expect(blocks[0]?.text).toContain("Still AGENTS content.");
+    expect(blocks[1]).toEqual({ kind: "user", text: userText });
+  });
+
+  test("falls back to the first delimiter line when the source file cannot be read", () => {
+    const path = "/workspace/project/AGENTS.md";
+    const userText = "actual user request";
+    const text = `[Directory Context: ${path}]\n# Old rules\n---\n${userText}`;
+
+    const blocks = parseOmoBlocks(text, {
+      directoryContextResolver: () => null,
+    });
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.kind).toBe("omo");
+    expect(blocks[0]?.summary).toBe(path);
+    expect(blocks[1]).toEqual({ kind: "user", text: userText });
+  });
+
+  test("copy text drops collapsed directory context", () => {
+    const path = "/workspace/project/AGENTS.md";
+    const text = `[Directory Context: ${path}]\n# Rules\n---\nactual user request`;
+
+    expect(userTextFromOmoBlocks(parseOmoBlocks(text))).toBe(
+      "actual user request",
+    );
   });
 });
 
