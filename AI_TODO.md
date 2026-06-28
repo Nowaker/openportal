@@ -5395,3 +5395,48 @@ Design notes:
 - Worktree feat/fs-opencode-read-permissions; committed, rebased onto
   origin/main-nowaker, FF-merged into main-nowaker, deployed via
   scripts/deploy.sh, validated on prod, pushed to origin + github.
+
+### 228. Fork modal never finishes / 504s on large sessions (DONE - this commit)
+
+User prompt (verbatim):
+
+> this feature never 'finishes'. the modal is stuck on creating fork. even though the fork gets eventually created and in a new portal window i can see it was created. might be because this fork call takes forever? could result in bad gateway? i don't know. but now i forked another session, i already see the fork, and yet portal modal still spinning, and fork request in network tab showing as pending. something is wrong that needs fixing.
+
+Design notes:
+
+- Root cause: opencode's `POST /session/:id/fork` copies the whole
+  conversation message-by-message and holds the HTTP response open the
+  entire time. The browser reaches the portal through Caddy, whose
+  `(backend_timeouts)` snippet sets `response_header_timeout 5m`. For a
+  large session the fork exceeds 5m, so Caddy returns 504 to the browser
+  while opencode keeps copying server-side - hence "the fork appears, but
+  the modal spins forever then fails with HTTP 504". Confirmed: forking
+  this very session (large) ran ~2-3 min server-side.
+- Fix: run the fork as a detached portal-side job so the browser never
+  holds one long request. `apps/web/src/server/lib/fork-jobs.ts` is an
+  in-memory registry; `startForkJob` fires the opencode fork via
+  fetchOpencode NOT awaited on the request, returns a `jobId`
+  immediately. `fork.post.ts` now returns `{ jobId }` (was: blocked on
+  res.json()). New GET `opencode/[port]/fork-job/[jobId].get.ts` returns
+  `{ status, forkId, error }`; 404 once expired/unknown. Job result held
+  10m so a poll gap / reconnect still resolves; running jobs never GC'd.
+- DRY: shared client kernel `apps/web/src/lib/fork-session.ts`
+  (`forkSessionViaJob`) does POST-start + 1.5s poll until done/error,
+  30m ceiling, tolerant of a single transient poll blip. BOTH browser
+  fork entry points route through it: the per-message Fork dialog
+  (`$id.tsx` handleForkConfirm, then keeps the existing optional
+  move-to-project + navigate) and the sidebar subagent Fork buttons
+  (`app-sidebar-nav.tsx` doFork). Every browser->Caddy request is now
+  short, so the 5m header timeout can never fire regardless of fork
+  duration. No Caddy change. btw orchestration unaffected (it calls
+  fetchOpencode directly server-side, not the portal route).
+- No opencode-ID minting: jobId is a portal id (`fork_...`); the
+  `ses_...` still comes from opencode's fork response.
+- Verified on worktree :5200 against real opencode: POST returned in
+  10ms with a jobId; status polled `running` (all 200s, milliseconds)
+  across a ~2-3 min fork then flipped to `done` with a real forkId; the
+  forked session exists in opencode; bogus jobId -> 404. Browser smoke
+  of the sidebar Fork path: click -> "Forking..." -> navigated to the
+  new session in ~24s with a success toast, zero console errors. Full
+  `bunx tsc --noEmit` from apps/web introduced no new errors in any
+  touched file (only the ~30 pre-existing baseline errors remain).

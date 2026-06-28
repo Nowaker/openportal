@@ -34,6 +34,7 @@ import { buildPromptWithTemplates, parsePromptWithTemplates, insertSlashTemplate
 import { ThinkingSelect } from "@/components/thinking-select";
 import { MessageInfoModal } from "@/components/message-info-modal";
 import { ForkDialog } from "@/components/fork-dialog";
+import { forkSessionViaJob } from "@/lib/fork-session";
 import { ArchivedSessionOverlay } from "@/components/archived-session-overlay";
 import { parseOmoBlocks, userTextFromOmoBlocks } from "@/lib/omo-injection";
 import {
@@ -5044,21 +5045,11 @@ function SessionPage() {
       setForkError(null);
       setForkPhase("asking");
       try {
-        const res = await fetch(
-          `/api/opencode/${port}/session/${sessionId}/fork`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messageID: forkRequest.info.id }),
-          },
-        );
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${await readErrorMessage(res)}`);
-        }
-        const newSession = (await res.json()) as { id: string };
-        if (!newSession?.id) {
-          throw new Error("Fork response missing session id");
-        }
+        const newSession = await forkSessionViaJob({
+          port,
+          sourceSessionId: sessionId,
+          messageID: forkRequest.info.id,
+        });
         if (targetDirectory) {
           setForkPhase("moving");
           const moveRes = await fetch(

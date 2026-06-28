@@ -54,6 +54,7 @@ import { LongOpDialog } from "@/components/long-op-dialog";
 import { SessionStatusBadge } from "@/components/session-status-badge";
 import { SessionContextDial } from "@/components/session-context-dial";
 import { templateIconFor } from "@/lib/template-icons";
+import { forkSessionViaJob } from "@/lib/fork-session";
 import { McpInfoModal } from "@/components/mcp-info-modal";
 import { PluginInfoModal } from "@/components/plugin-info-modal";
 import { useHashOpen, useHashValue } from "@/hooks/use-hash-open";
@@ -2043,29 +2044,17 @@ function SubagentJumpButtons({
   ) => {
     toast.info(`Forking: ${label}...`);
     try {
-      const r = await fetch(
-        `/api/opencode/${port}/session/${encodeURIComponent(targetSessionID)}/fork`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(messageID ? { messageID } : {}),
-        },
-      );
-      if (!r.ok) {
-        toast.error(`Fork failed: HTTP ${r.status}`);
-        return;
-      }
-      const body = (await r.json()) as { id?: string };
-      if (body?.id) {
-        toast.success(`Forked to ${body.id}`);
-        void navigate({
-          to: "/session/$id",
-          params: { id: body.id },
-          search: true,
-        });
-      } else {
-        toast.success("Forked");
-      }
+      const newSession = await forkSessionViaJob({
+        port,
+        sourceSessionId: targetSessionID,
+        messageID,
+      });
+      toast.success(`Forked to ${newSession.id}`);
+      void navigate({
+        to: "/session/$id",
+        params: { id: newSession.id },
+        search: true,
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Fork request failed.");
     }
