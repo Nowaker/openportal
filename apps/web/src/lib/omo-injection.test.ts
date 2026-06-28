@@ -116,6 +116,24 @@ Please address this message and continue with your tasks.
 });
 
 describe("parseOmoBlocks directory context wrappers", () => {
+  test("uses the explicit Directory Context end marker before source and delimiter fallbacks", () => {
+    const path = "/workspace/project/AGENTS.md";
+    const agents = `# Rules\n\n---\n\nStill AGENTS content.\n`;
+    const userText = "actual user request";
+    const text = `[Directory Context: ${path}]\n${agents}\n<!-- OMO_DIRECTORY_CONTEXT_END -->\n${userText}`;
+
+    const blocks = parseOmoBlocks(text, {
+      directoryContextResolver: () => null,
+    });
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.kind).toBe("omo");
+    expect(blocks[0]?.header).toBe("[Directory Context]");
+    expect(blocks[0]?.summary).toBe(path);
+    expect(blocks[0]?.text).toContain("Still AGENTS content.");
+    expect(blocks[1]).toEqual({ kind: "user", text: userText });
+  });
+
   test("uses the referenced AGENTS.md contents to find the real delimiter", () => {
     const path = "/workspace/project/AGENTS.md";
     const agents = `# Rules\n\nThis file can contain markdown fences.\n\n---\n\nStill AGENTS content.\n`;

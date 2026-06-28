@@ -97,6 +97,7 @@ const AGENT_USAGE_REMINDER_REGEX =
   /^\[Agent Usage Reminder\][\s\S]*?(?=\n\n[^\s\[<]|$)/gm;
 const DIRECTORY_CONTEXT_HEADER_REGEX =
   /^\[Directory Context:\s*([^\]\n]+)\]\r?\n/gm;
+const DIRECTORY_CONTEXT_END_MARKER = "<!-- OMO_DIRECTORY_CONTEXT_END -->";
 
 function firstLine(s: string): string {
   return s.split("\n", 1)[0] ?? "";
@@ -345,12 +346,14 @@ function collectDirectoryContextRanges(
     const path = (m[1] ?? "").trim();
     if (!path) continue;
     const contentStart = m.index + m[0].length;
+    const markerEnd = findDirectoryContextMarkerEnd(text, contentStart);
     const exactEnd = findExactDirectoryContextEnd(
       text,
       contentStart,
       resolver?.(path) ?? null,
     );
-    const end = exactEnd ?? findFirstFenceLineEnd(text, contentStart);
+    const end =
+      markerEnd ?? exactEnd ?? findFirstFenceLineEnd(text, contentStart);
     if (end === null || end <= contentStart) continue;
     const summary = path;
     out.push({
@@ -363,6 +366,21 @@ function collectDirectoryContextRanges(
     });
   }
   return out;
+}
+
+function findDirectoryContextMarkerEnd(
+  text: string,
+  start: number,
+): number | null {
+  const markerStart = text.indexOf(DIRECTORY_CONTEXT_END_MARKER, start);
+  if (markerStart < 0) return null;
+  let end = markerStart + DIRECTORY_CONTEXT_END_MARKER.length;
+  if (text.startsWith("\r\n", end)) {
+    end += 2;
+  } else if (text.startsWith("\n", end)) {
+    end += 1;
+  }
+  return end;
 }
 
 function findExactDirectoryContextEnd(

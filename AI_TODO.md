@@ -5423,3 +5423,15 @@ Design notes:
 - Extend the existing OMO collapse pipeline instead of adding a second renderer: `[Directory Context: .../AGENTS.md]` becomes a collapsed OMO wrapper, so chat rendering, copy-stripping, sticky prompt overlays, and server-side lazy body stripping inherit the behavior.
 - Server-side stripping passes a resolver that reads the referenced `AGENTS.md` and uses exact content matching to find the real injection delimiter even when the AGENTS file itself contains `---` lines.
 - If the referenced file cannot be read or no exact match is found, fall back to the first delimiter line after the Directory Context header, matching the user-specified heuristic.
+
+### 229. Directory Context AGENTS.md injections: deterministic upstream end marker (DONE - this commit)
+
+User prompt (verbatim):
+
+> Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+
+Design notes:
+
+- Follow-up to #228 after tracing the true emitter: `opencode-agents-local-md-plugin` was not the source of `[Directory Context: .../AGENTS.md]`; the editable source is `oh-my-openagent/packages/agents-md-core/src/formatter.ts`.
+- Add a deterministic `<!-- OMO_DIRECTORY_CONTEXT_END -->` marker in the upstream formatter so future injected blocks are unambiguous by construction.
+- Update OpenPortal `parseOmoBlocks()` to prefer the marker, while preserving exact-AGENTS matching and first-`---` fallback for older cached messages and non-marker emitters.
