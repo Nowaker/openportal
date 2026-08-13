@@ -5440,3 +5440,66 @@ Design notes:
   new session in ~24s with a success toast, zero console errors. Full
   `bunx tsc --noEmit` from apps/web introduced no new errors in any
   touched file (only the ~30 pre-existing baseline errors remain).
+
+### 229. `?server=` must be authoritative, with a permalink-preserving fallback (DONE - this commit)
+
+User prompt (verbatim):
+
+> Server param should always be consumed. Moreover, if server is defined, and no connection to that server, or no definition exists, it should go to /servers?server=requestedServerId#anyotherretainedparams (because openportal is permalink based) and that page should say something about it, let me click on the server 'open' button, and it will go where I originally wanted, on the right server. [permalinks everywhere, that open button must lead to the right place. No session dependence]
+
+Design notes:
+
+- Root cause: `_app.tsx` consumed `?server=` in a `useEffect` gated on
+  `hydrated`, firing a fire-and-forget `POST /api/servers/active`. The
+  instance store is localStorage-persisted, so it already holds the
+  PREVIOUSLY active server on a cold load; every `usePort()`-keyed hook
+  had already fired by the time that POST landed. Measured with CDP:
+  opening a session permalink cold sent all 35 data calls to the old
+  server, never the one named in the URL.
+- Fix, two mechanisms. (1) `beforeLoad` on `/_app` awaits
+  `ensureBoundToServer()`, so binding settles before the layout and its
+  hooks mount at all - an effect could only ever run after the first
+  render had already bootstrapped off the wrong opencode. (2)
+  `usePort()` returns null while the store disagrees with the URL's
+  server, starving every port-keyed SWR key of a key; that is what makes
+  "no request can reach the wrong opencode" true regardless of which
+  component mounts first.
+- New `POST /api/servers/bind` answers "can this link be honoured?" -
+  distinct from `/api/servers/active`, the operator gesture, which
+  trusts the caller and only checks registry membership. bind refuses to
+  switch onto a dead server and reports `unknown` / `unreachable`. The
+  already-active case short-circuits BEFORE the reachability check, so
+  reloading the server you are on keeps working while its opencode is
+  down (the cached-data path) and costs no registry write.
+- DRY: the bind response carries the full `/api/instance/self` body so
+  the client seeds SWR instead of racing a second fetch. That forced the
+  payload builder out of the route into
+  `server/lib/self-instance.ts`; `instance/self.ts` is now a thin
+  caller. One definition, two callers.
+- Fallback: `buildServerFallbackTarget()` bounces to
+  `/servers?...&from=<pathname>&serverFallback=<reason>`, preserving
+  every other search param AND the hash. `buildRestoreTarget()` is the
+  inverse and rewrites `server` to whichever row the user opened. Pure
+  URL arithmetic - no session load, no session existence needed, which
+  is the "No session dependence" requirement. `from` is validated
+  against absolute/protocol-relative URLs so Open can never become an
+  open redirect.
+- Both Open controls route through one `restoreTargetFor()`: the adopt
+  path (inactive rows, a Button) and the plain Link (the active row).
+  The active row previously hardcoded `to="/"` and would have dropped
+  the destination when the dead link's server happened to be active.
+- Tests: `apps/web/src/lib/server-permalink.test.ts`, 14 cases covering
+  open-redirect rejection, param/hash preservation, no `from` stacking
+  on a double bounce, restoring to a different server than requested,
+  and a fallback->restore round-trip. Full suite 244 pass / 0 fail;
+  `bunx tsc --noEmit` introduced no new errors (63-line pre-existing
+  baseline unchanged).
+- Verified empirically on worktree :5200 against three registry entries
+  (alpha 4096 live, bravo 4998 live, dead 59999) driving real Chromium
+  over CDP, 32/32 assertions: cold cross-server permalink issued 43/43
+  requests to the requested server and zero to the previously-active
+  one; already-active reload did not redirect or re-bind; unknown and
+  unreachable both landed on `/servers` with id, extra param and
+  `#msg-...` intact and the page naming the id and the reason; Open
+  restored the original path + hash + extra param on the clicked
+  server, via both the active-row link and the inactive-row adopt path.

@@ -1,4 +1,10 @@
-import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowPathIcon,
@@ -17,6 +23,8 @@ import { CompactBanner } from "@/components/ui/compact-banner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { BreadcrumbProvider } from "@/contexts/breadcrumb-context";
 import { useInstanceStore } from "@/stores/instance-store";
+import { ensureBoundToServer, setRequestedServerId } from "@/lib/server-binding";
+import { buildServerFallbackTarget } from "@/lib/server-permalink";
 import { useBootstrapPrefetch, useSelfInstance } from "@/hooks/use-opencode";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useBuildMismatch } from "@/hooks/use-build-mismatch";
@@ -449,15 +457,49 @@ function NotificationPermissionBanner() {
 
 interface AppSearch {
   server?: string;
+  // Unknown params ride through untouched: a permalink that also carries
+  // someone else's query string must survive both the emission effect
+  // below and the /servers fallback.
+  [key: string]: unknown;
 }
 
 export const Route = createFileRoute("/_app")({
   validateSearch: (raw: Record<string, unknown>): AppSearch => ({
+    ...raw,
     server:
       typeof raw.server === "string" && raw.server.length > 0
         ? raw.server
         : undefined,
   }),
+  // Permalink consumption. Deliberately NOT an effect: beforeLoad
+  // settles before the layout and its data hooks mount, so the requested
+  // server is bound (or refused) before anything is fetched. The effect
+  // this replaced could only run after the first render had already
+  // bootstrapped off the previously-active opencode.
+  beforeLoad: async ({ search, location }) => {
+    const requested =
+      typeof search.server === "string" && search.server.length > 0
+        ? search.server
+        : null;
+    setRequestedServerId(requested);
+    if (!requested) return;
+    const outcome = await ensureBoundToServer(requested);
+    if (outcome.status !== "unknown" && outcome.status !== "unreachable") return;
+    // The link cannot be honoured. Hand the whole destination to the
+    // picker rather than quietly showing another server's data under a
+    // URL that claims this one.
+    setRequestedServerId(null);
+    const target = buildServerFallbackTarget(
+      { pathname: location.pathname, search, hash: location.hash },
+      outcome.status,
+    );
+    throw redirect({
+      to: "/servers",
+      search: target.search,
+      hash: target.hash,
+      replace: true,
+    });
+  },
   component: AppLayout,
 });
 
@@ -474,42 +516,21 @@ function AppLayout() {
   useBootstrapPrefetch();
   useStuckDetectorEvents();
 
-  // Permalink consumption: when a URL carries ?server=<id> and the
-  // instance store is not yet bound to that server, POST to
-  // /api/servers/active so the rest of the app talks to the intended
-  // opencode. Fire-once per (id) - we never override a freshly-clicked
-  // 'Use' action from /servers. Suppress when self-instance has not
-  // hydrated yet so we don't race the initial bootstrap.
-  const lastBoundFromUrlRef = useRef<string | null>(null);
-  useEffect(() => {
-    const targetId = search.server;
-    if (!targetId) return;
-    if (!hydrated) return;
-    if (instance?.id === targetId) return;
-    if (lastBoundFromUrlRef.current === targetId) return;
-    lastBoundFromUrlRef.current = targetId;
-    void fetch("/api/servers/active", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: targetId }),
-    }).catch(() => {
-      // Permalink-driven activation is best-effort; if the server id is
-      // unknown on this openportal, the existing redirect/banner path
-      // handles the fallback.
-    });
-  }, [search.server, hydrated, instance?.id]);
-
   // Permalink emission: keep ?server=<id> in sync with the active
-  // instance so every URL copies as a permalink. Skip until hydrated -
-  // pre-hydration we'd stamp the wrong id (or null) ahead of the
-  // consumer effect.
+  // instance so every URL copies as a permalink. Consumption is handled
+  // in beforeLoad above. Skip until hydrated - pre-hydration we'd stamp
+  // the wrong id (or null). Merges rather than replaces the search so
+  // any other params the URL carries survive the stamp.
   useEffect(() => {
     if (!hydrated) return;
     if (!instance?.id) return;
     if (search.server === instance.id) return;
     void navigate({
       to: ".",
-      search: { server: instance.id },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        server: instance.id,
+      }),
       replace: true,
     });
   }, [hydrated, instance?.id, search.server, navigate]);

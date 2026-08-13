@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { useInstanceStore } from "@/stores/instance-store";
+import { useServerBindingStore } from "@/lib/server-binding";
 import { useMutationErrorStore } from "@/stores/mutation-errors-store";
 import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import {
@@ -28,6 +29,12 @@ const PERMISSION_FALLBACK_POLL_MS = 2_000;
 
 function usePort() {
   const instance = useInstanceStore((s) => s.instance);
+  const requestedId = useServerBindingStore((s) => s.requestedId);
+  // Withholding the port keeps every port-keyed SWR key below null until
+  // the persisted store agrees with the server the URL names - otherwise
+  // a cold permalink load fetches from the previously-active opencode.
+  // See lib/server-binding.ts.
+  if (requestedId !== null && instance?.id !== requestedId) return null;
   return instance?.port ?? null;
 }
 

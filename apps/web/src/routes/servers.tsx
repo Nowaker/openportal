@@ -1,4 +1,9 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  useLocation,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { usePollMs } from "@/hooks/use-opencode";
@@ -34,6 +39,14 @@ import { PageTitle } from "@/components/ui/typography";
 import { formatFullDateTime } from "@/lib/format-time";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useInstanceStore } from "@/stores/instance-store";
+import { markServerConfirmed, setRequestedServerId } from "@/lib/server-binding";
+import {
+  buildRestoreTarget,
+  SERVER_FALLBACK_PARAM,
+  SERVER_FROM_PARAM,
+  type NavigationTarget,
+  type ServerFallbackReason,
+} from "@/lib/server-permalink";
 
 // /servers — Server List screen.
 //
@@ -144,9 +157,82 @@ function labelFor(entry: Pick<ServerListEntry, "displayLabel" | "label">): strin
   return entry.displayLabel || entry.label || "Unnamed server";
 }
 
+interface ServersSearch {
+  server?: string;
+  from?: string;
+  serverFallback?: ServerFallbackReason;
+  // Everything else the dead permalink carried rides through so the
+  // Open button can hand it back to the destination.
+  [key: string]: unknown;
+}
+
 export const Route = createFileRoute("/servers")({
+  validateSearch: (raw: Record<string, unknown>): ServersSearch => ({
+    ...raw,
+    server:
+      typeof raw.server === "string" && raw.server.length > 0
+        ? raw.server
+        : undefined,
+    [SERVER_FROM_PARAM]:
+      typeof raw[SERVER_FROM_PARAM] === "string"
+        ? raw[SERVER_FROM_PARAM]
+        : undefined,
+    [SERVER_FALLBACK_PARAM]:
+      raw[SERVER_FALLBACK_PARAM] === "unknown" ||
+      raw[SERVER_FALLBACK_PARAM] === "unreachable"
+        ? raw[SERVER_FALLBACK_PARAM]
+        : undefined,
+  }),
+  // The picker is where you land precisely because the requested server
+  // is NOT bound, so release the gate usePort() applies while a
+  // ?server= is outstanding - otherwise Ctrl+K would sit empty here.
+  beforeLoad: () => {
+    setRequestedServerId(null);
+  },
   component: ServersPage,
 });
+
+// Why the user is looking at the picker instead of the link they
+// clicked - and that ANY row's Open resumes the journey, since the
+// destination is pure URL arithmetic.
+function PermalinkFallbackNotice({
+  requestedId,
+  reason,
+  destination,
+  servers,
+}: {
+  requestedId: string;
+  reason?: ServerFallbackReason;
+  destination?: string;
+  servers: ServerListEntry[];
+}) {
+  const known = servers.find((s) => s.id === requestedId);
+  return (
+    <div
+      className="space-y-1 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+      data-test="server-permalink-fallback"
+    >
+      <p className="font-medium text-fg">
+        {reason === "unreachable"
+          ? "That link points at a server that is not responding."
+          : reason === "unknown"
+            ? "That link points at a server this OpenPortal does not know."
+            : "That link's server could not be opened."}
+      </p>
+      <p className="text-muted-fg">
+        Requested server id:{" "}
+        <code className="font-mono text-fg">{requestedId}</code>
+        {known ? ` — ${labelFor(known)}` : null}
+      </p>
+      {destination && (
+        <p className="text-muted-fg">
+          Open any server below to continue to{" "}
+          <code className="font-mono text-fg">{destination}</code>.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function StatusPill({ status }: { status: ServerListEntry["status"] }) {
   if (status === "active") {
@@ -210,6 +296,8 @@ interface AuthModalTarget {
 
 function ServersPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const location = useLocation();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [authModal, setAuthModal] = useState<AuthModalTarget | null>(null);
@@ -233,6 +321,18 @@ function ServersPage() {
     refreshInterval: serversPollMs,
     revalidateOnFocus: true,
   });
+
+  // One definition of "where does opening THIS server take you", shared
+  // by the adopt path (inactive rows) and the plain link (the active
+  // row), so the two can never drift.
+  const restoreTargetFor = useCallback(
+    (id: string) =>
+      buildRestoreTarget(
+        { pathname: location.pathname, search, hash: location.hash },
+        id,
+      ),
+    [location, search],
+  );
 
   const adoptServer = useCallback(
     async (id: string) => {
@@ -266,14 +366,31 @@ function ServersPage() {
         // navigating so the home route sees the fresh active server
         // on first render.
         await globalMutate("/api/instance/self");
-        void navigate({ to: "/", search: (prev) => prev });
+        // We just did, by another name, exactly what /api/servers/bind
+        // does - so the destination's beforeLoad must not pay for a
+        // second round-trip to confirm it.
+        markServerConfirmed(id);
+        // Permalink restoration: if we got here from a link whose server
+        // could not be used, resume that link on the server the user
+        // actually picked.
+        const restored = restoreTargetFor(id);
+        void navigate(
+          restored
+            ? {
+                to: restored.to,
+                search: restored.search,
+                hash: restored.hash,
+                replace: true,
+              }
+            : { to: "/", search: (prev) => prev },
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "activate failed");
       } finally {
         setBusyId(null);
       }
     },
-    [globalMutate, mutate, navigate, setInstance],
+    [globalMutate, mutate, navigate, restoreTargetFor, setInstance],
   );
 
   // Common path used by Configured.Use, Configured.Reconnect, and
@@ -509,6 +626,18 @@ function ServersPage() {
           Failed to load: {String(loadError)}
         </div>
       )}
+      {search.serverFallback && search.server && (
+        <PermalinkFallbackNotice
+          requestedId={search.server}
+          reason={search.serverFallback}
+          destination={
+            typeof search.from === "string"
+              ? `${search.from}${location.hash ? `#${location.hash}` : ""}`
+              : undefined
+          }
+          servers={data?.servers ?? []}
+        />
+      )}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-fg">
@@ -526,6 +655,7 @@ function ServersPage() {
             key={s.id}
             entry={s}
             busy={busyId === s.id}
+            restoreTarget={restoreTargetFor(s.id)}
             onUse={() => tryActivate(s)}
             onProbe={() => probeServer(s.id)}
             onRemove={() => requestRemoveServer(s.id)}
@@ -634,6 +764,10 @@ function ServersPage() {
 interface ServerCardProps {
   entry: ServerListEntry;
   busy: boolean;
+  // Where Open should land when we got here from a permalink whose
+  // server could not be used. Null for an ordinary visit to /servers,
+  // where Open means what it always meant: go home.
+  restoreTarget: NavigationTarget | null;
   onUse: () => void;
   onProbe: () => void;
   onRemove: () => void;
@@ -645,6 +779,7 @@ interface ServerCardProps {
 function ServerCard({
   entry,
   busy,
+  restoreTarget,
   onUse,
   onProbe,
   onRemove,
@@ -768,10 +903,17 @@ function ServerCard({
             <PencilSquareIcon className="size-4" />
           </Button>
           {entry.isActive && entry.status !== "offline" && (
+            // The active server needs no adoption, so this stays a plain
+            // link - but it must still honour a pending restore, or a
+            // permalink whose server happens to be the active one would
+            // drop the destination on the floor.
             <Link
-              to="/"
-              search={(prev) => prev}
+              to={restoreTarget ? restoreTarget.to : "/"}
+              search={restoreTarget ? restoreTarget.search : (prev) => prev}
+              hash={restoreTarget ? restoreTarget.hash : undefined}
               className={buttonStyles({ intent: "primary", size: "sm" })}
+              data-test="server-open"
+              data-server-id={entry.id}
             >
               Open
             </Link>
@@ -788,7 +930,14 @@ function ServerCard({
             </Button>
           )}
           {!entry.isActive && (
-            <Button size="sm" intent="primary" onPress={onUse} isDisabled={busy}>
+            <Button
+              size="sm"
+              intent="primary"
+              onPress={onUse}
+              isDisabled={busy}
+              data-test="server-open"
+              data-server-id={entry.id}
+            >
               Open
             </Button>
           )}
