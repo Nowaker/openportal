@@ -5440,3 +5440,20 @@ Design notes:
   new session in ~24s with a success toast, zero console errors. Full
   `bunx tsc --noEmit` from apps/web introduced no new errors in any
   touched file (only the ~30 pre-existing baseline errors remain).
+
+### 229. Filesystem templates: stream by workspace depth (DONE - a0f856a)
+
+User prompt (verbatim):
+
+> Your templates - filesystem
+> Rescanning filesystem…
+>
+> on first load, it takes a long time to populate. and it only populates when everything has been fully scanned. let's populate it as items are found.
+>
+> second, pick an algorithm that ensures more important templates show up earlier. that means, first level of the workspace directory is most important. like: ./.vibekick/templates/*. next: ./*/.vibekick/templates/*.
+
+Design notes:
+
+- Replace the terminal full-snapshot experience with progressive discovery so filesystem template rows appear while the rescan is still running.
+- Prioritize template directories by workspace-relative depth: scan `<workspace>/.vibekick/templates/*.md` first, then `<workspace>/*/.vibekick/templates/*.md`, then each deeper level in breadth-first order.
+- Keep the existing snapshot/cache behavior for completed scans while exposing partial batches through one shared producer/consumer protocol.
