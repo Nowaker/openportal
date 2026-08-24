@@ -13,6 +13,7 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useEventStream } from "@/hooks/use-event-stream";
 import { useSettingsSync } from "@/hooks/use-settings-sync";
 import { useStuckDetectorEvents } from "@/hooks/use-stuck-detector-events";
+import { withServerSearch } from "@/lib/route-search";
 import {
   PullToRefreshIndicator,
   PullToRefreshWrapper,
@@ -80,7 +81,7 @@ function AppLayout() {
     if (search.server === instance.id) return;
     void navigate({
       to: ".",
-      search: { server: instance.id },
+      search: (prev) => withServerSearch(prev, instance.id),
       replace: true,
     });
   }, [hydrated, instance?.id, search.server, navigate]);
