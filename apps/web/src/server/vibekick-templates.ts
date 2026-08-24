@@ -5,18 +5,19 @@ import { readPortalConfig } from "./lib/portal-config";
 import {
   applyTemplateDelete,
   applyTemplateUpdate,
-  deleteTemplate,
-  forceRebuildSnapshot,
-  getCachedSnapshot,
+  forceTemplateSnapshot,
+  getTemplateSnapshot,
+  subscribeTemplateScan,
+} from "./lib/vibekick-template-cache";
+import { deleteTemplate, writeTemplate } from "./lib/vibekick-template-files";
+import {
   resolveWorkspaceRoot,
+  validateTemplateLocation,
+} from "./lib/vibekick-template-paths";
+import {
   scanWorkspaceTemplates,
   templatesForDirectory,
-  validateTemplateLocation,
-  writeTemplate,
-  type FsTemplate,
-} from "./lib/vibekick-templates";
-import { dirname, resolve, sep } from "path";
-import { homedir } from "os";
+} from "./lib/vibekick-template-scan";
 
 const writeBodySchema = z.object({
   location: z.string().min(1),
@@ -34,16 +35,45 @@ function listWorkspaces(): string[] {
   return readPortalConfig().directories;
 }
 
-function expandTilde(p: string): string {
-  if (p === "~") return homedir();
-  if (p.startsWith("~/")) return resolve(homedir(), p.slice(2));
-  return p;
-}
-
-function sortedTemplates(list: Iterable<FsTemplate>): FsTemplate[] {
-  return Array.from(list).sort(
-    (a, b) => a.order - b.order || a.scope.localeCompare(b.scope),
-  );
+function streamTemplateScan(
+  workspaces: readonly string[],
+  force: boolean,
+): Response {
+  const subscription = subscribeTemplateScan(workspaces, { force });
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const event = await subscription.next();
+        if (!event) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        if (event.type === "complete" || event.type === "failed") {
+          controller.close();
+          subscription.unsubscribe();
+        }
+      } catch (error) {
+        subscription.unsubscribe();
+        controller.error(
+          error instanceof Error
+            ? error
+            : new Error("Filesystem template stream failed"),
+        );
+      }
+    },
+    cancel() {
+      subscription.unsubscribe();
+    },
+  });
+  return new Response(body, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
 
 export default defineHandler(async (event) => {
@@ -51,9 +81,12 @@ export default defineHandler(async (event) => {
 
   if (method === "GET") {
     const query = getQuery(event);
-    const directory = typeof query.directory === "string" ? query.directory : null;
-    const workspace = typeof query.workspace === "string" ? query.workspace : null;
+    const directory =
+      typeof query.directory === "string" ? query.directory : null;
+    const workspace =
+      typeof query.workspace === "string" ? query.workspace : null;
     const rescan = query.rescan === "1" || query.rescan === "true";
+    const stream = query.stream === "1" || query.stream === "true";
 
     if (directory) {
       const roots = listWorkspaces();
@@ -71,19 +104,19 @@ export default defineHandler(async (event) => {
       };
     }
     const workspaces = listWorkspaces();
+    if (stream) return streamTemplateScan(workspaces, rescan);
     const snapshot = rescan
-      ? await forceRebuildSnapshot(workspaces)
-      : await getCachedSnapshot(workspaces);
-    return {
-      workspaces: snapshot.workspaces,
-      templates: sortedTemplates(snapshot.templatesByLocation.values()),
-      builtAt: snapshot.builtAt,
-    };
+      ? await forceTemplateSnapshot(workspaces)
+      : await getTemplateSnapshot(workspaces);
+    return snapshot;
   }
 
   if (method === "POST") {
     const body = await parseBody(event, writeBodySchema);
-    const validation = validateTemplateLocation(body.location, listWorkspaces());
+    const validation = validateTemplateLocation(
+      body.location,
+      listWorkspaces(),
+    );
     if (!validation.ok) {
       return new Response(JSON.stringify({ error: validation.reason }), {
         status: 400,
@@ -100,8 +133,8 @@ export default defineHandler(async (event) => {
       order: body.order,
       prompt: body.prompt,
     });
-    applyTemplateUpdate(template);
-    return { template };
+    const version = applyTemplateUpdate(template);
+    return { template, ...version };
   }
 
   if (method === "DELETE") {
@@ -120,11 +153,9 @@ export default defineHandler(async (event) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    deleteTemplate(location);
-    const expanded = resolve(expandTilde(location));
-    applyTemplateDelete(expanded);
-    applyTemplateDelete(location);
-    return { ok: true };
+    const expanded = deleteTemplate(location);
+    const version = applyTemplateDelete(expanded);
+    return { ok: true, ...version };
   }
 
   return new Response("Method not allowed", { status: 405 });
