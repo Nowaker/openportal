@@ -1,167 +1,253 @@
 import useSWR, { mutate as globalMutate } from "swr";
+import { z } from "zod/v4";
 
-export interface FsTemplate {
-  id: string;
-  name: string;
-  description?: string;
-  enabled: boolean;
-  init: boolean;
-  defaultOn: boolean;
-  slash: boolean;
-  order: number;
-  prompt: string;
-  location: string;
-  workspaceRoot: string;
-  scope: string;
+import {
+  fsTemplateSchema,
+  isTemplateVersionOlder,
+  sortFsTemplates,
+  templateSnapshotSchema,
+  templateVersionSchema,
+  type FsTemplate,
+  type TemplateSnapshot,
+  type TemplateVersion,
+} from "@/lib/vibekick-template-contract";
+import {
+  consumeTemplateScanResponse,
+  reconcileTemplateScanProgress,
+} from "@/lib/vibekick-template-stream-client";
+
+export type { FsTemplate } from "@/lib/vibekick-template-contract";
+export type AllFsTemplatesResponse = TemplateSnapshot;
+
+const directoryFsTemplatesResponseSchema = z
+  .object({
+    directory: z.string(),
+    workspaceRoot: z.string(),
+    templates: z.array(fsTemplateSchema).readonly(),
+  })
+  .readonly();
+
+export type DirectoryFsTemplatesResponse = z.infer<
+  typeof directoryFsTemplatesResponseSchema
+>;
+
+const templateWriteResponseSchema = z.intersection(
+  z
+    .object({
+      template: fsTemplateSchema,
+    })
+    .readonly(),
+  templateVersionSchema,
+);
+
+const templateDeleteResponseSchema = z.intersection(
+  z
+    .object({
+      ok: z.literal(true),
+    })
+    .readonly(),
+  templateVersionSchema,
+);
+
+class TemplateRequestError extends Error {
+  override readonly name = "TemplateRequestError";
+
+  constructor(readonly status: number) {
+    super(`Filesystem template request failed: ${status}`);
+  }
 }
-
-export interface AllFsTemplatesResponse {
-  workspaces: string[];
-  templates: FsTemplate[];
-}
-
-export interface DirectoryFsTemplatesResponse {
-  directory: string;
-  workspaceRoot: string;
-  templates: FsTemplate[];
-}
-
-const fetcher = async (url: string) => {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return res.json();
-};
 
 const ALL_KEY = "/api/vibekick-templates";
+let allRequestGeneration = 0;
+let publicationQueue = Promise.resolve();
+
+async function serializePublication(
+  publish: () => Promise<unknown>,
+): Promise<void> {
+  const next = publicationQueue.then(publish);
+  publicationQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  await next;
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  if (!response.ok) throw new TemplateRequestError(response.status);
+  return response.json();
+}
+
+async function fetchAllTemplates(
+  url: string,
+  force: boolean,
+): Promise<TemplateSnapshot> {
+  const requestGeneration = ++allRequestGeneration;
+  const query = new URLSearchParams({ stream: "1" });
+  if (force) query.set("rescan", "1");
+  const response = await fetch(`${url}?${query.toString()}`);
+  let currentSnapshot: TemplateSnapshot | null = null;
+  let needsRefresh = false;
+  const remoteSnapshot = await consumeTemplateScanResponse(
+    response,
+    async (progress) => {
+      await serializePublication(() =>
+        globalMutate(
+          ALL_KEY,
+          (current: unknown) => {
+            if (requestGeneration !== allRequestGeneration) {
+              const parsed = templateSnapshotSchema.safeParse(current);
+              if (parsed.success) currentSnapshot = parsed.data;
+              return current;
+            }
+            const applied = reconcileTemplateScanProgress(current, progress);
+            currentSnapshot = applied.snapshot;
+            needsRefresh ||= applied.stale;
+            return applied.snapshot;
+          },
+          { revalidate: false },
+        ),
+      );
+    },
+  );
+  if (needsRefresh) {
+    setTimeout(() => {
+      void globalMutate(ALL_KEY);
+    }, 0);
+  }
+  return currentSnapshot ?? remoteSnapshot;
+}
+
+async function fetchDirectoryTemplates(
+  url: string,
+): Promise<DirectoryFsTemplatesResponse> {
+  const parsed = directoryFsTemplatesResponseSchema.safeParse(
+    await readJson(await fetch(url)),
+  );
+  if (!parsed.success) {
+    throw new TemplateRequestError(502);
+  }
+  return parsed.data;
+}
 
 export function useAllFsTemplates() {
-  // keepPreviousData: when SWR revalidates (e.g. after a toggle write
-  // calls globalMutate), the cached list stays painted instead of
-  // unmounting to a loader. The consumer can read `isValidating` from
-  // the returned object to render a "Rescanning files…" indicator
-  // without dropping the visible rows.
-  return useSWR<AllFsTemplatesResponse>(ALL_KEY, fetcher, {
-    revalidateOnFocus: false,
-    keepPreviousData: true,
-  });
+  return useSWR<AllFsTemplatesResponse>(
+    ALL_KEY,
+    (url: string) => fetchAllTemplates(url, false),
+    { revalidateOnFocus: false, keepPreviousData: true },
+  );
 }
 
 export function useFsTemplatesForDirectory(directory?: string | null) {
   const key = directory
     ? `/api/vibekick-templates?directory=${encodeURIComponent(directory)}`
     : null;
-  return useSWR<DirectoryFsTemplatesResponse>(key, fetcher, {
+  return useSWR<DirectoryFsTemplatesResponse>(key, fetchDirectoryTemplates, {
     revalidateOnFocus: false,
     keepPreviousData: true,
   });
 }
 
-// Patches the SWR cache in place with the returned template -
-// NO revalidate. Re-enabling revalidate here triggers a backend
-// rescan on every flag toggle and blocks the UI mid-rescan
-// (the bug AI_TODO #150 was reported about). Backend snapshot
-// stays consistent via applyTemplateUpdate inside the POST handler.
-export async function writeFsTemplate(input: {
-  location: string;
-  name: string;
-  description?: string;
-  enabled: boolean;
-  init: boolean;
-  defaultOn: boolean;
-  slash: boolean;
-  order: number;
-  prompt: string;
-}): Promise<FsTemplate> {
-  const res = await fetch("/api/vibekick-templates", {
+export type FsTemplateWriteInput = {
+  readonly location: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly enabled: boolean;
+  readonly init: boolean;
+  readonly defaultOn: boolean;
+  readonly slash: boolean;
+  readonly order: number;
+  readonly prompt: string;
+};
+
+function patchTemplateInPlace(
+  current: unknown,
+  template: FsTemplate,
+  version: TemplateVersion,
+): unknown {
+  const parsed = templateSnapshotSchema.safeParse(current);
+  if (!parsed.success) return current;
+  if (isTemplateVersionOlder(version, parsed.data)) return current;
+  const templates = parsed.data.templates.slice();
+  const index = templates.findIndex(
+    (candidate) => candidate.location === template.location,
+  );
+  if (index === -1) templates.push(template);
+  else templates[index] = template;
+  return {
+    ...parsed.data,
+    templates: sortFsTemplates(templates),
+    ...version,
+  };
+}
+
+async function revalidateDirectoryTemplateCaches(): Promise<void> {
+  await globalMutate(
+    (key) => typeof key === "string" && key.startsWith(`${ALL_KEY}?directory=`),
+    undefined,
+    { revalidate: true },
+  );
+}
+
+export async function writeFsTemplate(
+  input: FsTemplateWriteInput,
+): Promise<FsTemplate> {
+  const response = await fetch(ALL_KEY, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) {
-    let detail = `Request failed: ${res.status}`;
-    try {
-      const body = await res.json();
-      if (body?.error) detail = body.error;
-    } catch {
-      /* swallow */
-    }
-    throw new Error(detail);
-  }
-  const data = (await res.json()) as { template: FsTemplate };
-  await globalMutate(
-    (key) =>
-      typeof key === "string" && key.startsWith("/api/vibekick-templates"),
-    (current: unknown) => patchTemplateInPlace(current, data.template),
-    { revalidate: false },
+  const parsed = templateWriteResponseSchema.safeParse(
+    await readJson(response),
   );
-  return data.template;
+  if (!parsed.success) throw new TemplateRequestError(502);
+  await serializePublication(() =>
+    globalMutate(
+      ALL_KEY,
+      (current: unknown) =>
+        patchTemplateInPlace(current, parsed.data.template, parsed.data),
+      { revalidate: false },
+    ),
+  );
+  await revalidateDirectoryTemplateCaches();
+  return parsed.data.template;
 }
 
 export async function deleteFsTemplate(location: string): Promise<void> {
-  const url = `/api/vibekick-templates?location=${encodeURIComponent(location)}`;
-  const res = await fetch(url, { method: "DELETE" });
-  if (!res.ok) {
-    let detail = `Request failed: ${res.status}`;
-    try {
-      const body = await res.json();
-      if (body?.error) detail = body.error;
-    } catch {
-      /* swallow */
-    }
-    throw new Error(detail);
-  }
-  await globalMutate(
-    (key) =>
-      typeof key === "string" && key.startsWith("/api/vibekick-templates"),
-    (current: unknown) => removeTemplateInPlace(current, location),
-    { revalidate: false },
+  const query = new URLSearchParams({ location });
+  const response = await fetch(`${ALL_KEY}?${query.toString()}`, {
+    method: "DELETE",
+  });
+  const parsed = templateDeleteResponseSchema.safeParse(
+    await readJson(response),
   );
+  if (!parsed.success) throw new TemplateRequestError(502);
+  await serializePublication(() =>
+    globalMutate(
+      ALL_KEY,
+      (current: unknown) => {
+        const collection = templateSnapshotSchema.safeParse(current);
+        if (!collection.success) return current;
+        if (isTemplateVersionOlder(parsed.data, collection.data))
+          return current;
+        return {
+          ...collection.data,
+          templates: collection.data.templates.filter(
+            (template) => template.location !== location,
+          ),
+          serverStartedAt: parsed.data.serverStartedAt,
+          revision: parsed.data.revision,
+        };
+      },
+      { revalidate: false },
+    ),
+  );
+  await revalidateDirectoryTemplateCaches();
 }
 
-// Force-rescan: explicit user gesture (Refresh button in Settings).
-// Tells the backend to rebuild the in-memory snapshot from disk;
-// the new snapshot replaces the SWR all-templates cache. Directory-
-// scoped caches revalidate on their own next-poll - they hit a
-// separate code path on the backend that isn't snapshot-cached.
-export async function forceRescanFsTemplates(): Promise<AllFsTemplatesResponse> {
-  const res = await fetch("/api/vibekick-templates?rescan=1");
-  if (!res.ok) {
-    let detail = `Request failed: ${res.status}`;
-    try {
-      const body = await res.json();
-      if (body?.error) detail = body.error;
-    } catch {
-      /* swallow */
-    }
-    throw new Error(detail);
-  }
-  const data = (await res.json()) as AllFsTemplatesResponse;
-  await globalMutate(ALL_KEY, data, { revalidate: false });
-  return data;
+export function forceRescanFsTemplates(): Promise<AllFsTemplatesResponse> {
+  return fetchAllTemplates(ALL_KEY, true);
 }
 
-function patchTemplateInPlace(current: unknown, template: FsTemplate): unknown {
-  if (!current || typeof current !== "object") return current;
-  const obj = current as { templates?: FsTemplate[] };
-  if (!Array.isArray(obj.templates)) return current;
-  const next = obj.templates.slice();
-  const idx = next.findIndex((t) => t.location === template.location);
-  if (idx === -1) next.push(template);
-  else next[idx] = template;
-  return { ...obj, templates: next };
-}
-
-function removeTemplateInPlace(current: unknown, location: string): unknown {
-  if (!current || typeof current !== "object") return current;
-  const obj = current as { templates?: FsTemplate[] };
-  if (!Array.isArray(obj.templates)) return current;
-  return {
-    ...obj,
-    templates: obj.templates.filter((t) => t.location !== location),
-  };
-}
-
-// Slugify a name into a filesystem-safe basename for new templates.
 export function templateBasenameForName(name: string): string {
   const slug =
     name
