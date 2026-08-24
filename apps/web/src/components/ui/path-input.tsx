@@ -14,8 +14,8 @@ import { splitInput } from "@/lib/path-utils";
 // data-fetch logic that needs to know about them.
 
 export interface PathInputEntry {
-  name: string;
-  isDir: boolean;
+  readonly name: string;
+  readonly isDir: boolean;
 }
 
 export interface PathInputHandle {
@@ -25,20 +25,23 @@ export interface PathInputHandle {
 }
 
 interface PathInputProps {
-  value: string;
-  onChange: (next: string) => void;
-  onSubmit: () => void;
-  entries: PathInputEntry[];
-  disabled?: boolean;
-  placeholder?: string;
-  className?: string;
-  appendSlashOnDir?: boolean;
+  readonly id?: string;
+  readonly value: string;
+  readonly onChange: (next: string) => void;
+  readonly onSubmit: () => void;
+  readonly entries: readonly PathInputEntry[];
+  readonly disabled?: boolean;
+  readonly placeholder?: string;
+  readonly className?: string;
+  readonly appendSlashOnDir?: boolean;
+  readonly pathMode?: "absolute" | "relative";
 }
 
 export const PathInput = forwardRef<PathInputHandle, PathInputProps>(
   function PathInput(
     {
       value,
+      id,
       onChange,
       onSubmit,
       entries,
@@ -46,6 +49,7 @@ export const PathInput = forwardRef<PathInputHandle, PathInputProps>(
       placeholder,
       className,
       appendSlashOnDir = true,
+      pathMode = "absolute",
     },
     ref,
   ) {
@@ -81,7 +85,7 @@ export const PathInput = forwardRef<PathInputHandle, PathInputProps>(
         if (filtered.length === 0) return;
         e.preventDefault();
         const first = filtered[0];
-        const base = dir || "/";
+        const base = dir || (pathMode === "absolute" ? "/" : "");
         const suffix = first.isDir && appendSlashOnDir ? "/" : "";
         const next = base + first.name + suffix;
         onChange(next);
@@ -103,6 +107,7 @@ export const PathInput = forwardRef<PathInputHandle, PathInputProps>(
 
     return (
       <input
+        id={id}
         ref={inputRef}
         type="text"
         value={value}

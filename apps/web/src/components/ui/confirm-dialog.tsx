@@ -3,6 +3,7 @@ import {
   Modal,
   ModalOverlay,
   Dialog as PrimitiveDialog,
+  Heading,
 } from "react-aria-components";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "./button";
@@ -87,7 +88,9 @@ export function ConfirmDialog({
             <XMarkIcon className="size-4" />
           </button>
           <div className="space-y-1 pr-6 px-5 pt-5 shrink-0">
-            <h2 className="text-base font-semibold">{title}</h2>
+            <Heading slot="title" className="text-base font-semibold">
+              {title}
+            </Heading>
           </div>
           {description !== undefined && description !== "" ? (
             <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-2 pb-3">
