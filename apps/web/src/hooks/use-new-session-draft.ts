@@ -34,6 +34,20 @@ export function clearVirtualSessionIfAbandoned(
   if (!submittedRef.current) clearStore();
 }
 
+export function draftTextForContext(
+  draftKey: string | null,
+  autoPrompt: string | undefined,
+): string {
+  if (autoPrompt) return autoPrompt;
+  return draftKey ? readDraft(draftKey) : "";
+}
+
+function shouldPersistDraft(draftKey: string, value: string): boolean {
+  if (value.length === 0) return false;
+  if (value.length >= DRAFT_MIN_BYTES) return true;
+  return readDraft(draftKey).length === 0;
+}
+
 // Owns text state, textarea ref, submitted/hasUserEdited/draft-save-timer
 // refs, draft restore on directory change, focus-on-mount, and the
 // unmount cleanup that persists the current draft. Init templates do NOT
@@ -48,20 +62,17 @@ export function useNewSessionDraft(
 ): NewSessionDraftController {
   const draftKey = directory ? newSessionDraftKey(directory) : null;
 
-  const [text, setText] = useState(() => {
-    if (autoPrompt) return autoPrompt;
-    if (draftKey) {
-      const d = readDraft(draftKey);
-      if (d) return d;
-    }
-    return "";
-  });
+  const [text, setText] = useState(() =>
+    draftTextForContext(draftKey, autoPrompt),
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submittedRef = useRef(false);
   const hasUserEditedRef = useRef(
     Boolean(!autoPrompt && draftKey && readDraft(draftKey)),
   );
   const draftSaveTimerRef = useRef<number | null>(null);
+  const activeDraftKeyRef = useRef(draftKey);
+  const previousDraftKeyRef = useRef(draftKey);
 
   // When the user navigates from /session/new?directory=A to
   // ?directory=B (sidebar + on a different project) the component stays
@@ -71,13 +82,27 @@ export function useNewSessionDraft(
   // already happened in the useState initializer; this effect handles
   // the in-mount change.
   useLayoutEffect(() => {
-    if (autoPrompt) return;
-    if (!draftKey) return;
-    const d = readDraft(draftKey);
-    if (d) {
-      setText(d);
-      hasUserEditedRef.current = true;
+    const previousDraftKey = previousDraftKeyRef.current;
+    if (previousDraftKey !== draftKey) {
+      if (draftSaveTimerRef.current != null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      const previousText = textareaRef.current?.value ?? "";
+      if (
+        previousDraftKey &&
+        !submittedRef.current &&
+        shouldPersistDraft(previousDraftKey, previousText)
+      ) {
+        writeDraft(previousDraftKey, previousText);
+      }
     }
+    const nextText = draftTextForContext(draftKey, autoPrompt);
+    setText(nextText);
+    hasUserEditedRef.current = Boolean(!autoPrompt && nextText);
+    submittedRef.current = false;
+    activeDraftKeyRef.current = draftKey;
+    previousDraftKeyRef.current = draftKey;
   }, [draftKey, autoPrompt]);
 
   useEffect(() => {
@@ -86,10 +111,7 @@ export function useNewSessionDraft(
 
   const persistShortIfNoPrior = useCallback(
     (value: string) => {
-      if (!draftKey) return false;
-      if (value.length === 0) return false;
-      if (value.length >= DRAFT_MIN_BYTES) return true;
-      return readDraft(draftKey).length === 0;
+      return draftKey ? shouldPersistDraft(draftKey, value) : false;
     },
     [draftKey],
   );
@@ -113,20 +135,22 @@ export function useNewSessionDraft(
     [draftKey, persistShortIfNoPrior, isMobile],
   );
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (draftSaveTimerRef.current != null) {
         window.clearTimeout(draftSaveTimerRef.current);
         draftSaveTimerRef.current = null;
       }
       if (submittedRef.current) return;
-      if (!draftKey) return;
+      const activeDraftKey = activeDraftKeyRef.current;
+      if (!activeDraftKey) return;
       const value = textareaRef.current?.value ?? "";
-      if (persistShortIfNoPrior(value)) {
-        writeDraft(draftKey, value);
+      if (shouldPersistDraft(activeDraftKey, value)) {
+        writeDraft(activeDraftKey, value);
       }
-    };
-  }, [draftKey, persistShortIfNoPrior]);
+    },
+    [],
+  );
 
   return {
     text,
