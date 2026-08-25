@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { Keyboard } from "@/components/ui/keyboard";
 import { useSidebar } from "@/components/ui/sidebar";
+import { sanitizeNewSessionSearch } from "@/lib/route-search";
 import { useCmdStore } from "@/stores/cmd-store";
 
 const actionLinkClass =
@@ -54,7 +55,7 @@ export default function EmptyState() {
             ,{" "}
             <Link
               to="/session/new"
-              search={(prev) => prev}
+              search={(prev) => sanitizeNewSessionSearch(prev)}
               className={actionLinkClass}
             >
               create a new session

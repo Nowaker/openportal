@@ -28,6 +28,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Link as UILink } from "@/components/ui/link";
 import { toast } from "@/components/ui/toast";
 import { matchSession } from "@/lib/fuzzy-rank";
+import { sanitizeNewSessionSearch } from "@/lib/route-search";
 
 import {
   Menu,
@@ -1815,9 +1816,10 @@ export default function AppSidebar(
           navigate({
             to: "/session/new",
             search: (prev) =>
-              autoPrompt
-                ? { ...prev, directory: picked, autoPrompt }
-                : { ...prev, directory: picked },
+              sanitizeNewSessionSearch(prev, {
+                directory: picked,
+                ...(autoPrompt ? { autoPrompt } : {}),
+              }),
           });
         }}
       />
