@@ -8,7 +8,7 @@ import { useCreateSession } from "@/hooks/use-opencode";
 import { useAgentStore } from "@/stores/agent-store";
 import { useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
-import { buildPromptWithTemplates } from "@/lib/prompt-template-format";
+import { buildPromptFromSelection } from "@/lib/prompt-template-format";
 import {
   clearPendingSubmission,
   recordFailedAttempt,
@@ -40,6 +40,7 @@ export function useNewSessionSubmit(input: {
   readonly submittedRef: RefObject<boolean>;
   readonly draftSaveTimerRef: RefObject<number | null>;
   readonly draftKey: string | null;
+  readonly templatesReady: boolean;
 }): NewSessionSubmitController {
   const {
     directory,
@@ -53,6 +54,7 @@ export function useNewSessionSubmit(input: {
     submittedRef,
     draftSaveTimerRef,
     draftKey,
+    templatesReady,
   } = input;
 
   const navigate = useNavigate();
@@ -77,19 +79,20 @@ export function useNewSessionSubmit(input: {
         setError("No directory selected.");
         return;
       }
+      if (!templatesReady) {
+        setError("Init templates are still loading. Try again when they finish.");
+        return;
+      }
       const userMessage = (override ?? text).trim();
-      const checkedTemplates = order.filter((t) => selected.has(t.id));
-      const opencodeText = buildPromptWithTemplates(
+      const opencodeText = buildPromptFromSelection(
         userMessage,
-        checkedTemplates.map((t) => {
-          const edited = edits[t.id];
-          const useEdited = edited !== undefined && edited !== t.prompt;
-          return {
-            name: t.name,
-            body: useEdited ? edited : t.prompt,
-            modified: useEdited,
-          };
-        }),
+        order.map((template) => ({
+          id: template.id,
+          name: template.name,
+          body: template.prompt,
+        })),
+        selected,
+        edits,
       );
       const archiveText = opencodeText;
       if (!opencodeText && pendingAttachments.length === 0) return;
@@ -231,6 +234,9 @@ export function useNewSessionSubmit(input: {
       sending,
       directory,
       text,
+      order,
+      selected,
+      edits,
       pendingAttachments,
       port,
       createSession,
@@ -244,6 +250,10 @@ export function useNewSessionSubmit(input: {
       resolveThinking,
       isOverridingDefault,
       draftKey,
+      templatesReady,
+      setPendingAttachments,
+      submittedRef,
+      draftSaveTimerRef,
     ],
   );
 

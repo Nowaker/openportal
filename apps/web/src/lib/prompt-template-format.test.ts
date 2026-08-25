@@ -1,10 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import {
   PROMPT_TEMPLATE_PREAMBLE,
+  buildPromptFromSelection,
   buildPromptWithTemplates,
   insertSlashTemplate,
   parsePromptWithTemplates,
 } from "./prompt-template-format";
+
+describe("buildPromptFromSelection", () => {
+  test("uses the latest selection, order, and one-time edits", () => {
+    const templates = [
+      { id: "pull", name: "Pull", body: "pull body" },
+      { id: "push", name: "Push", body: "push body" },
+    ];
+
+    expect(
+      buildPromptFromSelection(
+        "ship it",
+        [...templates].reverse(),
+        new Set(["push", "pull"]),
+        { push: "edited push body" },
+      ),
+    ).toBe(
+      buildPromptWithTemplates("ship it", [
+        { name: "Push", body: "edited push body", modified: true },
+        { name: "Pull", body: "pull body", modified: false },
+      ]),
+    );
+  });
+});
 
 describe("buildPromptWithTemplates", () => {
   test("returns plain user text when no templates", () => {

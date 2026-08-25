@@ -9,6 +9,10 @@ export interface PromptTemplateBlock {
   modified?: boolean;
 }
 
+export interface SelectablePromptTemplate extends PromptTemplateBlock {
+  id: string;
+}
+
 export const MODIFIED_SUFFIX = " + modifications";
 
 export function buildPromptWithTemplates(
@@ -26,6 +30,26 @@ export function buildPromptWithTemplates(
     })
     .join("\n\n");
   return `${user}\n\n${SEPARATOR}\n\n${PROMPT_TEMPLATE_PREAMBLE}\n\n${blocks}`;
+}
+
+export function buildPromptFromSelection(
+  userText: string,
+  order: ReadonlyArray<SelectablePromptTemplate>,
+  selected: ReadonlySet<string>,
+  edits: Readonly<Record<string, string>>,
+): string {
+  return buildPromptWithTemplates(
+    userText,
+    order.filter((template) => selected.has(template.id)).map((template) => {
+      const edited = edits[template.id];
+      const modified = edited !== undefined && edited !== template.body;
+      return {
+        name: template.name,
+        body: modified ? edited : template.body,
+        modified,
+      };
+    }),
+  );
 }
 
 export interface PromptTemplateParse {
