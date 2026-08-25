@@ -6,6 +6,7 @@ import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerMaxHeight } from "@/hooks/use-composer-max-height";
 import useMediaQuery from "@/hooks/use-media-query";
 import { Loader } from "@/components/ui/loader";
+import { Button } from "@/components/ui/button";
 import { useNewSessionTemplates } from "@/hooks/use-new-session-templates";
 import {
   clearVirtualSessionIfAbandoned,
@@ -74,6 +75,7 @@ function NewSessionPage() {
     submittedRef: draft.submittedRef,
     draftSaveTimerRef: draft.draftSaveTimerRef,
     draftKey: draft.draftKey,
+    templatesReady: templates.isReady,
   });
   const stt = useNewSessionStt({
     textareaRef: draft.textareaRef,
@@ -90,9 +92,10 @@ function NewSessionPage() {
     if (!autoPrompt) return;
     if (!directory) return;
     if (!port) return;
+    if (!templates.isReady) return;
     autoSubmittedRef.current = true;
     void submit.handleSubmit(autoPrompt);
-  }, [autoPrompt, directory, port, submit.handleSubmit]);
+  }, [autoPrompt, directory, port, submit.handleSubmit, templates.isReady]);
 
   if (!directory) {
     return (
@@ -103,7 +106,7 @@ function NewSessionPage() {
   }
 
   const showTemplatePicker =
-    !autoPrompt && templates.order.length > 0 && !submit.sending;
+    !autoPrompt && templates.isReady && templates.order.length > 0 && !submit.sending;
   const hasContent = draft.text.trim().length > 0;
 
   return (
@@ -141,6 +144,31 @@ function NewSessionPage() {
           </div>
         )}
 
+        {!autoPrompt && templates.isLoading && !submit.sending && (
+          <div className="flex w-full max-w-2xl items-center justify-center gap-2 rounded-lg border border-border bg-bg/60 p-4 text-sm text-muted-fg">
+            <Loader className="size-5" />
+            Loading init templates...
+          </div>
+        )}
+
+        {!autoPrompt && templates.error && !submit.sending && (
+          <div
+            role="alert"
+            className="flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-lg border border-danger-subtle-fg/30 bg-danger-subtle p-3 text-sm text-danger-subtle-fg"
+          >
+            <span className="min-w-0 flex-1">
+              Init templates could not be loaded. Retry before starting the session.
+            </span>
+            <Button
+              size="xs"
+              intent="outline"
+              onPress={() => void templates.reload()}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+
         {showTemplatePicker && (
           <NewSessionInitTemplatePicker controller={templates} />
         )}
@@ -154,6 +182,7 @@ function NewSessionPage() {
         hasUserEditedRef={draft.hasUserEditedRef}
         scheduleDraftSave={draft.scheduleDraftSave}
         sending={submit.sending}
+        submissionDisabled={!templates.isReady}
         hasContent={hasContent}
         error={submit.error}
         commands={commands}

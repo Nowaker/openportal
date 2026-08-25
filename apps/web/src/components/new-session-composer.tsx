@@ -20,6 +20,7 @@ interface NewSessionComposerProps {
   readonly hasUserEditedRef: RefObject<boolean>;
   readonly scheduleDraftSave: (value: string) => void;
   readonly sending: boolean;
+  readonly submissionDisabled: boolean;
   readonly hasContent: boolean;
   readonly error: string | null;
   readonly commands: NewSessionCommandsController;
@@ -36,6 +37,7 @@ export function NewSessionComposer({
   hasUserEditedRef,
   scheduleDraftSave,
   sending,
+  submissionDisabled,
   hasContent,
   error,
   commands,
@@ -94,6 +96,7 @@ export function NewSessionComposer({
           hasUserEditedRef={hasUserEditedRef}
           scheduleDraftSave={scheduleDraftSave}
           sending={sending}
+          submissionDisabled={submissionDisabled}
           hasContent={hasContent}
           commands={commands}
           stt={stt}

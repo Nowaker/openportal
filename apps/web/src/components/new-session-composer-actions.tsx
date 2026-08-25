@@ -5,6 +5,7 @@ import type { NewSessionSttController } from "@/hooks/use-new-session-stt";
 interface NewSessionComposerActionsProps {
   readonly stt: NewSessionSttController;
   readonly sending: boolean;
+  readonly submissionDisabled: boolean;
   readonly hasContent: boolean;
   readonly pendingAttachmentsCount: number;
 }
@@ -12,6 +13,7 @@ interface NewSessionComposerActionsProps {
 export function NewSessionComposerActions({
   stt,
   sending,
+  submissionDisabled,
   hasContent,
   pendingAttachmentsCount,
 }: NewSessionComposerActionsProps) {
@@ -77,7 +79,11 @@ export function NewSessionComposerActions({
       )}
       <Button
         type="submit"
-        isDisabled={sending || (!hasContent && pendingAttachmentsCount === 0)}
+        isDisabled={
+          sending ||
+          submissionDisabled ||
+          (!hasContent && pendingAttachmentsCount === 0)
+        }
         className={`pointer-events-auto size-12 !p-0 ${
           sttCountdownDigit !== null ? "animate-pulse" : ""
         }`}
@@ -88,6 +94,8 @@ export function NewSessionComposerActions({
               : `Voice grace ${sttCountdownDigit}`
             : sending
               ? "Starting…"
+              : submissionDisabled
+                ? "Waiting for init templates"
               : "Send"
         }
       >

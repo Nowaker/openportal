@@ -16,6 +16,7 @@ interface NewSessionComposerFieldProps {
   readonly hasUserEditedRef: RefObject<boolean>;
   readonly scheduleDraftSave: (value: string) => void;
   readonly sending: boolean;
+  readonly submissionDisabled: boolean;
   readonly hasContent: boolean;
   readonly commands: NewSessionCommandsController;
   readonly stt: NewSessionSttController;
@@ -30,6 +31,7 @@ export function NewSessionComposerField({
   hasUserEditedRef,
   scheduleDraftSave,
   sending,
+  submissionDisabled,
   hasContent,
   commands,
   stt,
@@ -58,6 +60,7 @@ export function NewSessionComposerField({
       isModified || (!isMobile && enterKeyAction === "submit");
     if (!wantsSubmit) return;
     e.preventDefault();
+    if (submissionDisabled) return;
     if (text.trim() || pendingAttachments.length > 0) {
       void handleSubmit();
     }
@@ -194,6 +197,7 @@ export function NewSessionComposerField({
           <NewSessionComposerActions
             stt={stt}
             sending={sending}
+            submissionDisabled={submissionDisabled}
             hasContent={hasContent}
             pendingAttachmentsCount={pendingAttachments.length}
           />

@@ -144,8 +144,11 @@ export function NewFsTemplateForm({
             onSubmit={() => void submit()}
             entries={completion.entries}
             pathMode="relative"
-            placeholder="e.g. webapps/portal - empty for workspace root"
+            placeholder="webapps/portal (optional)"
           />
+          <p className="mt-1 text-xs text-muted-fg">
+            Leave empty for the workspace root.
+          </p>
           {completion.isLoading && completion.entries.length === 0 && (
             <p role="status" className="mt-1 text-xs text-muted-fg">
               Loading path suggestions...
