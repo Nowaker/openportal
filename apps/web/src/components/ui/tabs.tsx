@@ -19,6 +19,26 @@ import {
 } from "react-aria-components"
 import { twMerge } from "tailwind-merge"
 import { cx } from "@/lib/primitive"
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react"
+
+interface TabVisibilityMetrics {
+  readonly viewportLeft: number
+  readonly viewportRight: number
+  readonly tabLeft: number
+  readonly tabRight: number
+}
+
+export function isTabPartiallyVisible({
+  viewportLeft,
+  viewportRight,
+  tabLeft,
+  tabRight,
+}: TabVisibilityMetrics): boolean {
+  const intersects = tabRight > viewportLeft && tabLeft < viewportRight
+  const fullyVisible =
+    tabLeft >= viewportLeft - 1 && tabRight <= viewportRight + 1
+  return intersects && !fullyVisible
+}
 
 interface TabsProps extends TabsPrimitiveProps {
   ref?: React.RefObject<HTMLDivElement>
@@ -30,7 +50,7 @@ const Tabs = ({ className, ref, orientation = "horizontal", ...props }: TabsProp
         orientation={orientation}
         className={cx(
           orientation === "vertical" ? "w-full flex-row" : "flex-col",
-          "group/tabs flex gap-4 forced-color-adjust-none",
+          "group/tabs flex gap-4 forced-color-adjust-none !overflow-x-visible",
           className,
         )}
         ref={ref}
@@ -44,9 +64,95 @@ interface TabListProps<T extends object> extends TabListPrimitiveProps<T> {
   ref?: React.RefObject<HTMLDivElement>
 }
 const TabList = <T extends object>({ className, ref, ...props }: TabListProps<T>) => {
+  const internalRef = useRef<HTMLDivElement>(null)
+  const assignRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      internalRef.current = node
+      if (ref) {
+        ;(ref as MutableRefObject<HTMLDivElement | null>).current = node
+      }
+    },
+    [ref],
+  )
+
+  useEffect(() => {
+    const currentList = internalRef.current
+    if (!currentList) return
+    const list: HTMLDivElement = currentList
+    let frame = 0
+    let shouldRevealSelected = false
+    const observedTabs = new Set<HTMLElement>()
+    const resizeObserver = new ResizeObserver(() => scheduleUpdate(true))
+
+    const classifyVisibleTabs = () => {
+      const listRect = list.getBoundingClientRect()
+      const viewportLeft = listRect.left + list.clientLeft
+      const viewportRight = viewportLeft + list.clientWidth
+      const tabs = list.querySelectorAll<HTMLElement>("[data-slot=tab]")
+      for (const tab of tabs) {
+        if (!observedTabs.has(tab)) {
+          observedTabs.add(tab)
+          resizeObserver.observe(tab)
+        }
+        const tabRect = tab.getBoundingClientRect()
+        if (
+          isTabPartiallyVisible({
+            viewportLeft,
+            viewportRight,
+            tabLeft: tabRect.left,
+            tabRight: tabRect.right,
+          })
+        ) {
+          tab.setAttribute("data-edge-clipped", "")
+        } else {
+          tab.removeAttribute("data-edge-clipped")
+        }
+      }
+    }
+
+    function scheduleUpdate(revealSelected = false) {
+      shouldRevealSelected ||= revealSelected
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (shouldRevealSelected) {
+          const selected = list.querySelector<HTMLElement>("[data-selected]")
+          if (selected) {
+            const centeredLeft =
+              selected.offsetLeft -
+              (list.clientWidth - selected.offsetWidth) / 2
+            list.scrollTo({ left: Math.max(0, centeredLeft), behavior: "auto" })
+          }
+        }
+        shouldRevealSelected = false
+        classifyVisibleTabs()
+      })
+    }
+
+    const observer = new MutationObserver(() => scheduleUpdate(true))
+    const handleScroll = () => scheduleUpdate()
+    const handleResize = () => scheduleUpdate(true)
+    observer.observe(list, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-selected"],
+    })
+    resizeObserver.observe(list)
+    list.addEventListener("scroll", handleScroll, { passive: true })
+    window.addEventListener("resize", handleResize)
+    scheduleUpdate(true)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+      resizeObserver.disconnect()
+      list.removeEventListener("scroll", handleScroll)
+      window.removeEventListener("resize", handleResize)
+    }
+  }, [])
+
   return (
     <TabListPrimitive
-      ref={ref}
+      ref={assignRef}
       data-slot="tab-list"
       {...props}
       className={composeRenderProps(className, (className, { orientation }) =>
@@ -84,6 +190,7 @@ const Tab = ({ children, className, ref, ...props }: TabProps) => {
         "*:data-[slot=icon]:mr-2 *:data-[slot=icon]:-ml-0.5 *:data-[slot=icon]:size-4 *:data-[slot=icon]:shrink-0 *:data-[slot=icon]:self-center *:data-[slot=icon]:text-muted-fg selected:*:data-[slot=icon]:text-primary-subtle-fg",
         "selected:text-primary-subtle-fg text-muted-fg hover:bg-secondary selected:hover:bg-primary-subtle hover:text-fg selected:hover:text-primary-subtle-fg focus:ring-0",
         "disabled:opacity-50",
+        "data-[edge-clipped]:pointer-events-none data-[edge-clipped]:opacity-0 data-[edge-clipped]:transition-none",
         "href" in props ? "cursor-pointer" : "cursor-default",
         className,
       )}
