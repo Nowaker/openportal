@@ -143,7 +143,7 @@ export function useFsTemplatesForDirectory(directory?: string | null) {
     : null;
   return useSWR<DirectoryFsTemplatesResponse>(key, fetchDirectoryTemplates, {
     revalidateOnFocus: false,
-    keepPreviousData: true,
+    keepPreviousData: false,
   });
 }
 

@@ -47,6 +47,10 @@ export interface NewSessionTemplatesController {
   readonly dragSourceIdRef: MutableRefObject<string | null>;
   readonly templateSlashEntries: readonly TemplateSlashEntry[];
   readonly slashExtras: readonly SlashExtraItem[];
+  readonly isLoading: boolean;
+  readonly error: Error | undefined;
+  readonly isReady: boolean;
+  readonly reload: () => Promise<unknown>;
   readonly toggle: (id: string) => void;
   readonly handleDrop: (targetId: string) => void;
   readonly setDragOverId: (id: string | null) => void;
@@ -98,7 +102,12 @@ export function useNewSessionTemplates(
   // useState initializers below, which trips React error #185
   // (max update depth). Same trap the tools-store / resolveTools
   // wrapper has a comment about.
-  const { data: fsTemplatesResp } = useFsTemplatesForDirectory(directory);
+  const {
+    data: fsTemplatesResp,
+    error: fsTemplatesError,
+    isLoading,
+    mutate,
+  } = useFsTemplatesForDirectory(directory);
   const fsTemplates = useMemo(
     () => fsTemplatesResp?.templates ?? [],
     [fsTemplatesResp],
@@ -151,13 +160,23 @@ export function useNewSessionTemplates(
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const previousDirectoryRef = useRef(directory);
 
   useEffect(() => {
+    const directoryChanged = previousDirectoryRef.current !== directory;
+    previousDirectoryRef.current = directory;
     setOrder(initialOrder);
-    if (!selectionTouchedRef.current) {
+    if (directoryChanged) {
+      selectionTouchedRef.current = false;
+      setSelected(defaultSelectedIds);
+      setDragOverId(null);
+      setExpandedId(null);
+      setEdits({});
+      dragSourceIdRef.current = null;
+    } else if (!selectionTouchedRef.current) {
       setSelected(defaultSelectedIds);
     }
-  }, [initialOrder, defaultSelectedIds]);
+  }, [directory, initialOrder, defaultSelectedIds]);
 
   const toggle = useCallback((id: string) => {
     selectionTouchedRef.current = true;
@@ -242,6 +261,10 @@ export function useNewSessionTemplates(
     dragSourceIdRef,
     templateSlashEntries,
     slashExtras,
+    isLoading,
+    error: fsTemplatesError instanceof Error ? fsTemplatesError : undefined,
+    isReady: Boolean(fsTemplatesResp) && !isLoading && !fsTemplatesError,
+    reload: mutate,
     toggle,
     handleDrop,
     setDragOverId,
