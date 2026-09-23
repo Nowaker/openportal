@@ -159,6 +159,60 @@ function isProcessRunning(pid: number | null): boolean {
   }
 }
 
+// ~/.portal.json outlives the processes it names. After a reboot or a crash
+// the kernel hands those pids to unrelated processes, and kill(pid, 0) then
+// reports them alive: the CLI refuses to start with "already running" for as
+// long as the stranger lives, and `stop` sends it SIGTERM. A process that
+// started after the instance was recorded cannot be the one it recorded, so
+// on Linux its start time from /proc settles it. Elsewhere, or when /proc
+// cannot be read, liveness is all there is to go on.
+//
+// The tolerance only absorbs rounding: the pid is spawned before startedAt
+// is taken, and /proc/stat reports boot time in whole seconds.
+const RECORDED_START_TOLERANCE_MS = 5_000;
+
+function processStartTimeMs(pid: number): number | null {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf-8");
+    // Field 2 is the command name in parentheses and may itself contain
+    // spaces or parentheses, so fields are counted from the last ")".
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    const startTicks = Number(fields[19]); // field 22: starttime
+    const btime = readFileSync("/proc/stat", "utf-8")
+      .split("\n")
+      .find((line) => line.startsWith("btime "));
+    const bootSeconds = Number(btime?.split(" ")[1]);
+    if (!Number.isFinite(startTicks) || !Number.isFinite(bootSeconds)) {
+      return null;
+    }
+    // starttime is in USER_HZ, which is 100 on every mainstream Linux ABI.
+    return bootSeconds * 1000 + startTicks * 10;
+  } catch {
+    return null;
+  }
+}
+
+function isRecordedProcessRunning(
+  pid: number | null,
+  instance: PortalInstance,
+): boolean {
+  if (pid === null || !isProcessRunning(pid)) return false;
+  const startedMs = processStartTimeMs(pid);
+  const recordedMs = Date.parse(instance.startedAt);
+  if (startedMs === null || !Number.isFinite(recordedMs)) return true;
+  return startedMs <= recordedMs + RECORDED_START_TOLERANCE_MS;
+}
+
+function stopRecordedProcess(pid: number, instance: PortalInstance): boolean {
+  if (!isRecordedProcessRunning(pid, instance)) return false;
+  try {
+    process.kill(pid, "SIGTERM");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function getInstanceProvider(instance: PortalInstance): Provider {
   return instance.provider ?? "opencode";
 }
@@ -174,14 +228,14 @@ function getInstanceBackendPid(instance: PortalInstance): number | null {
 function isInstanceRunning(instance: PortalInstance): boolean {
   if (getInstanceProvider(instance) === "claude") {
     return (
-      isProcessRunning(getInstanceBackendPid(instance)) ||
-      isProcessRunning(instance.webPid)
+      isRecordedProcessRunning(getInstanceBackendPid(instance), instance) ||
+      isRecordedProcessRunning(instance.webPid, instance)
     );
   }
 
   return (
-    isProcessRunning(getInstanceBackendPid(instance)) ||
-    isProcessRunning(instance.webPid)
+    isRecordedProcessRunning(getInstanceBackendPid(instance), instance) ||
+    isRecordedProcessRunning(instance.webPid, instance)
   );
 }
 
@@ -476,7 +530,7 @@ async function cmdDefault(
   const existingIsActive =
     existing &&
     (provider === "claude"
-      ? isProcessRunning(existing.webPid)
+      ? isRecordedProcessRunning(existing.webPid, existing)
       : isInstanceRunning(existing));
   if (existing && existingIsActive) {
     const existingProvider = getInstanceProvider(existing);
@@ -728,19 +782,17 @@ async function cmdStop(options: Record<string, string | boolean | undefined>) {
   const backendPid = getInstanceBackendPid(removed);
 
   if (backendPid !== null) {
-    try {
-      process.kill(backendPid, "SIGTERM");
+    if (stopRecordedProcess(backendPid, removed)) {
       console.log(`Stopped ${providerName(provider)} (PID: ${backendPid})`);
-    } catch {
+    } else {
       console.log(`${providerName(provider)} was already stopped.`);
     }
   }
 
   if (removed.webPid !== null) {
-    try {
-      process.kill(removed.webPid, "SIGTERM");
+    if (stopRecordedProcess(removed.webPid, removed)) {
       console.log(`Stopped Web UI (PID: ${removed.webPid})`);
-    } catch {
+    } else {
       console.log("Web UI was already stopped.");
     }
   }
@@ -764,8 +816,11 @@ async function cmdList() {
 
   for (const instance of config.instances) {
     const provider = getInstanceProvider(instance);
-    const backendRunning = isProcessRunning(getInstanceBackendPid(instance));
-    const webRunning = isProcessRunning(instance.webPid);
+    const backendRunning = isRecordedProcessRunning(
+      getInstanceBackendPid(instance),
+      instance,
+    );
+    const webRunning = isRecordedProcessRunning(instance.webPid, instance);
 
     let status = "stopped";
     if (provider === "claude") {
