@@ -77,7 +77,7 @@ async function deliverOne(row: PromptRow): Promise<void> {
     // even when the session's live runner is on a DIFFERENT instance in
     // the same cohort - opencode then spawns a second runner. See
     // prompt-routing.ts header for the full bug description.
-    const owner = await resolveOwner(row.session_id);
+    const owner = await resolveOwner(row.session_id, row.port);
     const targetPort = owner?.port ?? row.port;
     const client = await getOpencodeClient(targetPort);
     if (owner && targetPort !== row.port) {

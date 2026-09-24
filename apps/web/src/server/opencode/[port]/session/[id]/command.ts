@@ -67,7 +67,7 @@ export default defineHandler(async (event) => {
   // Owner-aware dispatch: route to the cohort instance currently
   // running the session's runner, not blindly to `port` (the user's
   // active server). See prompt-routing.ts for the bug this fixes.
-  const ownerTarget = await resolveOwner(sessionID);
+  const ownerTarget = await resolveOwner(sessionID, port);
   const targetPort = ownerTarget?.port ?? port;
   const client = await getOpencodeClientV2(targetPort);
   // Directory threading is required for the same reason as prompt.ts:

@@ -48,6 +48,7 @@ import {
   type ContentRule,
   type ContentSettings,
 } from "./content-settings-state";
+import { resolveOwner } from "./prompt-routing";
 
 // SDK-first with a raw-fetch fallback for defense in depth.
 //
@@ -112,7 +113,9 @@ async function doFetchAndCache(
   port: number,
   sessionId: string,
 ): Promise<unknown[]> {
-  const client = await getOpencodeClient(port);
+  const owner = await resolveOwner(sessionId, port);
+  const targetPort = owner?.port ?? port;
+  const client = await getOpencodeClient(targetPort);
   const result = await client.session.messages({ path: { id: sessionId } });
   const data = (result as { data?: unknown }).data;
   let raw: unknown[];
@@ -128,7 +131,7 @@ async function doFetchAndCache(
         `falling back to raw fetch with limit=${FALLBACK_FETCH_LIMIT}`,
     );
     const res = await fetchOpencode(
-      port,
+      targetPort,
       `/session/${encodeURIComponent(sessionId)}/message?limit=${FALLBACK_FETCH_LIMIT}`,
     );
     if (!res.ok) {

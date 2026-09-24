@@ -3,6 +3,7 @@ import {
   getOpencodeClient,
   getOpencodeClientV2,
 } from "../../lib/opencode-client";
+import { resolveOwner } from "../../lib/prompt-routing";
 import { parsePort } from "../../lib/validation";
 
 // Two consumer modes, distinguished by ?includeStale=1:
@@ -29,8 +30,14 @@ export default defineHandler(async (event) => {
   const port = parsePort(event);
   const q = getQuery(event);
   const includeStale = q.includeStale === "1" || q.includeStale === "true";
+  const sessionId =
+    typeof q.sessionId === "string" && q.sessionId.length > 0
+      ? q.sessionId
+      : null;
+  const owner = sessionId ? await resolveOwner(sessionId, port) : null;
+  const targetPort = owner?.port ?? port;
 
-  const v2 = await getOpencodeClientV2(port);
+  const v2 = await getOpencodeClientV2(targetPort);
   const result = await v2.question.list();
   const questions = (result.data ?? []) as Array<{
     id: string;
@@ -41,7 +48,7 @@ export default defineHandler(async (event) => {
 
   if (includeStale) return questions;
 
-  const v1 = await getOpencodeClient(port);
+  const v1 = await getOpencodeClient(targetPort);
   const fresh: typeof questions = [];
   for (const qr of questions) {
     const toolMsgId = qr.tool?.messageID;

@@ -13,7 +13,7 @@ export default defineHandler(async (event) => {
   const port = parsePort(event);
   const id = parseRouteParam(event, "id");
 
-  const owner = await resolveOwner(id);
+  const owner = await resolveOwner(id, port);
   const targetPort = owner?.port ?? port;
   const client = await getOpencodeClient(targetPort);
   const result = await client.session.abort({ path: { id } });

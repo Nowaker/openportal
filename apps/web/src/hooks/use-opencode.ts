@@ -575,13 +575,18 @@ export function usePermissions(): {
 export function useReplyPermission() {
   const port = usePort();
 
-  return async (requestId: string, reply: "once" | "always" | "reject", message?: string) => {
+  return async (
+    requestId: string,
+    reply: "once" | "always" | "reject",
+    message?: string,
+    sessionId?: string,
+  ) => {
     if (!port) throw new Error("No instance selected");
 
     const res = await fetch(`/api/opencode/${port}/permission/${requestId}/reply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reply, message }),
+      body: JSON.stringify({ reply, message, sessionId }),
     });
 
     if (!res.ok) {
@@ -621,13 +626,17 @@ export function useQuestions(): {
 export function useReplyQuestion() {
   const port = usePort();
 
-  return async (requestId: string, answers: Array<{ values: string[] }>) => {
+  return async (
+    requestId: string,
+    answers: Array<{ values: string[] }>,
+    sessionId?: string,
+  ) => {
     if (!port) throw new Error("No instance selected");
 
     const res = await fetch(`/api/opencode/${port}/question/${requestId}/reply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify({ answers, sessionId }),
     });
 
     if (!res.ok) {
@@ -641,11 +650,13 @@ export function useReplyQuestion() {
 export function useRejectQuestion() {
   const port = usePort();
 
-  return async (requestId: string) => {
+  return async (requestId: string, sessionId?: string) => {
     if (!port) throw new Error("No instance selected");
 
     const res = await fetch(`/api/opencode/${port}/question/${requestId}/reject`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
     });
 
     if (!res.ok) {

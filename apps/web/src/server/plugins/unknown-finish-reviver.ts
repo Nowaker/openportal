@@ -34,7 +34,7 @@ export async function sendPromptAsyncRevive(port: number, sessionId: string): Pr
   // primitive here. Owner routing is still mandatory: if another cohort
   // instance owns the runner, dispatching to the scanned port would spawn
   // a second runner against the same session.
-  const owner = await resolveOwner(sessionId);
+  const owner = await resolveOwner(sessionId, port);
   const targetPort = owner?.port ?? port;
   const client = await getOpencodeClient(targetPort);
   const directory = await resolveSessionDirectory(targetPort, sessionId);

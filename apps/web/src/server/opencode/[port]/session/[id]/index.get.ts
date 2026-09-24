@@ -1,5 +1,6 @@
 import { defineHandler, setResponseHeader } from "nitro/h3";
 import { getOpencodeClient } from "../../../../lib/opencode-client";
+import { resolveOwner } from "../../../../lib/prompt-routing";
 import { parsePort, parseRouteParam } from "../../../../lib/validation";
 import {
   getCachedSessions,
@@ -43,7 +44,9 @@ export default defineHandler(async (event) => {
     return cached;
   }
 
-  const client = await getOpencodeClient(port);
+  const owner = await resolveOwner(id, port);
+  const targetPort = owner?.port ?? port;
+  const client = await getOpencodeClient(targetPort);
   const session = await client.session.get({ path: { id } });
   setResponseHeader(event, "X-OpenPortal-Session-Source", "opencode-sdk");
   return session.data;

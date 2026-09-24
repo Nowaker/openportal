@@ -30,6 +30,7 @@
 
 import { URL } from "node:url";
 import { getOpencodeClient } from "./opencode-client";
+import { resolveManagedRoutingTarget } from "./managed-opencode";
 
 const PLUGIN_URL = "http://127.0.0.1:4098";
 const RESOLVE_TIMEOUT_MS = 1_500;
@@ -94,7 +95,12 @@ async function fetchVerdict(
 
 export async function resolveOwner(
   sessionId: string,
+  fallbackPort?: number,
 ): Promise<RoutingTarget | null> {
+  if (fallbackPort !== undefined) {
+    const managed = await resolveManagedRoutingTarget(sessionId, fallbackPort);
+    if (managed) return managed;
+  }
   const now = Date.now();
   const cached = cache.get(sessionId);
   if (cached && now - cached.resolvedAt < CACHE_TTL_MS) {
@@ -117,7 +123,7 @@ export async function getOwnerClient(
   port: number;
   rerouted: boolean;
 }> {
-  const owner = await resolveOwner(sessionId);
+  const owner = await resolveOwner(sessionId, fallbackPort);
   if (owner && owner.port !== fallbackPort) {
     return {
       client: await getOpencodeClient(owner.port),

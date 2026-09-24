@@ -40,7 +40,7 @@ export default defineHandler(async (event) => {
   // different cohort member, two parallel compaction jobs spawn for the
   // same session. Same bug class as P0 prompt-routing - resolve owner
   // first.
-  const owner = await resolveOwner(sessionId);
+  const owner = await resolveOwner(sessionId, port);
   const targetPort = owner?.port ?? port;
   const res = await fetchOpencode(
     targetPort,
