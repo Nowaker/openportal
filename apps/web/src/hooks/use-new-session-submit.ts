@@ -124,7 +124,8 @@ export function useNewSessionSubmit(input: {
         // opencode's emitted user message should NOT diverge except for
         // template expansion.
         let slashDispatch: { command: string; arguments: string } | null = null;
-        if (checkedTemplates.length === 0 && userMessage.startsWith("/")) {
+        const anyTemplateSelected = order.some((template) => selected.has(template.id));
+        if (!anyTemplateSelected && userMessage.startsWith("/")) {
           const m = userMessage.match(/^\/(\S+)\s*([\s\S]*)$/);
           if (m) {
             const name = m[1];
