@@ -49,7 +49,10 @@ fi
 
 OUTPUT="apps/web/.output"
 ASSETS="$OUTPUT/public/assets"
-SNAPSHOT="/tmp/openportal-asset-snapshot.$$"
+# Beside the assets rather than in /tmp: /tmp is a tmpfs, a different
+# filesystem, so `cp -al` below always fell back to a full copy into a
+# per-user quota that other tools' scratch had already filled.
+SNAPSHOT="tmp/openportal-asset-snapshot.$$"
 RETENTION_DAYS=14
 
 cleanup_snapshot() {
