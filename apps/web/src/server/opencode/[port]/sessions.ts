@@ -52,7 +52,14 @@ async function doFetchSessions(port: number): Promise<Session[]> {
       throw new Error(`upstream ${res.status}`);
     }
   } catch {
-    sessions = (((await (await getOpencodeClient(port)).session.list()).data ?? [])) as Session[];
+    // The SDK returns its errors rather than throwing them. Reading a failed
+    // list as `[]` let the shrink guard re-stamp a stale cache as fresh, so an
+    // upstream outage looked like a sidebar frozen hours in the past.
+    const listed = await (await getOpencodeClient(port)).session.list();
+    if (listed.error !== undefined || !Array.isArray(listed.data)) {
+      throw new Error("upstream session list failed");
+    }
+    sessions = listed.data as Session[];
   }
   setCachedSessions(port, sessions);
   return sessions;
