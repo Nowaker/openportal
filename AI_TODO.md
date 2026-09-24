@@ -5486,3 +5486,19 @@ Design notes:
   message + question text) is answered through vibeterm, never through the
   abort-and-reprompt fallback. A server without the routes shows the async card
   read-only.
+
+### 230. macOS asset retention skips must not abort builds (DONE - this commit)
+
+User prompt (verbatim):
+
+> CONTEXT: User approved fixing scripts/build.sh on macOS: step 4 uses cp -an ... || cp -rn .... macOS /bin/cp -n exits 1 whenever an existing file is skipped, so set -e aborts after a successful build, before retention pruning/report. Prior snapshot-on-same-fs fix ef8d423 is already in main-nowaker.
+> GOAL: Retaining old content-hashed assets does not fail on intentional skips on macOS, preserves current-build files, and still fails on actual copy errors.
+> STOP WHEN: Minimal implementation, regression evidence on Linux and real macOS (m2pro preferred), successful relevant build/retention usage, and committed branch ready for integration.
+> EVIDENCE: Exact changed behavior, test commands/results, macOS evidence, SHA/worktree/branch.
+> REQUEST: Work only on this build concern in /home/nowaker/projekty/webapps/portal isolated worktree, obey repo rules and skills. Inspect existing test/build infrastructure before designing fix. Do not solve by blindly ignoring cp failure. Keep filenames/spaces/symlinks semantics and retention pruning correct. Avoid copying whole large assets to tmpfs. Do not deploy or merge; coordinator ses_f2d5b3460ffeQRnA2ek5MQyHoY owns combined integration. User authorizes commits/push. Never touch intentionally unlanded managed-opencode rescue branch/worktree or unrelated edits. Current model attribution, no copied historical opus trailers.
+> DOWNSTREAM: Coordinator will integrate this before deploying Portal fixes.
+
+Design notes:
+- Check destination existence, including dangling symlinks, before copying; recursively merge real directories only. Do not use `cp -n` or suppress copy errors.
+- Exercise the real build wrapper with a stub compiler on Linux and macOS, covering collisions, unusual filenames, symlinks, age pruning, copy failures, and snapshot cleanup.
+- Keep the same-filesystem snapshot location. Coordinator owns merge and deployment.

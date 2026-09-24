@@ -88,12 +88,26 @@ if ! bun run build; then
 fi
 
 # 4. Layer snapshotted assets into the new .output. New files win on
-#    name collision (the snapshot uses cp -n: "no clobber") so the
+#    name collision (including dangling symlinks) so the
 #    just-built hashes are served as written; everything else is
 #    preserved.
 if [ -d "$SNAPSHOT" ]; then
   mkdir -p "$ASSETS"
-  cp -an "$SNAPSHOT/." "$ASSETS/" 2>/dev/null || cp -rn "$SNAPSHOT/." "$ASSETS/"
+  # macOS cp -n reports skipped files as failures. Skip before copying
+  # instead, keeping real copy errors fatal and never following new symlinks.
+  restore_missing_assets() {
+    local source target
+    for source in "$1"/*; do
+      target="$2/${source##*/}"
+      if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+        cp -a "$source" "$target"
+      elif [ -d "$source" ] && [ ! -L "$source" ] \
+        && [ -d "$target" ] && [ ! -L "$target" ]; then
+        restore_missing_assets "$source" "$target"
+      fi
+    done
+  }
+  (shopt -s dotglob nullglob; restore_missing_assets "$SNAPSHOT" "$ASSETS")
   RESTORED=$(ls "$ASSETS" | wc -l)
   echo "build.sh: retention layer restored, $RESTORED total files in $ASSETS"
 fi
