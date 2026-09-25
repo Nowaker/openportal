@@ -14,6 +14,11 @@ html[data-ios="true"] [data-sidebar-root] {
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
+html[data-ios="true"] [data-composer-root] {
+  flex-shrink: 1;
+  min-height: 0;
+}
+
 html[data-ios="true"] textarea[data-composer-textarea] {
   font-size: max(16px, var(--text-sm));
   touch-action: pan-y pinch-zoom;

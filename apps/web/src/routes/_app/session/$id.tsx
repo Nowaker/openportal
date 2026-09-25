@@ -6230,6 +6230,7 @@ function SessionPage() {
 
       {!composerCollapsed && (
         <div
+          data-composer-root=""
           className={`border-t border-border shrink-0 relative flex flex-col overflow-hidden${
             sessionIsArchived ? " [&>*:not([data-archived-banner])]:opacity-60 [&>*:not([data-archived-banner])]:pointer-events-none" : ""
           }`}

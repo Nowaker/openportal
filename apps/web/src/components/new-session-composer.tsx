@@ -48,6 +48,7 @@ export function NewSessionComposer({
   const { fileAttachInputRef, anyFileAttachInputRef } = attachments;
   return (
     <div
+      data-composer-root=""
       className="border-t border-border shrink-0 relative flex flex-col overflow-hidden"
       style={{ maxHeight: `${composerMaxHeight}px` }}
     >
