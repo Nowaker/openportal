@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { defineHandler } from "nitro/h3";
+import { HTTPError, defineHandler } from "nitro/h3";
 import { getOpencodeClient } from "../../../lib/opencode-client";
 import { parsePort, parseBody } from "../../../lib/validation";
 
@@ -18,6 +18,9 @@ export default defineHandler(async (event) => {
     body: { title: body.title, parentID: body.parentID },
     query: body.directory ? { directory: body.directory } : undefined,
   });
+  if (!session.response.ok || !session.data) {
+    throw new HTTPError(`Session creation failed (HTTP ${session.response.status})`, { status: session.response.ok ? 502 : session.response.status });
+  }
 
   return session.data;
 });
