@@ -5457,3 +5457,32 @@ Design notes:
 - Replace the terminal full-snapshot experience with progressive discovery so filesystem template rows appear while the rescan is still running.
 - Prioritize template directories by workspace-relative depth: scan `<workspace>/.vibekick/templates/*.md` first, then `<workspace>/*/.vibekick/templates/*.md`, then each deeper level in breadth-first order.
 - Keep the existing snapshot/cache behavior for completed scans while exposing partial batches through one shared producer/consumer protocol.
+
+### 230. Answer vibeterm async questions from OpenPortal (DONE - this commit)
+
+User prompt (verbatim):
+
+> surface vbeterm_async_question in openportal. feedback from mark:
+>
+> vibeterm_async_question can't be answered from OpenPortal. OpenPortal only
+> shows a question card when part.tool === "question" (routes/_app/session/$id.tsx
+> ~1560), and vibeterm-api's GET /question only lists running question parts from
+> opencode.db (attention.ts runningQuestions), so async questions in questions.db are
+> invisible to it and there's no route to answer them. Widening OpenPortal's check
+> alone would be harmful: its fallback aborts the running turn, and with an async
+> question the agent is still working. Could vibeterm-api list and accept replies for
+> questions.db entries through the same submit path the Vibeterm pane uses?
+
+Design notes:
+
+- vibeterm-api (opencode-tools 213ba0a) serves `GET /vibeterm/question`,
+  `GET /vibeterm/question/{id}`, `POST /vibeterm/question/{id}/reply` over
+  vibeterm's `questions.db`, delivering through the pane's own
+  `question-submit.ts` helper.
+- Portal proxies them as `/api/opencode/<port>/vibeterm-questions` and
+  `/api/opencode/<port>/vibeterm-questions/<id>/reply`.
+- The question card renders for `vibeterm_async_question` parts too, and for
+  every question-shaped part a matching `questions.db` request (by session +
+  message + question text) is answered through vibeterm, never through the
+  abort-and-reprompt fallback. A server without the routes shows the async card
+  read-only.

@@ -176,6 +176,19 @@ import {
   formatCustomNotesAsPrompt,
   partitionQuestionAnswers,
 } from "@/lib/question-answers";
+import {
+  ASYNC_QUESTION_TOOL,
+  asyncQuestionIdFromOutput,
+  buildVibetermAnswers,
+  fetchVibetermQuestions,
+  isAsyncQuestionToolName,
+  isQuestionToolName,
+  isUnsettled,
+  matchVibetermRequest,
+  replyVibetermQuestion,
+  vibetermQuestionsKey,
+  type VibetermQuestionState,
+} from "@/lib/vibeterm-questions";
 
 // Search params on this route are best-effort. Stale URL state from
 // history transitions or copy-pasted links MUST NOT crash the router
@@ -574,7 +587,8 @@ function formatToolCall(part: ToolPart): {
         details: path ? `in ${path}` : undefined,
       };
     }
-    case "question": {
+    case "question":
+    case ASYNC_QUESTION_TOOL: {
       const questions = Array.isArray(input.questions) ? input.questions : [];
       const count = questions.length;
       return {
@@ -757,12 +771,23 @@ function getMessageContent(parts: Part[]): string {
     .join("\n\n");
 }
 
+const VIBETERM_STATE_LABELS: Record<Exclude<VibetermQuestionState, "pending">, string> = {
+  sending: "Sending...",
+  answered: "Answered",
+  denied: "Declined",
+  dismissed: "Dismissed",
+};
+
 function QuestionAnswerForm({
   questions,
   partKey,
   port,
   sessionId,
   callID,
+  messageId,
+  isAsync,
+  asyncQuestionId,
+  isToolRunning,
   isAssistantBusy,
   onAbort,
 }: {
@@ -771,6 +796,10 @@ function QuestionAnswerForm({
   port: number;
   sessionId: string;
   callID: string;
+  messageId: string;
+  isAsync: boolean;
+  asyncQuestionId: string | null;
+  isToolRunning: boolean;
   isAssistantBusy: boolean;
   onAbort: () => void;
 }) {
@@ -800,6 +829,32 @@ function QuestionAnswerForm({
       return out;
     },
   );
+  // vibeterm's own store holds every async question, and a running
+  // builtin question too when vibeterm shadows it. A request found there is
+  // answered through vibeterm-api, never through the abort-and-reprompt
+  // recovery below: its agent is still working, not wedged.
+  const lookupVibeterm = isAsync || isToolRunning;
+  const {
+    data: vibeterm,
+    error: vibetermError,
+    mutate: mutateVibeterm,
+  } = useSWR(
+    lookupVibeterm && port ? vibetermQuestionsKey(port, sessionId, messageId) : null,
+    () => fetchVibetermQuestions(port, sessionId, messageId),
+    {
+      keepPreviousData: true,
+      refreshInterval: (latest) => {
+        if (!latest?.supported) return 0;
+        const request = matchVibetermRequest(latest.requests, asyncQuestionId, questions);
+        return request?.questions.some(isUnsettled) ? 15_000 : 0;
+      },
+    },
+  );
+  const vibetermRequest = vibeterm?.supported
+    ? matchVibetermRequest(vibeterm.requests, asyncQuestionId, questions)
+    : undefined;
+  const vibetermLoading = lookupVibeterm && vibeterm === undefined && !vibetermError;
+  const vibetermUnavailable = isAsync && !vibetermLoading && !vibetermRequest;
   const [isPosting, setIsPosting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittedAt, setSubmittedAt] = useState<number | null>(
@@ -840,6 +895,37 @@ function QuestionAnswerForm({
     );
 
     try {
+      if (vibetermRequest) {
+        const answers = buildVibetermAnswers(vibetermRequest, selections, freeformInputs);
+        if (!answers || answers.length === 0) {
+          throw new Error("Nothing filled in to send");
+        }
+        const result = await replyVibetermQuestion(port, vibetermRequest.id, { answers });
+        await mutateVibeterm(
+          (prev) =>
+            prev?.supported
+              ? {
+                  supported: true,
+                  requests: prev.requests.map((r) =>
+                    r.id === result.request.id ? result.request : r,
+                  ),
+                }
+              : prev,
+          { revalidate: false },
+        );
+        if (result.request.closedMs !== null) {
+          useDismissedQuestionsStore.getState().dismiss(callID);
+        }
+        setSubmittedAt(Date.now());
+        mutateSessionMessages(port, sessionId);
+        return;
+      }
+      if (isAsync) {
+        throw new Error(
+          "This server cannot deliver async answers - answer it in Vibeterm's question pane",
+        );
+      }
+
       // Resolve the live pending question request FIRST: a live request
       // is answered via question.reply, a lost one needs session recovery
       // (below). includeStale=1 keeps the request visible past the
@@ -967,7 +1053,9 @@ function QuestionAnswerForm({
     }
   };
 
-  const hasAnswersForAllQuestions =
+  const hasAnswersForAllQuestions = vibetermRequest
+    ? (buildVibetermAnswers(vibetermRequest, selections, freeformInputs)?.length ?? 0) > 0
+    : !isAsync &&
     questions.length > 0 &&
     questions.every((_, i) => {
       const selected = selections[i] || [];
@@ -975,12 +1063,17 @@ function QuestionAnswerForm({
       return selected.length > 0 || freeform.length > 0;
     });
 
-  const isSubmitted = submittedAt !== null;
+  const isSubmitted = vibetermRequest
+    ? !vibetermRequest.questions.some((q) => q.state === "pending")
+    : submittedAt !== null;
 
   return (
     <div className="mt-2 space-y-4 text-fg/90">
       {questions.map((q, idx) => {
-        const selected = selections[idx] || [];
+        const remote = vibetermRequest?.questions[idx];
+        const settledState = remote && remote.state !== "pending" ? remote.state : null;
+        const locked = isPosting || settledState !== null || vibetermUnavailable;
+        const selected = remote && settledState ? remote.selected : selections[idx] || [];
         const inputName = `${partKey}-q${idx}`;
 
         return (
@@ -988,8 +1081,15 @@ function QuestionAnswerForm({
             key={`${partKey}-q-${idx}`}
             className={`space-y-2 ${idx > 0 ? "pt-4 border-t border-dashed border-border" : ""}`}
           >
-            <div className="text-sm font-semibold text-fg">
-              Q{idx + 1}.{q.header ? ` ${q.header}` : ""}
+            <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+              <span>
+                Q{idx + 1}.{q.header ? ` ${q.header}` : ""}
+              </span>
+              {settledState && (
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-fg">
+                  {VIBETERM_STATE_LABELS[settledState]}
+                </span>
+              )}
             </div>
             <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:my-1">
               <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>
@@ -1006,14 +1106,14 @@ function QuestionAnswerForm({
                     <label
                       key={`opt-${idx}-${optIdx}`}
                       htmlFor={inputId}
-                      className={`flex items-center gap-2 ${isPosting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                      className={`flex items-center gap-2 ${locked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                     >
                       <input
                         id={inputId}
                         name={inputName}
                         type={q.multiple ? "checkbox" : "radio"}
                         checked={isSelected}
-                        disabled={isPosting}
+                        disabled={locked}
                         onChange={() => toggleOption(idx, opt.label, !!q.multiple)}
                         className="accent-primary"
                       />
@@ -1029,14 +1129,14 @@ function QuestionAnswerForm({
                 {!q.multiple && (
                   <label
                     htmlFor={`${partKey}-q${idx}-none`}
-                    className={`flex items-center gap-2 text-muted-fg ${isPosting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                    className={`flex items-center gap-2 text-muted-fg ${locked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                   >
                     <input
                       id={`${partKey}-q${idx}-none`}
                       name={inputName}
                       type="radio"
                       checked={selected.length === 0}
-                      disabled={isPosting}
+                      disabled={locked}
                       onChange={() =>
                         setSelections((prev) => ({ ...prev, [idx]: [] }))
                       }
@@ -1062,7 +1162,7 @@ function QuestionAnswerForm({
                 )}
                 <textarea
                   rows={1}
-                  disabled={isPosting}
+                  disabled={locked}
                   placeholder={
                     q.options.length > 0 && q.custom
                       ? q.multiple
@@ -1070,7 +1170,11 @@ function QuestionAnswerForm({
                         : "Add a custom note (combined with the selected option)..."
                       : "Type your answer..."
                   }
-                  value={freeformInputs[idx] || ""}
+                  value={
+                    remote && settledState
+                      ? (remote.comment ?? "")
+                      : freeformInputs[idx] || ""
+                  }
                   ref={(el) => {
                     if (el) {
                       el.style.height = "auto";
@@ -1119,6 +1223,17 @@ function QuestionAnswerForm({
         );
       })}
 
+      {(isAsync || vibetermLoading) && (
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-fg">
+          {vibetermLoading && <Loader className="size-3" />}
+          {vibetermLoading
+            ? "Checking Vibeterm's question store..."
+            : vibetermUnavailable
+              ? "This server cannot answer async questions - answer it in Vibeterm's question pane."
+              : "Asked without waiting - the agent kept working. Your answer arrives as a message."}
+        </div>
+      )}
+
       {submitError && (
         <div className="text-[11px] text-danger">{submitError}</div>
       )}
@@ -1127,7 +1242,9 @@ function QuestionAnswerForm({
         <Button
           type="button"
           size="sm"
-          isDisabled={isSubmitted || !hasAnswersForAllQuestions || isPosting}
+          isDisabled={
+            isSubmitted || !hasAnswersForAllQuestions || isPosting || vibetermLoading
+          }
           onPress={handleSubmit}
           className="text-xs"
         >
@@ -1138,7 +1255,7 @@ function QuestionAnswerForm({
               ? "Answers submitted"
               : "Submit Answers"}
         </Button>
-        {isSubmitted && (
+        {isSubmitted && !vibetermRequest && !isAsync && (
           <Button
             type="button"
             size="sm"
@@ -1557,7 +1674,8 @@ const ToolCallItem = memo(function ToolCallItem({
 }) {
   const { icon, label, details } = formatToolCall(part);
   const spawnedSessionId = spawnedSubsessionId(part);
-  const isQuestionTool = (part.tool || "").toLowerCase() === "question";
+  const isQuestionTool = isQuestionToolName(part.tool);
+  const isAsyncQuestion = isAsyncQuestionToolName(part.tool);
   const questions = isQuestionTool ? parseToolQuestions(part) : [];
   const hasQuestions = questions.length > 0;
   const isCompleted = part.state.status === "completed";
@@ -1672,6 +1790,16 @@ const ToolCallItem = memo(function ToolCallItem({
             port={port}
             sessionId={sessionId}
             callID={part.callID || ""}
+            messageId={messageId}
+            isAsync={isAsyncQuestion}
+            asyncQuestionId={
+              isAsyncQuestion
+                ? asyncQuestionIdFromOutput(
+                    (part.state as { output?: unknown }).output,
+                  )
+                : null
+            }
+            isToolRunning={isPending}
             isAssistantBusy={isAssistantBusy}
             onAbort={onAbort}
           />
