@@ -1,4 +1,5 @@
 import type { createOpencodeClient } from "@opencode-ai/sdk";
+import { createHash } from "node:crypto";
 import { z } from "zod/v4";
 import { getPromptDb } from "./prompt-db";
 import { markPromptDelivered, markPromptFailed, recordDeliveryAttempt, type PromptRow } from "./prompt-archive";
@@ -15,6 +16,7 @@ const payloadSchema = z.object({
 });
 const dispatchSchema = z.object({
   baseline_json: z.string(), port: z.number(), directory: z.string().nullable(), receipt_id: z.string().nullable(),
+  receipt_text_sha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
 });
 const rejectionSchema = z.object({ data: z.object({ possiblyAccepted: z.boolean().optional() }).optional() });
 type Client = ReturnType<typeof createOpencodeClient>;
@@ -70,7 +72,8 @@ export async function deliverPendingPrompt(row: PromptRow, target: Target): Prom
         return;
       }
       const receipt = result.response.headers.get("X-Vibeterm-Message-ID");
-      if (receipt) db.prepare("UPDATE prompt_dispatch SET receipt_id = ? WHERE prompt_id = ?").run(receipt, row.id);
+      const digest = result.response.headers.get("X-Vibeterm-Receipt-Text-SHA256");
+      if (receipt) db.prepare("UPDATE prompt_dispatch SET receipt_id = ?, receipt_text_sha256 = ? WHERE prompt_id = ?").run(receipt, digest, row.id);
       else if (!target.requiresReceipt && result.response.status === 204) {
         markPromptDelivered(row.id, null);
         return;
@@ -89,10 +92,15 @@ export async function deliverPendingPrompt(row: PromptRow, target: Target): Prom
       if (dispatch.receipt_id && message.info.id !== dispatch.receipt_id) return false;
       const parts = message.parts.flatMap((part) => {
         // OpenCode adds synthetic file-context parts; they are not user input.
-        if (part.type === "text" && part.synthetic) return [];
+        if (part.type === "text" && (part.synthetic || part.ignored)) return [];
         const parsedPart = partSchema.safeParse(part);
         return parsedPart.success ? [parsedPart.data] : [];
       });
+      if (dispatch.receipt_text_sha256 !== null) {
+        const part = parts[0];
+        return parts.length === 1 && part?.type === "text"
+          && createHash("sha256").update(part.text, "utf8").digest("hex") === dispatch.receipt_text_sha256;
+      }
       return JSON.stringify(parts) === expected;
     });
     if (matches.length !== 1) {

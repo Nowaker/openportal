@@ -11,6 +11,7 @@ import synthetic_0005 from "./migrations/0005_synthetic_messages.sql?raw";
 import synthetic_completed_0006 from "./migrations/0006_synthetic_messages_completed.sql?raw";
 import permission_events_0007 from "./migrations/0007_permission_events.sql?raw";
 import prompt_dispatch_0008 from "./migrations/0008_prompt_dispatch.sql?raw";
+import prompt_receipt_digest_0009 from "./migrations/0009_prompt_receipt_digest.sql?raw";
 
 interface Migration {
   version: number;
@@ -28,6 +29,7 @@ const MIGRATIONS: Migration[] = [
   { version: 6, sql: synthetic_completed_0006 },
   { version: 7, sql: permission_events_0007 },
   { version: 8, sql: prompt_dispatch_0008 },
+  { version: 9, sql: prompt_receipt_digest_0009 },
 ];
 
 const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
