@@ -5545,3 +5545,17 @@ Design notes:
 - Migration 9 adds nullable receipt digest storage so read-only reconciliation survives restart. No UI/public-route expansion, caller-generated IDs, or question/capability edits.
 - Verified: four red-first regressions; 15 delivery tests green including ignored text, digest mismatch, wrong receipt ID, and restart reconciliation. Real Portal-module/API/TUI text+file and attachment-only both delivered with one named user; native OpenCode 1.18.32 accepted headerless 204 and persisted one matching user. Coordinator independently passed 30 tests/65 assertions and full build (4/4 stages).
 - Full typecheck has no changed-file errors; LSP tool is confined to the tools workspace. Coordinator owns integration; no worker merge/push/deploy.
+
+### 235. Converge Vibeterm async question answering on /vibeterm/question (DONE - see commit)
+
+User prompt (verbatim):
+
+> 1. YES: Keep A, port B's safety into it (Recommended) - Drop our /vibeterm/questions routes and Portal question-transport. Keep B's shared-store hardening (intent fence, frozen claimed drafts, expired-claim recovery), which also protects A's pane-helper path. Port the Portal fixes onto A's card: exact callID matching instead of text fallback, refused labels, completed-native read-only, no Resubmit. /vibeterm/capabilities stays only to advertise prompts.receipt.
+
+Design notes:
+
+- The card matches its request by the asking tool call (`callID`, served by opencode-tools `56dfb47`) first, then by the async tool's `question_id`, and falls back to question text only for requests recorded before call ids were kept - never to a request naming a different call.
+- Every question card looks the store up, because a shadowed builtin's tool part can complete while its request still waits. A completed native question with no store request is read-only, so Submit can no longer reach abort-and-reprompt against a turn that is not waiting.
+- `unconfirmed` (delivery may have landed, vibeterm will not resend) gets its own badge, note and disabled button. Resubmit is gone. Denied/dismissed show no discarded draft (the API now returns them empty).
+- The list proxy answers `null` instead of relaying 404/503, which the client already reads as unsupported, so stock opencode no longer logs a failed request per card.
+- Verified: 5 helper tests; 35/35 isolated browser checks against a mock of the /vibeterm/question contract (store-matched completed builtin, foreign-call and route-less completed builtin read-only, unconfirmed, denied, running native via /question, legacy null-callID async request), none aborting or re-prompting, no console errors.

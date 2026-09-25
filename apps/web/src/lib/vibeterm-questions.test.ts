@@ -53,10 +53,25 @@ describe("vibeterm question helpers", () => {
     expect(asyncQuestionIdFromOutput(undefined)).toBeNull();
   });
 
+  test("matches by the asking tool call first", () => {
+    const requests = [
+      request("qst_1", { callID: "call_1" }),
+      request("qst_2", { callID: "call_2" }),
+    ];
+    const text = [
+      { header: "h0", question: "q0?" },
+      { header: "h1", question: "q1?" },
+    ];
+    expect(matchVibetermRequest(requests, "call_2", null, text)?.id).toBe("qst_2");
+    expect(matchVibetermRequest(requests, "call_2", "qst_1", text)?.id).toBe("qst_2");
+    // Same questions, but asked by other calls: not this card's request.
+    expect(matchVibetermRequest(requests, "call_9", null, text)).toBeUndefined();
+  });
+
   test("matches by id when the tool named one, else by question text", () => {
     const requests = [request("qst_1"), request("qst_2")];
-    expect(matchVibetermRequest(requests, "qst_2", [])?.id).toBe("qst_2");
-    expect(matchVibetermRequest(requests, "qst_9", [])).toBeUndefined();
+    expect(matchVibetermRequest(requests, null, "qst_2", [])?.id).toBe("qst_2");
+    expect(matchVibetermRequest(requests, null, "qst_9", [])).toBeUndefined();
 
     const closed = request("qst_old", { closedMs: 5 });
     const open = request("qst_new");
@@ -64,9 +79,9 @@ describe("vibeterm question helpers", () => {
       { header: "h0", question: "q0?" },
       { header: "h1", question: "q1?" },
     ];
-    expect(matchVibetermRequest([closed, open], null, text)?.id).toBe("qst_new");
-    expect(matchVibetermRequest([closed], null, text)?.id).toBe("qst_old");
-    expect(matchVibetermRequest([open], null, [{ header: "h0", question: "q0?" }])).toBeUndefined();
+    expect(matchVibetermRequest([closed, open], "call_x", null, text)?.id).toBe("qst_new");
+    expect(matchVibetermRequest([closed], "call_x", null, text)?.id).toBe("qst_old");
+    expect(matchVibetermRequest([open], "call_x", null, [{ header: "h0", question: "q0?" }])).toBeUndefined();
   });
 
   test("sends only filled, still-pending questions, with known labels", () => {

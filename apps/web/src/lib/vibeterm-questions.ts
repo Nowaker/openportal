@@ -22,9 +22,13 @@ export function isAsyncQuestionToolName(tool: string | undefined): boolean {
   return (tool ?? "").toLowerCase() === ASYNC_QUESTION_TOOL;
 }
 
+// `unconfirmed`: delivery may have reached the session but was never
+// confirmed (a lost acknowledgement, or a helper that died mid-delivery).
+// vibeterm will not send it again, so neither may this card.
 export type VibetermQuestionState =
   | "pending"
   | "sending"
+  | "unconfirmed"
   | "answered"
   | "denied"
   | "dismissed";
@@ -46,6 +50,9 @@ export interface VibetermQuestionRequest {
   displaySessionID: string;
   directory: string | null;
   messageID: string | null;
+  // The tool call that asked. Null on requests recorded before vibeterm kept
+  // it, and on a vibeterm-api too old to report it.
+  callID?: string | null;
   askedMs: number;
   closedMs: number | null;
   blocking: boolean;
@@ -108,16 +115,22 @@ interface QuestionText {
   question: string;
 }
 
-// The request a tool part asked. An async call names its id in its output;
-// a shadowed builtin call does not, so it is matched by its questions,
-// which one message can only ask identically by asking twice.
+// The request a tool part asked. Its tool call id names it exactly. Failing
+// that, an async call names the request id in its output. A request recorded
+// before vibeterm kept call ids is matched by its questions, which one
+// message can only ask identically by asking twice - but never a request that
+// names a different call, which belongs to another card.
 export function matchVibetermRequest(
   requests: readonly VibetermQuestionRequest[],
+  callID: string | null,
   questionId: string | null,
   questions: readonly QuestionText[],
 ): VibetermQuestionRequest | undefined {
+  const byCall = callID ? requests.find((r) => r.callID === callID) : undefined;
+  if (byCall) return byCall;
   if (questionId) return requests.find((r) => r.id === questionId);
   const sameText = (r: VibetermQuestionRequest) =>
+    (r.callID ?? null) === null &&
     r.questions.length === questions.length &&
     r.questions.every(
       (q, i) => q.header === questions[i]?.header && q.question === questions[i]?.question,
@@ -157,7 +170,7 @@ export function buildVibetermAnswers(
 }
 
 export interface VibetermReplyResult {
-  state: "delivered" | "sending";
+  state: "delivered" | "sending" | "unconfirmed";
   request: VibetermQuestionRequest;
 }
 

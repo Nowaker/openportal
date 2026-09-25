@@ -773,6 +773,7 @@ function getMessageContent(parts: Part[]): string {
 
 const VIBETERM_STATE_LABELS: Record<Exclude<VibetermQuestionState, "pending">, string> = {
   sending: "Sending...",
+  unconfirmed: "Unconfirmed",
   answered: "Answered",
   denied: "Declined",
   dismissed: "Dismissed",
@@ -788,6 +789,7 @@ function QuestionAnswerForm({
   isAsync,
   asyncQuestionId,
   isToolRunning,
+  isToolCompleted,
   isAssistantBusy,
   onAbort,
 }: {
@@ -800,6 +802,7 @@ function QuestionAnswerForm({
   isAsync: boolean;
   asyncQuestionId: string | null;
   isToolRunning: boolean;
+  isToolCompleted: boolean;
   isAssistantBusy: boolean;
   onAbort: () => void;
 }) {
@@ -829,11 +832,12 @@ function QuestionAnswerForm({
       return out;
     },
   );
-  // vibeterm's own store holds every async question, and a running
-  // builtin question too when vibeterm shadows it. A request found there is
-  // answered through vibeterm-api, never through the abort-and-reprompt
-  // recovery below: its agent is still working, not wedged.
-  const lookupVibeterm = isAsync || isToolRunning;
+  // vibeterm's own store holds every async question, and a builtin question
+  // too when vibeterm shadows it - whose tool part may already have completed
+  // while the request waits. A request found there is answered through
+  // vibeterm-api, never through the abort-and-reprompt recovery below: its
+  // agent is still working, not wedged.
+  const lookupVibeterm = true;
   const {
     data: vibeterm,
     error: vibetermError,
@@ -845,16 +849,23 @@ function QuestionAnswerForm({
       keepPreviousData: true,
       refreshInterval: (latest) => {
         if (!latest?.supported) return 0;
-        const request = matchVibetermRequest(latest.requests, asyncQuestionId, questions);
+        const request = matchVibetermRequest(latest.requests, callID || null, asyncQuestionId, questions);
         return request?.questions.some(isUnsettled) ? 15_000 : 0;
       },
     },
   );
   const vibetermRequest = vibeterm?.supported
-    ? matchVibetermRequest(vibeterm.requests, asyncQuestionId, questions)
+    ? matchVibetermRequest(vibeterm.requests, callID || null, asyncQuestionId, questions)
     : undefined;
   const vibetermLoading = lookupVibeterm && vibeterm === undefined && !vibetermError;
-  const vibetermUnavailable = isAsync && !vibetermLoading && !vibetermRequest;
+  // Nothing can answer it here: an async question with no store behind it, or
+  // a native question whose tool call already returned - answered or ended.
+  // Offering Submit would only reach the abort-and-reprompt fallback and send
+  // a second answer into a turn that is not waiting for one.
+  const answerUnavailable =
+    !vibetermLoading && !vibetermRequest && (isAsync || isToolCompleted);
+  const deliveryUnconfirmed =
+    vibetermRequest?.questions.some((q) => q.state === "unconfirmed") ?? false;
   const [isPosting, setIsPosting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittedAt, setSubmittedAt] = useState<number | null>(
@@ -885,6 +896,7 @@ function QuestionAnswerForm({
   };
 
   const handleSubmit = async () => {
+    if (answerUnavailable || vibetermLoading) return;
     setIsPosting(true);
     setSubmitError(null);
 
@@ -1072,7 +1084,7 @@ function QuestionAnswerForm({
       {questions.map((q, idx) => {
         const remote = vibetermRequest?.questions[idx];
         const settledState = remote && remote.state !== "pending" ? remote.state : null;
-        const locked = isPosting || settledState !== null || vibetermUnavailable;
+        const locked = isPosting || settledState !== null || answerUnavailable;
         const selected = remote && settledState ? remote.selected : selections[idx] || [];
         const inputName = `${partKey}-q${idx}`;
 
@@ -1223,14 +1235,24 @@ function QuestionAnswerForm({
         );
       })}
 
-      {(isAsync || vibetermLoading) && (
+      {(isAsync || answerUnavailable || (vibetermLoading && isToolRunning)) && (
         <div className="flex items-center gap-1.5 text-[11px] text-muted-fg">
           {vibetermLoading && <Loader className="size-3" />}
           {vibetermLoading
             ? "Checking Vibeterm's question store..."
-            : vibetermUnavailable
-              ? "This server cannot answer async questions - answer it in Vibeterm's question pane."
+            : answerUnavailable
+              ? isAsync
+                ? "This server cannot answer async questions - answer it in Vibeterm's question pane."
+                : "This question already returned, so it can no longer be answered here."
               : "Asked without waiting - the agent kept working. Your answer arrives as a message."}
+        </div>
+      )}
+
+      {deliveryUnconfirmed && (
+        <div className="text-[11px] text-muted-fg">
+          An answer's delivery is unconfirmed: it may already be in the
+          conversation, so it will not be sent again. Check the conversation
+          before answering another way.
         </div>
       )}
 
@@ -1243,7 +1265,11 @@ function QuestionAnswerForm({
           type="button"
           size="sm"
           isDisabled={
-            isSubmitted || !hasAnswersForAllQuestions || isPosting || vibetermLoading
+            isSubmitted ||
+            !hasAnswersForAllQuestions ||
+            isPosting ||
+            vibetermLoading ||
+            answerUnavailable
           }
           onPress={handleSubmit}
           className="text-xs"
@@ -1252,22 +1278,11 @@ function QuestionAnswerForm({
           {isPosting && !isSubmitted
             ? "Sending..."
             : isSubmitted
-              ? "Answers submitted"
+              ? deliveryUnconfirmed
+                ? "Delivery unconfirmed"
+                : "Answers submitted"
               : "Submit Answers"}
         </Button>
-        {isSubmitted && !vibetermRequest && !isAsync && (
-          <Button
-            type="button"
-            size="sm"
-            intent="outline"
-            isDisabled={!hasAnswersForAllQuestions || isPosting}
-            onPress={handleSubmit}
-            className="text-xs"
-          >
-            <SendIcon size="12px" />
-            {isPosting ? "Resending..." : "Resubmit answers"}
-          </Button>
-        )}
       </div>
     </div>
   );
@@ -1800,6 +1815,7 @@ const ToolCallItem = memo(function ToolCallItem({
                 : null
             }
             isToolRunning={isPending}
+            isToolCompleted={isCompleted}
             isAssistantBusy={isAssistantBusy}
             onAbort={onAbort}
           />
