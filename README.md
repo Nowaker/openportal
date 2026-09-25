@@ -203,6 +203,24 @@ anything that needs a tracker on GitLab.
   events; omit for system-wide ones (connection, version
   mismatch) so they show under both filter scopes.
 
+### Durable prompt delivery
+
+- Every prompt, including short replies, enters the archive before dispatch.
+  A storage failure returns an error without sending the prompt.
+- SDK HTTP failures remain pending with an error. Definitive refusal retries
+  with backoff; an interrupted or ambiguous dispatch is never blindly resent.
+- A durable pre-dispatch fence survives Portal restarts and pins reconciliation
+  to the original target. Uncertain prompts remain visible and available in the
+  archive; they can require explicit recovery rather than automatic progress.
+- Native OpenCode's successful HTTP 204 retains its acceptance semantics.
+  Vibeterm's `X-Vibeterm-Message-ID`, when present, must name a fresh persisted
+  user message in the expected session with the submitted content. The explicit
+  `/vibeterm/capabilities` flag `prompts.receipt: true` makes that receipt required.
+- Lost responses are not confirmed by matching text alone. Vibeterm pane
+  fallback itself can only identify fresh matching text, so simultaneous
+  identical input from another client remains a documented receipt limitation.
+- Session heads rotate fairly; one unresolved session cannot starve others.
+
 ### Plumbing
 
 - Bun runtime; Nitro v3 server; tanstack-router + SWR + zustand on

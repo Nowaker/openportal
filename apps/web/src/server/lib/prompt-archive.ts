@@ -159,7 +159,7 @@ export async function archivePrompt(
   },
 ): Promise<PromptRow | null> {
   const f = filterPrompt(input.rawText);
-  if (!f.shouldArchive) return null;
+  if (!f.shouldArchive && input.status !== "pending") return null;
 
   let projectPath: string;
   let parentSessionId: string | null;
@@ -181,7 +181,7 @@ export async function archivePrompt(
     project_path: projectPath,
     session_id: input.sessionId,
     parent_session_id: parentSessionId,
-    raw_text: f.filtered,
+    raw_text: f.filtered || f.unfiltered,
     raw_text_unfiltered: f.unfiltered,
     model_provider: input.modelProvider ?? null,
     model_id: input.modelId ?? null,
@@ -239,7 +239,13 @@ export function listPendingPrompts(limit = 50): PromptRow[] {
   const db = getPromptDb();
   return db
     .query(
-      `SELECT * FROM prompts WHERE status = 'pending' ORDER BY ts_ms ASC LIMIT ?`,
+      `SELECT p.* FROM prompts p WHERE p.status = 'pending'
+       AND NOT EXISTS (
+         SELECT 1 FROM prompts earlier WHERE earlier.status = 'pending'
+           AND earlier.session_id = p.session_id
+           AND (earlier.ts_ms < p.ts_ms OR (earlier.ts_ms = p.ts_ms AND earlier.rowid < p.rowid))
+       )
+       ORDER BY COALESCE(p.last_attempt_at, 0), p.ts_ms, p.rowid LIMIT ?`,
     )
     .all(limit) as unknown as PromptRow[];
 }
@@ -282,11 +288,11 @@ export function listVisiblePromptsForSession(sessionId: string): PromptRow[] {
     .all(sessionId, cutoff) as unknown as PromptRow[];
 }
 
-export function markPromptDelivered(id: string): void {
+export function markPromptDelivered(id: string, messageId: string | null): void {
   const db = getPromptDb();
   db.prepare(
-    `UPDATE prompts SET status = 'delivered', delivered_at = ?, last_error = NULL WHERE id = ? AND status = 'pending'`,
-  ).run(Date.now(), id);
+    `UPDATE prompts SET status = 'delivered', delivered_at = ?, last_error = NULL, opencode_message_id = ? WHERE id = ? AND status = 'pending'`,
+  ).run(Date.now(), messageId, id);
 }
 
 export function markPromptFailed(id: string, error: string): void {
@@ -302,7 +308,7 @@ export function recordDeliveryAttempt(
 ): void {
   const db = getPromptDb();
   db.prepare(
-    `UPDATE prompts SET attempts = attempts + 1, last_attempt_at = ?, last_error = ? WHERE id = ?`,
+    `UPDATE prompts SET attempts = attempts + 1, last_attempt_at = ?, last_error = ? WHERE id = ? AND status = 'pending'`,
   ).run(Date.now(), error ? error.slice(0, 2000) : null, id);
 }
 

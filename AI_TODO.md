@@ -5517,3 +5517,17 @@ Design notes:
 - Isolated worktree `portal-ios-compat`, branch `fix/ios-compat`; coordinator integrates after verification. No production deployment from this worker.
 - Browser automation cannot establish actual iPhone keyboard, Chrome toolbar, or home-screen installation behavior; explicitly report those hardware verification gaps.
 - Verified: 12 unit tests, successful application build, Chromium/WebKit component-fixture comparisons and independent source/visual reviews. Android geometry and metadata remain unchanged; actual iPhone installation and keyboard behavior still require device verification.
+
+### 230. Reliable Vibeterm tabless and first-prompt delivery (DONE - this commit)
+
+User prompt (verbatim):
+
+> Existing tabless sessions and new sessions prompted/created through Portal reliably open correct Vibeterm-owned tabs and run; delivery is never reported successful without correlated persistence proof, and failures remain visible/recoverable without duplicate dispatch.
+
+Design notes:
+
+- Check SDK response errors, persist a dispatch fence before sending, verify supplied receipts against fresh matching session/user content, and retain uncertain rows without automatic resend.
+- Coordinator clarified compatibility: native successful 204 remains accepted; a backend advertising `prompts.receipt: true` must supply a receipt. No caller-generated OpenCode IDs.
+- Fair session-head scanning avoids queue starvation. Pending/failed prompts stay visible even when historical text matches.
+- Verified 24 focused tests, full build, real isolated Portal/API/TUI old-tabless and create-first paths with one persisted user each, visible launch rejection/recovery, and native OpenCode 1.18.32 success/missing-session behavior. Full tsc has unrelated baseline errors only.
+- Integration owner: `ses_f2d5b3460ffeQRnA2ek5MQyHoY`; API commits `8967bc8` and `3a0ebf9` are separate tools worktree work. No independent merge/deploy.

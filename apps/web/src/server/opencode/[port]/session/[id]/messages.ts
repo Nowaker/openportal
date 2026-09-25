@@ -327,23 +327,13 @@ async function loadFullMessages(
   // in use-session-messages.ts mergeByIdSorted compares time.created
   // ascending, so virtual ts_ms is normalised to max-real-created + 1
   // ms (or kept at row.ts_ms if it was already later than that).
-  // Dedup priority:
-  //   pass 0 (LEGACY-ONLY): match by opencode_message_id. Until the
-  //     no-pre-gen rule landed, portal stamped its own messageID into
-  //     prompt_async/command and stored it on the archive row;
-  //     opencode echoed it back, making this match bulletproof.
-  //     Per AGENTS.md ("Never pre-generate opencode-assigned IDs"),
-  //     new rows ALWAYS have opencode_message_id=NULL, so this branch
-  //     only fires for rows archived before the rule landed. Kept so
-  //     legacy rows still dedup cleanly.
-  //   pass 1: text match (primary path for all new rows).
-  //   pass 2: slash-command defence (text-shape drift, e.g. `/foo`
-  //     archive vs expanded template text).
+  // Pending/failed rows remain visible even when an older prompt has the
+  // same text. Confirmed deliveries deduplicate by the server-stamped ID;
+  // text matching below covers native acceptance and historical deliveries.
   const filtered = visible
     .filter((row) => {
-      if (row.opencode_message_id && realUserIds.has(row.opencode_message_id)) {
-        return false;
-      }
+      if (row.status === "pending" || row.status === "failed") return true;
+      if (row.opencode_message_id) return !realUserIds.has(row.opencode_message_id);
       if (realUserSnippets.has(row.raw_text.trim())) return false;
       if (
         row.raw_text.startsWith("/") &&

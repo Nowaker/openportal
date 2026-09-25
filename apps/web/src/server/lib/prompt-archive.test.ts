@@ -8,6 +8,8 @@ import {
   clearSessionMetaCacheForTesting,
   getPromptById,
   listPrompts,
+  listPendingPrompts,
+  recordDeliveryAttempt,
 } from "./prompt-archive";
 import { closePromptDbForTesting } from "./prompt-db";
 
@@ -33,6 +35,23 @@ const baseInput = {
   parentSessionIdOverride: null,
   source: "prompt" as const,
 };
+
+test("selects session heads fairly when an earlier session has many uncertain prompts", async () => {
+  const first = await archivePrompt({ ...baseInput, rawText: "first pending prompt", status: "pending" });
+  if (!first) throw new Error("fixture failed");
+  for (let index = 0; index < 51; index++) {
+    await archivePrompt({ ...baseInput, rawText: `queued prompt ${index}`, status: "pending" });
+  }
+  const other = await archivePrompt({ ...baseInput, sessionId: "ses_other", rawText: "other session prompt", status: "pending" });
+  if (!other) throw new Error("fixture failed");
+  recordDeliveryAttempt(first.id, "uncertain");
+  expect(listPendingPrompts(1).map((row) => row.id)).toEqual([other.id]);
+});
+
+test("durably queues a short prompt that history filtering normally omits", async () => {
+  const row = await archivePrompt({ ...baseInput, rawText: "go", status: "pending", payload: { parts: [{ type: "text", text: "go" }] } });
+  expect(row?.status).toBe("pending");
+});
 
 describe("archivePrompt", () => {
   test("inserts a valid prompt and returns the row", async () => {

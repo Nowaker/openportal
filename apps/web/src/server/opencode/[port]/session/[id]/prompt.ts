@@ -22,11 +22,6 @@
 import { z } from "zod/v4";
 import { HTTPError, defineHandler } from "nitro/h3";
 import {
-  getOpencodeClient,
-  resolveSessionDirectory,
-} from "../../../../lib/opencode-client";
-import { resolveOwner } from "../../../../lib/prompt-routing";
-import {
   parsePort,
   parseRouteParam,
   parseBody,
@@ -109,37 +104,7 @@ export default defineHandler(async (event) => {
   });
 
   if (!row) {
-    // Prompt was filtered (empty / pure-noise per prompt-filter).
-    // Fall back to direct synchronous delivery so we never silently
-    // drop a user's submission just because it doesn't pass the
-    // archive filter.
-    try {
-      // Owner-aware dispatch: route to the cohort instance currently
-      // running the session's runner, not blindly to `port` (the user's
-      // active server). See prompt-routing.ts for the bug this fixes.
-      const owner = await resolveOwner(id);
-      const targetPort = owner?.port ?? port;
-      const client = await getOpencodeClient(targetPort);
-      const directory = await resolveSessionDirectory(targetPort, id);
-      await client.session.promptAsync({
-        path: { id },
-        query: directory ? { directory } : undefined,
-        body: payload as unknown as Parameters<
-          typeof client.session.promptAsync
-        >[0]["body"],
-      });
-      invalidateMessagesCache(id);
-        invalidateSessionsCache(port);
-      return {
-        accepted: true,
-        status: "delivered" as const,
-      };
-    } catch (error) {
-      throw new HTTPError(
-        error instanceof Error ? error.message : "Prompt failed",
-        { status: 500 },
-      );
-    }
+    throw new HTTPError("Prompt could not be durably stored; nothing was dispatched", { status: 503 });
   }
 
   wakePendingPromptWorker();
