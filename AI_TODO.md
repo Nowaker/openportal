@@ -5487,7 +5487,7 @@ Design notes:
   abort-and-reprompt fallback. A server without the routes shows the async card
   read-only.
 
-### 230. macOS asset retention skips must not abort builds (DONE - this commit)
+### 231. macOS asset retention skips must not abort builds (DONE - 4e9b199)
 
 User prompt (verbatim):
 
@@ -5503,7 +5503,7 @@ Design notes:
 - Exercise the real build wrapper with a stub compiler on Linux and macOS, covering collisions, unusual filenames, symlinks, age pruning, copy failures, and snapshot cleanup.
 - Keep the same-filesystem snapshot location. Coordinator owns merge and deployment.
 
-### 230. iOS composer and home-screen compatibility (PENDING - verified, coordinator integration)
+### 232. iOS composer and home-screen compatibility (DONE - 111d36b, c408247)
 
 User prompt (verbatim):
 
@@ -5518,7 +5518,7 @@ Design notes:
 - Browser automation cannot establish actual iPhone keyboard, Chrome toolbar, or home-screen installation behavior; explicitly report those hardware verification gaps.
 - Verified: 12 unit tests, successful application build, Chromium/WebKit component-fixture comparisons and independent source/visual reviews. Android geometry and metadata remain unchanged; actual iPhone installation and keyboard behavior still require device verification.
 
-### 230. Reliable Vibeterm tabless and first-prompt delivery (DONE - this commit)
+### 233. Reliable Vibeterm tabless and first-prompt delivery (DONE - 19703a6, 64de32c, 8f48019)
 
 User prompt (verbatim):
 
@@ -5532,7 +5532,7 @@ Design notes:
 - Verified 24 focused tests, full build, real isolated Portal/API/TUI old-tabless and create-first paths with one persisted user each, visible launch rejection/recovery, and native OpenCode 1.18.32 success/missing-session behavior. Full tsc has unrelated baseline errors only.
 - Integration owner: `ses_f2d5b3460ffeQRnA2ek5MQyHoY`; API commits `8967bc8` and `3a0ebf9` are separate tools worktree work. No independent merge/deploy.
 
-### 231. Confirm normalized attachment delivery receipts (DONE - this commit)
+### 234. Confirm normalized attachment delivery receipts (DONE - 344a25c)
 
 User prompt (verbatim):
 
