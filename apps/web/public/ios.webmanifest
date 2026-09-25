@@ -1,0 +1,14 @@
+{
+  "name": "OpenPortal",
+  "short_name": "OpenPortal",
+  "start_url": "/session/new",
+  "scope": "/",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/ios-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

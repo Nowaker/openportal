@@ -6467,6 +6467,7 @@ function SessionPage() {
                   <Textarea
                     ref={textareaRef}
                     data-test="portal-composer-textarea"
+                    data-composer-textarea=""
                     inputMode="text"
                     autoCapitalize="sentences"
                     autoCorrect="on"

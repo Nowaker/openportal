@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isIOSZoomed } from "@/lib/ios-compat";
 
 // Composer max-height in pixels.
 //
@@ -26,6 +27,7 @@ export function useComposerMaxHeight(): number {
     if (typeof window === "undefined") return;
     const vv = window.visualViewport;
     const update = () => {
+      if (isIOSZoomed(navigator, vv)) return;
       const h = vv?.height ?? window.innerHeight;
       setMaxPx(Math.round(h * 0.6));
     };

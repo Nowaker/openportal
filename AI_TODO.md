@@ -5502,3 +5502,18 @@ Design notes:
 - Check destination existence, including dangling symlinks, before copying; recursively merge real directories only. Do not use `cp -n` or suppress copy errors.
 - Exercise the real build wrapper with a stub compiler on Linux and macOS, covering collisions, unusual filenames, symlinks, age pruning, copy failures, and snapshot cleanup.
 - Keep the same-filesystem snapshot location. Coordinator owns merge and deployment.
+
+### 230. iOS composer and home-screen compatibility (PENDING - verified, coordinator integration)
+
+User prompt (verbatim):
+
+> Continue from where you left off. Completion notification contained only your opening intent, no implementation or evidence. Preserve original iOS-only scope and Android constraints. Finish all three approved concerns, commit in isolated worktree, provide actual tests/Android comparison/WebKit evidence and explicitly name any real-iPhone limitations. Do not merge/deploy. If blocked, identify exact blocker rather than ending with an acknowledgment.
+
+Design notes:
+
+- Scope composer focus font sizing, home-screen standalone metadata/PNG icon, and visual viewport/safe-area handling exclusively to iOS, including iPadOS desktop user agents.
+- Preserve Android layout and install behavior; do not disable pinch zoom or apply global font/padding/manifest changes.
+- Use the shared layout helpers and component system; safe-area padding is not a substitute for keyboard/browser-toolbar viewport tracking.
+- Isolated worktree `portal-ios-compat`, branch `fix/ios-compat`; coordinator integrates after verification. No production deployment from this worker.
+- Browser automation cannot establish actual iPhone keyboard, Chrome toolbar, or home-screen installation behavior; explicitly report those hardware verification gaps.
+- Verified: 12 unit tests, successful application build, Chromium/WebKit component-fixture comparisons and independent source/visual reviews. Android geometry and metadata remain unchanged; actual iPhone installation and keyboard behavior still require device verification.

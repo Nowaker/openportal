@@ -1,0 +1,20 @@
+/* A transformed ancestor would anchor the fixed shell to the document
+   instead of the viewport when Safari pans the page after focus. */
+html[data-ios="true"] [data-pull-to-refresh-resting] {
+  transform: none !important;
+}
+
+html[data-ios="true"] [data-sidebar-root] {
+  position: fixed;
+  top: var(--ios-viewport-top, 0px);
+  left: 0;
+  height: var(--ios-viewport-height, 100dvh);
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+
+html[data-ios="true"] textarea[data-composer-textarea] {
+  font-size: max(16px, var(--text-sm));
+  touch-action: pan-y pinch-zoom;
+}

@@ -69,6 +69,7 @@ export function PullToRefreshWrapper({
   const visibleDistance = Math.min(PULL_MAX_PX, pullDistance);
   return (
     <div
+      data-pull-to-refresh-resting={visibleDistance === 0 ? "" : undefined}
       style={{
         transform: `translateY(${visibleDistance}px)`,
         transition: releasing ? "transform 150ms ease-out" : "none",

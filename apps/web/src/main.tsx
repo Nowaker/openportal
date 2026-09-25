@@ -2,6 +2,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
+import { installIOSCompatibility } from "./lib/ios-compat";
+import "./ios-compat.css";
+
+const removeIOSCompatibility = installIOSCompatibility();
+if (import.meta.hot) import.meta.hot.dispose(removeIOSCompatibility);
 
 const router = createRouter({ routeTree });
 
