@@ -10,8 +10,8 @@ import cache_0004 from "./migrations/0004_message_session_cache.sql?raw";
 import synthetic_0005 from "./migrations/0005_synthetic_messages.sql?raw";
 import synthetic_completed_0006 from "./migrations/0006_synthetic_messages_completed.sql?raw";
 import permission_events_0007 from "./migrations/0007_permission_events.sql?raw";
-import prompt_dispatch_0008 from "./migrations/0008_prompt_dispatch.sql?raw";
-import prompt_receipt_digest_0009 from "./migrations/0009_prompt_receipt_digest.sql?raw";
+import prompt_dispatch_0009 from "./migrations/0009_prompt_dispatch.sql?raw";
+import prompt_receipt_digest_0010 from "./migrations/0010_prompt_receipt_digest.sql?raw";
 
 interface Migration {
   version: number;
@@ -28,8 +28,9 @@ const MIGRATIONS: Migration[] = [
   { version: 5, sql: synthetic_0005 },
   { version: 6, sql: synthetic_completed_0006 },
   { version: 7, sql: permission_events_0007 },
-  { version: 8, sql: prompt_dispatch_0008 },
-  { version: 9, sql: prompt_receipt_digest_0009 },
+  // Version 8 belongs to the historically deployed managed_opencode_instances schema.
+  { version: 9, sql: prompt_dispatch_0009 },
+  { version: 10, sql: prompt_receipt_digest_0010 },
 ];
 
 const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
@@ -55,7 +56,11 @@ function runMigrations(handle: Database): void {
   for (const m of MIGRATIONS) {
     if (m.version <= current) continue;
     handle.transaction(() => {
-      handle.exec(m.sql);
+      // Unshipped delivery fixtures used versions 8/9 before the legacy collision was found.
+      const draftDigestExists = m.version === 10 && handle.query(
+        "SELECT 1 FROM pragma_table_info('prompt_dispatch') WHERE name = 'receipt_text_sha256'",
+      ).get();
+      if (!draftDigestExists) handle.exec(m.sql);
       handle.exec(`PRAGMA user_version = ${m.version}`);
     })();
   }
