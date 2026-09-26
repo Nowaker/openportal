@@ -70,6 +70,16 @@ test("a fetch that started before a rename keeps the rename rather than undoing 
   expect(getCachedSessions(4096)).toEqual([{ id: "ses_a", title: "Generated title" }]);
 });
 
+test("the list a fetch hands back carries the renames that landed during it", () => {
+  setCachedSessions(4096, [{ id: "ses_a", title: "New session" }], sessionsFetchStart());
+  const started = sessionsFetchStart();
+
+  applySessionEvent(4096, renamed("Generated title"));
+  const served = setCachedSessions(4096, [{ id: "ses_a", title: "New session" }], started);
+
+  expect(served).toEqual([{ id: "ses_a", title: "Generated title" }]);
+});
+
 test("session.updated for a row the list lacks invalidates it", () => {
   setCachedSessions(4096, [{ id: "ses_b", title: "b" }], sessionsFetchStart());
 

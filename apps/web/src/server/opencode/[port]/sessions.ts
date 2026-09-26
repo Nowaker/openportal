@@ -69,8 +69,7 @@ async function doFetchSessions(
     }
     sessions = listed.data as Session[];
   }
-  setCachedSessions(port, sessions, started);
-  return sessions;
+  return setCachedSessions(port, sessions, started) as Session[];
 }
 
 export default defineHandler(async (event) => {

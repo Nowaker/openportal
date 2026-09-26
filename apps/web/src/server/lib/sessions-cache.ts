@@ -116,9 +116,9 @@ export function setCachedSessions(
   port: number,
   fetched: unknown[],
   startedAt: SessionsFetchStart,
-): void {
-  if (startedAt.generation !== generation) return;
+): unknown[] {
   const sessions = replayPatches(port, fetched, startedAt.at);
+  if (startedAt.generation !== generation) return sessions;
   const existing = cache.get(port);
   if (existing && sessions.length < existing.sessions.length) {
     console.warn(
@@ -127,12 +127,13 @@ export function setCachedSessions(
         `Keeping cached data per authoritative-only invariant.`,
     );
     cache.set(port, { fetchedAt: Date.now(), sessions: existing.sessions });
-    return;
+    return existing.sessions;
   }
   cache.delete(port);
   cache.set(port, { fetchedAt: Date.now(), sessions });
   evictIfFull();
   persistToDb(port, sessions);
+  return sessions;
 }
 
 export function invalidateSessionsCache(port?: number): void {
