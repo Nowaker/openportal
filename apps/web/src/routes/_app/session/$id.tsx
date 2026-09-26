@@ -2965,10 +2965,14 @@ const MessageItem = memo(function MessageItem({
       messagePermissions.length > 0 ||
       compactionParts.length > 0 ||
       !!errorDescription);
+  // Terminal-style chat draws the meta the way the opencode TUI does: one
+  // line in normal flow under the message, so it can never cover the text
+  // or spill past a short message's top edge the way a floating stack does.
   const renderMetaStack = (className: string) => (
     <MessageMetaStack
       messageId={message.info.id}
       className={className}
+      inline={terminalChat}
       dataTest={messageMeta ? "portal-msg-meta-stack" : undefined}
       leading={
         !isPending && (showStar || showFork || showRevert) ? (
@@ -3228,7 +3232,7 @@ const MessageItem = memo(function MessageItem({
             </Badge>
           )}
           {textContent && (
-            <div className={`prose prose-sm dark:prose-invert max-w-none break-words pr-20 [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]${isAssistant ? " chat-prose" : ""}`}>
+            <div className={`prose prose-sm dark:prose-invert max-w-none break-words${terminalChat ? "" : " pr-20"} [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]${isAssistant ? " chat-prose" : ""}`}>
               {isAssistant ? (
                 <MessageMarkdown
                   text={textContent}
@@ -3282,14 +3286,18 @@ const MessageItem = memo(function MessageItem({
           )}
           {fileParts.length > 0 && (
             <div
-              className={`${textContent ? "mt-2" : ""} flex flex-wrap gap-1.5 pr-20`}
+              className={`${textContent ? "mt-2" : ""} flex flex-wrap gap-1.5${terminalChat ? "" : " pr-20"}`}
             >
               {fileParts.map((part) => (
                 <AttachmentChip key={part.id} part={part} />
               ))}
             </div>
           )}
-          {renderMetaStack("absolute bottom-1 right-2 text-[10px] text-muted-fg/70")}
+          {renderMetaStack(
+            terminalChat
+              ? "mt-1 flex-wrap text-[10px] text-muted-fg/70"
+              : "absolute bottom-1 right-2 text-[10px] text-muted-fg/70",
+          )}
         </div>
       )}
       {toolCalls.length > 0 && (

@@ -5665,3 +5665,27 @@ Design notes:
   /session/new, 0/1/3 attachments, 852px and 420px, banners on and off
   (24/24). Pixel 7 emulation identical before and after (16/16).
   `ios-compat.test.ts` asserts the wrapper floor and a content-sized root.
+
+### 240. Keep message meta clear of the text in terminal-style chat (DONE - this commit)
+
+User prompt (verbatim):
+
+> both on my iphone and my Mac, the icons under each message can get overshadowed. I have not actually clicked them to test them. But can we clean that up?  Its the area that appears to be a favorite, fork, revert, copy time, model, thinking and runtime
+
+Design notes:
+
+- The per-message meta stack (star/fork/revert/copy, time, agent/model/
+  thinking/runtime) floats `absolute bottom-1 right-2` over the message with
+  a `pr-20` gutter. Terminal-style chat (#237) removes paragraph margins, so
+  a one-line message is shorter than the two-row stack: it covered the text
+  and spilled past the message's top edge.
+- In terminal-style chat only, the stack renders in MessageMetaStack's
+  existing `inline` layout as a normal-flow line under the message - the
+  opencode TUI's own placement - and the `pr-20` gutter it needed is dropped
+  from the prose and attachment rows. The default look is unchanged.
+- Measured (Playwright, Chromium desktop 1400x900 and WebKit iPhone 15 Pro,
+  a two-message session): terminal style 0 overlapping / 0 outside the
+  message; the default portal style still shows the floating stack overlapping
+  the text box on both and extending past the top of a short message
+  (2 of 2 on desktop, 1 of 2 on iPhone) - a pre-existing default-layout
+  behaviour left as is.
