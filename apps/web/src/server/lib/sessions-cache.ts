@@ -19,6 +19,16 @@
 
 import { getPromptDb } from "./prompt-db";
 
+// Session-lifecycle events from opencode SSE: the AUTHORITATIVE signal that
+// the sessions list changed. Every SSE tap that sees one invalidates this
+// cache, so the refetch the browser fires on the same frame cannot be served
+// the row it replaces (a new title would otherwise wait out SHORT_TTL_MS).
+export const SESSION_LIFECYCLE_EVENTS: ReadonlySet<string> = new Set([
+  "session.created",
+  "session.updated",
+  "session.deleted",
+]);
+
 const SHORT_TTL_MS = 30_000;
 const MAX_ENTRIES = 32;
 const PERSIST_THROTTLE_MS = 30_000;
@@ -56,7 +66,22 @@ export function getStaleSessions(port: number): unknown[] | null {
   return hydrated;
 }
 
-export function setCachedSessions(port: number, sessions: unknown[]): void {
+// Bumped by every invalidation. A fetch records the generation it started
+// under and its result is discarded if an invalidation landed meanwhile:
+// otherwise a list read BEFORE a rename is stored as fresh AFTER it, and the
+// refetch the rename's own event triggers is served the old title for 30s.
+let generation = 0;
+
+export function sessionsGeneration(): number {
+  return generation;
+}
+
+export function setCachedSessions(
+  port: number,
+  sessions: unknown[],
+  startedAt: number,
+): void {
+  if (startedAt !== generation) return;
   const existing = cache.get(port);
   if (existing && sessions.length < existing.sessions.length) {
     console.warn(
@@ -74,6 +99,7 @@ export function setCachedSessions(port: number, sessions: unknown[]): void {
 }
 
 export function invalidateSessionsCache(port?: number): void {
+  generation += 1;
   if (port !== undefined) {
     cache.delete(port);
     deleteFromDb(port);

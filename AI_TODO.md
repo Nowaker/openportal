@@ -5689,3 +5689,27 @@ Design notes:
   the text box on both and extending past the top of a short message
   (2 of 2 on desktop, 1 of 2 on iPhone) - a pre-existing default-layout
   behaviour left as is.
+
+### 241. Show opencode's generated session title without a reload (DONE - this commit)
+
+User prompt (verbatim):
+
+> Vibeterm + portal: after prompt submission via portal, a successful one  I would see the new session name after oc generated it. But in portal, only a full session reload shows it. Applies to session title and sidebar
+>
+> Must make sure it updates quickly when session name updates
+
+Design notes:
+
+- Root cause was upstream: vibeterm-api's `/event` feed keyed session rows on
+  `time_updated`, and opencode's `setTitle` keeps the old stamp, so no
+  `session.updated` frame was ever sent. Fixed in opencode-tools `02e78de`
+  (content-keyed session rows + 2s title/archive sweep).
+- Portal side, three races that could still serve the old title after the
+  frame arrived: the `/event` proxy forwarded frames before invalidating, so
+  the browser's refetch could beat the broadcaster's invalidation; a sessions
+  fetch that started before the rename stored its stale list as fresh for
+  30s; and the stream only revalidated the exact `/sessions` key, missing the
+  Ctrl+K palette's `?scope=all`.
+- `SESSION_LIFECYCLE_EVENTS` now lives in `sessions-cache.ts`, shared by the
+  broadcaster and the proxy. Invalidation bumps a generation; a fetch from an
+  older generation neither writes the cache nor is joined by new requests.

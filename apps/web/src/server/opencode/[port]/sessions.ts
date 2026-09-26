@@ -10,6 +10,7 @@ import { readPortalConfig } from "../../lib/portal-config";
 import {
   getCachedSessions,
   getStaleSessions,
+  sessionsGeneration,
   setCachedSessions,
 } from "../../lib/sessions-cache";
 import { applyOverlay, reconcile } from "../../lib/session-overlay";
@@ -23,21 +24,24 @@ function isUnder(sessionDir: string | undefined, scope: string): boolean {
   return d === s || d.startsWith(s + "/");
 }
 
-// Single-flight per port: multiple concurrent SWR polls share one
-// upstream SDK call instead of stacking N requests on a slow opencode.
-const INFLIGHT = new Map<number, Promise<Session[]>>();
+// Single-flight per port and cache generation: multiple concurrent SWR polls
+// share one upstream SDK call instead of stacking N requests on a slow
+// opencode, but never one that started before the last invalidation.
+const INFLIGHT = new Map<string, Promise<Session[]>>();
 
 async function fetchSessionsFromOpencode(port: number): Promise<Session[]> {
-  const inflight = INFLIGHT.get(port);
+  const generation = sessionsGeneration();
+  const key = `${port}:${generation}`;
+  const inflight = INFLIGHT.get(key);
   if (inflight) return inflight;
-  const promise = doFetchSessions(port).finally(() => {
-    INFLIGHT.delete(port);
+  const promise = doFetchSessions(port, generation).finally(() => {
+    INFLIGHT.delete(key);
   });
-  INFLIGHT.set(port, promise);
+  INFLIGHT.set(key, promise);
   return promise;
 }
 
-async function doFetchSessions(port: number): Promise<Session[]> {
+async function doFetchSessions(port: number, generation: number): Promise<Session[]> {
   let sessions: Session[];
   try {
     const res = await fetchOpencode(
@@ -61,7 +65,7 @@ async function doFetchSessions(port: number): Promise<Session[]> {
     }
     sessions = listed.data as Session[];
   }
-  setCachedSessions(port, sessions);
+  setCachedSessions(port, sessions, generation);
   return sessions;
 }
 

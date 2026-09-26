@@ -143,9 +143,15 @@ function dispatchEvent(
     case "session.updated":
     case "session.deleted":
     case "session.compacted":
-    case "session.error":
-      void mutate(`/api/opencode/${port}/sessions`);
+    case "session.error": {
+      const sessionsKey = `/api/opencode/${port}/sessions`;
+      void mutate(
+        (key) =>
+          typeof key === "string" &&
+          (key === sessionsKey || key.startsWith(`${sessionsKey}?`)),
+      );
       return;
+    }
     default:
       return;
   }
