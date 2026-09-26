@@ -50,6 +50,7 @@ import {
 import { Tabs, TabList, Tab, TabPanel } from "@/components/ui/tabs";
 import { useAgents, useSessions } from "@/hooks/use-opencode";
 import { useVisibleProviders } from "@/hooks/use-visible-providers";
+import { useChatStyleStore } from "@/stores/chat-style-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useInstanceStore } from "@/stores/instance-store";
 import { useComposerStore, type EnterKeyAction } from "@/stores/composer-store";
@@ -1835,6 +1836,8 @@ function PermissionsSettings() {
 
 function SettingsPage() {
   const { fontFamily, setFontFamily, ligatures, setLigatures } = useTheme();
+  const chatStyle = useChatStyleStore((s) => s.chatStyle);
+  const setChatStyle = useChatStyleStore((s) => s.setChatStyle);
   const { setPageTitle } = useBreadcrumb();
   const { data: rawProviders, isLoading: providersLoading } = useVisibleProviders();
   const instance = useInstanceStore((s) => s.instance);
@@ -2104,6 +2107,22 @@ function SettingsPage() {
                   Primary color for buttons and highlights.
                 </p>
                 <AccentSelector />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Terminal-style chat</p>
+                <p className="text-xs text-muted-fg">
+                  Draws chat messages the way the opencode terminal UI does:
+                  its theme colors, a monospace grid, and your messages as
+                  typed. Off keeps the portal&apos;s own look.
+                </p>
+                <Checkbox
+                  isSelected={chatStyle === "terminal"}
+                  onChange={(value) => setChatStyle(value ? "terminal" : "portal")}
+                  data-test="portal-settings-terminal-chat"
+                >
+                  Use terminal-style chat
+                </Checkbox>
               </div>
             </div>
           </div>

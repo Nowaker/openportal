@@ -88,7 +88,7 @@ export function OmoBlockView({
         )}
       </button>
       {expanded && (
-        <pre className="border-t border-border/60 whitespace-pre-wrap break-words px-2 py-1 text-[10px] font-mono leading-relaxed">
+        <pre className="omo-body border-t border-border/60 whitespace-pre-wrap break-words px-2 py-1 text-[10px] font-mono leading-relaxed">
           {loading && <span className="italic text-muted-fg/70">Loading…</span>}
           {fetchError && (
             <span className="text-warning">

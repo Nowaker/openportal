@@ -12,6 +12,9 @@ import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { remarkFileLinks } from "@/lib/remark-file-links";
+import { FileLinks } from "@/lib/render-file-links";
+import { userBarStyle } from "@/lib/tui-theme";
+import { useTerminalChatStyle } from "@/stores/chat-style-store";
 import { remarkIdLinks } from "@/lib/remark-id-links";
 import { linkifySessionIds } from "@/lib/linkify-session-ids";
 import {
@@ -2886,6 +2889,8 @@ const MessageItem = memo(function MessageItem({
   const toolCalls = message.parts.filter(isToolPart);
   const fileParts = message.parts.filter(isFilePart);
   const compactionParts = message.parts.filter(isCompactionPart);
+  const { data: agentsData } = useAgents();
+  const terminalChat = useTerminalChatStyle();
   const parsedTemplates = useMemo(
     () => (isAssistant ? null : parsePromptWithTemplates(textContent)),
     [isAssistant, textContent],
@@ -3087,7 +3092,9 @@ const MessageItem = memo(function MessageItem({
     : "";
   const userBgClass = isSyntheticMarker
     ? "bg-muted/30 border-t border-b border-muted/50 [[data-role=user]+&]:border-t-0"
-    : "bg-primary/15 border-t border-b border-primary/30 [[data-role=user]+&]:border-t-0";
+    : terminalChat
+      ? "chat-user"
+      : "bg-primary/15 border-t border-b border-primary/30 [[data-role=user]+&]:border-t-0";
   const btwAnswerBgClass =
     "bg-primary/[0.06] border-t border-b border-primary/15";
   if (isPermissionEvent && permissionEvent) {
@@ -3108,6 +3115,11 @@ const MessageItem = memo(function MessageItem({
       className={`${decoration} relative px-3 py-3 ${
         !isAssistant && hasHeaderRow ? userBgClass : ""
       } ${isAssistant && isBtwSynthetic ? btwAnswerBgClass : ""}`}
+      style={
+        terminalChat && !isAssistant && hasHeaderRow && !isSyntheticMarker
+          ? userBarStyle((message.info as { agent?: string }).agent, agentsData)
+          : undefined
+      }
       data-role={message.info.role}
       data-message-id={message.info.id}
       data-synthetic={isSyntheticMarker ? "true" : undefined}
@@ -3216,7 +3228,7 @@ const MessageItem = memo(function MessageItem({
             </Badge>
           )}
           {textContent && (
-            <div className="prose prose-sm dark:prose-invert max-w-none break-words pr-20 [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]">
+            <div className={`prose prose-sm dark:prose-invert max-w-none break-words pr-20 [&_pre]:whitespace-pre-wrap [&_pre]:break-all [&_code]:break-words [&_code]:[overflow-wrap:anywhere]${isAssistant ? " chat-prose" : ""}`}>
               {isAssistant ? (
                 <MessageMarkdown
                   text={textContent}
@@ -3243,14 +3255,18 @@ const MessageItem = memo(function MessageItem({
                             : undefined
                         }
                       />
-                    ) : block.text.trim() ? (
+                    ) : !block.text.trim() ? null : terminalChat ? (
+                      <div key={`user-${i}`} className="chat-user-text">
+                        <FileLinks text={block.text.trim()} />
+                      </div>
+                    ) : (
                       <MessageMarkdown
                         key={`user-${i}`}
                         text={block.text}
                         remarkPlugins={[remarkGfm, remarkBreaks]}
                         sessionDirectory={sessionDirectory ?? undefined}
                       />
-                    ) : null,
+                    ),
                   )}
                   {parsedTemplates?.templates.map((t, i) => (
                     <TemplateBlockView

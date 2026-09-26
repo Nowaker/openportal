@@ -8,6 +8,7 @@ import {
 import { useAccentStore, type AccentColor } from "@/stores/accent-store";
 import { useFontStore, type FontFamily } from "@/stores/font-store";
 import { useFontSizeStore } from "@/stores/font-size-store";
+import { useChatStyleStore } from "@/stores/chat-style-store";
 
 type Theme = "light" | "dark" | "system";
 
@@ -108,6 +109,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setLigatures = useFontStore((state) => state.setLigatures);
 
   const fontSizeScale = useFontSizeStore((state) => state.scale);
+  const chatStyle = useChatStyleStore((state) => state.chatStyle);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
@@ -148,6 +150,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyFontSizeScale(fontSizeScale);
   }, [fontSizeScale]);
+
+  useEffect(() => {
+    // The terminal chat style's CSS in main.css is scoped under this
+    // attribute, so the default portal look has none of it applied.
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.chatStyle = chatStyle;
+  }, [chatStyle]);
 
   useEffect(() => {
     if (theme !== "system") return;

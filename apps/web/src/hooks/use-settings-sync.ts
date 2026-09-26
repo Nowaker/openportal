@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccentStore } from "@/stores/accent-store";
+import { useChatStyleStore } from "@/stores/chat-style-store";
 import { useComposerStore } from "@/stores/composer-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import { useFontSizeStore } from "@/stores/font-size-store";
@@ -76,6 +77,9 @@ export function useSettingsSync(): boolean {
       ),
       useFontSizeStore.subscribe((s) => push("fontSize", { scale: s.scale })),
       useFontStore.subscribe((s) => push("font", { fontFamily: s.fontFamily })),
+      useChatStyleStore.subscribe((s) =>
+        push("chatStyle", { chatStyle: s.chatStyle }),
+      ),
       useComposerStore.subscribe((s) =>
         push("composer", { enterKeyAction: s.enterKeyAction }),
       ),
@@ -124,6 +128,12 @@ function applyServerSettings(
   if (s.font) {
     lastSeen.font = JSON.stringify(s.font);
     useFontStore.setState(s.font as Parameters<typeof useFontStore.setState>[0]);
+  }
+  if (s.chatStyle) {
+    lastSeen.chatStyle = JSON.stringify(s.chatStyle);
+    useChatStyleStore.setState(
+      s.chatStyle as Parameters<typeof useChatStyleStore.setState>[0],
+    );
   }
   if (s.composer) {
     lastSeen.composer = JSON.stringify(s.composer);

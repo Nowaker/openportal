@@ -5579,3 +5579,39 @@ Design notes:
   the user's text at top level.
 - `collectUserTaskRanges` was dead code duplicating the loop in
   `parseOmoBlocks`; both now go through it.
+
+### 237. Render chat messages like the opencode TUI (DONE - this commit)
+
+User prompt (verbatim):
+
+> It looks pretty good. I could be happy with it, but I want you to see if it's possible to exactly mimic what the open code TUI has exactly so there is no visual difference
+
+> will this do the layout and style too? not just color
+
+> Is there anything we can do to mimic the style, layout and format exactly like Opencode for everything in the session window?
+>
+> Example in image shows that the auto-slash-command ndn-dev gets truncated and expanded in Portal. Opencode just expands it which im not in love with, Id prefer to have those hidden like in Portal, but if it must expand, it shouldnt be all blue and formatted like a reply, it should mimic Opencode like in the second shot
+
+Design notes:
+
+- Opt-in: Settings > Appearance > "Terminal-style chat" (`stores/chat-style-store.ts`,
+  synced as settings namespace `chatStyle`), default off. Every rule below is
+  scoped under `html[data-chat-style="terminal"]` and the markup changes are
+  gated on the same setting, so the default look is unchanged on every
+  platform (Android included); `chat-style-store.test.ts` fails on any
+  unscoped rule.
+- The `opencode` TUI theme (base colors + markdown* tokens, dark and light,
+  extracted from the opencode binary) lives once as `--oc-*` variables on
+  `:root` / `.dark` in `apps/web/src/main.css`.
+- Assistant replies (`.chat-prose`): token colors, mono font, 1.45 line
+  height, one blank line between blocks, body-size headings, no inline-code
+  backticks, "-" bullets, plain grid tables.
+- User messages (`.chat-user`, chat log and sticky prompt): `--oc-element`
+  panel with a 3px bar in the agent's color, text shown as typed (mono,
+  unformatted) via `.chat-user-text`; an expanded OMO fold reads at body size.
+- Bar color follows the TUI's `local.agent.color()` in
+  `apps/web/src/lib/tui-theme.ts`. vibeterm-api's `/agent` carries no colors
+  (plugin agents exist only in a running opencode), so every bar falls back to
+  `--oc-secondary` there until it does.
+- Not covered: tool calls, thinking blocks, the per-message meta line, page
+  chrome.

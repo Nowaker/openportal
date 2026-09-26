@@ -14,6 +14,9 @@ import { parseOmoBlocks } from "@/lib/omo-injection";
 import { OmoBlockCompact } from "@/components/omo-block-compact";
 import { MessageMetaStack } from "@/components/message-meta-stack";
 import { computeMessageMeta, type ProvidersData } from "@/lib/message-meta";
+import { userBarStyle } from "@/lib/tui-theme";
+import { useAgents } from "@/hooks/use-opencode";
+import { useTerminalChatStyle } from "@/stores/chat-style-store";
 import { useChatDisplayStore } from "@/stores/chat-display-store";
 import { useDateFormatStore } from "@/stores/date-format-store";
 import {
@@ -58,6 +61,8 @@ export function StickyUserPromptOverlay({
   const stickyHeightRef = useRef(FALLBACK_STICKY_HEIGHT_PX);
   const dateFormat = useDateFormatStore((s) => s.format);
   const shortenOmoAgent = useChatDisplayStore((s) => s.shortenOmoAgentNames);
+  const { data: agentsData } = useAgents();
+  const terminalChat = useTerminalChatStyle();
 
   const messageById = useMemo(() => {
     const m = new Map<string, MessageWithParts>();
@@ -270,12 +275,17 @@ export function StickyUserPromptOverlay({
             handleJump();
           }
         }}
-        className="pointer-events-auto relative cursor-pointer rounded-md border border-primary/30 bg-primary/15 shadow-sm backdrop-blur-sm hover:bg-primary/20"
+        className={
+          terminalChat
+            ? "chat-user pointer-events-auto relative cursor-pointer rounded-md shadow-sm"
+            : "pointer-events-auto relative cursor-pointer rounded-md border border-primary/30 bg-primary/15 shadow-sm backdrop-blur-sm hover:bg-primary/20"
+        }
+        style={terminalChat ? userBarStyle((message.info as { agent?: string }).agent, agentsData) : undefined}
         title="Click to jump to this prompt"
         aria-label="Jump to this prompt"
       >
         <div className="flex items-start gap-1.5 px-3 py-2">
-          <div className="flex-1 min-w-0 text-sm text-fg">
+          <div className={`${terminalChat ? "chat-user-text" : "text-fg"} flex-1 min-w-0 text-sm`}>
             <div
               ref={bodyRef}
               className={

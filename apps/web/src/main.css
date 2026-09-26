@@ -1456,6 +1456,184 @@ body {
   content: none;
 }
 
+/* OpenCode's default TUI theme (`opencode`), dark and light: its base
+   colors and markdown* tokens, extracted from the opencode binary. Every
+   chat surface that copies the TUI reads these, so a theme change is one
+   edit here. Everything below that draws with them is scoped under
+   html[data-chat-style="terminal"] - the opt-in "Terminal-style chat"
+   setting (stores/chat-style-store.ts) - so the default portal look is
+   untouched on every platform. */
+:root {
+  --oc-text: #1a1a1a;
+  --oc-panel: #fafafa;
+  --oc-element: #f5f5f5;
+  --oc-primary: #3b7dd8;
+  --oc-secondary: #7b5bb6;
+  --oc-accent: #d68c27;
+  --oc-success: #3d9a57;
+  --oc-warning: #d68c27;
+  --oc-error: #d1383d;
+  --oc-info: #318795;
+  --oc-heading: #d68c27;
+  --oc-strong: #d68c27;
+  --oc-emph: #b0851f;
+  --oc-code: #3d9a57;
+  --oc-link-text: #318795;
+  --oc-list-item: #3b7dd8;
+  --oc-list-enumeration: #318795;
+  --oc-block-quote: #b0851f;
+  --oc-rule: #8a8a8a;
+}
+
+.dark {
+  --oc-text: #eeeeee;
+  --oc-panel: #141414;
+  --oc-element: #1e1e1e;
+  --oc-primary: #fab283;
+  --oc-secondary: #5c9cf5;
+  --oc-accent: #9d7cd8;
+  --oc-success: #7fd88f;
+  --oc-warning: #f5a742;
+  --oc-error: #e06c75;
+  --oc-info: #56b6c2;
+  --oc-heading: #9d7cd8;
+  --oc-strong: #f5a742;
+  --oc-emph: #e5c07b;
+  --oc-code: #7fd88f;
+  --oc-link-text: #56b6c2;
+  --oc-list-item: #fab283;
+  --oc-list-enumeration: #56b6c2;
+  --oc-block-quote: #e5c07b;
+  --oc-rule: #808080;
+}
+
+/* Assistant replies, drawn the way the TUI draws them. Headings stay
+   body size and inline code loses typography's backtick glyphs and
+   bolding, because a terminal can do neither. Unlayered, so these beat
+   the typography plugin's rules without !important; fenced code blocks
+   keep their own highlighting. */
+html[data-chat-style="terminal"] .chat-prose {
+  color: var(--oc-text);
+}
+
+html[data-chat-style="terminal"] .chat-prose h1,
+html[data-chat-style="terminal"] .chat-prose h2,
+html[data-chat-style="terminal"] .chat-prose h3,
+html[data-chat-style="terminal"] .chat-prose h4,
+html[data-chat-style="terminal"] .chat-prose h5,
+html[data-chat-style="terminal"] .chat-prose h6 {
+  color: var(--oc-heading);
+  font-size: 1em;
+  font-weight: 700;
+}
+
+html[data-chat-style="terminal"] .chat-prose th {
+  color: var(--oc-heading);
+}
+
+html[data-chat-style="terminal"] .chat-prose strong {
+  color: var(--oc-strong);
+}
+
+html[data-chat-style="terminal"] .chat-prose em {
+  color: var(--oc-emph);
+}
+
+html[data-chat-style="terminal"] .chat-prose :not(pre) > code {
+  color: var(--oc-code);
+  font-weight: inherit;
+}
+
+html[data-chat-style="terminal"] .chat-prose :not(pre) > code::before,
+html[data-chat-style="terminal"] .chat-prose :not(pre) > code::after {
+  content: none;
+}
+
+html[data-chat-style="terminal"] .chat-prose a {
+  color: var(--oc-link-text);
+}
+
+html[data-chat-style="terminal"] .chat-prose ul > li::marker {
+  content: "- ";
+  color: var(--oc-list-item);
+}
+
+html[data-chat-style="terminal"] .chat-prose ol > li::marker {
+  color: var(--oc-list-enumeration);
+}
+
+html[data-chat-style="terminal"] .chat-prose blockquote {
+  color: var(--oc-block-quote);
+  border-inline-start-color: var(--oc-block-quote);
+}
+
+html[data-chat-style="terminal"] .chat-prose hr {
+  border-color: var(--oc-rule);
+}
+
+/* Terminal layout: one monospace face, one line height, and exactly one
+   blank line between blocks, with no gaps between list items - the grid
+   a TUI is limited to. Tables lose their shaded header and zebra rows
+   and keep a plain grid in the muted rule color. */
+html[data-chat-style="terminal"] .chat-prose {
+  font-family: var(--font-mono);
+  line-height: 1.45;
+}
+
+html[data-chat-style="terminal"] .chat-prose :is(p, ul, ol, table, blockquote, pre, hr, h1, h2, h3, h4, h5, h6) {
+  margin-block: 0 1.45em;
+}
+
+html[data-chat-style="terminal"] .chat-prose :is(p, ul, ol, table, blockquote, pre, hr, h1, h2, h3, h4, h5, h6):last-child {
+  margin-block-end: 0;
+}
+
+html[data-chat-style="terminal"] .chat-prose li,
+html[data-chat-style="terminal"] .chat-prose li > p {
+  margin-block: 0;
+}
+
+html[data-chat-style="terminal"] .chat-prose :is(ul, ol) {
+  padding-inline-start: 2ch;
+}
+
+html[data-chat-style="terminal"] .chat-prose li {
+  padding-inline-start: 0;
+}
+
+html[data-chat-style="terminal"] .chat-prose :is(th, td) {
+  border-color: var(--oc-rule);
+}
+
+html[data-chat-style="terminal"] .chat-prose th,
+html[data-chat-style="terminal"] .chat-prose tbody tr:nth-child(even) {
+  background-color: transparent;
+}
+
+/* User messages, drawn the way the TUI draws them: a raised panel with a
+   bar in the color of the agent that ran the turn (set per message as
+   --oc-user-bar, see lib/tui-theme.ts), and the text exactly as typed -
+   monospace, unformatted. A folded block keeps its row, and its expanded
+   body reads at the same size as the message around it. */
+html[data-chat-style="terminal"] .chat-user {
+  background-color: var(--oc-element);
+  border-inline-start: 3px solid var(--oc-user-bar, var(--oc-secondary));
+}
+
+html[data-chat-style="terminal"] .chat-user-text {
+  color: var(--oc-text);
+  font-family: var(--font-mono);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+html[data-chat-style="terminal"] .chat-user .omo-body {
+  color: var(--oc-text);
+  font-size: inherit;
+  line-height: 1.45;
+}
+
 @utility touch-target {
   position: relative;
   &::before {
