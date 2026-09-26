@@ -17,6 +17,26 @@ These statements OVERRIDE the global personal rules in
   Force-push only on feature branches as the global rule still says,
   never on `main-nowaker` or other protected branches.
 
+## Changing Vibeterm / opencode-tools from here
+
+Vibeterm and its opencode tooling live in a separate repository,
+`~/projekty/nowaker/opencode-tools` (branch `master`), with its own
+worktree workflow, protected tmux server, and rules.
+
+- Default: hand a Vibeterm / opencode-tools change to a new session
+  with `vibeterm_spawn_session` (`directory:
+  ~/projekty/nowaker/opencode-tools`), naming the symptom, the
+  evidence, and the openportal side of the contract. Edit that
+  repository from this session only when the change is truly tiny,
+  such as a one-line fix or a doc line.
+- Any opencode-tools change made from this session, and any change
+  here that depends on Vibeterm behaviour (the opencode HTTP API as
+  Vibeterm serves it, session/model/agent wire shapes, shared config),
+  first reads `~/projekty/nowaker/opencode-tools/AGENTS.md`. Read it
+  in a `task(..., run_in_background=true)` that returns only the rules
+  relevant to the change, to save context. Read it directly only when
+  the change needs a full understanding of both sides.
+
 ## DRY is law (binding, project-wide)
 
 Consistency and code reuse are the top priority in this codebase. Every
