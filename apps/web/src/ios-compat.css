@@ -14,9 +14,14 @@ html[data-ios="true"] [data-sidebar-root] {
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
+/* The composer may shrink when banners take the space, but not to 0:
+   with no floor WebKit under-computes this item's content height (about
+   77px where Chromium resolves 143px) and crops the floating Send column
+   from the top. 140px is the toolbar row plus the 90px textarea/button
+   column floor from the composer layout contract in AGENTS.md. */
 html[data-ios="true"] [data-composer-root] {
   flex-shrink: 1;
-  min-height: 0;
+  min-height: 140px;
 }
 
 html[data-ios="true"] textarea[data-composer-textarea] {

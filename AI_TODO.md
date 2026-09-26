@@ -5615,3 +5615,30 @@ Design notes:
   `--oc-secondary` there until it does.
 - Not covered: tool calls, thinking blocks, the per-message meta line, page
   chrome.
+
+### 238. Keep the iOS Send button unclipped (DONE - this commit)
+
+User prompt (verbatim):
+
+> it works, but I feel like the send button is half covered. I dont recall if it was like that for me. I even tested in the homescreen save
+
+> even with banner gone
+
+> Can we patch the iphone hidden send now? and push that too?
+
+Design notes:
+
+- On iPhone (WebKit) the composer textarea rendered about one line tall and
+  the floating Send column was cropped from the top, with or without banners
+  and with the keyboard up or down.
+- Cause: #232's `html[data-ios="true"] [data-composer-root] { min-height: 0 }`.
+  With no floor WebKit under-computes that flex item's content height (about
+  77px where Chromium resolves 143px for the same DOM), the textarea wrapper
+  collapses to ~30px, below the 90px floor in AGENTS.md's composer contract,
+  and its `overflow-hidden` crops the 48px Send button.
+- Fix: `min-height: 140px` (toolbar row + the 90px column), keeping
+  `flex-shrink: 1` so the composer still yields to stacked banners.
+  Reproduced and verified in Playwright WebKit with iPhone emulation at 852px
+  and 420px, with and without banners; Pixel 7 emulation measured identical
+  before and after (the rule is iOS-gated). `ios-compat.test.ts` asserts the
+  floor and that every rule in `ios-compat.css` is scoped to iOS.

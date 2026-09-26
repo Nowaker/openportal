@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { isIOS, isIOSZoomed } from "./ios-compat";
 
 describe("iOS compatibility boundary", () => {
@@ -26,5 +28,30 @@ describe("iOS compatibility boundary", () => {
 
   test("keeps the innerHeight fallback when visualViewport is unavailable", () => {
     expect(isIOSZoomed({ userAgent: "iPhone", maxTouchPoints: 5 }, null)).toBe(false);
+  });
+});
+
+describe("iOS composer floor", () => {
+  const css = readFileSync(join(import.meta.dir, "../ios-compat.css"), "utf8");
+  const composerRule =
+    css.match(/html\[data-ios="true"\] \[data-composer-root\] \{([^}]*)\}/)?.[1] ?? "";
+
+  // WebKit under-sizes the composer root once its floor is 0 (about 77px where
+  // Chromium resolves 143px), which crops the floating Send column from the
+  // top. The floor must fit the toolbar row plus the 90px textarea/button
+  // column that AGENTS.md's composer contract requires.
+  test("keeps an explicit floor that fits the toolbar and the Send column", () => {
+    const floor = Number(composerRule.match(/min-height:\s*(\d+)px/)?.[1] ?? 0);
+    expect(floor).toBeGreaterThanOrEqual(44 + 90);
+  });
+
+  test("scopes every rule to iOS so Android is untouched", () => {
+    const selectors = css
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("}")
+      .map((block) => block.split("{")[0]?.trim() ?? "")
+      .filter(Boolean)
+      .flatMap((list) => list.split(",").map((selector) => selector.trim()));
+    expect(selectors.every((selector) => selector.startsWith('html[data-ios="true"]'))).toBe(true);
   });
 });
