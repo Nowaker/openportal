@@ -10,7 +10,8 @@ import { readPortalConfig } from "../../lib/portal-config";
 import {
   getCachedSessions,
   getStaleSessions,
-  sessionsGeneration,
+  sessionsFetchStart,
+  type SessionsFetchStart,
   setCachedSessions,
 } from "../../lib/sessions-cache";
 import { applyOverlay, reconcile } from "../../lib/session-overlay";
@@ -30,18 +31,21 @@ function isUnder(sessionDir: string | undefined, scope: string): boolean {
 const INFLIGHT = new Map<string, Promise<Session[]>>();
 
 async function fetchSessionsFromOpencode(port: number): Promise<Session[]> {
-  const generation = sessionsGeneration();
-  const key = `${port}:${generation}`;
+  const started = sessionsFetchStart();
+  const key = `${port}:${started.generation}`;
   const inflight = INFLIGHT.get(key);
   if (inflight) return inflight;
-  const promise = doFetchSessions(port, generation).finally(() => {
+  const promise = doFetchSessions(port, started).finally(() => {
     INFLIGHT.delete(key);
   });
   INFLIGHT.set(key, promise);
   return promise;
 }
 
-async function doFetchSessions(port: number, generation: number): Promise<Session[]> {
+async function doFetchSessions(
+  port: number,
+  started: SessionsFetchStart,
+): Promise<Session[]> {
   let sessions: Session[];
   try {
     const res = await fetchOpencode(
@@ -65,7 +69,7 @@ async function doFetchSessions(port: number, generation: number): Promise<Sessio
     }
     sessions = listed.data as Session[];
   }
-  setCachedSessions(port, sessions, generation);
+  setCachedSessions(port, sessions, started);
   return sessions;
 }
 

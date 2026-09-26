@@ -6,10 +6,11 @@ import { useActiveStrategy } from "@/hooks/use-active-strategy";
 import type { UpdateStrategy } from "@/stores/update-strategy-store";
 import { createWatchedEventSource } from "@/lib/sse-watchdog";
 import { logSystemMessage } from "@/stores/system-messages-store";
+import { patchSessionRow } from "@/lib/session-row-patch";
 
 interface OpencodeEvent {
   type: string;
-  properties?: { sessionID?: unknown };
+  properties?: { sessionID?: unknown; info?: unknown };
   time?: number;
 }
 
@@ -46,7 +47,7 @@ const SILENCE_TIMEOUT_MS = 60_000;
 export function useEventStream(): void {
   const strategy = useActiveStrategy();
   const port = useInstanceStore((s) => s.instance?.port);
-  const { mutate } = useSWRConfig();
+  const { mutate, cache } = useSWRConfig();
   const flushTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
@@ -68,7 +69,7 @@ export function useEventStream(): void {
         } catch {
           return;
         }
-        dispatchEvent(port, parsed, strategy, mutate, flushTimers.current);
+        dispatchEvent(port, parsed, strategy, mutate, cache, flushTimers.current);
       },
       onReconnect: () => {
         for (const t of flushTimers.current.values()) clearTimeout(t);
@@ -89,16 +90,18 @@ export function useEventStream(): void {
       for (const t of flushTimers.current.values()) clearTimeout(t);
       flushTimers.current.clear();
     };
-  }, [strategy, port, mutate]);
+  }, [strategy, port, mutate, cache]);
 }
 
 type Mutator = ReturnType<typeof useSWRConfig>["mutate"];
+type SwrCache = ReturnType<typeof useSWRConfig>["cache"];
 
 function dispatchEvent(
   port: number,
   e: OpencodeEvent,
   strategy: UpdateStrategy,
   mutate: Mutator,
+  cache: SwrCache,
   flushTimers: Map<string, ReturnType<typeof setTimeout>>,
 ): void {
   const sid =
@@ -139,19 +142,15 @@ function dispatchEvent(
     case "permission.asked":
     case "permission.replied":
       return;
-    case "session.created":
     case "session.updated":
+      patchSessionLists(port, e.properties?.info, mutate, cache);
+      return;
+    case "session.created":
     case "session.deleted":
     case "session.compacted":
-    case "session.error": {
-      const sessionsKey = `/api/opencode/${port}/sessions`;
-      void mutate(
-        (key) =>
-          typeof key === "string" &&
-          (key === sessionsKey || key.startsWith(`${sessionsKey}?`)),
-      );
+    case "session.error":
+      for (const key of sessionListKeys(port, cache)) void mutate(key);
       return;
-    }
     default:
       return;
   }
@@ -166,4 +165,31 @@ function invalidateMessages(
   void mutate(
     (key) => typeof key === "string" && key.startsWith(prefix),
   );
+}
+
+// Every cached sessions list for this port: the sidebar's `/sessions` and the
+// Ctrl+K palette's `/sessions?scope=all` are separate SWR keys.
+function sessionListKeys(port: number, cache: SwrCache): string[] {
+  const base = `/api/opencode/${port}/sessions`;
+  return [...cache.keys()].filter(
+    (key): key is string =>
+      typeof key === "string" && (key === base || key.startsWith(`${base}?`)),
+  );
+}
+
+// session.updated carries the whole row, so a rename or archive is applied to
+// each cached list without refetching thousands of sessions (2-4s measured).
+// A list that lacks the row - a session it has never seen - is refetched.
+function patchSessionLists(
+  port: number,
+  info: unknown,
+  mutate: Mutator,
+  cache: SwrCache,
+): void {
+  for (const key of sessionListKeys(port, cache)) {
+    const rows: unknown = cache.get(key)?.data;
+    const patched = Array.isArray(rows) ? patchSessionRow(rows as object[], info) : null;
+    if (patched) void mutate(key, patched, { revalidate: false });
+    else void mutate(key);
+  }
 }

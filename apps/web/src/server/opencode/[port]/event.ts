@@ -5,8 +5,7 @@ import { buildServerOrigin } from "../../lib/server-registry";
 import { parsePort } from "../../lib/validation";
 import { invalidateMessagesCache } from "../../lib/messages-cache";
 import {
-  invalidateSessionsCache,
-  SESSION_LIFECYCLE_EVENTS,
+  applySessionEvent,
 } from "../../lib/sessions-cache";
 import {
   heartbeatFrame,
@@ -33,10 +32,10 @@ import {
 // the per-session messages cache so the next /messages fetch
 // triggered by the client's SWR mutate reads fresh data. Without
 // this tap the 2s messages-cache TTL would mask streaming
-// updates. session.* frames invalidate the sessions cache the
-// same way. Each chunk is scanned BEFORE it is forwarded, so the
-// browser can never see a frame - and refetch - ahead of the
-// invalidation that frame causes.
+// updates. session.* frames reach the sessions cache the same
+// way (applySessionEvent). Each chunk is scanned BEFORE it is
+// forwarded, so the browser can never see a frame - and refetch -
+// ahead of the cache change that frame causes.
 
 const DELTA_EVENT_TYPES = new Set([
   "message.part.delta",
@@ -98,7 +97,7 @@ export default defineHandler(async (event) => {
             try {
               const ev = JSON.parse(json) as {
                 type?: string;
-                properties?: { sessionID?: unknown };
+                properties?: { sessionID?: unknown; info?: unknown };
               };
               if (
                 ev?.type &&
@@ -107,9 +106,7 @@ export default defineHandler(async (event) => {
               ) {
                 invalidateMessagesCache(ev.properties.sessionID);
               }
-              if (ev?.type && SESSION_LIFECYCLE_EVENTS.has(ev.type)) {
-                invalidateSessionsCache(port);
-              }
+              applySessionEvent(port, ev);
             } catch {
               /* malformed frame from opencode; ignore */
             }

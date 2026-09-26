@@ -32,8 +32,9 @@
 //     round-trip against a multi-MB session.
 //
 //   * Session lifecycle - session.created/updated/deleted:
-//     invalidateSessionsCache(port). Same authoritative-only logic
-//     applied to the sessions list cache.
+//     applySessionEvent(port, ev). session.updated patches its row in
+//     the sessions list cache; the rest invalidate it. Same
+//     authoritative-only logic applied to the sessions list cache.
 //
 // Initial-state hydration on (re)connect: after the SSE channel
 // reopens, we fetch /session/status from opencode and seed the
@@ -54,8 +55,7 @@ import { basicAuthHeader, type BasicAuthCreds } from "../lib/server-discovery";
 import { invalidateMessagesCache } from "../lib/messages-cache";
 import { scheduleRefreshMessages } from "../lib/messages-refresh";
 import {
-  invalidateSessionsCache,
-  SESSION_LIFECYCLE_EVENTS,
+  applySessionEvent,
 } from "../lib/sessions-cache";
 import {
   applyOpencodeEvent,
@@ -114,7 +114,7 @@ function markEvent(serverId: string): void {
 
 interface OpencodeFrame {
   type?: string;
-  properties?: { sessionID?: unknown };
+  properties?: { sessionID?: unknown; info?: unknown };
   time?: number;
 }
 
@@ -162,9 +162,7 @@ async function processStream(
               scheduleRefreshMessages(port, sid);
             }
           }
-          if (ev.type && SESSION_LIFECYCLE_EVENTS.has(ev.type)) {
-            invalidateSessionsCache(port);
-          }
+          applySessionEvent(port, ev);
         } catch (err) {
           console.warn(
             `[indicator-broadcaster] applyOpencodeEvent threw for server=${serverId}:`,

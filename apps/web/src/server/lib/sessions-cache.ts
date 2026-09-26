@@ -13,21 +13,13 @@
 // Invalidated by:
 //   - /prompt + /command handlers (new session created or activity
 //     timestamps updated)
-//   - session.create / session.delete / session.update SSE events
-//     from the indicator broadcaster
+//   - session.created / session.deleted SSE events, and session.updated
+//     for a row the list lacks (applySessionEvent; other session.updated
+//     frames patch their row in place)
 //   - explicit invalidateSessionsCache call from refresh button
 
+import { patchSessionRow } from "../../lib/session-row-patch";
 import { getPromptDb } from "./prompt-db";
-
-// Session-lifecycle events from opencode SSE: the AUTHORITATIVE signal that
-// the sessions list changed. Every SSE tap that sees one invalidates this
-// cache, so the refetch the browser fires on the same frame cannot be served
-// the row it replaces (a new title would otherwise wait out SHORT_TTL_MS).
-export const SESSION_LIFECYCLE_EVENTS: ReadonlySet<string> = new Set([
-  "session.created",
-  "session.updated",
-  "session.deleted",
-]);
 
 const SHORT_TTL_MS = 30_000;
 const MAX_ENTRIES = 32;
@@ -66,22 +58,67 @@ export function getStaleSessions(port: number): unknown[] | null {
   return hydrated;
 }
 
-// Bumped by every invalidation. A fetch records the generation it started
-// under and its result is discarded if an invalidation landed meanwhile:
-// otherwise a list read BEFORE a rename is stored as fresh AFTER it, and the
-// refetch the rename's own event triggers is served the old title for 30s.
+// A fetch can start before an SSE frame and finish after it, and must then
+// neither undo that frame nor store a list it predates. Invalidations bump a
+// generation, and a fetch from an older one is discarded. Row patches are
+// replayed onto a fetch that started before them instead, because active
+// sessions send session.updated several times a second: discarding every
+// fetch they overlap would leave the cache permanently empty.
 let generation = 0;
+const PATCH_MEMORY_MS = 60_000;
+const recentPatches = new Map<number, { at: number; info: object }[]>();
 
-export function sessionsGeneration(): number {
-  return generation;
+export interface SessionsFetchStart {
+  readonly generation: number;
+  readonly at: number;
+}
+
+export function sessionsFetchStart(): SessionsFetchStart {
+  return { generation, at: Date.now() };
+}
+
+function replayPatches(port: number, sessions: unknown[], since: number): unknown[] {
+  let rows = sessions as object[];
+  for (const patch of recentPatches.get(port) ?? []) {
+    if (patch.at >= since) rows = patchSessionRow(rows, patch.info) ?? rows;
+  }
+  return rows;
+}
+
+// session.updated carries the whole row, so it patches the cached list in
+// place; a row the list does not have yet (a new session) and every other
+// lifecycle event invalidate it, and the next GET refetches.
+export function applySessionEvent(
+  port: number,
+  ev: { type?: string; properties?: { info?: unknown } },
+): void {
+  if (ev.type === "session.updated") {
+    const info = ev.properties?.info;
+    const entry = cache.get(port);
+    const patched = entry ? patchSessionRow(entry.sessions as object[], info) : null;
+    if (entry && patched && info && typeof info === "object") {
+      const now = Date.now();
+      const kept = (recentPatches.get(port) ?? []).filter((p) => now - p.at < PATCH_MEMORY_MS);
+      kept.push({ at: now, info });
+      recentPatches.set(port, kept);
+      entry.sessions = patched;
+      return;
+    }
+    invalidateSessionsCache(port);
+    return;
+  }
+  if (ev.type === "session.created" || ev.type === "session.deleted") {
+    invalidateSessionsCache(port);
+  }
 }
 
 export function setCachedSessions(
   port: number,
-  sessions: unknown[],
-  startedAt: number,
+  fetched: unknown[],
+  startedAt: SessionsFetchStart,
 ): void {
-  if (startedAt !== generation) return;
+  if (startedAt.generation !== generation) return;
+  const sessions = replayPatches(port, fetched, startedAt.at);
   const existing = cache.get(port);
   if (existing && sessions.length < existing.sessions.length) {
     console.warn(
@@ -101,10 +138,12 @@ export function setCachedSessions(
 export function invalidateSessionsCache(port?: number): void {
   generation += 1;
   if (port !== undefined) {
+    recentPatches.delete(port);
     cache.delete(port);
     deleteFromDb(port);
     return;
   }
+  recentPatches.clear();
   cache.clear();
   deleteAllFromDb();
 }

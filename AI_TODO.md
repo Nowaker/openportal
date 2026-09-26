@@ -5713,3 +5713,28 @@ Design notes:
 - `SESSION_LIFECYCLE_EVENTS` now lives in `sessions-cache.ts`, shared by the
   broadcaster and the proxy. Invalidation bumps a generation; a fetch from an
   older generation neither writes the cache nor is joined by new requests.
+
+
+### 242. Apply a renamed session's title without refetching the sessions list (DONE - this commit)
+
+User prompt (verbatim):
+
+> Must make sure it updates quickly when session name updates
+
+Design notes:
+
+- Follow-up to #241. Measured in headless Chromium against prod after #241:
+  the title reached the page and sidebar 6-13s after a rename, and all of it
+  was refetching `/sessions` (8697 rows, 1.4-3.7s per request, fired for
+  both `/sessions` and `?scope=all`, often twice). The `session.updated`
+  frame itself arrived within ~30ms of the rename.
+- `session.updated` carries the whole session row, so it now patches that
+  row in place: in the server's sessions cache (`applySessionEvent`) and in
+  every cached SWR sessions list in the browser (`patchSessionLists`). Shared
+  merge: `apps/web/src/lib/session-row-patch.ts`. A row the list lacks (a new
+  session, or one outside a scoped list) still invalidates/refetches;
+  `session.created` / `session.deleted` still invalidate.
+- A fetch that started before a patch has the patch replayed onto it instead
+  of being discarded, because active sessions send `session.updated` several
+  times a second - discarding every overlapping fetch would keep the cache
+  empty.
