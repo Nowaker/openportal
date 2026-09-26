@@ -8,6 +8,7 @@ import {
 import {
   computeLatestSet,
   filterVisibleProviders,
+  modelKey,
   type RawProvider,
 } from "@/lib/model-visibility";
 
@@ -24,7 +25,9 @@ interface RawProvidersResponse {
   default?: Record<string, string>;
 }
 
-export function useVisibleProviders() {
+// `alwaysShowKey` ("provider/model") stays visible regardless of the
+// hidden-models choice - the model a picker currently has selected.
+export function useVisibleProviders(alwaysShowKey?: string | null) {
   const swr = useProviders();
   const { config } = useModelVisibility();
   const instance = useInstanceStore((s) => s.instance);
@@ -35,7 +38,12 @@ export function useVisibleProviders() {
     if (!raw) return raw;
     const providers = raw.providers ?? [];
     const latestSet = computeLatestSet(providers);
-    const overrides = getOverridesForServer(config, serverId);
+    let overrides = getOverridesForServer(config, serverId);
+    const slash = alwaysShowKey?.indexOf("/") ?? -1;
+    if (alwaysShowKey && slash > 0) {
+      const key = modelKey(alwaysShowKey.slice(0, slash), alwaysShowKey.slice(slash + 1));
+      overrides = { ...overrides, [key]: "show" };
+    }
     const out = filterVisibleProviders(
       providers,
       serverId,
@@ -43,7 +51,7 @@ export function useVisibleProviders() {
       latestSet,
     );
     return { ...raw, providers: out };
-  }, [swr.data, config, serverId]);
+  }, [swr.data, config, serverId, alwaysShowKey]);
 
   return {
     ...swr,

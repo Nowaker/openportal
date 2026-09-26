@@ -123,7 +123,7 @@ import {
   isEffectivelyEnabled,
   toggleAutoApprove,
 } from "@/stores/auto-approve-store";
-import { useModelStore } from "@/stores/model-store";
+import { latestMessageModel, useModelStore } from "@/stores/model-store";
 import { useThinkingStore } from "@/stores/thinking-store";
 import { useSessionErrorStore } from "@/stores/session-error-store";
 import { useFileHistoryStore } from "@/stores/file-history-store";
@@ -3840,6 +3840,12 @@ function SessionPage() {
   const messages: MessageWithParts[] = permalinkMode
     ? permalinkWindow.messages
     : normal.messages;
+
+  const observeSessionModel = useModelStore((s) => s.observeSessionModel);
+  const latestModel = useMemo(() => latestMessageModel(messages), [messages]);
+  useEffect(() => {
+    if (latestModel) observeSessionModel(sessionId, latestModel);
+  }, [sessionId, latestModel, observeSessionModel]);
 
   const firstHeaderShown =
     firstMessage !== null &&

@@ -12,45 +12,14 @@ import { useLastPickedTracker } from "@/stores/last-picked-tracker-store";
 import { variantsForModel, pickClosestVariant } from "@/lib/variant-fallback";
 import { useVisibleProviders } from "@/hooks/use-visible-providers";
 
-interface ProviderRaw {
-  id: string;
-  name: string;
-  models: Record<string, { id: string; name: string }>;
-}
-
-interface ModelsData {
-  defaultModel: string | null;
-  defaultModelName: string | null;
-}
-
-function transformProviders(data: {
-  providers?: ProviderRaw[];
+function firstDefaultModel(data: {
   default?: Record<string, string>;
-}): ModelsData {
-  const providers = data?.providers || [];
-  const defaults = data?.default || {};
-
-  let defaultModel: string | null = null;
-  for (const [providerId, modelId] of Object.entries(defaults)) {
-    if (modelId) {
-      defaultModel = `${providerId}/${modelId}`;
-      break;
-    }
+}): string | null {
+  for (const [providerId, modelId] of Object.entries(data?.default || {})) {
+    if (modelId) return `${providerId}/${modelId}`;
   }
-
-  let defaultModelName: string | null = null;
-  if (defaultModel) {
-    const [pid, ...rest] = defaultModel.split("/");
-    const mid = rest.join("/");
-    const provider = providers.find((p) => p.id === pid);
-    const model = provider ? provider.models[mid] : undefined;
-    defaultModelName = model?.name ?? defaultModel;
-  }
-
-  return { defaultModel, defaultModelName };
+  return null;
 }
-
-const USE_DEFAULT_KEY = "__use_default__";
 
 interface ModelSelectProps {
   // The session this picker is bound to. Per-session selection sits at
@@ -65,13 +34,13 @@ interface ModelSelectProps {
 }
 
 export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
-  const { data: rawData, isLoading } = useVisibleProviders();
-
   const resolvedKey = useModelStore((s) =>
     s.resolveModelKey(sessionId ?? null, instanceId ?? null),
   );
+  // The selected model must stay a row of the list even when Settings ->
+  // Models hides it, or the trigger would fall back to its placeholder.
+  const { data: rawData, isLoading } = useVisibleProviders(resolvedKey);
   const setModelForSession = useModelStore((s) => s.setModelForSession);
-  const clearSessionModel = useModelStore((s) => s.clearSessionModel);
   const currentVariant = useThinkingStore((s) => s.resolve(sessionId ?? null));
   const setVariantForSession = useThinkingStore((s) => s.setForSession);
   const setVariantDefault = useThinkingStore((s) => s.setDefault);
@@ -89,33 +58,23 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
     (s) => s.setInstanceDefaultModel,
   );
   const setModelFromDefault = useModelStore((s) => s.setModelFromDefault);
-  const isOverridingDefault = useModelStore((s) =>
-    s.isOverridingDefault(sessionId ?? null, instanceId ?? null),
-  );
-  // The "default" in the dropdown is whatever the resolver would return
-  // if this session had no explicit pick. We compute it from the store
-  // by resolving with a sentinel sessionId guaranteed to be absent.
-  const effectiveDefaultKey = useModelStore((s) =>
-    s.resolveModelKey("__no_session__", instanceId ?? null),
-  );
 
-  const data = useMemo(
-    () => (rawData ? transformProviders(rawData) : null),
+  const defaultModel = useMemo(
+    () => (rawData ? firstDefaultModel(rawData) : null),
     [rawData],
   );
-  const defaultModel = data?.defaultModel ?? null;
-  const defaultModelName = useMemo(() => {
-    if (!effectiveDefaultKey) return null;
-    const [pid, ...rest] = effectiveDefaultKey.split("/");
-    const mid = rest.join("/");
+
+  // List rows are labelled by version inside their family group ("5.5"),
+  // which is ambiguous once the group heading is out of sight.
+  const selectedModelName = useMemo(() => {
+    const slash = resolvedKey.indexOf("/");
+    if (slash <= 0) return null;
     const raw = rawData as
-      | { providers?: Array<{ id: string; models?: Record<string, { id: string; name?: string }> }> }
-      | null
+      | { providers?: Array<{ id: string; models?: Record<string, { name?: string }> }> }
       | undefined;
-    const provider = raw?.providers?.find((p) => p.id === pid);
-    const model = provider?.models?.[mid];
-    return model?.name ?? effectiveDefaultKey;
-  }, [effectiveDefaultKey, rawData]);
+    const provider = raw?.providers?.find((p) => p.id === resolvedKey.slice(0, slash));
+    return provider?.models?.[resolvedKey.slice(slash + 1)]?.name ?? null;
+  }, [rawData, resolvedKey]);
 
   useEffect(() => {
     if (defaultModel) {
@@ -128,15 +87,9 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
       aria-label="Model"
       placeholder={isLoading ? "Loading models..." : "Select a model"}
       className="w-full min-w-0"
-      selectedKey={isOverridingDefault ? resolvedKey : USE_DEFAULT_KEY}
+      selectedKey={resolvedKey}
       onSelectionChange={(key) => {
         if (!key) return;
-        if (String(key) === USE_DEFAULT_KEY) {
-          // "Use default" means: forget the per-session pick so the next
-          // resolution falls through to instance/global/workspace default.
-          if (sessionId) clearSessionModel(sessionId);
-          return;
-        }
         const value = String(key);
         if (sessionId) {
           setModelForSession(sessionId, value, instanceId ?? null);
@@ -183,17 +136,14 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
         }
       }}
     >
-      <SelectTrigger
-        className="w-full min-w-0 text-xs sm:text-sm"
-        title={isOverridingDefault && resolvedKey ? `Model: ${resolvedKey}` : "Use default model"}
-      >
+      <SelectTrigger className="w-full min-w-0 text-xs sm:text-sm">
         <SelectValue
           data-slot="select-value"
           className="truncate text-start text-sm/6 data-placeholder:text-muted-fg [&_[slot=description]]:hidden"
         >
           {({ defaultChildren, selectedText, isPlaceholder }) => {
             if (isPlaceholder) return defaultChildren;
-            const text = String(selectedText ?? "");
+            const text = selectedModelName ?? String(selectedText ?? "");
             return shortenModelName(text) || text;
           }}
         </SelectValue>
@@ -204,18 +154,7 @@ export function ModelSelect({ sessionId, instanceId }: ModelSelectProps = {}) {
       </SelectTrigger>
       <ModelPickerContent
         providersData={rawData}
-        defaultKey={effectiveDefaultKey}
-        extraEntries={
-          defaultModelName
-            ? [
-                {
-                  id: USE_DEFAULT_KEY,
-                  label: defaultModelName,
-                  trailing: "(default)",
-                },
-              ]
-            : undefined
-        }
+        defaultKey={defaultModel}
         ariaLabel="Model"
       />
     </Select>

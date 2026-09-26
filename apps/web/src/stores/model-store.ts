@@ -24,9 +24,58 @@ function toModelKey(model: SelectedModel): string {
   return `${model.providerID}/${model.modelID}`;
 }
 
+export interface ObservedSessionModel {
+  key: string;
+  // `time.created` of the message that carried this model.
+  at: number;
+}
+
+type MessageModelSource = {
+  info: {
+    role?: string;
+    providerID?: unknown;
+    modelID?: unknown;
+    model?: unknown;
+    time?: { created?: unknown };
+  };
+};
+
+// The model the session actually ran on most recently: assistant messages
+// carry `providerID`/`modelID`, user messages carry `model`. Whoever drove
+// the session (this portal, another portal tab, the TUI) leaves it here.
+export function latestMessageModel(
+  messages: ReadonlyArray<MessageModelSource>,
+): ObservedSessionModel | null {
+  let best: ObservedSessionModel | null = null;
+  for (const { info } of messages) {
+    const at = typeof info.time?.created === "number" ? info.time.created : 0;
+    if (best && at < best.at) continue;
+    const ref =
+      info.role === "assistant"
+        ? info
+        : (info.model as { providerID?: unknown; modelID?: unknown } | undefined);
+    if (
+      typeof ref?.providerID === "string" &&
+      ref.providerID &&
+      typeof ref.modelID === "string" &&
+      ref.modelID
+    ) {
+      best = { key: `${ref.providerID}/${ref.modelID}`, at };
+    }
+  }
+  return best;
+}
+
 interface ModelState {
-  // Layer 1: per-session pick. Wins over everything when set.
+  // Layer 1: per-session pick made in this browser. Wins while it is newer
+  // than the session's latest message (see selectedAtBySession).
   selectedModelBySession: Record<string, string>;
+  // When each layer-1 pick was made. Picks without a timestamp predate
+  // this field and lose to any observed session model.
+  selectedAtBySession: Record<string, number>;
+  // Layer 1b: the model the session's latest message ran on. Not
+  // persisted - rebuilt from messages whenever the session is viewed.
+  observedModelBySession: Record<string, ObservedSessionModel>;
   // Layer 2: most-recent pick on a given instance, used to seed brand-new
   // sessions on the same instance with the same model the user last picked
   // there.
@@ -65,9 +114,12 @@ interface ModelState {
     key: string,
     instanceId: string | null | undefined,
   ) => void;
-  // Clear the per-session pick so the session inherits its instance / global
-  // / workspace default again.
-  clearSessionModel: (sessionId: string) => void;
+  // Record the model the session's latest message ran on. Older
+  // observations never replace newer ones.
+  observeSessionModel: (
+    sessionId: string,
+    observed: ObservedSessionModel,
+  ) => void;
 
   setModelFromDefault: (defaultKey: string | null) => void;
   isOverridingDefault: (
@@ -76,10 +128,27 @@ interface ModelState {
   ) => boolean;
 }
 
+function sessionLayerKey(
+  state: Pick<
+    ModelState,
+    "selectedModelBySession" | "selectedAtBySession" | "observedModelBySession"
+  >,
+  sessionId: string,
+): string | null {
+  const picked = state.selectedModelBySession[sessionId];
+  const observed = state.observedModelBySession[sessionId];
+  if (picked && (!observed || (state.selectedAtBySession[sessionId] ?? 0) >= observed.at)) {
+    return picked;
+  }
+  return observed?.key ?? null;
+}
+
 export const useModelStore = create<ModelState>()(
   persist(
     (set, get) => ({
       selectedModelBySession: {},
+      selectedAtBySession: {},
+      observedModelBySession: {},
       lastUsedModelByInstance: {},
       lastUsedModelGlobal: null,
       defaultModelKey: null,
@@ -87,8 +156,7 @@ export const useModelStore = create<ModelState>()(
 
       resolveModel: (sessionId, instanceId) => {
         const state = get();
-        const sessionKey =
-          sessionId && state.selectedModelBySession[sessionId];
+        const sessionKey = sessionId ? sessionLayerKey(state, sessionId) : null;
         if (sessionKey) return parseModelKey(sessionKey);
         const instanceKey =
           instanceId && state.lastUsedModelByInstance[instanceId];
@@ -109,6 +177,10 @@ export const useModelStore = create<ModelState>()(
             ...state.selectedModelBySession,
             [sessionId]: key,
           },
+          selectedAtBySession: {
+            ...state.selectedAtBySession,
+            [sessionId]: Date.now(),
+          },
           lastUsedModelByInstance: instanceId
             ? { ...state.lastUsedModelByInstance, [instanceId]: key }
             : state.lastUsedModelByInstance,
@@ -127,11 +199,22 @@ export const useModelStore = create<ModelState>()(
           lastUsedModelGlobal: key,
         })),
 
-      clearSessionModel: (sessionId) =>
+      observeSessionModel: (sessionId, observed) =>
         set((state) => {
-          const next = { ...state.selectedModelBySession };
-          delete next[sessionId];
-          return { selectedModelBySession: next };
+          const current = state.observedModelBySession[sessionId];
+          if (
+            current &&
+            (current.at > observed.at ||
+              (current.at === observed.at && current.key === observed.key))
+          ) {
+            return state;
+          }
+          return {
+            observedModelBySession: {
+              ...state.observedModelBySession,
+              [sessionId]: observed,
+            },
+          };
         }),
 
       setModelFromDefault: (defaultKey) => {
@@ -140,19 +223,25 @@ export const useModelStore = create<ModelState>()(
         }
       },
 
-      // True iff the resolved model differs from the workspace default.
-      // Used by the prompt sender to decide whether to forward a `model`
-      // override to opencode (vs letting opencode use its own default).
+      // True iff the prompt sender must forward a `model` to opencode.
+      // A session with its own model (a pick here, or the model its latest
+      // message ran on) always sends it: omitting it lets opencode fall
+      // back to the agent's model, which would silently switch models
+      // whenever the session's model happens to equal the server default.
       isOverridingDefault: (sessionId, instanceId) => {
-        const { defaultModelKey } = get();
-        if (!defaultModelKey) return false;
-        return get().resolveModelKey(sessionId, instanceId) !== defaultModelKey;
+        const state = get();
+        if (sessionId && sessionLayerKey(state, sessionId)) return true;
+        if (!state.defaultModelKey) return false;
+        return (
+          state.resolveModelKey(sessionId, instanceId) !== state.defaultModelKey
+        );
       },
     }),
     {
       name: "opencode-selected-model",
       partialize: (state) => ({
         selectedModelBySession: state.selectedModelBySession,
+        selectedAtBySession: state.selectedAtBySession,
         lastUsedModelByInstance: state.lastUsedModelByInstance,
         lastUsedModelGlobal: state.lastUsedModelGlobal,
         defaultModelKey: state.defaultModelKey,

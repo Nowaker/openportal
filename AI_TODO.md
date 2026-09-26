@@ -5738,3 +5738,43 @@ Design notes:
   of being discarded, because active sessions send `session.updated` several
   times a second - discarding every overlapping fetch would keep the cache
   empty.
+
+
+### 243. Composer model dropdown: follow the session's model, no dead rows, vendor filter evidence (DONE - this commit)
+
+User prompt (verbatim, relayed from the opencode-tools coordinator session):
+
+> 1. **Model selection ignores the session's model.** The session had been running on anthropic/claude-opus-5-5 the whole time. The composer's model dropdown showed no selection and just said "default". Expanded, its first item was "anthropic/claude-opus-5 (default)".
+> 2. **The first item can't be selected.** After the user picked opus 5.5 from the list, the first item became "opus 5.5", and that item can't be selected.
+> 3. **Non-Claude models show for Sisyphus.** GPT models appear in the list. The user remembers a portal feature or setting that hides non-Claude models when the OMO agent Sisyphus is selected.
+
+Design notes:
+
+- (1) There was no setting for "follow the session". `resolveModel` went
+  per-session pick in this browser -> instance last-used -> global
+  last-used -> opencode default, and never looked at the session's
+  messages. A session driven from the TUI had no pick here, so it showed
+  whatever this browser last picked anywhere. The model store now has a
+  session-observed layer: the model on the session's latest message
+  (`latestMessageModel`, fed from `session/$id.tsx`). A pick made here
+  wins only while it is newer than that message. Picks without a
+  timestamp (all picks from before this change) lose to it.
+- A session model is now always sent with the prompt, even when it
+  equals the server default. Otherwise opencode falls back to the
+  agent's model.
+- (2) The top row was a `__use_default__` pseudo-item labelled with the
+  instance last-used model. Picking a model rewrote that pointer, so the
+  row duplicated the selection, and choosing it resolved back to the same
+  model: a dead row. It is removed. The Select's `selectedKey` is always
+  the resolved model's real row, "(default)" marks the server-default row,
+  and the selected model stays listed even when Settings -> Models hides
+  it. The collapsed trigger shows the model's full name ("Opus 5.5"),
+  not the row's version label ("5.5").
+- (3) The composer never had a vendor filter. The vendor-scoped picker
+  lives in Settings -> Models auto-switch (`agentVendor`), and the
+  composer has the reverse OMO agent switch (af801d6). Both key on
+  `agent.model.providerID`. Vibeterm's `/agent` returns `model: null` for
+  every agent and collapses Hephaestus/Prometheus/Atlas into "Sisyphus -
+  ultraworker", so both are blind there. Fixed on the Vibeterm side in
+  opencode-tools 034cf3d (session ses_f21afd027ffePD1yDnR24vDLhk): `/agent`
+  and `/config/providers` now match `opencode serve`.
