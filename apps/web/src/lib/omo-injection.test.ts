@@ -153,3 +153,52 @@ Please address this message and continue with your tasks.
     expect(userTextFromOmoBlocks(parseOmoBlocks(text))).toBe(userText);
   });
 });
+
+describe("parseOmoBlocks skill wrappers", () => {
+  // The shape opencode's skill slash command produces: the wrapper holds
+  // the skill body and the ask, then the skill body and the ask are
+  // repeated as top-level siblings of the wrapper.
+  const ask = "alright, lets apply this. I do not need any unit tests for this";
+  const skill = `<skill-instruction>
+Base directory for this skill: /Users/me/skills/ndn-dev/
+# NDN Perl Developer Skill
+Long skill body.
+</skill-instruction>`;
+  const autoSlash = `<auto-slash-command>
+# /ndn-dev Command
+
+**Description**: (opencode-project - Skill) Perl development.
+
+${skill}
+
+<user-request>
+${ask}
+</user-request>
+</auto-slash-command>`;
+  const message = `${autoSlash}\n${skill}\n\n<user-request>\n${ask}\n</user-request>`;
+
+  test("folds a bare skill-instruction block and names the skill", () => {
+    const blocks = parseOmoBlocks(skill);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.kind).toBe("omo");
+    expect(blocks[0]?.header).toBe("<skill-instruction>");
+    expect(blocks[0]?.summary).toBe("ndn-dev");
+  });
+
+  test("folds the slash command and repeated skill, showing the ask once without its tags", () => {
+    const blocks = parseOmoBlocks(message);
+
+    expect(blocks.map((b) => b.kind)).toEqual(["omo", "user"]);
+    expect(blocks[0]?.summary).toBe("/ndn-dev");
+    expect(blocks[1]?.text.trim()).toBe(ask);
+    expect(userTextFromOmoBlocks(blocks)).toBe(ask);
+  });
+
+  test("shows the ask when each part is parsed on its own, as the server does", () => {
+    const [first, second] = [autoSlash, `${skill}\n\n<user-request>\n${ask}\n</user-request>`];
+
+    expect(userTextFromOmoBlocks(parseOmoBlocks(first))).toBe("");
+    expect(userTextFromOmoBlocks(parseOmoBlocks(second))).toBe(ask);
+  });
+});

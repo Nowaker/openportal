@@ -5559,3 +5559,23 @@ Design notes:
 - `unconfirmed` (delivery may have landed, vibeterm will not resend) gets its own badge, note and disabled button. Resubmit is gone. Denied/dismissed show no discarded draft (the API now returns them empty).
 - The list proxy answers `null` instead of relaying 404/503, which the client already reads as unsupported, so stock opencode no longer logs a failed request per card.
 - Verified: 5 helper tests; 35/35 isolated browser checks against a mock of the /vibeterm/question contract (store-matched completed builtin, foreign-call and route-less completed builtin read-only, unconfirmed, denied, running native via /question, legacy null-callID async request), none aborting or re-prompting, no console errors.
+
+### 236. Fold skill-instruction bodies and show the user-request ask (DONE - this commit)
+
+User prompt (verbatim):
+
+> Example in image shows that the auto-slash-command ndn-dev gets truncated and expanded in Portal. Opencode just expands it which im not in love with, Id prefer to have those hidden like in Portal
+
+Design notes:
+
+- A skill slash command's message is `<auto-slash-command>` (skill body +
+  `<user-request>` ask) followed by the skill body and the ask again as
+  top-level siblings. The sibling `<skill-instruction>` was not a known OMO
+  wrapper, so ~20k characters of skill text rendered as the user's message;
+  the sibling `<user-request>` rendered with its literal tags.
+- `<skill-instruction>` is now an XML wrapper (header + skill name from its
+  "Base directory for this skill" line), and `<user-request>` is handled
+  exactly like `<user-task>`: folded inside the wrapper, shown tag-free as
+  the user's text at top level.
+- `collectUserTaskRanges` was dead code duplicating the loop in
+  `parseOmoBlocks`; both now go through it.

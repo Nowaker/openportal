@@ -11,10 +11,11 @@
 //     [BACKGROUND TASK COMPLETED], etc.) plus a trailing
 //     <!-- OMO_INTERNAL_INITIATOR --> marker.
 //   - XML-tag wrappers: <ultrawork-mode>, <auto-slash-command>,
-//     <command-instruction>.
-//   - <user-task> content nested inside <auto-slash-command>: this is
-//     the user's actual ask wrapped by the slash machinery; the wrapper
-//     is collapsed but the inner content is the message text.
+//     <command-instruction>, <skill-instruction>.
+//   - <user-task> (or, for a skill command, <user-request>) content
+//     nested inside <auto-slash-command>: this is the user's actual ask
+//     wrapped by the slash machinery; the wrapper is collapsed but the
+//     inner content is the message text.
 //   - Line-based preambles: [search-mode] ... ---, [Category+Skill
 //     Reminder], [Agent Usage Reminder].
 //
@@ -75,10 +76,11 @@ const INITIATOR_CATCHERS: InitiatorCatcher[] = [
 
 const INITIATOR = "<!-- OMO_INTERNAL_INITIATOR -->";
 const STRIPPED_MARKER_REGEX = /<!--OMO-STRIPPED:([^>]+)-->/g;
-const USER_TASK_REGEX = /<user-task>\s*([\s\S]*?)\s*<\/user-task>/g;
+const USER_TASK_REGEX = /<(user-task|user-request)>\s*[\s\S]*?\s*<\/\1>/g;
 const AUTO_SLASH_REGEX = /<auto-slash-command>[\s\S]*?<\/auto-slash-command>/g;
 const ULTRAWORK_REGEX = /<ultrawork-mode>[\s\S]*?<\/ultrawork-mode>/g;
 const COMMAND_INSTR_REGEX = /<command-instruction>[\s\S]*?<\/command-instruction>/g;
+const SKILL_INSTR_REGEX = /<skill-instruction>[\s\S]*?<\/skill-instruction>/g;
 const ORPHAN_SYSTEM_REMINDER_TAIL_REGEX =
   /\n+\s*Please address this message and continue with your tasks\.\s*<\/system-reminder>/g;
 const SEARCH_MODE_REGEX =
@@ -137,18 +139,15 @@ function collectUserTaskRanges(text: string): UserTaskRange[] {
   const out: UserTaskRange[] = [];
   for (const m of text.matchAll(USER_TASK_REGEX)) {
     if (m.index === undefined) continue;
-    const wholeStart = m.index;
-    const wholeEnd = wholeStart + m[0].length;
-    const contentStart = wholeStart + m[0].indexOf(">", wholeStart - wholeStart) + 1;
-    const realContentStart = wholeStart + "<user-task>".length;
-    const realContentEnd = wholeEnd - "</user-task>".length;
+    const tag = m[1] ?? "user-task";
+    const start = m.index;
+    const end = start + m[0].length;
     out.push({
-      start: wholeStart,
-      end: wholeEnd,
-      contentStart: realContentStart,
-      contentEnd: realContentEnd,
+      start,
+      end,
+      contentStart: start + `<${tag}>`.length,
+      contentEnd: end - `</${tag}>`.length,
     });
-    void contentStart;
   }
   return out;
 }
@@ -356,6 +355,13 @@ function collectAllOmoRanges(text: string): Range[] {
     (body) => firstLine(body.replace(/^<command-instruction>\s*/, "").trim()).slice(0, 120),
     2,
   );
+  const skillInstr = collectXmlRanges(
+    text,
+    SKILL_INSTR_REGEX,
+    "<skill-instruction>",
+    (body) => body.match(/Base directory for this skill:\s*\S*?\/([^/\s]+)\/?\s/)?.[1],
+    2,
+  );
   const systemReminder = collectSystemReminderRanges(text);
   const orphanSystemReminderTail = collectOrphanSystemReminderTailRanges(text);
   const searchMode = collectLineRanges(
@@ -398,6 +404,7 @@ function collectAllOmoRanges(text: string): Range[] {
     ...ultrawork,
     ...autoSlash,
     ...commandInstr,
+    ...skillInstr,
     ...systemReminder,
     ...orphanSystemReminderTail,
     ...searchMode,
@@ -638,16 +645,7 @@ export function userTextFromOmoBlocks(blocks: OmoBlock[]): string {
 export function parseOmoBlocks(text: string): OmoBlock[] {
   if (!text) return [{ kind: "user", text }];
 
-  const allUserTasks: UserTaskRange[] = [];
-  for (const m of text.matchAll(USER_TASK_REGEX)) {
-    if (m.index === undefined) continue;
-    allUserTasks.push({
-      start: m.index,
-      end: m.index + m[0].length,
-      contentStart: m.index + "<user-task>".length,
-      contentEnd: m.index + m[0].length - "</user-task>".length,
-    });
-  }
+  const allUserTasks = collectUserTaskRanges(text);
 
   const codeBlockRanges = collectFencedCodeBlockRanges(text);
   const rawOmo = collectAllOmoRanges(text).filter(
