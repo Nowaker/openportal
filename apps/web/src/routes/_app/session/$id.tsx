@@ -6496,7 +6496,7 @@ function SessionPage() {
                 * other three sides at 1px (focus:border-x focus:border-b)
                 * with no ring halo (focus:ring-0). rounded-none kills the
                 * default rounded-lg corners. */}
-              <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
+              <div data-composer-input="" className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
                   <Textarea
                     ref={textareaRef}
                     data-test="portal-composer-textarea"

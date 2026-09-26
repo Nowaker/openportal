@@ -14,14 +14,23 @@ html[data-ios="true"] [data-sidebar-root] {
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
-/* The composer may shrink when banners take the space, but not to 0:
-   with no floor WebKit under-computes this item's content height (about
-   77px where Chromium resolves 143px) and crops the floating Send column
-   from the top. 140px is the toolbar row plus the 90px textarea/button
-   column floor from the composer layout contract in AGENTS.md. */
+/* The composer may shrink when banners take the space. Its floor stays
+   `auto`, which with overflow:hidden still allows that shrink, while
+   WebKit sums its children correctly - which it does once the wrapper
+   below has a definite floor. */
 html[data-ios="true"] [data-composer-root] {
   flex-shrink: 1;
-  min-height: 140px;
+  min-height: auto;
+}
+
+/* WebKit cannot resolve the textarea's percentage min-height inside the
+   composer's min-h-0 chain and collapses this wrapper to about 30px,
+   cropping the floating Send column from the top. The floor sits here,
+   not on the root, so an attachment strip, banner or overlay stacked above
+   it cannot eat it: 90px is the textarea/button column from the composer
+   layout contract in AGENTS.md. */
+html[data-ios="true"] [data-composer-input] {
+  min-height: 90px;
 }
 
 html[data-ios="true"] textarea[data-composer-textarea] {

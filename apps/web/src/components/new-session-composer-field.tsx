@@ -114,7 +114,7 @@ export function NewSessionComposerField({
          * the flex-1 min-h-0 cascade through the inner padding and
          * form. See the matching block in `session/$id.tsx` for the
          * full rationale. */}
-        <div className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div data-composer-input="" className="relative min-w-0 flex-1 min-h-0 flex flex-col overflow-hidden">
           <Textarea
             ref={textareaRef}
             data-composer-textarea=""

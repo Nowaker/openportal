@@ -5642,3 +5642,26 @@ Design notes:
   and 420px, with and without banners; Pixel 7 emulation measured identical
   before and after (the rule is iOS-gated). `ios-compat.test.ts` asserts the
   floor and that every rule in `ios-compat.css` is scoped to iOS.
+
+### 239. Keep the iOS Send button unclipped with attachments (DONE - this commit)
+
+User prompt (verbatim):
+
+> It works perfectly, but if I add an image it goes back to hidden
+
+Design notes:
+
+- #238's `min-height: 140px` on `[data-composer-root]` budgeted only the
+  toolbar and the 90px textarea/button column; an attachment strip adds
+  ~64px inside the composer and Send was cropped again.
+- The real failure is lower down: WebKit cannot resolve the textarea's
+  `min-h-[max(6rem,100%)]` percentage inside the composer's min-h-0 chain and
+  collapses the textarea wrapper to ~30px whatever else the composer holds.
+- The floor now sits on that wrapper (`data-composer-input`, added in both
+  composers) at 90px, and the root goes back to `min-height: auto`, which
+  WebKit sums correctly once the wrapper is definite and which still lets the
+  composer yield to banners (overflow:hidden keeps its automatic minimum at 0).
+- Verified in Playwright WebKit iPhone emulation: /session/<id> and
+  /session/new, 0/1/3 attachments, 852px and 420px, banners on and off
+  (24/24). Pixel 7 emulation identical before and after (16/16).
+  `ios-compat.test.ts` asserts the wrapper floor and a content-sized root.

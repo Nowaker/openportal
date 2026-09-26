@@ -33,16 +33,24 @@ describe("iOS compatibility boundary", () => {
 
 describe("iOS composer floor", () => {
   const css = readFileSync(join(import.meta.dir, "../ios-compat.css"), "utf8");
-  const composerRule =
-    css.match(/html\[data-ios="true"\] \[data-composer-root\] \{([^}]*)\}/)?.[1] ?? "";
+  const rule = (selector: string) =>
+    css.match(new RegExp(`html\\[data-ios="true"\\] \\[${selector}\\] \\{([^}]*)\\}`))?.[1] ?? "";
 
-  // WebKit under-sizes the composer root once its floor is 0 (about 77px where
-  // Chromium resolves 143px), which crops the floating Send column from the
-  // top. The floor must fit the toolbar row plus the 90px textarea/button
-  // column that AGENTS.md's composer contract requires.
-  test("keeps an explicit floor that fits the toolbar and the Send column", () => {
-    const floor = Number(composerRule.match(/min-height:\s*(\d+)px/)?.[1] ?? 0);
-    expect(floor).toBeGreaterThanOrEqual(44 + 90);
+  // WebKit cannot resolve the textarea's percentage min-height inside the
+  // composer's min-h-0 chain and collapses the textarea wrapper to about
+  // 30px, cropping the floating Send column from the top. The floor belongs
+  // on that wrapper - the 90px textarea/button column of AGENTS.md's composer
+  // contract - so attachments or banners stacked above it cannot eat it.
+  test("floors the textarea and Send column itself", () => {
+    const floor = Number(rule("data-composer-input").match(/min-height:\s*(\d+)px/)?.[1] ?? 0);
+    expect(floor).toBeGreaterThanOrEqual(90);
+  });
+
+  test("lets the composer root size to its contents instead of a fixed total", () => {
+    const root = rule("data-composer-root");
+    expect(root).toMatch(/flex-shrink:\s*1/);
+    expect(root).not.toMatch(/min-height:\s*\d+px/);
+    expect(root).not.toMatch(/min-height:\s*0\b/);
   });
 
   test("scopes every rule to iOS so Android is untouched", () => {
